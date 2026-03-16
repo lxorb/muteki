@@ -6,7 +6,7 @@
 
 ```bash
 pip install cambc # install this globally
-cambc run starter starter --watch
+cambc run src src --watch
 ```
 
 ## Resources
