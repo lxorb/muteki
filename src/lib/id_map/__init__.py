@@ -1,4 +1,4 @@
-from lib.id_map.unit import *
+from ..id_map.unit import *
 
 class IdMap:
     def __init__(self):

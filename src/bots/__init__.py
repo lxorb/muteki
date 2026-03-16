@@ -1,27 +1,20 @@
-"""Starter bot - a simple example to demonstrate usage of the Controller API.
-
-Each unit gets its own Player instance; the engine calls run() once per round.
-Use Controller.get_entity_type() to branch on what kind of unit you are.
-
-This bot:
-  - Core: spawns up to 3 builder bots on random adjacent tiles
-  - Builder bot: builds a harvester on any adjacent ore tile, then moves in a
-    random direction (laying a road first so the tile is passable), and places
-    a marker recording the current round number
-"""
-
 import random
-
-from cambc import Controller, Direction, EntityType, Environment, Position
+from cambc import Controller, Direction, EntityType
+from ..lib.id_map import IdMap
 
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
 
-class Player:
+class Bot:
     def __init__(self):
         self.num_spawned = 0 # number of builder bots spawned so far (core)
+        self.id_map: IdMap = IdMap()
 
     def run(self, ct: Controller) -> None:
+        self.id_map.update(ct)
+
+        print(self.id_map)
+
         etype = ct.get_entity_type()
         if etype == EntityType.CORE:
             if self.num_spawned < 3:
@@ -37,7 +30,7 @@ class Player:
                 if ct.can_build_harvester(check_pos):
                     ct.build_harvester(check_pos)
                     break
-            
+
             # move in a random direction
             move_dir = random.choice(DIRECTIONS)
             move_pos = ct.get_position().add(move_dir)
