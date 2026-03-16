@@ -2,9 +2,13 @@
 
 無敵の笑顔で荒らすメディア... 
 
-You can find the docs [here](https://docs.battlecode.cam/getting-started/installation).
+## Setup
 
 ```bash
 pip install cambc # install this globally
 cambc run starter starter --watch
 ```
+
+## Resources
+- [docs](https://docs.battlecode.cam/getting-started/installation)
+- [matches](https://game.battlecode.cam/matches)
