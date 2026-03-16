@@ -1,6 +1,6 @@
 import random
 from cambc import Controller, Direction, EntityType
-from ..lib.id_map import IdMap
+from lib.id_map import IdMap
 
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
