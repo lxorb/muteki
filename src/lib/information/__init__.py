@@ -19,7 +19,7 @@ class Information:
         height = ct.get_map_height()
 
         # initialize map matrix
-        self.map_matrix = [[DEFAULT_ENTRY] * width for h in range(height)]
+        self.map_matrix = [[DEFAULT_ENTRY] * height for h in range(width)]
 
     def exists(self, unit_id: int, ct: Controller):
         try:
@@ -51,7 +51,7 @@ class Information:
             self.max_seen_id = unit_id
             self.id_map[unit_id] = Unit(unit_id, ct)
             position = self.id_map[unit_id].position
-            self.map_matrix[position.y][position.x] = create_matrix_entry(unit_id, ct)
+            self.map_matrix[position.x][position.y] = create_matrix_entry(unit_id, ct)
 
 
     def update_all(self, ct: Controller):

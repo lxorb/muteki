@@ -3,7 +3,7 @@ from src.lib.information.map_matrix.field import Field
 from src.lib.information.map_matrix.direction import DirectionInfo
 
 
-DEFAULT_ENTRY = (Field.BUILDABLE, DirectionInfo.NONE)
+DEFAULT_ENTRY = (Field.BUILDABLE, DirectionInfo.ALL)
 
 def get_direction(unit_id: int, ct: Controller):
     cambcDirection = ct.get_direction(unit_id)

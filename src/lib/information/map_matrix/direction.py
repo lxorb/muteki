@@ -8,3 +8,4 @@ class DirectionInfo(StrEnum):
     SOUTH = "south"
     WEST = "west"
     ALL = "all"
+    # CAREFUL: edge elements can have direction: all !
