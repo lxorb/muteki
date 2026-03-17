@@ -29,8 +29,11 @@ ENV/
 htmlcov/
 
 # IDE / editor files
-.vscode/
-.idea/
+.vscode/*
+!.vscode/settings.json
+.idea/*
+!.idea/.gitignore
+!.idea/watcherTasks.xml
 
 # OS files
 .DS_Store
