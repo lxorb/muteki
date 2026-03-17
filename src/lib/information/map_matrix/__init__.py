@@ -2,7 +2,7 @@ from cambc import *
 from src.lib.information.map_matrix.field import Field
 from src.lib.information.map_matrix.direction import DirectionInfo
 
-DEFAULT_ENTRY = (Field.BUILDABLE, DirectionInfo.ALL)
+DEFAULT_ENTRY: tuple[Field, DirectionInfo] = (Field.BUILDABLE, DirectionInfo.ALL)
 
 
 def get_direction(unit_id: int, ct: Controller):

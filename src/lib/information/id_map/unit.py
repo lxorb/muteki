@@ -3,31 +3,32 @@ from cambc import *
 
 class Unit:
     def __init__(self, unit_id: int, ct: Controller):
+        self.ct = ct
         self.unit_id: int = unit_id
 
-        self.team: Team = ct.get_team(self.unit_id)
+        self.team: Team = self.ct.get_team(self.unit_id)
 
-        self.max_hp = ct.get_max_hp(self.unit_id)
+        self.max_hp = self.ct.get_max_hp(self.unit_id)
         self.hp = 0
 
-        self.entity_type: EntityType = ct.get_entity_type(self.unit_id)
+        self.entity_type: EntityType = self.ct.get_entity_type(self.unit_id)
 
         try:
-            self.direction = ct.get_direction(self.unit_id)
+            self.direction = self.ct.get_direction(self.unit_id)
         except GameError:
             self.direction = None
 
         try:
-            self.vision_radius_sq = ct.get_vision_radius_sq(self.unit_id)
+            self.vision_radius_sq = self.ct.get_vision_radius_sq(self.unit_id)
         except GameError:
             pass
 
-        self.position = ct.get_position(self.unit_id)
+        self.position = self.ct.get_position(self.unit_id)
 
         self.update_position = self.entity_type == EntityType.BUILDER_BOT
 
         if not self.update_position:
-            self.position: Position = ct.get_position(self.unit_id)
+            self.position: Position = self.ct.get_position(self.unit_id)
 
     def __repr__(self):
         return f"{self.__dict__}"
@@ -35,11 +36,11 @@ class Unit:
     def __str__(self):
         return self.__repr__()
 
-    def updateUnit(self, ct: Controller):
+    def update_unit(self):
         if self.update_position:
-            self.position = ct.get_position(self.unit_id)
+            self.position = self.ct.get_position(self.unit_id)
 
-        self.hp = ct.get_hp(self.unit_id)
+        self.hp = self.ct.get_hp(self.unit_id)
 
 
 def exists(id: int, ct: Controller):
