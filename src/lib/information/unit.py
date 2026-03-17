@@ -38,3 +38,12 @@ class Unit:
             pass
 
         self.hp = ct.get_hp(self.unit_id)
+
+
+def exists(id: int, ct: Controller):
+    try:
+        ct.get_position(id)
+    except GameError:
+        return False
+    else:
+        return True

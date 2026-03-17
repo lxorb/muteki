@@ -1,6 +1,6 @@
-from enum import Enum
+from enum import StrEnum
 
-class Directions(Enum):
+class Directions(StrEnum):
     __slots__ = ()
     NONE = "none"
     LEFT = "left"
