@@ -2,8 +2,8 @@ from cambc import *
 from src.lib.information.map_matrix.field import Field
 from src.lib.information.map_matrix.direction import DirectionInfo
 
-
 DEFAULT_ENTRY = (Field.BUILDABLE, DirectionInfo.ALL)
+
 
 def get_direction(unit_id: int, ct: Controller):
     cambcDirection = ct.get_direction(unit_id)
@@ -19,6 +19,7 @@ def get_direction(unit_id: int, ct: Controller):
             return DirectionInfo.WEST
         case _:
             raise ValueError(f"Unexpected (conveyor) direction: {cambcDirection}")
+
 
 def create_matrix_entry(unit_id: int, ct: Controller):
 

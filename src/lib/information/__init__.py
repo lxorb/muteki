@@ -5,13 +5,11 @@ from src.lib.information.map_matrix.field import Field
 from src.lib.information.id_map.unit import Unit
 
 
-
 class Information:
     max_seen_id: int = -1
     buffer: int = 100
     id_map: dict[int, Unit] = {}
     map_matrix: list = []
-
 
     def __init__(self, ct: Controller):
 
@@ -29,15 +27,13 @@ class Information:
         else:
             return True
 
-    def remove_Id(self, unit_id : int, ct: Controller):
+    def remove_Id(self, unit_id: int, ct: Controller):
         if unit_id not in self.id_map:
             return
 
         position = self.id_map[unit_id].position
         self.map_matrix[position.x][position.y] = DEFAULT_ENTRY
         self.id_map.pop(unit_id)
-
-
 
     def update_unit(self, unit_id: int, ct: Controller):
 
@@ -52,7 +48,6 @@ class Information:
             self.id_map[unit_id] = Unit(unit_id, ct)
             position = self.id_map[unit_id].position
             self.map_matrix[position.x][position.y] = create_matrix_entry(unit_id, ct)
-
 
     def update_all(self, ct: Controller):
 

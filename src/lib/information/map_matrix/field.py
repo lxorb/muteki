@@ -1,5 +1,6 @@
 from enum import StrEnum
 
+
 class Field(StrEnum):
     __slots__ = ()
     BUILDABLE = "buildable"

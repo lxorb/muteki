@@ -1,5 +1,6 @@
 from cambc import *
 
+
 class Unit:
     def __init__(self, unit_id: int, ct: Controller):
         self.unit_id: int = unit_id
@@ -22,7 +23,7 @@ class Unit:
             pass
 
         self.position = ct.get_position(self.unit_id)
-        
+
         self.update_position = self.entity_type == EntityType.BUILDER_BOT
 
         if not self.update_position:
@@ -30,10 +31,10 @@ class Unit:
 
     def __repr__(self):
         return f"{self.__dict__}"
-    
+
     def __str__(self):
         return self.__repr__()
-    
+
     def updateUnit(self, ct: Controller):
         if self.update_position:
             self.position = ct.get_position(self.unit_id)

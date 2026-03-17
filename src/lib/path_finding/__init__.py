@@ -1,7 +1,7 @@
-
 from collections import deque
 from src.lib.information.map_matrix.direction import DirectionInfo
 from src.lib.information.map_matrix.field import Field
+
 
 def get_neighbor_cost(current, direction, shiftx, shifty, map_matrix, end_position):
 
@@ -17,7 +17,10 @@ def get_neighbor_cost(current, direction, shiftx, shifty, map_matrix, end_positi
 
     # in bounds
 
-    if (not (new_field == Field.CONVEYOR or new_field == Field.BUILDABLE)) and not (newx, newy) == end_position:
+    if (not (new_field == Field.CONVEYOR or new_field == Field.BUILDABLE)) and not (
+        newx,
+        newy,
+    ) == end_position:
         return -1
         # only makes sense to consider if ores can move from here
         # -> else: harvester would be considered as path element
@@ -25,14 +28,15 @@ def get_neighbor_cost(current, direction, shiftx, shifty, map_matrix, end_positi
 
     current_direction = map_matrix[current[0]][current[1]][1]
     current_field = map_matrix[current[0]][current[1]][0]
-    if (direction == current_direction or current_direction == DirectionInfo.ALL) and current_field == Field.CONVEYOR:
+    if (
+        direction == current_direction or current_direction == DirectionInfo.ALL
+    ) and current_field == Field.CONVEYOR:
         return 0
 
     elif current_field == Field.BUILDABLE:
         return 1
 
     return -1
-
 
 
 def find_shortest_path(map_matrix, start_position, end_position):
@@ -46,9 +50,12 @@ def find_shortest_path(map_matrix, start_position, end_position):
 
     queue = deque([start_position])
 
-
-    shift = [(DirectionInfo.EAST, 1, 0), (DirectionInfo.WEST, -1, 0), (DirectionInfo.NORTH, 0, -1), (DirectionInfo.SOUTH, 0, 1)]
-
+    shift = [
+        (DirectionInfo.EAST, 1, 0),
+        (DirectionInfo.WEST, -1, 0),
+        (DirectionInfo.NORTH, 0, -1),
+        (DirectionInfo.SOUTH, 0, 1),
+    ]
 
     while queue:
         current = queue.popleft()
@@ -63,7 +70,9 @@ def find_shortest_path(map_matrix, start_position, end_position):
             return path
 
         for direction, shiftx, shifty in shift:
-            cost = get_neighbor_cost(current, direction, shiftx, shifty, map_matrix, end_position)
+            cost = get_neighbor_cost(
+                current, direction, shiftx, shifty, map_matrix, end_position
+            )
             if cost == -1:
                 continue
 
@@ -77,6 +86,5 @@ def find_shortest_path(map_matrix, start_position, end_position):
                     queue.appendleft(neighbor)
                 else:
                     queue.append(neighbor)
-
 
     return None

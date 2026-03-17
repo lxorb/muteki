@@ -1,30 +1,20 @@
 import random
 from cambc import Controller, Direction, EntityType
-from src.lib.information import Information
-
+from lib.id_map import IdMap
 
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
 
-class Bot:
 
+class Bot:
     def __init__(self):
-        self.num_spawned = 0 # number of builder bots spawned so far (core)
-        self.information: Information | None = None
+        self.num_spawned = 0  # number of builder bots spawned so far (core)
+        self.id_map: IdMap = IdMap()
 
     def run(self, ct: Controller) -> None:
+        self.id_map.update(ct)
 
-
-
-        if self.information is None:
-            self.information = Information(ct)
-            # initializing beforehand without ct doesn't work / make sense:
-            # we need width and height for matrix!
-
-        self.information.update_all(ct)
-
-        print(self.information.map_matrix)
-        print(self.information.id_map)
+        print(self.id_map)
 
         etype = ct.get_entity_type()
         if etype == EntityType.CORE:
