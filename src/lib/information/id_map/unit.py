@@ -10,12 +10,18 @@ class Unit:
         self.hp = 0
 
         self.entity_type: EntityType = ct.get_entity_type(self.unit_id)
-        self.direction: Direction = None
+
+        try:
+            self.direction = ct.get_direction(self.unit_id)
+        except GameError:
+            self.direction = None
 
         try:
             self.vision_radius_sq = ct.get_vision_radius_sq(self.unit_id)
         except GameError:
             pass
+
+        self.position = ct.get_position(self.unit_id)
         
         self.update_position = self.entity_type == EntityType.BUILDER_BOT
 
@@ -28,13 +34,8 @@ class Unit:
     def __str__(self):
         return self.__repr__()
     
-    def update(self, ct: Controller):
+    def updateUnit(self, ct: Controller):
         if self.update_position:
             self.position = ct.get_position(self.unit_id)
-        
-        try:
-            self.direction = ct.get_direction(self.unit_id)
-        except GameError:
-            pass
 
         self.hp = ct.get_hp(self.unit_id)

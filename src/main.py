@@ -1,9 +1,10 @@
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
-from bots import Bot
+from src.bots import Bot
+
 
 class Player(Bot):
     pass

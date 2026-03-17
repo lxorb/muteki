@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 
-class Directions(Enum):
+class DirectionInfo(StrEnum):
     __slots__ = ()
     NONE = "none"
-    LEFT = "left"
-    RIGHT = "right"
-    UP = "up"
-    DOWN = "down"
+    NORTH = "north"
+    EAST = "east"
+    SOUTH = "south"
+    WEST = "west"
     ALL = "all"

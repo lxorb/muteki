@@ -1,6 +1,6 @@
-from enum import Enum
+from enum import StrEnum
 
-class Field(Enum):
+class Field(StrEnum):
     __slots__ = ()
     BUILDABLE = "buildable"
     NON_BUILDABLE = "non_buildable"

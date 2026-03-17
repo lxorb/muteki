@@ -1,17 +1,43 @@
 from cambc import *
+from src.lib.information.map_matrix.field import Field
+from src.lib.information.map_matrix.direction import DirectionInfo
 
 
-class MapMatrix:
+DEFAULT_ENTRY = (Field.BUILDABLE, DirectionInfo.NONE)
 
-    matrix: list = []
+def get_direction(unit_id: int, ct: Controller):
+    cambcDirection = ct.get_direction(unit_id)
 
+    match cambcDirection:
+        case Direction.NORTH:
+            return DirectionInfo.NORTH
+        case Direction.EAST:
+            return DirectionInfo.EAST
+        case Direction.SOUTH:
+            return DirectionInfo.SOUTH
+        case Direction.WEST:
+            return DirectionInfo.WEST
+        case _:
+            raise ValueError(f"Unexpected (conveyor) direction: {cambcDirection}")
 
+def create_matrix_entry(unit_id: int, ct: Controller):
 
+    entity_type = ct.get_entity_type(unit_id)
 
-    def __init__(self, ct: Controller):
+    match entity_type:
+        case EntityType.CONVEYOR:
+            field = Field.CONVEYOR
+            direction = get_direction(unit_id, ct)
 
-        width = ct.get_map_width()
-        height = ct.get_map_height()
+        case EntityType.HARVESTER:
+            field = Field.HARVESTER
+            direction = DirectionInfo.ALL
 
-        list = [[(Field.BUILDABLE, Directions.NONE)] * width for h in range(height)]
+        # case that buildable doesn't need to be covered:
+        # This function is only called for UNITS!
 
+        case _:
+            field = Field.NON_BUILDABLE
+            direction = DirectionInfo.NONE
+
+    return (field, direction)
