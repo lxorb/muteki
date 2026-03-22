@@ -44,3 +44,4 @@ Thumbs.db
 
 # local test bot
 /src/bots/test_bot.py
+/bots/test_bot/

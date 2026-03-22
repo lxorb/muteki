@@ -2,20 +2,28 @@
 
 無敵の笑顔で荒らすメディア... 
 
-## Lib manual
-To implement a new bot, create a new implementation of the `Bot` class in a new descriptive file in `./src/bots/`.
+## Bot layout
+Bots now use the standard `cambc` layout:
 
-The `./src/bots/__init__.py` file should not be changed, because it contains the base implementation provided by cambc.
-You can copy the code from `./src/bots/__init__.py` into your file for a 
-quick start (or just duplicate the entire file and rename it).
+```text
+bots/
+  base/
+    main.py
+lib/
+  ...
+```
 
-To run your new bot, you only need to fix the import in `./src/main.py` to point to your new file.
+Each bot directory contains its own `main.py` with a `Player` class, so you can run bots directly with:
 
-**Example**: You added a new bot in `./src/bots/my_bot.py` (the class name should remain `Bot`), 
-then you would need to change the import in `./src/main.py` to `from src.bots.my_bot import Bot`.
+```bash
+cambc run base base
+```
 
-Everyone can create a `./src/bots/test_bot.py` file for experimenting purposes, 
-because **it's contained** in the `.gitignore` you don't need to worry about commiting bad code.
+Shared helper code lives in the top-level `./lib/` package. Bot entrypoints add the project root to `sys.path` at
+import time so they can use the shared helpers from a standard `bots/<name>/main.py` layout.
+
+To implement a new bot, create a new directory in `./bots/` and add a `main.py` file that exposes a `Player` class.
+For quick experiments, create a `./bots/test_bot/` directory; it is ignored by git.
 
 ## Setup
 

@@ -1,6 +1,28 @@
+import sys
+from pathlib import Path
+
+
+def add_project_root_to_path() -> None:
+    current = Path(__file__).resolve().parent
+    for candidate in (current, *current.parents):
+        if (candidate / "lib").is_dir():
+            candidate_str = str(candidate)
+            if candidate_str not in sys.path:
+                sys.path.insert(0, candidate_str)
+            return
+
+    raise ModuleNotFoundError(
+        "Could not find shared 'lib' package above bot entrypoint"
+    )
+
+
+add_project_root_to_path()
+
 import random
+
 from cambc import Controller, Direction, EntityType
-from src.lib.information import Information
+
+from lib.information import Information
 
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
@@ -39,34 +61,15 @@ class Bot:
                 self.run_launcher(ct)
 
     def run_core(self, ct: Controller):
+        # spawn initial bb's
         if self.num_spawned < INITIAL_BB:
-            # if we haven't spawned 3 builder bots yet, try to spawn one on a random tile
             spawn_pos = ct.get_position().add(random.choice(DIRECTIONS))
             if ct.can_spawn(spawn_pos):
                 ct.spawn_builder(spawn_pos)
                 self.num_spawned += 1
 
     def run_bb(self, ct: Controller):
-        # if we are adjacent to an ore tile, build a harvester on it
-        for d in Direction:
-            check_pos = ct.get_position().add(d)
-            if ct.can_build_harvester(check_pos):
-                ct.build_harvester(check_pos)
-                break
-
-        # move in a random direction
-        move_dir = random.choice(DIRECTIONS)
-        move_pos = ct.get_position().add(move_dir)
-        # we need to place a conveyor or road to stand on, before we can move onto a tile
-        if ct.can_build_road(move_pos):
-            ct.build_road(move_pos)
-        if ct.can_move(move_dir):
-            ct.move(move_dir)
-
-        # place a marker on an adjacent tile with the current round number
-        marker_pos = ct.get_position().add(random.choice(DIRECTIONS))
-        if ct.can_place_marker(marker_pos):
-            ct.place_marker(marker_pos, ct.get_current_round())
+        pass
 
     def run_gunner(self, ct: Controller):
         pass
@@ -79,3 +82,7 @@ class Bot:
 
     def run_launcher(self, ct: Controller):
         pass
+
+
+class Player(Bot):
+    pass
