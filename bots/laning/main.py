@@ -141,12 +141,35 @@ class Bot:
         return Direction.EAST if isupper else Direction.WEST
 
     def run_bb_maintainer(self):
+        # build gunner if poss. next to enemy extractor
+        # repair own building if damaged
+        # rebuild lane tile if missing
+        #   -> res. should be above threshold
+        # build bridge if missing in chain
+        #   -> res. should be above threshold
+        # destroy bridge / conveyor if pointing to enemy turret
+        # build extractor if res.-tile nearby and stored res over extractor threshold
+        # build launcher beneath / over extractor if blocking lane
+        #   -> res. should be above threshold
+        # build launcher if lane blocked
+        #   -> res. should be above threshold
+        # move to side if blocking a placement (e.g. of launcher)
+        # follow lane direction vertically, branch horizontally if at the end
+        #   -> consider current lane direction attribute for that
         pass
 
     def run_bb_scavenger(self):
+        # similar to maintainer but also builds new lane tiles
         pass
 
+
     def run_bb_harrassment(self):
+        # calc poss. enemy core locations
+        #   -> better: infer enemy core location from own core location and map size
+        # patrol at unused enemy res.-tile, build double sentinel when enemy builds extractor
+        # build gunner if poss. next to enemy extractor that is connected to enemy infra
+        #   -> if enemy not connected to enemy infra, build sentinel instead
+        # self destruct if it breaks enemy extractor that is connected to enemy infra
         pass
 
     def run_bb_unassigned(self):
@@ -162,6 +185,10 @@ class Bot:
         pass
 
     def run_launcher(self):
+        # throw away enemy bots
+        #   -> to own turret if available
+        #   -> otherwise just maximize distance from the core
+        # throw own bot for lane traversal
         pass
 
 
