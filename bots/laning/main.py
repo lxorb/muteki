@@ -26,7 +26,8 @@ from lib.information import Information
 
 class Bot:
     def __init__(self):
-        self.num_spawned = 0  # number of builder bots spawned so far (core)
+        self.core_bbs_spawned = 0  # number of builder bots spawned so far (core)
+        self.ct: Controller | None = None
         self.information: Information | None = None
         self.bb_handler = None
         self.core_center_pos: Position | None = None
@@ -38,96 +39,129 @@ class Bot:
         return 2_000_000 - time.perf_counter_ns() + self.t_start
 
     def run(self, ct: Controller) -> None:
+        self.ct = ct
         self.t_start = time.perf_counter_ns()
         if self.information is None:
-            self.information = Information(ct)
+            self.information = Information(self.ct)
         self.information.update_all()
         print(f"Took {self.get_ns_elapsed() / 1000}mus for information fetching")
 
         # print(self.information.map_matrix)
         # print(self.information.id_map)
 
-        etype = ct.get_entity_type()
+        etype = self.ct.get_entity_type()
         match etype:
             case EntityType.CORE:
-                self.run_core(ct)
+                self.run_core()
             case EntityType.BUILDER_BOT:
-                self.run_bb(ct)
+                self.run_bb()
             case EntityType.GUNNER:
-                self.run_gunner(ct)
+                self.run_gunner()
             case EntityType.SENTINEL:
-                self.run_sentinel(ct)
+                self.run_sentinel()
             case EntityType.BREACH:
-                self.run_breach(ct)
+                self.run_breach()
             case EntityType.LAUNCHER:
-                self.run_launcher(ct)
+                self.run_launcher()
 
-    def run_core(self, ct: Controller):
+    def run_core(self):
         # spawn initial bb's
-        if self.num_spawned < len(INITIAL_BB):
-            spawn_pos = ct.get_position().add(random.choice(DIRECTIONS))
-            if ct.can_spawn(spawn_pos):
-                ct.spawn_builder(spawn_pos)
-                self.num_spawned += 1
+        if self.core_bbs_spawned < len(INITIAL_BB):
+            spawn_pos = self.ct.get_position().add(random.choice(DIRECTIONS))
+            if self.ct.can_spawn(spawn_pos):
+                self.ct.spawn_builder(spawn_pos)
+                self.core_bbs_spawned += 1
 
-    def run_bb(self, ct: Controller):
+    def run_bb(self):
         if self.core_center_pos is None:
-            self.find_core_center(ct)
+            self.find_core_center()
 
         if self.bb_handler is None:
-            self.bb_handler = self.get_initial_bb_handler(ct)
+            self.bb_handler = self.get_initial_bb_handler()
 
-        self.bb_handler(ct)
+        self.bb_handler()
 
-    def find_core_center(self, ct: Controller) -> Position | None:
-        current_pos = ct.get_position()
-        building_id = ct.get_tile_building_id(current_pos)
+    def find_core_center(self) -> Position | None:
+        current_pos = self.ct.get_position()
+        building_id = self.ct.get_tile_building_id(current_pos)
         if (
             building_id is not None
-            and ct.get_entity_type(building_id) == EntityType.CORE
-            and ct.get_team(building_id) == ct.get_team()
+            and self.ct.get_entity_type(building_id) == EntityType.CORE
+            and self.ct.get_team(building_id) == self.ct.get_team()
         ):
-            self.core_center_pos = ct.get_position(building_id)
+            self.core_center_pos = self.ct.get_position(building_id)
             return self.core_center_pos
 
-        for building_id in ct.get_nearby_buildings():
+        for building_id in self.ct.get_nearby_buildings():
             if (
-                ct.get_entity_type(building_id) == EntityType.CORE
-                and ct.get_team(building_id) == ct.get_team()
+                self.ct.get_entity_type(building_id) == EntityType.CORE
+                and self.ct.get_team(building_id) == self.ct.get_team()
             ):
-                self.core_center_pos = ct.get_position(building_id)
+                self.core_center_pos = self.ct.get_position(building_id)
                 return self.core_center_pos
 
         return None
 
-    def get_initial_bb_handler(self, ct: Controller):
-        round_index = ct.get_current_round() - 1
+    def stands_on_core(self) -> bool:
+        pos = self.ct.get_position()
+        return (
+            self.core_center_pos.x - 1 <= pos.x <= self.core_center_pos.x + 1
+            and self.core_center_pos.y - 1 <= pos.y <= self.core_center_pos.y + 1
+        )
+
+    def get_initial_bb_handler(self):
+        round_index = self.ct.get_current_round() - 1
         if 0 <= round_index < len(INITIAL_BB):
             return INITIAL_BB[round_index].__get__(self, type(self))
         return self.run_bb_unassigned
 
-    def run_bb_maintainer(self, ct: Controller):
+    def is_vertical_lane_tile(self, pos: Position) -> bool:
+        xop = (pos.x - self.core_center_pos.x) % 6
+        if xop not in [1, 4]:
+            return False
+        if pos.y == self.core_center_pos.y:
+            return False
+
+    # in work
+    def get_lane_direction(self, pos: Position) -> Direction | None:
+        xop = (pos.x - self.core_center_pos.x) % 6
+        if self.stands_on_core():
+            return None
+        if pos.y == self.cor_center_pos.y:
+            return None
+        isupper = pos.y > self.cor_center_pos.y
+        if self.is_vertical_lane_tile(pos) and isupper and xop == 1:
+            return Direction.NORTH
+        if self.is_vertical_lane_tile(pos) and isupper and xop == 4:
+            return Direction.SOUTH
+        if self.is_vertical_lane_tile(pos) and not isupper and xop == 1:
+            return Direction.SOUTH
+        if self.is_vertical_lane_tile(pos) and not isupper and xop == 4:
+            return Direction.NORTH
+        return Direction.EAST if isupper else Direction.WEST
+
+    def run_bb_maintainer(self):
         pass
 
-    def run_bb_scavenger(self, ct: Controller):
+    def run_bb_scavenger(self):
         pass
 
-    def run_bb_harrassment(self, ct: Controller):
+    def run_bb_harrassment(self):
         pass
 
-    def run_bb_unassigned(self, ct: Controller):
+    def run_bb_unassigned(self):
         pass
 
-    def run_gunner(self, ct: Controller):
+    def run_gunner(self):
         pass
 
-    def run_sentinel(self, ct: Controller):
+    def run_sentinel(self):
         pass
 
-    def run_breach(self, ct: Controller):
+    def run_breach(self):
         pass
 
-    def run_launcher(self, ct: Controller):
+    def run_launcher(self):
         pass
 
 
