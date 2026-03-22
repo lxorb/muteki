@@ -30,6 +30,7 @@ For quick experiments, create a `./bots/test_bot/` directory; it is ignored by g
 ```bash
 pip install cambc # install this globally
 cambc run <bot1> <bot2> [--watch]
+git submodule update --init --recursive
 ```
 
 Install the black python formatter - automatic formatting on save is already configured, so try modifying something slightly and saving then to see if the automatic formatting kicks in. 
