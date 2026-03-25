@@ -385,6 +385,71 @@ class Map:
         """
         return 0 <= x < self.width and 0 <= y < self.height
 
+    def get_next_field_for_target(self, target_pos: Position) -> Position | None:
+        """
+        Return the next path step toward a target tile while avoiding known walls.
+
+        The search runs a grid BFS from the current bot position stored in this
+        map's controller and treats unknown tiles as passable. It returns the
+        first tile on the shortest discovered path to `target_pos`, or `None`
+        when no path can currently be found or the target lies outside the map.
+        """
+        start_pos = self.ct.get_position()
+        start_key = (start_pos.x, start_pos.y)
+        target_key = (target_pos.x, target_pos.y)
+
+        if not self._is_in_bounds(*start_key):
+            return None
+        if not self._is_in_bounds(*target_key):
+            return None
+        if start_key == target_key:
+            return start_pos
+
+        target_tile = self.matrix[target_pos.x][target_pos.y]
+        if target_tile is not None and target_tile.environment == Environment.WALL:
+            return None
+
+        queue = deque([start_key])
+        visited = {start_key}
+        parent: dict[tuple[int, int], tuple[int, int]] = {}
+
+        found = False
+        while queue:
+            x, y = queue.popleft()
+            if (x, y) == target_key:
+                found = True
+                break
+
+            for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+                new_x = x + shift_x
+                new_y = y + shift_y
+                if not self._is_in_bounds(new_x, new_y):
+                    continue
+
+                next_key = (new_x, new_y)
+                if next_key in visited:
+                    continue
+
+                next_tile = self.matrix[new_x][new_y]
+                if next_tile is not None and next_tile.environment == Environment.WALL:
+                    continue
+
+                visited.add(next_key)
+                parent[next_key] = (x, y)
+                queue.append(next_key)
+
+        if not found:
+            return None
+
+        step_key = target_key
+        while parent.get(step_key) is not None and parent[step_key] != start_key:
+            step_key = parent[step_key]
+
+        if parent.get(step_key) is None:
+            return None
+
+        return Position(step_key[0], step_key[1])
+
 
 class Bot:
     # Builder lifecycle and role selection
@@ -2382,12 +2447,14 @@ class Bot:
         radius and only considers visible unoccupied titanium deposits. If one
         is already within action radius and the build is legal, it immediately
         builds the harvester. Otherwise, it advances toward the nearest visible
-        titanium target that it can currently make progress toward, building a
-        road on the chosen step first when useful. Trying multiple visible
-        targets keeps maintainers from giving up and falling back to patrol
-        just because the single closest deposit is awkward to approach that
-        turn. Once the map already knows about `MAX_HARVESTORS` friendly
-        harvesters, the method stops expanding extractor production entirely.
+        titanium target that it can currently make progress toward. Path
+        selection first asks the map cache for a BFS-based next step that
+        avoids known wall tiles and then performs the actual step with normal
+        road/move behavior. Trying multiple visible targets keeps maintainers
+        from giving up and falling back to patrol just because the single
+        closest deposit is awkward to approach that turn. Once the map already
+        knows about `MAX_HARVESTORS` friendly harvesters, the method stops
+        expanding extractor production entirely.
         """
         if self.map is None:
             return False
@@ -2435,6 +2502,18 @@ class Bot:
         for _, target_pos in ore_targets:
             if current_pos.distance_squared(target_pos) <= action_radius_sq:
                 continue
+
+            next_step_pos = self.map.get_next_field_for_target(target_pos)
+            if next_step_pos is not None and next_step_pos != current_pos:
+                move_direction = current_pos.direction_to(next_step_pos)
+                if (
+                    move_direction != Direction.CENTRE
+                    and self._move_in_direction_with_roads(move_direction)
+                ):
+                    return self._record_action(
+                        BotAction.BUILD_EXTRACTOR,
+                        "building extractor",
+                    )
 
             if not self._move_towards_with_roads(target_pos):
                 continue
