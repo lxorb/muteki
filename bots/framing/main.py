@@ -22,7 +22,7 @@ FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 MAX_BOTS = 6
 MAX_HARVESTORS = 999
-SURRENDER_AT_TURN = 300
+SURRENDER_AT_TURN = 600
 
 SENTINEL_TARGET_PRIORITY = [
     EntityType.GUNNER,
@@ -1666,7 +1666,9 @@ class Bot:
         core. When multiple candidates are equally good strategically, the
         bridge prefers the farther legal target so it uses as much of the
         bridge's range as possible. Empty tiles are still preferred over roads
-        or markers when the stored distance is tied.
+        or markers when the stored distance is tied. Titanium ore tiles are
+        deprioritized as bridge targets whenever at least one non-titanium
+        candidate in range would still reduce distance-to-core by at least one.
         """
         if self.map is None:
             return None
@@ -1705,7 +1707,14 @@ class Bot:
                 return best_core_tile[1]
 
         best_bridge_candidate: tuple[tuple[int, int, int, int], Position] | None = None
-        best_candidate: tuple[tuple[int, int, int, int], Position] | None = None
+        build_candidates: list[
+            tuple[
+                tuple[int, int, int, int, int, int],
+                Position,
+                int,
+                bool,
+            ]
+        ] = []
 
         for dx in range(-3, 4):
             for dy in range(-3, 4):
@@ -1766,15 +1775,36 @@ class Bot:
                     candidate_pos.x,
                     candidate_pos.y,
                 )
-                if best_candidate is None or candidate_key < best_candidate[0]:
-                    best_candidate = (candidate_key, candidate_pos)
+                is_titanium_tile = tile.environment == Environment.ORE_TITANIUM
+                build_candidates.append(
+                    (
+                        candidate_key,
+                        candidate_pos,
+                        tile.distance_to_core,
+                        is_titanium_tile,
+                    )
+                )
 
         if best_bridge_candidate is not None:
             return best_bridge_candidate[1]
 
-        if best_candidate is None:
+        if not build_candidates:
             return None
 
+        has_non_titanium_improving_candidate = any(
+            candidate_distance_to_core < origin_distance_to_core and not is_titanium_tile
+            for _, _, candidate_distance_to_core, is_titanium_tile in build_candidates
+        )
+
+        best_candidate = min(
+            build_candidates,
+            key=lambda candidate: (
+                1
+                if has_non_titanium_improving_candidate and candidate[3]
+                else 0,
+                candidate[0],
+            ),
+        )
         return best_candidate[1]
 
     def build_harvester_bridge(self) -> bool:
