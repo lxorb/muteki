@@ -87,6 +87,7 @@ class BotAction(Enum):
     SENTINEL_ATTACK = auto()
     BREACH_ATTACK = auto()
     BUILD_HARVESTER_BRIDGE = auto()
+    HOLD_BUILD_HARVESTER_BRIDGE = auto()
     BUILD_MISSING_BRIDGE = auto()
     HOLD_MISSING_BRIDGE = auto()
     DESTROY_HIJACKED_RESCHAIN = auto()
@@ -658,16 +659,19 @@ class Bot:
         if self.destroy_hijacked_reschain():
             return
         
-        if self.complete_supply_chain():
+        if self.build_harvester_bridge():
             return
         
-        if self.build_harvester_bridge():
+        if self.hold_build_harvester_bridge():
             return
         
         if self.protect_harvester():
             return
         
         if self.hold_protect_harvester():
+            return
+        
+        if self.complete_supply_chain():
             return
 
         if self.build_missing_bridge():
@@ -1646,6 +1650,137 @@ class Bot:
             "building harvester bridge",
         )
 
+    def hold_build_harvester_bridge(self) -> bool:
+        """
+        Wait near a visible unbridged allied harvester until bridge building is possible.
+
+        When team titanium is still below the harvester-bridge threshold, the
+        bot looks for visible allied harvesters that do not yet have an
+        orthogonally adjacent allied bridge. It then moves into action range of
+        one legal orthogonal bridge tile and waits there so it can place the
+        bridge as soon as resources are available.
+        """
+        if self.map is None:
+            return False
+
+        titanium, _ = self.ct.get_global_resources()
+        if titanium >= HARVESTER_BRIDGE_MIN_TITANIUM_THRESHOLD:
+            return False
+
+        current_pos = self.ct.get_position()
+        current_id = self.ct.get_id()
+        hold_candidates: list[
+            tuple[tuple[int, int, int, int, int, int], Position, Position]
+        ] = []
+
+        for harvester_id in self.ct.get_nearby_buildings():
+            if self.ct.get_entity_type(harvester_id) != EntityType.HARVESTER:
+                continue
+            if self.ct.get_team(harvester_id) != self.ct.get_team():
+                continue
+
+            harvester_pos = self.ct.get_position(harvester_id)
+            has_adjacent_bridge = False
+            empty_adjacent_tiles: list[Position] = []
+
+            for direction in CARDINAL_DIRECTIONS:
+                adjacent_pos = harvester_pos.add(direction)
+                if not self._is_in_bounds(adjacent_pos):
+                    continue
+                if not self.ct.is_in_vision(adjacent_pos):
+                    continue
+
+                tile = self._get_known_map_tile(adjacent_pos)
+                if tile is None:
+                    continue
+                if (
+                    tile.building_type == EntityType.BRIDGE
+                    and tile.building_team == self.ct.get_team()
+                ):
+                    has_adjacent_bridge = True
+                    break
+                if tile.building_id is not None:
+                    continue
+                if tile.environment != Environment.EMPTY:
+                    continue
+                if self.get_bridge_target(adjacent_pos) is None:
+                    continue
+
+                empty_adjacent_tiles.append(adjacent_pos)
+
+            if has_adjacent_bridge:
+                continue
+
+            for build_pos in empty_adjacent_tiles:
+                staging_positions: list[Position] = []
+                for dx in range(-1, 2):
+                    for dy in range(-1, 2):
+                        staging_pos = Position(build_pos.x + dx, build_pos.y + dy)
+                        if not self._is_in_bounds(staging_pos):
+                            continue
+                        if staging_pos.distance_squared(build_pos) > 2:
+                            continue
+
+                        staging_tile = self._get_known_map_tile(staging_pos)
+                        if staging_tile is None:
+                            continue
+                        if staging_tile.environment == Environment.WALL:
+                            continue
+                        if (
+                            staging_tile.building_id is not None
+                            and staging_tile.building_type != EntityType.ROAD
+                        ):
+                            continue
+                        if (
+                            staging_tile.builder_bot_id is not None
+                            and staging_tile.builder_bot_id != current_id
+                        ):
+                            continue
+
+                        staging_positions.append(staging_pos)
+
+                if not staging_positions:
+                    continue
+
+                best_staging_pos = min(
+                    staging_positions,
+                    key=lambda pos: (
+                        1 if pos == build_pos else 0,
+                        current_pos.distance_squared(pos),
+                        pos.x,
+                        pos.y,
+                    ),
+                )
+                candidate_key = (
+                    current_pos.distance_squared(best_staging_pos),
+                    1 if best_staging_pos == build_pos else 0,
+                    best_staging_pos.x,
+                    best_staging_pos.y,
+                    build_pos.x,
+                    build_pos.y,
+                )
+                hold_candidates.append((candidate_key, best_staging_pos, build_pos))
+
+        if not hold_candidates:
+            return False
+
+        hold_candidates.sort(key=lambda candidate: candidate[0])
+        _, staging_pos, _ = hold_candidates[0]
+
+        if current_pos == staging_pos:
+            return self._record_action(
+                BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
+                "holding harvester bridge position",
+            )
+
+        if not self._move_towards_with_roads(staging_pos):
+            return False
+
+        return self._record_action(
+            BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
+            "holding harvester bridge position",
+        )
+
     def build_missing_bridge(self) -> bool:
         """
         Extend broken bridge chains by placing missing bridges on empty or road targets.
@@ -1655,9 +1790,11 @@ class Bot:
         anything, it then looks for allied bridges whose current target tile is
         empty or occupied by a road, and attempts to place a new bridge on that
         tile pointing onward using `get_bridge_target`, subject to its own
-        titanium threshold. If a road occupies the chosen build tile, the road
-        is removed first and the bridge is placed immediately when the rules
-        allow both actions in the same turn.
+        titanium threshold. If the chosen missing tile is currently outside
+        action range, the bot moves toward it (building roads as needed)
+        instead of giving up that turn. If a road occupies the chosen build
+        tile, the road is removed first and the bridge is placed immediately
+        when the rules allow both actions in the same turn.
         """
         if self.build_harvester_bridge():
             return True
@@ -1670,8 +1807,11 @@ class Bot:
             return False
 
         current_pos = self.ct.get_position()
-        chain_candidates: list[
+        actionable_candidates: list[
             tuple[tuple[int, int, int, int, int, int, int], Position, Position, bool]
+        ] = []
+        movement_candidates: list[
+            tuple[tuple[int, int, int, int, int, int, int], Position]
         ] = []
 
         for bridge_id in self.ct.get_nearby_buildings():
@@ -1699,19 +1839,34 @@ class Bot:
             is_road_build_pos = tile.building_type == EntityType.ROAD
             if not (is_empty_build_pos or is_road_build_pos):
                 continue
-            if is_road_build_pos and not self._can_destroy_tile(build_pos):
-                continue
 
             target_pos = self.get_bridge_target(build_pos)
             if target_pos is None:
                 continue
-            if (
-                not is_road_build_pos
-                and not self.ct.can_build_bridge(build_pos, target_pos)
-            ):
+            build_pos_type_rank = 0 if is_empty_build_pos else 1
+            if current_pos.distance_squared(build_pos) <= 2:
+                if is_road_build_pos and not self._can_destroy_tile(build_pos):
+                    continue
+                if (
+                    not is_road_build_pos
+                    and not self.ct.can_build_bridge(build_pos, target_pos)
+                ):
+                    continue
+
+                candidate_key = (
+                    current_pos.distance_squared(build_pos),
+                    build_pos_type_rank,
+                    build_pos.x,
+                    build_pos.y,
+                    bridge_pos.x,
+                    bridge_pos.y,
+                    bridge_id,
+                )
+                actionable_candidates.append(
+                    (candidate_key, build_pos, target_pos, is_road_build_pos)
+                )
                 continue
 
-            build_pos_type_rank = 0 if is_empty_build_pos else 1
             candidate_key = (
                 current_pos.distance_squared(build_pos),
                 build_pos_type_rank,
@@ -1721,20 +1876,28 @@ class Bot:
                 bridge_pos.y,
                 bridge_id,
             )
-            chain_candidates.append(
-                (candidate_key, build_pos, target_pos, is_road_build_pos)
+            movement_candidates.append((candidate_key, build_pos))
+
+        if actionable_candidates:
+            actionable_candidates.sort(key=lambda candidate: candidate[0])
+            _, build_pos, target_pos, is_road_build_pos = actionable_candidates[0]
+            if not self._build_bridge_with_optional_road_removal(
+                build_pos,
+                target_pos,
+                is_road_build_pos,
+            ):
+                return False
+
+            return self._record_action(
+                BotAction.BUILD_MISSING_BRIDGE,
+                "building missing bridge",
             )
 
-        if not chain_candidates:
+        if not movement_candidates:
             return False
 
-        chain_candidates.sort(key=lambda candidate: candidate[0])
-        _, build_pos, target_pos, is_road_build_pos = chain_candidates[0]
-        if not self._build_bridge_with_optional_road_removal(
-            build_pos,
-            target_pos,
-            is_road_build_pos,
-        ):
+        movement_candidates.sort(key=lambda candidate: candidate[0])
+        if not self._move_towards_with_roads(movement_candidates[0][1]):
             return False
 
         return self._record_action(
