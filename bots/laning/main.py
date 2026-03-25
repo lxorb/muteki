@@ -156,6 +156,7 @@ class Bot:
         # move to side if blocking a placement (e.g. of launcher)
         # follow lane direction vertically, branch horizontally if at the end
         #   -> consider current lane direction attribute for that
+        #   -> hold if front but not behind bot ins sight
         pass
 
     def run_bb_scavenger(self):
