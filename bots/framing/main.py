@@ -18,9 +18,9 @@ HARVESTER_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
 CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
 EXTRACTOR_MIN_TITANIUM_THRESHOLD = 300
 ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
-FURTHER_BB_THRESHOLD = 600
+FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
-MAX_BOTS = 3
+MAX_BOTS = 6
 MAX_HARVESTORS = 999
 SURRENDER_AT_TURN = 300
 
@@ -442,6 +442,113 @@ class Map:
             return None
 
         step_key = target_key
+        while parent.get(step_key) is not None and parent[step_key] != start_key:
+            step_key = parent[step_key]
+
+        if parent.get(step_key) is None:
+            return None
+
+        return Position(step_key[0], step_key[1])
+
+    def get_next_field_for_action_range(
+        self,
+        target_pos: Position,
+        action_radius_sq: int = 2,
+    ) -> Position | None:
+        """
+        Return the next path step toward any tile that can act on a target.
+
+        The search runs a grid BFS from the current bot position and stops at
+        the closest reachable tile whose distance to `target_pos` is within the
+        given action radius. The target tile itself is excluded as a staging
+        tile so callers can stay in range without stepping onto the build tile.
+        """
+        start_pos = self.ct.get_position()
+        start_key = (start_pos.x, start_pos.y)
+        target_key = (target_pos.x, target_pos.y)
+        own_builder_id = self.ct.get_id()
+
+        if not self._is_in_bounds(*start_key):
+            return None
+        if not self._is_in_bounds(*target_key):
+            return None
+
+        target_tile = self.matrix[target_pos.x][target_pos.y]
+        if target_tile is not None and target_tile.environment == Environment.WALL:
+            return None
+
+        def is_goal(x: int, y: int) -> bool:
+            if (x, y) == target_key:
+                return False
+            if (x - target_pos.x) ** 2 + (y - target_pos.y) ** 2 > action_radius_sq:
+                return False
+
+            tile = self.matrix[x][y]
+            if tile is None:
+                return True
+            if tile.environment == Environment.WALL:
+                return False
+            if tile.building_id is not None and tile.building_type != EntityType.ROAD:
+                return False
+            if (
+                tile.builder_bot_id is not None
+                and tile.builder_bot_id != own_builder_id
+            ):
+                return False
+            return True
+
+        if is_goal(*start_key):
+            return start_pos
+
+        queue = deque([start_key])
+        visited = {start_key}
+        parent: dict[tuple[int, int], tuple[int, int]] = {}
+        goal_key: tuple[int, int] | None = None
+
+        while queue:
+            x, y = queue.popleft()
+
+            for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+                new_x = x + shift_x
+                new_y = y + shift_y
+                if not self._is_in_bounds(new_x, new_y):
+                    continue
+
+                next_key = (new_x, new_y)
+                if next_key in visited:
+                    continue
+                if next_key == target_key:
+                    continue
+
+                next_tile = self.matrix[new_x][new_y]
+                if next_tile is not None:
+                    if next_tile.environment == Environment.WALL:
+                        continue
+                    if (
+                        next_tile.building_id is not None
+                        and next_tile.building_type != EntityType.ROAD
+                    ):
+                        continue
+                    if (
+                        next_tile.builder_bot_id is not None
+                        and next_tile.builder_bot_id != own_builder_id
+                    ):
+                        continue
+
+                visited.add(next_key)
+                parent[next_key] = (x, y)
+
+                if is_goal(new_x, new_y):
+                    goal_key = next_key
+                    queue.clear()
+                    break
+
+                queue.append(next_key)
+
+        if goal_key is None:
+            return None
+
+        step_key = goal_key
         while parent.get(step_key) is not None and parent[step_key] != start_key:
             step_key = parent[step_key]
 
@@ -1247,6 +1354,43 @@ class Bot:
         candidates.sort(key=lambda candidate: candidate[0])
         return self._move_in_direction_with_roads(candidates[0][1])
 
+    def _move_towards_action_range_with_roads(
+        self,
+        target_pos: Position,
+        action_radius_sq: int = 2,
+        allow_direct_target_fallback: bool = False,
+    ) -> bool:
+        """
+        Advance toward any tile that can act on a target, not onto the target.
+
+        The helper asks the map cache for a wall-aware BFS next step toward a
+        staging tile within `action_radius_sq` of `target_pos`, then performs
+        one road+move step in that direction. When no such staged step is
+        currently known, callers may optionally allow a direct fallback toward
+        the target tile itself.
+        """
+        current_pos = self.ct.get_position()
+        if (
+            current_pos != target_pos
+            and current_pos.distance_squared(target_pos) <= action_radius_sq
+        ):
+            return False
+
+        if self.map is not None:
+            next_step_pos = self.map.get_next_field_for_action_range(
+                target_pos,
+                action_radius_sq=action_radius_sq,
+            )
+            if next_step_pos is not None and next_step_pos != current_pos:
+                move_direction = current_pos.direction_to(next_step_pos)
+                if move_direction != Direction.CENTRE:
+                    return self._move_in_direction_with_roads(move_direction)
+
+        if not allow_direct_target_fallback:
+            return False
+
+        return self._move_towards_with_roads(target_pos)
+
 
     # Builder actions and tactical helpers
 
@@ -1377,7 +1521,11 @@ class Bot:
             if current_pos.distance_squared(candidate_pos) <= action_radius_sq:
                 continue
 
-            if not self._move_towards_with_roads(candidate_pos):
+            if not self._move_towards_action_range_with_roads(
+                candidate_pos,
+                action_radius_sq=action_radius_sq,
+                allow_direct_target_fallback=True,
+            ):
                 continue
 
             return self._record_action(
@@ -1637,7 +1785,10 @@ class Bot:
         an orthogonally adjacent allied bridge, and looks for empty orthogonal
         neighbor tiles where a new bridge could be placed. It uses
         `get_bridge_target` to choose the new bridge target and builds the
-        closest legal candidate when the local titanium threshold is met.
+        closest legal candidate when the local titanium threshold is met. If
+        the chosen build tile is not yet in action range, the builder advances
+        toward action-range staging instead of trying to step onto the bridge
+        tile directly.
         """
         if self.map is None:
             return False
@@ -1647,9 +1798,10 @@ class Bot:
             return False
 
         current_pos = self.ct.get_position()
-        bridge_candidates: list[
+        actionable_candidates: list[
             tuple[tuple[int, int, int, int, int, int], Position, Position]
         ] = []
+        movement_candidates: list[tuple[tuple[int, int, int, int, int, int], Position]] = []
 
         for harvester_id in self.ct.get_nearby_buildings():
             if self.ct.get_entity_type(harvester_id) != EntityType.HARVESTER:
@@ -1691,8 +1843,6 @@ class Bot:
                 target_pos = self.get_bridge_target(bridge_pos)
                 if target_pos is None:
                     continue
-                if not self.ct.can_build_bridge(bridge_pos, target_pos):
-                    continue
 
                 candidate_key = (
                     current_pos.distance_squared(bridge_pos),
@@ -1702,14 +1852,35 @@ class Bot:
                     harvester_pos.y,
                     harvester_id,
                 )
-                bridge_candidates.append((candidate_key, bridge_pos, target_pos))
+                if current_pos.distance_squared(bridge_pos) <= 2:
+                    if not self.ct.can_build_bridge(bridge_pos, target_pos):
+                        continue
+                    actionable_candidates.append((candidate_key, bridge_pos, target_pos))
+                    continue
 
-        if not bridge_candidates:
+                movement_candidates.append((candidate_key, bridge_pos))
+
+        if actionable_candidates:
+            actionable_candidates.sort(key=lambda candidate: candidate[0])
+            _, bridge_pos, target_pos = actionable_candidates[0]
+            self.ct.build_bridge(bridge_pos, target_pos)
+            return self._record_action(
+                BotAction.BUILD_HARVESTER_BRIDGE,
+                "building harvester bridge",
+            )
+
+        if not movement_candidates:
             return False
 
-        bridge_candidates.sort(key=lambda candidate: candidate[0])
-        _, bridge_pos, target_pos = bridge_candidates[0]
-        self.ct.build_bridge(bridge_pos, target_pos)
+        movement_candidates.sort(key=lambda candidate: candidate[0])
+        target_build_pos = movement_candidates[0][1]
+        if not self._move_towards_action_range_with_roads(
+            target_build_pos,
+            action_radius_sq=2,
+            allow_direct_target_fallback=False,
+        ):
+            return False
+
         return self._record_action(
             BotAction.BUILD_HARVESTER_BRIDGE,
             "building harvester bridge",
@@ -1783,6 +1954,8 @@ class Bot:
                         staging_pos = Position(build_pos.x + dx, build_pos.y + dy)
                         if not self._is_in_bounds(staging_pos):
                             continue
+                        if staging_pos == build_pos:
+                            continue
                         if staging_pos.distance_squared(build_pos) > 2:
                             continue
 
@@ -1830,16 +2003,21 @@ class Bot:
             return False
 
         hold_candidates.sort(key=lambda candidate: candidate[0])
-        _, staging_pos, _ = hold_candidates[0]
+        _, staging_pos, build_pos = hold_candidates[0]
 
-        if current_pos == staging_pos:
+        if current_pos.distance_squared(build_pos) <= 2 and current_pos != build_pos:
             return self._record_action(
                 BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
                 "holding harvester bridge position",
             )
 
-        if not self._move_towards_with_roads(staging_pos):
-            return False
+        if not self._move_towards_action_range_with_roads(
+            build_pos,
+            action_radius_sq=2,
+            allow_direct_target_fallback=False,
+        ):
+            if not self._move_towards_with_roads(staging_pos):
+                return False
 
         return self._record_action(
             BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
@@ -1856,7 +2034,7 @@ class Bot:
         empty or occupied by a road, and attempts to place a new bridge on that
         tile pointing onward using `get_bridge_target`, subject to its own
         titanium threshold. If the chosen missing tile is currently outside
-        action range, the bot moves toward it (building roads as needed)
+        action range, the bot moves toward a valid action-range staging tile
         instead of giving up that turn. If a road occupies the chosen build
         tile, the road is removed first and the bridge is placed immediately
         when the rules allow both actions in the same turn.
@@ -1962,7 +2140,11 @@ class Bot:
             return False
 
         movement_candidates.sort(key=lambda candidate: candidate[0])
-        if not self._move_towards_with_roads(movement_candidates[0][1]):
+        if not self._move_towards_action_range_with_roads(
+            movement_candidates[0][1],
+            action_radius_sq=2,
+            allow_direct_target_fallback=False,
+        ):
             return False
 
         return self._record_action(
@@ -2026,6 +2208,8 @@ class Bot:
                     staging_pos = Position(build_pos.x + dx, build_pos.y + dy)
                     if not self._is_in_bounds(staging_pos):
                         continue
+                    if staging_pos == build_pos:
+                        continue
                     if staging_pos.distance_squared(build_pos) > 2:
                         continue
 
@@ -2075,14 +2259,19 @@ class Bot:
         hold_candidates.sort(key=lambda candidate: candidate[0])
         _, staging_pos, build_pos = hold_candidates[0]
 
-        if current_pos == staging_pos:
+        if current_pos.distance_squared(build_pos) <= 2 and current_pos != build_pos:
             return self._record_action(
                 BotAction.HOLD_MISSING_BRIDGE,
                 "holding missing bridge position",
             )
 
-        if not self._move_towards_with_roads(staging_pos):
-            return False
+        if not self._move_towards_action_range_with_roads(
+            build_pos,
+            action_radius_sq=2,
+            allow_direct_target_fallback=False,
+        ):
+            if not self._move_towards_with_roads(staging_pos):
+                return False
 
         return self._record_action(
             BotAction.HOLD_MISSING_BRIDGE,
@@ -2267,18 +2456,32 @@ class Bot:
         an adjacent logistics building that can pull resources away, or when at
         least one other exposed adjacent tile would remain after the barrier is
         built. Among legal choices, it deterministically prefers the closest
-        candidate, with empty tiles preferred over road replacements.
+        candidate, with empty tiles preferred over road replacements. When no
+        candidate is currently in action range, it moves toward a staging tile
+        that can place the barrier without stepping onto the barrier tile.
         """
         barrier_candidates = self._get_harvester_protection_candidates()
         if not barrier_candidates:
             return False
 
+        current_pos = self.ct.get_position()
         barrier_candidates.sort(key=lambda candidate: candidate[0])
         barrier_ti, barrier_ax = self.ct.get_barrier_cost()
         titanium, axionite = self.ct.get_global_resources()
         can_afford_barrier = titanium >= barrier_ti and axionite >= barrier_ax
+        movement_candidates: list[tuple[tuple[int, int, int, int], Position]] = []
 
         for _, candidate_pos, is_road_tile in barrier_candidates:
+            if current_pos.distance_squared(candidate_pos) > 2:
+                move_key = (
+                    current_pos.distance_squared(candidate_pos),
+                    0 if not is_road_tile else 1,
+                    candidate_pos.x,
+                    candidate_pos.y,
+                )
+                movement_candidates.append((move_key, candidate_pos))
+                continue
+
             if is_road_tile:
                 if not can_afford_barrier:
                     continue
@@ -2300,7 +2503,22 @@ class Bot:
                     "protecting harvester",
                 )
 
-        return False
+        if not movement_candidates:
+            return False
+
+        movement_candidates.sort(key=lambda candidate: candidate[0])
+        target_pos = movement_candidates[0][1]
+        if not self._move_towards_action_range_with_roads(
+            target_pos,
+            action_radius_sq=2,
+            allow_direct_target_fallback=False,
+        ):
+            return False
+
+        return self._record_action(
+            BotAction.PROTECT_HARVESTER,
+            "protecting harvester",
+        )
 
     def hold_protect_harvester(self) -> bool:
         """
@@ -2310,8 +2528,8 @@ class Bot:
         `protect_harvester()`, including allied roads that should later be
         replaced by barriers. If one of those exposed tiles is already in
         action range, it tries to finish the protection immediately. Otherwise
-        it moves to the closest visible staging tile within barrier action
-        range and then holds there until the barrier can be placed.
+        it moves toward a wall-aware action-range staging tile and then holds
+        there until the barrier can be placed.
         """
         if self.map is None:
             return False
@@ -2321,7 +2539,6 @@ class Bot:
             return False
 
         current_pos = self.ct.get_position()
-        current_id = self.ct.get_id()
         barrier_ti, barrier_ax = self.ct.get_barrier_cost()
         titanium, axionite = self.ct.get_global_resources()
         can_afford_barrier = titanium >= barrier_ti and axionite >= barrier_ax
@@ -2330,7 +2547,7 @@ class Bot:
             tuple[tuple[int, int, int, int], Position, bool]
         ] = []
         hold_candidates: list[
-            tuple[tuple[int, int, int, int, int, int], Position]
+            tuple[tuple[int, int, int, int], Position]
         ] = []
 
         for candidate_key, candidate_pos, is_road_tile in protection_candidates:
@@ -2346,57 +2563,13 @@ class Bot:
                 )
                 continue
 
-            staging_positions: list[Position] = []
-            for dx in range(-1, 2):
-                for dy in range(-1, 2):
-                    staging_pos = Position(candidate_pos.x + dx, candidate_pos.y + dy)
-                    if not self._is_in_bounds(staging_pos):
-                        continue
-                    if staging_pos == candidate_pos:
-                        continue
-                    if staging_pos.distance_squared(candidate_pos) > 2:
-                        continue
-                    if not self.ct.is_in_vision(staging_pos):
-                        continue
-
-                    staging_tile = self._get_known_map_tile(staging_pos)
-                    if staging_tile is None:
-                        continue
-                    if staging_tile.environment == Environment.WALL:
-                        continue
-                    if (
-                        staging_tile.building_id is not None
-                        and staging_tile.building_type != EntityType.ROAD
-                    ):
-                        continue
-                    if (
-                        staging_tile.builder_bot_id is not None
-                        and staging_tile.builder_bot_id != current_id
-                    ):
-                        continue
-
-                    staging_positions.append(staging_pos)
-
-            if not staging_positions:
-                continue
-
-            best_staging_pos = min(
-                staging_positions,
-                key=lambda pos: (
-                    current_pos.distance_squared(pos),
-                    pos.x,
-                    pos.y,
-                ),
-            )
             hold_key = (
-                current_pos.distance_squared(best_staging_pos),
+                current_pos.distance_squared(candidate_pos),
                 0 if not is_road_tile else 1,
-                best_staging_pos.x,
-                best_staging_pos.y,
                 candidate_pos.x,
                 candidate_pos.y,
             )
-            hold_candidates.append((hold_key, best_staging_pos))
+            hold_candidates.append((hold_key, candidate_pos))
 
         if actionable_candidates:
             actionable_candidates.sort(key=lambda candidate: candidate[0])
@@ -2424,20 +2597,24 @@ class Bot:
             return False
 
         hold_candidates.sort(key=lambda candidate: candidate[0])
-        staging_pos = hold_candidates[0][1]
-        if current_pos == staging_pos:
+        target_pos = hold_candidates[0][1]
+        if current_pos.distance_squared(target_pos) <= 2 and current_pos != target_pos:
             return self._record_action(
                 BotAction.HOLD_PROTECT_HARVESTER,
                 "holding harvester protection position",
             )
 
-        if not self._move_towards_with_roads(staging_pos):
-            return False
+        if self._move_towards_action_range_with_roads(
+            target_pos,
+            action_radius_sq=2,
+            allow_direct_target_fallback=False,
+        ):
+            return self._record_action(
+                BotAction.HOLD_PROTECT_HARVESTER,
+                "holding harvester protection position",
+            )
 
-        return self._record_action(
-            BotAction.HOLD_PROTECT_HARVESTER,
-            "holding harvester protection position",
-        )
+        return False
 
     def build_extractor(self) -> bool:
         """
@@ -2448,13 +2625,14 @@ class Bot:
         is already within action radius and the build is legal, it immediately
         builds the harvester. Otherwise, it advances toward the nearest visible
         titanium target that it can currently make progress toward. Path
-        selection first asks the map cache for a BFS-based next step that
-        avoids known wall tiles and then performs the actual step with normal
-        road/move behavior. Trying multiple visible targets keeps maintainers
-        from giving up and falling back to patrol just because the single
-        closest deposit is awkward to approach that turn. Once the map already
-        knows about `MAX_HARVESTORS` friendly harvesters, the method stops
-        expanding extractor production entirely.
+        selection first asks the map cache for a BFS-based next step toward
+        action range of the ore tile while avoiding known wall tiles, and then
+        performs the actual step with normal road/move behavior. Trying
+        multiple visible targets keeps maintainers from giving up and falling
+        back to patrol just because the single closest deposit is awkward to
+        approach that turn. Once the map already knows about
+        `MAX_HARVESTORS` friendly harvesters, the method stops expanding
+        extractor production entirely.
         """
         if self.map is None:
             return False
@@ -2503,19 +2681,11 @@ class Bot:
             if current_pos.distance_squared(target_pos) <= action_radius_sq:
                 continue
 
-            next_step_pos = self.map.get_next_field_for_target(target_pos)
-            if next_step_pos is not None and next_step_pos != current_pos:
-                move_direction = current_pos.direction_to(next_step_pos)
-                if (
-                    move_direction != Direction.CENTRE
-                    and self._move_in_direction_with_roads(move_direction)
-                ):
-                    return self._record_action(
-                        BotAction.BUILD_EXTRACTOR,
-                        "building extractor",
-                    )
-
-            if not self._move_towards_with_roads(target_pos):
+            if not self._move_towards_action_range_with_roads(
+                target_pos,
+                action_radius_sq=action_radius_sq,
+                allow_direct_target_fallback=False,
+            ):
                 continue
 
             return self._record_action(
@@ -3068,8 +3238,8 @@ class Bot:
         occupied by a conveyor or bridge. If the missing continuation tile is
         buildable and in action range, it extends the chain there, removing a
         road first and placing the bridge immediately when both actions are
-        legal in the same turn. Otherwise it moves toward the missing tile
-        while building roads on the way.
+        legal in the same turn. Otherwise it moves toward a tile that can
+        place that bridge while building roads on the way.
         """
         if self.map is None:
             return False
@@ -3182,7 +3352,11 @@ class Bot:
             return False
 
         movement_candidates.sort(key=lambda candidate: candidate[0])
-        if not self._move_towards_with_roads(movement_candidates[0][1]):
+        if not self._move_towards_action_range_with_roads(
+            movement_candidates[0][1],
+            action_radius_sq=2,
+            allow_direct_target_fallback=False,
+        ):
             return False
 
         return self._record_action(
@@ -3202,4 +3376,4 @@ INITIAL_BB = [
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
 ]
-FURTHER_BB = Bot.run_bb_harassment
+FURTHER_BB = Bot.run_bb_scavenger
