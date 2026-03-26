@@ -1329,7 +1329,6 @@ class Bot:
         handler_func = getattr(self.bb_handler, "__func__", self.bb_handler)
         handler_names = {
             Bot.run_bb_init_res: "init resource",
-            Bot.run_bb_maintainer: "maintainer",
             Bot.run_bb_scavenger: "scavenger",
             Bot.run_bb_harassment: "harassment",
             Bot.run_bb_defender: "defender",
@@ -1616,28 +1615,6 @@ class Bot:
         self.bb_last_turn_completed = False
         self.bb_handler()
         self.bb_last_turn_completed = True
-
-    def run_bb_maintainer(self):
-        """
-        Execute the maintainer builder role for the current turn.
-
-        The maintainer prioritises harvester pressure, repairing friendly
-        structures, restoring bridge links, clearing compromised logistics,
-        protecting owned harvesters, and opportunistically expanding resource
-        extraction before falling back to a patrol through the known base.
-        """
-        steps = [
-            ("complete_supply_chain", self.complete_supply_chain),
-            ("attack_enemy_harvester", self.attack_enemy_harvester),
-            ("repair_if_damaged", self.repair_if_damaged),
-            ("build_harvester_supply_link", self.build_harvester_supply_link),
-            ("build_missing_supply_link", self.build_missing_supply_link),
-            ("destroy_hijacked_reschain", self.destroy_hijacked_reschain),
-            ("protect_harvester", self.protect_harvester),
-            ("build_harvester", self.build_harvester),
-            ("maintainer_patrol", self.maintainer_patrol),
-        ]
-        self._run_bb_strategy_plan("maintainer", steps)
 
     def _has_visible_harvester_bridge_chain_to_core(self) -> bool:
         """
@@ -5996,7 +5973,7 @@ CORE_TILE_BB_ROLE = {
     (-1, 0): Bot.run_bb_scavenger,
     (0, 0): Bot.run_bb_scavenger,
     (1, 0): Bot.run_bb_scavenger,
-    (-1, 1): Bot.run_bb_maintainer,
+    (-1, 1): Bot.run_bb_scavenger,
     (0, 1): Bot.run_bb_init_res,
     (1, 1): Bot.run_bb_defender,
 }
