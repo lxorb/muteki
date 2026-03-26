@@ -1546,6 +1546,95 @@ class Bot:
                 return False
         return self.ct.can_destroy(pos)
 
+    def has_enemy_bot_in_vision(self) -> bool:
+        """
+        Return whether any enemy unit is currently visible to this unit.
+
+        The method scans nearby units in the current vision radius and returns
+        true as soon as it finds one that belongs to the opposing team.
+        """
+        own_team = self.ct.get_team()
+        for unit_id in self.ct.get_nearby_units():
+            if self.ct.get_team(unit_id) != own_team:
+                return True
+        return False
+
+    def _is_on_direction_ray(
+        self,
+        origin: Position,
+        direction: Direction,
+        target: Position,
+    ) -> bool:
+        """
+        Check whether a target lies strictly on a unit's forward direction ray.
+
+        The ray starts one step in `direction` from `origin` and extends
+        infinitely. The origin tile itself is not considered part of the ray.
+        """
+        if direction == Direction.CENTRE:
+            return False
+
+        delta_x, delta_y = direction.delta()
+        rel_x = target.x - origin.x
+        rel_y = target.y - origin.y
+        if rel_x == 0 and rel_y == 0:
+            return False
+
+        if delta_x == 0:
+            return rel_x == 0 and rel_y * delta_y > 0
+        if delta_y == 0:
+            return rel_y == 0 and rel_x * delta_x > 0
+        return rel_x * delta_x > 0 and rel_y * delta_y > 0 and abs(rel_x) == abs(rel_y)
+
+    def is_tile_in_enemy_turret_range(self, pos: Position) -> bool:
+        """
+        Check whether a tile is covered by any currently visible enemy turret.
+
+        Coverage is evaluated for enemy gunners, sentinels, and breaches that
+        are visible this turn. For gunners, coverage uses the current facing
+        ray and range; for sentinels it uses sentinel line coverage; for
+        breaches it uses radial range.
+        """
+        own_team = self.ct.get_team()
+        enemy_turret_types = {
+            EntityType.GUNNER,
+            EntityType.SENTINEL,
+            EntityType.BREACH,
+        }
+        for building_id in self.ct.get_nearby_buildings():
+            if self.ct.get_team(building_id) == own_team:
+                continue
+
+            turret_type = self.ct.get_entity_type(building_id)
+            if turret_type not in enemy_turret_types:
+                continue
+
+            turret_pos = self.ct.get_position(building_id)
+            if pos.distance_squared(turret_pos) > self.ct.get_vision_radius_sq(building_id):
+                continue
+
+            if turret_type == EntityType.SENTINEL:
+                if self._sentinel_direction_covers_target(
+                    turret_pos,
+                    self.ct.get_direction(building_id),
+                    pos,
+                ):
+                    return True
+                continue
+
+            if turret_type == EntityType.GUNNER:
+                if self._is_on_direction_ray(
+                    turret_pos,
+                    self.ct.get_direction(building_id),
+                    pos,
+                ):
+                    return True
+                continue
+
+            return True
+
+        return False
+
     def _is_next_to_core_footprint(self, pos: Position) -> bool:
         """
         Check whether a tile is adjacent (including diagonals) to core footprint.
@@ -3558,9 +3647,12 @@ class Bot:
         back to patrol just because the single closest deposit is awkward to
         approach that turn. Once the map already knows about
         `MAX_HARVESTORS` friendly harvesters, the method stops expanding
-        extractor production entirely.
+        extractor production entirely. The method also avoids extractor
+        placement while enemy units are currently visible.
         """
         if self.map is None:
+            return False
+        if self.has_enemy_bot_in_vision():
             return False
 
         titanium, _ = self.ct.get_global_resources()
