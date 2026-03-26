@@ -16,7 +16,7 @@ FLOOD_FILL_SHIFTS = [direction.delta() for direction in DIRECTIONS]
 REPAIR_MIN_TITANIUM_THRESHOLD = 10
 HARVESTER_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
 CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
-EXTRACTOR_MIN_TITANIUM_THRESHOLD = 300
+HARVESTER_MIN_TITANIUM_THRESHOLD = 300
 ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
 FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
@@ -75,6 +75,11 @@ BREACH_TARGET_PRIORITY = [
     EntityType.BARRIER,
     EntityType.MARKER,
 ]
+SUPPLY_LINK_TYPES = {
+    EntityType.CONVEYOR,
+    EntityType.ARMOURED_CONVEYOR,
+    EntityType.BRIDGE,
+}
 
 
 class BotAction(Enum):
@@ -97,17 +102,18 @@ class BotAction(Enum):
     DEFEND_CORE_PROX = auto()
     PROTECT_HARVESTER = auto()
     HOLD_PROTECT_HARVESTER = auto()
-    BUILD_EXTRACTOR = auto()
+    BUILD_HARVESTER = auto()
     HOLD_TITANIUM = auto()
     BB_SCOUT = auto()
     PATROL_SUPPLY_CHAINS = auto()
+    SCAVENGER_PATROL_SUPPLY_CHAINS = auto()
     LAUNCHER_DEFEND = auto()
     LAUNCHER_THROW = auto()
 
 
 class CoreSpawnEvent(Enum):
     FIRST_RESOURCE_INCREASE = auto()
-    TURN_REACHED_200 = auto()
+    TURN_REACHED_150 = auto()
     ENEMY_BOT_IN_CORE_VISION = auto()
 
 
@@ -428,6 +434,35 @@ class Map:
             return False
         return True
 
+    def _is_known_currently_walkable_for_move(
+        self,
+        x: int,
+        y: int,
+        own_builder_id: int,
+    ) -> bool:
+        """
+        Return whether a tile is a known current move tile without new roads.
+
+        Unlike the more permissive cached path helper, this variant requires
+        the tile to be known already and currently passable, so callers can use
+        it for movement routines that must stay on existing walkable
+        infrastructure instead of planning through future road placements.
+        """
+        tile = self.matrix[x][y]
+        if tile is None:
+            return False
+        if tile.environment == Environment.WALL:
+            return False
+        if not tile.is_passable:
+            return False
+        if (
+            tile.last_seen_round == self.ct.get_current_round()
+            and tile.builder_bot_id is not None
+            and tile.builder_bot_id != own_builder_id
+        ):
+            return False
+        return True
+
     def get_next_field_for_target(self, target_pos: Position) -> Position | None:
         """
         Return the next path step toward a target tile over the cached world map.
@@ -475,6 +510,78 @@ class Map:
                     continue
 
                 if not self._is_known_walkable_for_path(new_x, new_y, own_builder_id):
+                    continue
+
+                visited.add(next_key)
+                parent[next_key] = (x, y)
+                queue.append(next_key)
+
+        if not found:
+            return None
+
+        step_key = target_key
+        while parent.get(step_key) is not None and parent[step_key] != start_key:
+            step_key = parent[step_key]
+
+        if parent.get(step_key) is None:
+            return None
+
+        return Position(step_key[0], step_key[1])
+
+    def get_next_known_walkable_field_for_target(
+        self,
+        target_pos: Position,
+    ) -> Position | None:
+        """
+        Return the next step toward a target using only known move-ready tiles.
+
+        The search is restricted to cached tiles that are already passable right
+        now, which makes it suitable for low-resource movement where the bot
+        must not rely on building new roads. Unknown tiles are excluded.
+        """
+        start_pos = self.ct.get_position()
+        start_key = (start_pos.x, start_pos.y)
+        target_key = (target_pos.x, target_pos.y)
+        own_builder_id = self.ct.get_id()
+
+        if not self._is_in_bounds(*start_key):
+            return None
+        if not self._is_in_bounds(*target_key):
+            return None
+        if start_key == target_key:
+            return start_pos
+        if not self._is_known_currently_walkable_for_move(
+            target_pos.x,
+            target_pos.y,
+            own_builder_id,
+        ):
+            return None
+
+        queue = deque([start_key])
+        visited = {start_key}
+        parent: dict[tuple[int, int], tuple[int, int]] = {}
+
+        found = False
+        while queue:
+            x, y = queue.popleft()
+            if (x, y) == target_key:
+                found = True
+                break
+
+            for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+                new_x = x + shift_x
+                new_y = y + shift_y
+                if not self._is_in_bounds(new_x, new_y):
+                    continue
+
+                next_key = (new_x, new_y)
+                if next_key in visited:
+                    continue
+                if not self._is_known_currently_walkable_for_move(
+                    new_x,
+                    new_y,
+                    own_builder_id,
+                ):
                     continue
 
                 visited.add(next_key)
@@ -638,7 +745,7 @@ class Bot:
         self.init_res_scout_radius = 2
         self.init_res_scout_clockwise = True
         self.core_prox_defend_target: tuple[int, int] | None = None
-        self.defender_patrol_index = 0
+        self.supply_patrol_index = 0
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
 
@@ -817,12 +924,12 @@ class Bot:
         Events are evaluated incrementally from turn to turn. The
         `FIRST_RESOURCE_INCREASE` event fires the first time either team
         resource increases compared to the previous core turn.
-        `TURN_REACHED_200` fires once round 200 or later is reached.
+        `TURN_REACHED_150` fires once round 150 or later is reached.
         `ENEMY_BOT_IN_CORE_VISION` fires once an enemy unit is visible to the
         core.
         """
-        if self.ct.get_current_round() >= 200:
-            self.core_completed_spawn_events.add(CoreSpawnEvent.TURN_REACHED_200)
+        if self.ct.get_current_round() >= 150:
+            self.core_completed_spawn_events.add(CoreSpawnEvent.TURN_REACHED_150)
 
         own_team = self.ct.get_team()
         for unit_id in self.ct.get_nearby_units():
@@ -973,7 +1080,7 @@ class Bot:
         if self.protect_harvester():
             return
 
-        if self.build_extractor():
+        if self.build_harvester():
             return
 
         self.maintainer_patrol()
@@ -1098,7 +1205,7 @@ class Bot:
         """
         Bootstrap the first resource flow, then hand over to scavenger logic.
 
-        This role focuses on establishing an early harvester bridge chain to
+        This role focuses on establishing an early harvester supply chain to
         the allied core by prioritising harvester-adjacent links, chain-gap
         continuation, and supportive hold actions. As soon as a visible
         harvester supply chain reaches the core footprint, the builder
@@ -1135,7 +1242,7 @@ class Bot:
             self._switch_init_res_to_scavenger_if_ready(run_now=False)
             return
 
-        if self.build_extractor():
+        if self.build_harvester():
             self._switch_init_res_to_scavenger_if_ready(run_now=False)
             return
 
@@ -1156,13 +1263,13 @@ class Bot:
 
         The scavenger currently shares the maintainer's disruption and logistics
         checks, then also considers expanding resource extraction. When team
-        titanium is low, it stops aggressive scouting and chills in the base
-        instead of spending more resources on frontier expansion. If it has
-        already found a free visible titanium tile but cannot yet build there,
-        it holds that resource instead of continuing to scout away from it.
-        Likewise, when a bridge chain clearly wants to continue but titanium is
-        still missing, the scavenger waits near the gap instead of wandering
-        into unrelated fallback behavior.
+        titanium is low, it stops aggressive scouting and instead patrols the
+        known allied supply network without laying new roads. If it has already
+        found a free visible titanium tile but cannot yet build there, it holds
+        that resource instead of continuing to scout away from it. Likewise,
+        when a supply chain clearly wants to continue but titanium is still
+        missing, the scavenger waits near the gap instead of wandering into an
+        unrelated fallback behavior.
         """
         if self.destroy_hijacked_reschain():
             return
@@ -1194,7 +1301,7 @@ class Bot:
         if self.attack_enemy_harvester():
             return
 
-        if self.build_extractor():
+        if self.build_harvester():
             return
 
         if self.hold_visible_titanium():
@@ -1202,7 +1309,7 @@ class Bot:
 
         titanium, _ = self.ct.get_global_resources()
         if titanium < SCAVENGER_ACTIVE_TITANIUM_THRESHOLD:
-            self.maintainer_patrol()
+            self.scavenger_patrol_supply_chains()
             return
 
         self.bb_scout()
@@ -1221,7 +1328,7 @@ class Bot:
         #   -> infer possible enemy core locations from own core location and map size
         self.get_enemy_core_pos()
 
-        # build gunner if poss. next to enemy extractor
+        # build gunner if poss. next to enemy harvester
         if self.attack_enemy_harvester():
             return
 
@@ -1244,7 +1351,7 @@ class Bot:
         logistics tiles by trying to place a nearby launcher, then falls back
         to patrolling known allied supply-chain structures.
         """
-        self._stamp_defender_patrol_coverage()
+        self._stamp_supply_patrol_coverage()
         if self.launcher_defend():
             return
 
@@ -1254,11 +1361,11 @@ class Bot:
         """
         Fall back to safe generic builder behavior when no role is assigned.
 
-        An unassigned builder first takes obvious extractor opportunities, then
+        An unassigned builder first takes obvious harvester opportunities, then
         uses the normal scout fallback, and finally chills in the base instead
         of idling completely.
         """
-        if self.build_extractor():
+        if self.build_harvester():
             return
         if self.bb_scout():
             return
@@ -1490,6 +1597,47 @@ class Bot:
         if self.map is None or not self._is_in_bounds(pos):
             return None
         return self.map.matrix[pos.x][pos.y]
+
+    def _is_supply_link_type(self, entity_type: EntityType | None) -> bool:
+        """
+        Return whether a type is one of the chain-carrying logistics links.
+
+        Bridges and both conveyor variants all count as supply links whenever
+        chain construction checks whether a path already continues onward.
+        """
+        return entity_type in SUPPLY_LINK_TYPES
+
+    def _is_allied_supply_link_tile(self, tile: Tile | None) -> bool:
+        """
+        Return whether a cached tile currently holds an allied supply link.
+
+        This helper keeps bridge and conveyor handling consistent throughout
+        the supply-chain construction code.
+        """
+        return (
+            tile is not None
+            and tile.building_team == self.ct.get_team()
+            and self._is_supply_link_type(tile.building_type)
+        )
+
+    def _get_supply_link_output_pos(self, building_id: int) -> Position | None:
+        """
+        Return the output tile of a visible bridge or conveyor building.
+
+        Bridges output to their configured target tile, while conveyors and
+        armoured conveyors output one tile forward in their facing direction.
+        Non-link buildings return `None`.
+        """
+        building_type = self.ct.get_entity_type(building_id)
+        building_pos = self.ct.get_position(building_id)
+        if building_type == EntityType.BRIDGE:
+            return self.ct.get_bridge_target(building_id)
+        if building_type in {
+            EntityType.CONVEYOR,
+            EntityType.ARMOURED_CONVEYOR,
+        }:
+            return building_pos.add(self.ct.get_direction(building_id))
+        return None
 
     def _is_adjacent_to_allied_harvester(self, pos: Position) -> bool:
         """
@@ -2007,6 +2155,26 @@ class Bot:
 
         return acted
 
+    def _move_in_direction_without_roads(self, direction: Direction) -> bool:
+        """
+        Advance in one chosen direction without creating new road tiles.
+
+        The method only executes an actual legal move. It rejects out-of-bounds
+        and known wall destinations, which makes it suitable for resource
+        recovery patrols that should stay on the existing walkable network.
+        """
+        current_pos = self.ct.get_position()
+        next_pos = current_pos.add(direction)
+        if not self._is_in_bounds(next_pos):
+            return False
+        if self.ct.get_tile_env(next_pos) == Environment.WALL:
+            return False
+        if not self.ct.can_move(direction):
+            return False
+
+        self.ct.move(direction)
+        return True
+
     def _move_towards_with_roads(self, target_pos: Position) -> bool:
         """
         Advance one step toward a target while preparing the chosen path tile.
@@ -2068,6 +2236,61 @@ class Bot:
 
         candidates.sort(key=lambda candidate: candidate[0])
         return self._move_in_direction_with_roads(candidates[0][1])
+
+    def _move_towards_without_roads(self, target_pos: Position) -> bool:
+        """
+        Advance one step toward a target while staying on existing walkable tiles.
+
+        The method prefers a cached BFS step across known currently passable
+        tiles only. If no cached step is available, it falls back to a local
+        greedy move choice among legal moves, still without building roads.
+        """
+        current_pos = self.ct.get_position()
+        if current_pos == target_pos:
+            return False
+
+        if self.map is not None:
+            next_step_pos = self.map.get_next_known_walkable_field_for_target(
+                target_pos
+            )
+            if next_step_pos is not None and next_step_pos != current_pos:
+                move_direction = current_pos.direction_to(next_step_pos)
+                if (
+                    move_direction != Direction.CENTRE
+                    and self._move_in_direction_without_roads(move_direction)
+                ):
+                    return True
+
+        current_distance_sq = current_pos.distance_squared(target_pos)
+        candidates: list[
+            tuple[tuple[int, int, int, int, int], Direction]
+        ] = []
+
+        for direction_index, direction in enumerate(DIRECTIONS):
+            next_pos = current_pos.add(direction)
+            if not self._is_in_bounds(next_pos):
+                continue
+            if self.ct.get_tile_env(next_pos) == Environment.WALL:
+                continue
+            if not self.ct.can_move(direction):
+                continue
+
+            next_distance_sq = next_pos.distance_squared(target_pos)
+            progress_rank = 0 if next_distance_sq < current_distance_sq else 1
+            candidate_key = (
+                progress_rank,
+                next_distance_sq,
+                direction_index,
+                next_pos.x,
+                next_pos.y,
+            )
+            candidates.append((candidate_key, direction))
+
+        if not candidates:
+            return False
+
+        candidates.sort(key=lambda candidate: candidate[0])
+        return self._move_in_direction_without_roads(candidates[0][1])
 
     def _move_towards_action_range_with_roads(
         self,
@@ -2325,12 +2548,6 @@ class Bot:
 
         own_team = self.ct.get_team()
         current_pos = self.ct.get_position()
-        defended_supply_types = {
-            EntityType.CONVEYOR,
-            EntityType.ARMOURED_CONVEYOR,
-            EntityType.BRIDGE,
-        }
-
         intrusion_tiles: list[tuple[tuple[int, int, int], Position]] = []
         for pos in self.ct.get_nearby_tiles():
             builder_id = self.ct.get_tile_builder_bot_id(pos)
@@ -2348,7 +2565,7 @@ class Bot:
                 continue
 
             building_type = self.ct.get_entity_type(building_id)
-            if building_type not in defended_supply_types:
+            if not self._is_supply_link_type(building_type):
                 continue
 
             intrusion_key = (
@@ -2543,18 +2760,19 @@ class Bot:
 
         If the bridge can point directly onto the allied core footprint, an
         in-range core tile is returned immediately. Otherwise, prefer an
-        already existing allied bridge in range whose stored distance to the
-        core is strictly smaller than the originating bridge tile's distance.
-        If no such bridge exists, among all known tiles within bridge range,
-        prefer the buildable tile with the smallest stored distance to the
-        core. When multiple candidates are equally good strategically, the
-        bridge prefers the farther legal target so it uses as much of the
-        bridge's range as possible. Empty tiles are still preferred over roads
-        or markers when the stored distance is tied. Titanium ore tiles are
-        deprioritized as bridge targets whenever at least one non-titanium
-        candidate in range would still reduce distance-to-core by at least one.
-        Targets whose effective link output would be in enemy builder action
-        range or enemy turret coverage are filtered out.
+        already existing allied supply link in range whose stored distance to
+        the core is strictly smaller than the originating bridge tile's
+        distance. If no such existing link exists, among all known tiles within
+        bridge range, prefer the buildable tile with the smallest stored
+        distance to the core. When multiple candidates are equally good
+        strategically, the bridge prefers the farther legal target so it uses
+        as much of the bridge's range as possible. Empty tiles are still
+        preferred over roads or markers when the stored distance is tied.
+        Titanium ore tiles are deprioritized as bridge targets whenever at
+        least one non-titanium candidate in range would still reduce
+        distance-to-core by at least one. Targets whose effective link output
+        would be in enemy builder action range or enemy turret coverage are
+        filtered out.
         """
         if self.map is None:
             return None
@@ -2594,7 +2812,10 @@ class Bot:
             if best_core_tile is not None:
                 return best_core_tile[1]
 
-        best_bridge_candidate: tuple[tuple[int, int, int, int], Position] | None = None
+        best_existing_link_candidate: tuple[
+            tuple[int, int, int, int],
+            Position,
+        ] | None = None
         build_candidates: list[
             tuple[
                 tuple[int, int, int, int, int, int],
@@ -2628,21 +2849,24 @@ class Bot:
                     continue
 
                 if (
-                    tile.building_type == EntityType.BRIDGE
-                    and tile.building_team == self.ct.get_team()
+                    self._is_allied_supply_link_tile(tile)
                     and tile.distance_to_core < origin_distance_to_core
                 ):
-                    bridge_candidate_key = (
+                    existing_link_candidate_key = (
                         tile.distance_to_core,
                         -bridge_pos.distance_squared(candidate_pos),
                         candidate_pos.x,
                         candidate_pos.y,
                     )
                     if (
-                        best_bridge_candidate is None
-                        or bridge_candidate_key < best_bridge_candidate[0]
+                        best_existing_link_candidate is None
+                        or existing_link_candidate_key
+                        < best_existing_link_candidate[0]
                     ):
-                        best_bridge_candidate = (bridge_candidate_key, candidate_pos)
+                        best_existing_link_candidate = (
+                            existing_link_candidate_key,
+                            candidate_pos,
+                        )
                     continue
 
                 is_buildable = tile.building_id is None
@@ -2675,8 +2899,8 @@ class Bot:
                     )
                 )
 
-        if best_bridge_candidate is not None:
-            return best_bridge_candidate[1]
+        if best_existing_link_candidate is not None:
+            return best_existing_link_candidate[1]
 
         if not build_candidates:
             return None
@@ -2702,7 +2926,7 @@ class Bot:
         Build a chain link next to a nearby allied harvester that lacks one.
 
         The method scans visible allied harvesters, skips any that already have
-        an orthogonally adjacent allied bridge or conveyor, and looks for empty
+        an orthogonally adjacent allied supply link, and looks for empty
         orthogonal neighbor tiles where a new link could be placed. It uses
         `get_bridge_target` to choose the downstream target and builds the
         closest legal candidate when the local titanium threshold is met. If
@@ -2743,10 +2967,7 @@ class Bot:
                 tile = self._get_known_map_tile(adjacent_pos)
                 if tile is None:
                     continue
-                if (
-                    tile.building_type in {EntityType.BRIDGE, EntityType.CONVEYOR}
-                    and tile.building_team == self.ct.get_team()
-                ):
+                if self._is_allied_supply_link_tile(tile):
                     has_adjacent_bridge = True
                     break
                 if tile.building_id is not None:
@@ -2813,9 +3034,9 @@ class Bot:
 
         When team titanium is still below the harvester-bridge threshold, the
         bot looks for visible allied harvesters that do not yet have an
-        orthogonally adjacent allied bridge. It then moves into action range of
-        one legal orthogonal bridge tile and waits there so it can place the
-        bridge as soon as resources are available.
+        orthogonally adjacent allied supply link. It then moves into action
+        range of one legal orthogonal link tile and waits there so it can place
+        the link as soon as resources are available.
         """
         if self.map is None:
             return False
@@ -2850,10 +3071,7 @@ class Bot:
                 tile = self._get_known_map_tile(adjacent_pos)
                 if tile is None:
                     continue
-                if (
-                    tile.building_type in {EntityType.BRIDGE, EntityType.CONVEYOR}
-                    and tile.building_team == self.ct.get_team()
-                ):
+                if self._is_allied_supply_link_tile(tile):
                     has_adjacent_bridge = True
                     break
                 if tile.building_id is not None:
@@ -2947,20 +3165,20 @@ class Bot:
 
     def build_missing_bridge(self) -> bool:
         """
-        Extend broken bridge chains by placing missing links on empty or road targets.
+        Extend broken supply chains by placing missing links on empty or road targets.
 
-        The method first prioritises adding a bridge next to a nearby allied
+        The method first prioritises adding a link next to a nearby allied
         harvester via `build_harvester_bridge`. If that does not build
-        anything, it then looks for allied bridges whose current target tile is
-        empty or occupied by a road, and attempts to place a new link on that
-        tile pointing onward using `get_bridge_target`, subject to its own
-        titanium threshold. If the chosen missing tile is currently outside
-        action range, the bot moves toward a valid action-range staging tile
-        instead of giving up that turn. If a road occupies the chosen build
-        tile, the road is removed first and the link is placed immediately
-        when the rules allow both actions in the same turn. Link placement uses
-        bridge placement by default, but falls back to conveyors for adjacent
-        targets and for core-adjacent build tiles.
+        anything, it then looks for visible allied supply links whose current
+        output tile is empty or occupied by a road, and attempts to place a new
+        link on that tile pointing onward using `get_bridge_target`, subject to
+        its own titanium threshold. If the chosen missing tile is currently
+        outside action range, the bot moves toward a valid action-range staging
+        tile instead of giving up that turn. If a road occupies the chosen
+        build tile, the road is removed first and the link is placed
+        immediately when the rules allow both actions in the same turn.
+        Existing allied downstream conveyors or bridges already count as a
+        completed continuation and are skipped.
         """
         if self.build_harvester_bridge():
             return True
@@ -2980,14 +3198,16 @@ class Bot:
             tuple[tuple[int, int, int, int, int, int, int], Position]
         ] = []
 
-        for bridge_id in self.ct.get_nearby_buildings():
-            if self.ct.get_entity_type(bridge_id) != EntityType.BRIDGE:
+        for link_id in self.ct.get_nearby_buildings():
+            if not self._is_supply_link_type(self.ct.get_entity_type(link_id)):
                 continue
-            if self.ct.get_team(bridge_id) != self.ct.get_team():
+            if self.ct.get_team(link_id) != self.ct.get_team():
                 continue
 
-            bridge_pos = self.ct.get_position(bridge_id)
-            build_pos = self.ct.get_bridge_target(bridge_id)
+            link_pos = self.ct.get_position(link_id)
+            build_pos = self._get_supply_link_output_pos(link_id)
+            if build_pos is None:
+                continue
             if not self._is_in_bounds(build_pos):
                 continue
             if not self.ct.is_in_vision(build_pos):
@@ -2999,6 +3219,8 @@ class Bot:
             if tile is None:
                 continue
             if tile.environment != Environment.EMPTY:
+                continue
+            if self._is_allied_supply_link_tile(tile):
                 continue
 
             is_empty_build_pos = tile.building_id is None
@@ -3026,9 +3248,9 @@ class Bot:
                     build_pos_type_rank,
                     build_pos.x,
                     build_pos.y,
-                    bridge_pos.x,
-                    bridge_pos.y,
-                    bridge_id,
+                    link_pos.x,
+                    link_pos.y,
+                    link_id,
                 )
                 actionable_candidates.append(
                     (candidate_key, build_pos, target_pos, is_road_build_pos)
@@ -3040,9 +3262,9 @@ class Bot:
                 build_pos_type_rank,
                 build_pos.x,
                 build_pos.y,
-                bridge_pos.x,
-                bridge_pos.y,
-                bridge_id,
+                link_pos.x,
+                link_pos.y,
+                link_id,
             )
             movement_candidates.append((candidate_key, build_pos))
 
@@ -3079,13 +3301,13 @@ class Bot:
 
     def hold_missing_bridge(self) -> bool:
         """
-        Wait near a visible missing bridge continuation until titanium is available.
+        Wait near a visible missing supply-link continuation until titanium is available.
 
-        When a scavenger can see that an allied bridge points to a tile that
-        still needs another bridge, but team titanium is below the bridge
-        threshold, it moves into action range of that missing build tile and
-        then stays there. This keeps the bot ready to continue the chain on a
-        later turn instead of drifting into unrelated fallback behaviors.
+        When a scavenger can see that an allied bridge or conveyor points to a
+        tile that still needs another supply link, but team titanium is below
+        the chain threshold, it moves into action range of that missing build
+        tile and then stays there. Existing allied downstream conveyors or
+        bridges already count as a completed continuation and are ignored.
         """
         if self.map is None:
             return False
@@ -3098,13 +3320,15 @@ class Bot:
         current_id = self.ct.get_id()
         hold_candidates: list[tuple[tuple[int, int, int, int, int, int], Position, Position]] = []
 
-        for bridge_id in self.ct.get_nearby_buildings():
-            if self.ct.get_entity_type(bridge_id) != EntityType.BRIDGE:
+        for link_id in self.ct.get_nearby_buildings():
+            if not self._is_supply_link_type(self.ct.get_entity_type(link_id)):
                 continue
-            if self.ct.get_team(bridge_id) != self.ct.get_team():
+            if self.ct.get_team(link_id) != self.ct.get_team():
                 continue
 
-            build_pos = self.ct.get_bridge_target(bridge_id)
+            build_pos = self._get_supply_link_output_pos(link_id)
+            if build_pos is None:
+                continue
             if not self._is_in_bounds(build_pos):
                 continue
             if not self.ct.is_in_vision(build_pos):
@@ -3117,7 +3341,7 @@ class Bot:
                 continue
             if build_tile.environment != Environment.EMPTY:
                 continue
-            if build_tile.building_type in {EntityType.CONVEYOR, EntityType.BRIDGE}:
+            if self._is_allied_supply_link_tile(build_tile):
                 continue
 
             is_empty_build_pos = build_tile.building_id is None
@@ -3703,7 +3927,7 @@ class Bot:
 
         return False
 
-    def build_extractor(self) -> bool:
+    def build_harvester(self) -> bool:
         """
         Build a harvester on a visible titanium tile when enough titanium is available.
 
@@ -3719,7 +3943,7 @@ class Bot:
         back to patrol just because the single closest deposit is awkward to
         approach that turn. Once the map already knows about
         `MAX_HARVESTORS` friendly harvesters, the method stops expanding
-        extractor production entirely. The method also avoids extractor
+        harvester production entirely. The method also avoids harvester
         placement while enemy units are currently visible.
         """
         if self.map is None:
@@ -3728,7 +3952,7 @@ class Bot:
             return False
 
         titanium, _ = self.ct.get_global_resources()
-        if titanium < EXTRACTOR_MIN_TITANIUM_THRESHOLD:
+        if titanium < HARVESTER_MIN_TITANIUM_THRESHOLD:
             return False
         if self.map.known_harvesters_built >= MAX_HARVESTORS:
             return False
@@ -3763,8 +3987,8 @@ class Bot:
             if self.ct.can_build_harvester(target_pos):
                 self.ct.build_harvester(target_pos)
                 return self._record_action(
-                    BotAction.BUILD_EXTRACTOR,
-                    "building extractor",
+                    BotAction.BUILD_HARVESTER,
+                    "building harvester",
                 )
 
         for _, target_pos in ore_targets:
@@ -3779,8 +4003,8 @@ class Bot:
                 continue
 
             return self._record_action(
-                BotAction.BUILD_EXTRACTOR,
-                "building extractor",
+                BotAction.BUILD_HARVESTER,
+                "building harvester",
             )
 
         return False
@@ -4564,11 +4788,11 @@ class Bot:
             "patrolling base",
         )
 
-    def _stamp_defender_patrol_coverage(self) -> None:
+    def _stamp_supply_patrol_coverage(self) -> None:
         """
         Stamp current and adjacent relevant supply tiles with patrol index.
 
-        This writes the defender's current patrol index onto allied conveyor
+        This writes the bot's current supply patrol index onto allied conveyor
         and bridge tiles in the local 8-neighborhood plus the current tile.
         """
         if self.map is None:
@@ -4596,20 +4820,22 @@ class Bot:
             if tile.building_type not in patrol_relevant_types:
                 continue
 
-            tile.last_patrolled_index = self.defender_patrol_index
+            tile.last_patrolled_index = self.supply_patrol_index
 
-    def patrol_supply_chains(self) -> bool:
+    def _patrol_supply_chains(
+        self,
+        allow_road_building: bool,
+        action: BotAction,
+        message: str,
+    ) -> bool:
         """
-        Patrol allied supply-chain tiles using an ever-increasing patrol index.
+        Patrol outdated allied supply-chain tiles with optional road building.
 
-        The defender tracks one global patrol index and each relevant known
-        supply tile stores its last patrolled index. Every turn this method is
-        called, the defender stamps its current tile and all adjacent tiles
-        with its current patrol index when those tiles are allied conveyors or
-        bridges. While at least one relevant tile has a lower stored index than
-        the defender's current index, the defender moves toward the closest
-        such outdated tile. If no outdated relevant tile is currently known, it
-        advances its own patrol index by one.
+        Each bot tracks one patrol index and relevant supply tiles remember the
+        last index that touched them. The bot moves toward the closest known
+        allied conveyor or bridge whose stored patrol index is still lower than
+        its own. When no such tile is currently known, the bot advances its
+        patrol index instead of forcing pointless movement.
         """
         if self.map is None:
             return False
@@ -4629,14 +4855,14 @@ class Bot:
                 and tile.building_type in patrol_relevant_types
             )
 
-        self._stamp_defender_patrol_coverage()
+        self._stamp_supply_patrol_coverage()
 
         outdated_targets: list[tuple[tuple[int, int, int, int], Position]] = []
         for x, column in enumerate(self.map.matrix):
             for y, tile in enumerate(column):
                 if not is_relevant_supply_tile(tile):
                     continue
-                if tile.last_patrolled_index >= self.defender_patrol_index:
+                if tile.last_patrolled_index >= self.supply_patrol_index:
                     continue
 
                 target_pos = Position(x, y)
@@ -4649,35 +4875,71 @@ class Bot:
                 outdated_targets.append((candidate_key, target_pos))
 
         if not outdated_targets:
-            self.defender_patrol_index += 1
+            self.supply_patrol_index += 1
             return False
 
         outdated_targets.sort(key=lambda candidate: candidate[0])
+        move_towards = (
+            self._move_towards_with_roads
+            if allow_road_building
+            else self._move_towards_without_roads
+        )
         for _, target_pos in outdated_targets:
-            if not self._move_towards_with_roads(target_pos):
+            if not move_towards(target_pos):
                 continue
 
-            return self._record_action(
-                BotAction.PATROL_SUPPLY_CHAINS,
-                "patrolling supply chains",
-            )
+            return self._record_action(action, message)
 
         return False
 
+    def patrol_supply_chains(self) -> bool:
+        """
+        Patrol allied supply-chain tiles using an ever-increasing patrol index.
+
+        The defender tracks one global patrol index and each relevant known
+        supply tile stores its last patrolled index. Every turn this method is
+        called, the defender stamps its current tile and all adjacent tiles
+        with its current patrol index when those tiles are allied conveyors or
+        bridges. While at least one relevant tile has a lower stored index than
+        the defender's current index, the defender moves toward the closest
+        such outdated tile. If no outdated relevant tile is currently known, it
+        advances its own patrol index by one.
+        """
+        return self._patrol_supply_chains(
+            allow_road_building=True,
+            action=BotAction.PATROL_SUPPLY_CHAINS,
+            message="patrolling supply chains",
+        )
+
+    def scavenger_patrol_supply_chains(self) -> bool:
+        """
+        Recover on allied supply chains without spending titanium on movement.
+
+        Low-resource scavengers reuse the same patrol-index logic as defenders,
+        but they only move across already walkable known tiles. This keeps them
+        active inside the supply network while avoiding new road costs until the
+        titanium stock recovers.
+        """
+        return self._patrol_supply_chains(
+            allow_road_building=False,
+            action=BotAction.SCAVENGER_PATROL_SUPPLY_CHAINS,
+            message="recovering on supply chains",
+        )
+
     def complete_supply_chain(self) -> bool:
         """
-        Continue a recently started bridge chain until it reconnects inward.
+        Continue a recently started supply chain until it reconnects inward.
 
-        The method only triggers when the previous turn ended with a bridge
-        continuation action. It looks for a visible allied bridge whose target
-        tile is still unknown in the cached map, or is known but not yet
-        occupied by a conveyor or bridge. If the missing continuation tile is
-        buildable and in action range, it extends the chain there, removing a
-        road first and placing the next link immediately when both actions are
-        legal in the same turn. Link placement uses normal bridges except for
-        adjacent/core-adjacent fallback where conveyors are used. Otherwise it
-        moves toward a tile that can place the continuation while building
-        roads on the way.
+        The method only triggers when the previous turn ended with a
+        supply-chain continuation action. It looks for a visible allied bridge
+        or conveyor whose output tile is still unknown in the cached map, or is
+        known but not yet occupied by another allied supply link. If the
+        missing continuation tile is buildable and in action range, it extends
+        the chain there, removing a road first and placing the next link
+        immediately when both actions are legal in the same turn. Existing
+        allied downstream conveyors or bridges already count as a valid
+        continuation and are skipped. Otherwise it moves toward a tile that can
+        place the continuation while building roads on the way.
         """
         if self.map is None:
             return False
@@ -4701,14 +4963,16 @@ class Bot:
             tuple[tuple[int, int, int, int, int, int], Position]
         ] = []
 
-        for bridge_id in self.ct.get_nearby_buildings():
-            if self.ct.get_entity_type(bridge_id) != EntityType.BRIDGE:
+        for link_id in self.ct.get_nearby_buildings():
+            if not self._is_supply_link_type(self.ct.get_entity_type(link_id)):
                 continue
-            if self.ct.get_team(bridge_id) != self.ct.get_team():
+            if self.ct.get_team(link_id) != self.ct.get_team():
                 continue
 
-            bridge_pos = self.ct.get_position(bridge_id)
-            target_pos = self.ct.get_bridge_target(bridge_id)
+            link_pos = self.ct.get_position(link_id)
+            target_pos = self._get_supply_link_output_pos(link_id)
+            if target_pos is None:
+                continue
             if not self._is_in_bounds(target_pos):
                 continue
 
@@ -4718,14 +4982,14 @@ class Bot:
                     current_pos.distance_squared(target_pos),
                     target_pos.x,
                     target_pos.y,
-                    bridge_pos.x,
-                    bridge_pos.y,
-                    bridge_id,
+                    link_pos.x,
+                    link_pos.y,
+                    link_id,
                 )
                 movement_candidates.append((candidate_key, target_pos))
                 continue
 
-            if tile.building_type in {EntityType.CONVEYOR, EntityType.BRIDGE}:
+            if self._is_allied_supply_link_tile(tile):
                 continue
             if tile.environment != Environment.EMPTY:
                 continue
@@ -4757,9 +5021,9 @@ class Bot:
                     build_pos_type_rank,
                     target_pos.x,
                     target_pos.y,
-                    bridge_pos.x,
-                    bridge_pos.y,
-                    bridge_id,
+                    link_pos.x,
+                    link_pos.y,
+                    link_id,
                 )
                 actionable_candidates.append(
                     (candidate_key, target_pos, next_target_pos, is_road_build_pos)
@@ -4770,9 +5034,9 @@ class Bot:
                 current_pos.distance_squared(target_pos),
                 target_pos.x,
                 target_pos.y,
-                bridge_pos.x,
-                bridge_pos.y,
-                bridge_id,
+                link_pos.x,
+                link_pos.y,
+                link_id,
             )
             movement_candidates.append((candidate_key, target_pos))
 
@@ -4819,7 +5083,7 @@ INITIAL_BB = [
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
-    CoreSpawnEvent.TURN_REACHED_200,
+    CoreSpawnEvent.TURN_REACHED_150,
     CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION,
     Bot.run_bb_defender,
 ]
