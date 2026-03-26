@@ -22,8 +22,10 @@ HARVESTER_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
 CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
 HARVESTER_MIN_TITANIUM_THRESHOLD = 300
 ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
-FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
+HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD = 1500
+HARASSMENT_SPAWN_TITANIUM_STEP = 100
+HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 160
 CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
 BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN = 5
@@ -35,9 +37,9 @@ BUILDER_ACTION_OFFSETS = [
     if dx * dx + dy * dy <= BUILDER_ACTION_RADIUS_SQ
 ]
 SENTINEL_COVER_OFFSETS = [(dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)]
-MAX_BOTS = 6
+MAX_BOTS = 999
 MAX_HARVESTORS = 999
-SURRENDER_AT_TURN = 500
+SURRENDER_AT_TURN = 3000
 
 SENTINEL_TARGET_PRIORITY = [
     EntityType.GUNNER,
@@ -87,6 +89,17 @@ BREACH_TARGET_PRIORITY = [
     EntityType.BARRIER,
     EntityType.MARKER,
 ]
+HARASSMENT_ENEMY_TILE_TYPE_PRIORITY = [
+    EntityType.BRIDGE,
+    EntityType.CONVEYOR,
+    EntityType.ARMOURED_CONVEYOR,
+]
+HARASSMENT_ENEMY_TILE_SPECIAL_PRIORITY = [
+    "feeds_enemy_turret",
+    "targets_enemy_core",
+    "adjacent_enemy_harvester",
+    "default",
+]
 SUPPLY_LINK_TYPES = {
     EntityType.CONVEYOR,
     EntityType.ARMOURED_CONVEYOR,
@@ -123,7 +136,7 @@ class BotAction(Enum):
     NONE = auto()
     SPAWN_BUILDER = auto()
     ATTACK_ENEMY_HARVESTER = auto()
-    ATTACK_ENEMY_BRIDGE = auto()
+    ATTACK_ENEMY_WALKABLE = auto()
     REPAIR_IF_DAMAGED = auto()
     MAINTAINER_PATROL = auto()
     HARASSMENT_SCOUT = auto()
@@ -150,8 +163,12 @@ class BotAction(Enum):
 
 class CoreSpawnEvent(Enum):
     FIRST_RESOURCE_INCREASE = auto()
-    TURN_REACHED_150 = auto()
     ENEMY_BOT_IN_CORE_VISION = auto()
+
+
+@dataclass(frozen=True, slots=True)
+class CoreSpawnTurnEvent:
+    turn: int
 
 
 @dataclass(slots=True)
@@ -991,6 +1008,7 @@ class Bot:
         cached allied core position so this information survives across rounds.
         """
         self.core_bbs_spawned = 0  # number of builder bots spawned so far (core)
+        self.core_harassment_bbs_spawned = 0
         self.core_spawn_plan_index = 0
         self.core_completed_spawn_events: set[CoreSpawnEvent] = set()
         self.core_previous_resources: tuple[int, int] | None = None
@@ -1334,7 +1352,7 @@ class Bot:
         spawned on. If that mapping cannot be resolved (for example after an
         unusual reset state), the method falls back to round-based
         initialisation using callable entries from `INITIAL_BB`, with
-        `FURTHER_BB` as the final default.
+        scavenger as the final default.
         """
         if self.core_center_pos is None:
             self.find_core_center()
@@ -1352,7 +1370,7 @@ class Bot:
         round_index = self.ct.get_current_round() - 1
         if 0 <= round_index < len(initial_builder_handlers):
             return initial_builder_handlers[round_index].__get__(self, type(self))
-        return FURTHER_BB.__get__(self, type(self))
+        return Bot.run_bb_scavenger.__get__(self, type(self))
 
     def get_bb_handler_name(self) -> str:
         """
@@ -1521,13 +1539,9 @@ class Bot:
         Events are evaluated incrementally from turn to turn. The
         `FIRST_RESOURCE_INCREASE` event fires the first time either team
         resource increases compared to the previous core turn.
-        `TURN_REACHED_150` fires once round 150 or later is reached.
         `ENEMY_BOT_IN_CORE_VISION` fires once an enemy unit is visible to the
         core.
         """
-        if self.ct.get_current_round() >= 150:
-            self.core_completed_spawn_events.add(CoreSpawnEvent.TURN_REACHED_150)
-
         own_team = self.ct.get_team()
         for unit_id in self.ct.get_nearby_units():
             if self.ct.get_team(unit_id) == own_team:
@@ -1559,6 +1573,12 @@ class Bot:
         while self.core_spawn_plan_index < len(INITIAL_BB):
             plan_entry = INITIAL_BB[self.core_spawn_plan_index]
 
+            if isinstance(plan_entry, CoreSpawnTurnEvent):
+                if self.ct.get_current_round() >= plan_entry.turn:
+                    self.core_spawn_plan_index += 1
+                    continue
+                return False
+
             if isinstance(plan_entry, CoreSpawnEvent):
                 if plan_entry in self.core_completed_spawn_events:
                     self.core_spawn_plan_index += 1
@@ -1578,27 +1598,40 @@ class Bot:
 
         The core follows `INITIAL_BB` as a spawn plan, where role entries can
         be interleaved with event markers. Before spawning roles that come
-        after an event marker, the core waits until that event has fired. Once
-        the initial plan is exhausted, it spawns additional builders only above
-        `FURTHER_BB_THRESHOLD`, and never beyond `MAX_BOTS`.
+        after an event marker, the core waits until that event has fired.
+        Harassment spawning by dynamic titanium threshold is evaluated
+        independently and can override the initial plan for that turn. Outside
+        of `INITIAL_BB`, the core only spawns harassment builders.
         """
         if self.core_bbs_spawned >= MAX_BOTS:
             return
 
         self._update_core_spawn_events()
-        if not self._advance_core_spawn_plan_until_next_builder():
-            return
-
         titanium, _ = self.ct.get_global_resources()
-        should_spawn_from_initial_plan = self.core_spawn_plan_index < len(INITIAL_BB)
-        if not should_spawn_from_initial_plan and titanium < FURTHER_BB_THRESHOLD:
-            return
+        harassment_threshold = (
+            HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD
+            + self.core_harassment_bbs_spawned * HARASSMENT_SPAWN_TITANIUM_STEP
+        )
+        force_harassment_spawn = titanium >= harassment_threshold
 
-        assigned_handler = FURTHER_BB
-        if should_spawn_from_initial_plan:
-            plan_entry = INITIAL_BB[self.core_spawn_plan_index]
-            if callable(plan_entry):
-                assigned_handler = plan_entry
+        assigned_handler = Bot.run_bb_harassment
+        should_spawn_from_initial_plan = False
+        if force_harassment_spawn:
+            assigned_handler = Bot.run_bb_harassment
+        else:
+            if not self._advance_core_spawn_plan_until_next_builder():
+                return
+
+            should_spawn_from_initial_plan = (
+                self.core_spawn_plan_index < len(INITIAL_BB)
+            )
+            if not should_spawn_from_initial_plan:
+                return
+
+            if should_spawn_from_initial_plan:
+                plan_entry = INITIAL_BB[self.core_spawn_plan_index]
+                if callable(plan_entry):
+                    assigned_handler = plan_entry
 
         core_pos = self.ct.get_position()
         preferred_offsets = [
@@ -1623,6 +1656,8 @@ class Bot:
 
             self.ct.spawn_builder(spawn_pos)
             self.core_bbs_spawned += 1
+            if assigned_handler == Bot.run_bb_harassment:
+                self.core_harassment_bbs_spawned += 1
             if should_spawn_from_initial_plan:
                 self.core_spawn_plan_index += 1
             self.last_action = BotAction.SPAWN_BUILDER
@@ -1637,14 +1672,15 @@ class Bot:
         runs the selected handler. It also tracks whether the previous turn
         finished, allowing the strategy executor to resume after timeouts.
         """
-        if self.bb_handler is None:
-            self.bb_handler = self.get_initial_bb_handler()
-
-        self.turn_type_name = self.get_bb_handler_name()
         self.update_bb_map()
 
         if self.core_center_pos is None:
             self.find_core_center()
+
+        if self.bb_handler is None:
+            self.bb_handler = self.get_initial_bb_handler()
+
+        self.turn_type_name = self.get_bb_handler_name()
 
         self._bb_resume_from_incomplete_turn = not self.bb_last_turn_completed
         if not self._bb_resume_from_incomplete_turn:
@@ -1888,17 +1924,19 @@ class Bot:
         """
         Execute the harassment builder role for the current turn.
 
-        The harassment flow estimates enemy core information, sabotages visible
-        enemy bridges, applies the harvester-pressure routine, and looks for
-        sentinel placements that can interfere with enemy logistics around
-        exposed harvesters. When no other action triggers, it advances toward
-        the inferred enemy core area.
+        Harassment prioritises targeted economic disruption first.
+
+        The action order is:
+        1) attack enemy harvester
+        2) build supplied sentinel
+        3) attack high-priority enemy walkable logistics tiles
+        4) move toward the inferred enemy core area
         """
         self.get_enemy_core_pos()
         steps = [
             ("attack_enemy_harvester", self.attack_enemy_harvester),
             ("build_supplied_sentinel", self.build_supplied_sentinel),
-            ("attack_enemy_bridge", self.attack_enemy_bridge),
+            ("attack_enemy_walkable", self.attack_enemy_walkable),
             ("harassment_scout", self.harassment_scout),
         ]
         self._run_bb_strategy_plan("harassment", steps)
@@ -3527,61 +3565,146 @@ class Bot:
 
         return False
 
-    def attack_enemy_bridge(self) -> bool:
+    def attack_enemy_walkable(self) -> bool:
         """
-        Climb onto a visible enemy bridge and destroy it.
+        Attack enemy walkable logistics tiles by configured harassment priority.
 
-        If the builder is already standing on an enemy bridge, it stays there
-        and attacks that tile until the bridge is gone. Otherwise it moves
-        toward the closest visible enemy bridge, preparing the path with roads
-        when useful.
+        The method targets visible enemy bridges/conveyors/armoured conveyors/
+        roads. Supplier tiles feeding enemy turrets, targeting enemy core
+        tiles, or adjacent to enemy harvesters are promoted above normal type
+        priority. If the bot stands on a damaged enemy target tile, it keeps
+        attacking that tile and ignores all other options for this turn, unless
+        current titanium is below the harassment attack threshold.
         """
         current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        titanium, _ = self.turn_resources
+        can_attack = titanium >= HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD
+        action_radius_sq = 2
+
+        type_rank = {
+            entity_type: idx
+            for idx, entity_type in enumerate(HARASSMENT_ENEMY_TILE_TYPE_PRIORITY)
+        }
+        special_rank = {
+            name: idx
+            for idx, name in enumerate(HARASSMENT_ENEMY_TILE_SPECIAL_PRIORITY)
+        }
+        turret_types = {
+            EntityType.GUNNER,
+            EntityType.SENTINEL,
+            EntityType.BREACH,
+        }
 
         current_building_id = self.ct.get_tile_building_id(current_pos)
-        if (
-            current_building_id is not None
-            and self.ct.get_entity_type(current_building_id) == EntityType.BRIDGE
-            and self.ct.get_team(current_building_id) != self.ct.get_team()
-        ):
-            if self.ct.can_fire(current_pos):
-                self.ct.fire(current_pos)
-                return self._record_action(
-                    BotAction.ATTACK_ENEMY_BRIDGE,
-                    "attacking enemy bridge",
-                )
-            return self._record_action(
-                BotAction.ATTACK_ENEMY_BRIDGE,
-                "holding enemy bridge",
-            )
+        if current_building_id is not None:
+            current_building_type = self.ct.get_entity_type(current_building_id)
+            if (
+                current_building_type in type_rank
+                and self.ct.get_team(current_building_id) != own_team
+                and self.ct.get_hp(current_building_id)
+                < self.ct.get_max_hp(current_building_id)
+            ):
+                if can_attack and self.ct.can_fire(current_pos):
+                    self.ct.fire(current_pos)
+                    return self._record_action(
+                        BotAction.ATTACK_ENEMY_WALKABLE,
+                        "attacking enemy walkable",
+                    )
 
-        bridge_targets: list[tuple[tuple[int, int, int, int], Position]] = []
-        for building_id, building_type, building_team, bridge_pos in self.turn_nearby_building_infos:
-            if building_type != EntityType.BRIDGE:
+        enemy_harvester_positions = {
+            (building_pos.x, building_pos.y)
+            for _, building_type, building_team, building_pos in self.turn_nearby_building_infos
+            if (
+                building_type == EntityType.HARVESTER
+                and building_team != own_team
+            )
+        }
+
+        def get_special_priority(
+            building_id: int,
+            building_type: EntityType,
+            building_pos: Position,
+        ) -> int:
+            if building_type not in SUPPLY_LINK_TYPES:
+                return special_rank["default"]
+
+            output_pos = self._get_supply_link_output_pos(building_id)
+            if output_pos is not None and self.ct.is_in_vision(output_pos):
+                output_building_id = self.ct.get_tile_building_id(output_pos)
+                if output_building_id is not None:
+                    if self.ct.get_team(output_building_id) != own_team:
+                        output_building_type = self.ct.get_entity_type(output_building_id)
+                        if output_building_type in turret_types:
+                            return special_rank["feeds_enemy_turret"]
+                        if output_building_type == EntityType.CORE:
+                            return special_rank["targets_enemy_core"]
+
+            for direction in CARDINAL_DIRECTIONS:
+                adjacent_pos = building_pos.add(direction)
+                if (adjacent_pos.x, adjacent_pos.y) in enemy_harvester_positions:
+                    return special_rank["adjacent_enemy_harvester"]
+
+            return special_rank["default"]
+
+        candidates: list[
+            tuple[tuple[int, int, int, int, int, int], Position, int]
+        ] = []
+        for building_id, building_type, building_team, building_pos in self.turn_nearby_building_infos:
+            if building_team == own_team:
                 continue
-            if building_team == self.turn_team:
+            if building_type not in type_rank:
                 continue
 
             candidate_key = (
-                current_pos.distance_squared(bridge_pos),
-                bridge_pos.x,
-                bridge_pos.y,
+                get_special_priority(building_id, building_type, building_pos),
+                type_rank[building_type],
+                current_pos.distance_squared(building_pos),
+                building_pos.x,
+                building_pos.y,
                 building_id,
             )
-            bridge_targets.append((candidate_key, bridge_pos))
+            candidates.append((candidate_key, building_pos, building_id))
 
-        if not bridge_targets:
+        if not candidates:
             return False
 
-        bridge_targets.sort(key=lambda candidate: candidate[0])
-        target_pos = bridge_targets[0][1]
-        if not self._move_towards_with_roads(target_pos):
-            return False
+        candidates.sort(key=lambda candidate: candidate[0])
 
-        return self._record_action(
-            BotAction.ATTACK_ENEMY_BRIDGE,
-            "attacking enemy bridge",
-        )
+        for _, target_pos, _ in candidates:
+            if target_pos == current_pos:
+                if can_attack and self.ct.can_fire(current_pos):
+                    self.ct.fire(current_pos)
+                    return self._record_action(
+                        BotAction.ATTACK_ENEMY_WALKABLE,
+                        "attacking enemy walkable",
+                    )
+                continue
+            if (
+                current_pos.distance_squared(target_pos) <= action_radius_sq
+                and can_attack
+                and self.ct.can_fire(target_pos)
+            ):
+                self.ct.fire(target_pos)
+                return self._record_action(
+                    BotAction.ATTACK_ENEMY_WALKABLE,
+                    "attacking enemy walkable",
+                )
+
+        for _, target_pos, _ in candidates:
+            if target_pos == current_pos:
+                return self._record_action(
+                    BotAction.ATTACK_ENEMY_WALKABLE,
+                    "attacking enemy walkable",
+                )
+            if not self._move_towards_with_roads(target_pos):
+                continue
+            return self._record_action(
+                BotAction.ATTACK_ENEMY_WALKABLE,
+                "attacking enemy walkable",
+            )
+
+        return False
 
     def launcher_defend(self) -> bool:
         """
@@ -6066,18 +6189,19 @@ INITIAL_BB = [
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
-    CoreSpawnEvent.TURN_REACHED_150,
+    CoreSpawnTurnEvent(100),
+    Bot.run_bb_harassment,
+    CoreSpawnTurnEvent(150),
     CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION,
     Bot.run_bb_defender,
 ]
-FURTHER_BB = Bot.run_bb_scavenger
 CORE_TILE_BB_ROLE = {
     (-1, -1): Bot.run_bb_scavenger,
-    (0, -1): Bot.run_bb_scavenger,
+    (0, -1): Bot.run_bb_harassment,
     (1, -1): Bot.run_bb_defender,
     (-1, 0): Bot.run_bb_scavenger,
     (0, 0): Bot.run_bb_scavenger,
-    (1, 0): Bot.run_bb_scavenger,
+    (1, 0): Bot.run_bb_harassment,
     (-1, 1): Bot.run_bb_scavenger,
     (0, 1): Bot.run_bb_init_res,
     (1, 1): Bot.run_bb_defender,
