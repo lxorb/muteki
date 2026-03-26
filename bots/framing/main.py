@@ -100,6 +100,19 @@ HARASSMENT_ENEMY_TILE_SPECIAL_PRIORITY = [
     "adjacent_enemy_harvester",
     "default",
 ]
+HARASSMENT_ENEMY_TILE_TYPE_RANK = {
+    entity_type: idx
+    for idx, entity_type in enumerate(HARASSMENT_ENEMY_TILE_TYPE_PRIORITY)
+}
+HARASSMENT_ENEMY_TILE_SPECIAL_RANK = {
+    name: idx
+    for idx, name in enumerate(HARASSMENT_ENEMY_TILE_SPECIAL_PRIORITY)
+}
+ENEMY_TURRET_TYPES = {
+    EntityType.GUNNER,
+    EntityType.SENTINEL,
+    EntityType.BREACH,
+}
 SUPPLY_LINK_TYPES = {
     EntityType.CONVEYOR,
     EntityType.ARMOURED_CONVEYOR,
@@ -203,6 +216,8 @@ class Map:
         self.known_harvester_ids: set[int] = set()
         self.known_harvesters_built = 0
         self.known_positions: list[tuple[int, int]] = []
+        self.newly_known_positions: list[tuple[int, int]] = []
+        self.knowledge_revision = 0
         self.supply_link_positions: set[tuple[int, int]] = set()
         self._initialise_bfs_buffers()
 
@@ -228,6 +243,8 @@ class Map:
         self.known_harvester_ids.clear()
         self.known_harvesters_built = 0
         self.known_positions = []
+        self.newly_known_positions = []
+        self.knowledge_revision += 1
         self.supply_link_positions.clear()
         self._initialise_bfs_buffers()
 
@@ -255,6 +272,8 @@ class Map:
         supply_link_positions = self.supply_link_positions
         get_tile_env = ct.get_tile_env
         distance_dirty = self._update_core_center_pos(nearby_building_infos, own_team)
+        knowledge_changed = distance_dirty
+        newly_known_positions: list[tuple[int, int]] = []
         building_at_pos: dict[tuple[int, int], tuple[int, EntityType, Team]] = {}
         builder_at_pos: dict[tuple[int, int], tuple[int, Team]] = {}
 
@@ -297,6 +316,8 @@ class Map:
                 )
                 matrix[x][y] = tile
                 known_positions.append((x, y))
+                newly_known_positions.append((x, y))
+                knowledge_changed = True
                 if environment == Environment.WALL:
                     distance_dirty = True
             tile.last_seen_round = current_round
@@ -347,6 +368,9 @@ class Map:
                 supply_link_positions.discard(coord)
 
         self.known_harvesters_built = len(known_harvester_ids)
+        self.newly_known_positions = newly_known_positions
+        if knowledge_changed:
+            self.knowledge_revision += 1
 
         if distance_dirty:
             self._refresh_distance_matrix()
@@ -1033,6 +1057,8 @@ class Bot:
         self.bb_last_completed_strategy_method: str | None = None
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
+        self.turn_map_width = 0
+        self.turn_map_height = 0
         self.turn_id = -1
         self.turn_round = -1
         self.turn_team: Team | None = None
@@ -1067,6 +1093,9 @@ class Bot:
         self._expand_frontier_candidates: set[tuple[int, int]] = set()
         self._expand_revision_counter = 0
         self._expand_cached_map_size: tuple[int, int] | None = None
+        self._enemy_core_inference_round = -1
+        self._enemy_core_knowledge_revision = -1
+        self._enemy_core_symmetry_modes: set[str] | None = None
 
     def _debug_print(self, message: str) -> None:
         """
@@ -1110,6 +1139,8 @@ class Bot:
         self.turn_id = ct.get_id()
         self.turn_team = ct.get_team()
         self.turn_position = ct.get_position()
+        self.turn_map_width = ct.get_map_width()
+        self.turn_map_height = ct.get_map_height()
         self.turn_resources = ct.get_global_resources()
         self.turn_nearby_tiles = list(ct.get_nearby_tiles())
         self.turn_nearby_buildings = list(ct.get_nearby_buildings())
@@ -2170,6 +2201,10 @@ class Bot:
         This keeps the common controller-sized bounds check in one place so
         movement, targeting, and cached-map lookups use the same guard.
         """
+        if self.map is not None:
+            return 0 <= pos.x < self.map.width and 0 <= pos.y < self.map.height
+        if self.turn_map_width > 0 and self.turn_map_height > 0:
+            return 0 <= pos.x < self.turn_map_width and 0 <= pos.y < self.turn_map_height
         return 0 <= pos.x < self.ct.get_map_width() and 0 <= pos.y < self.ct.get_map_height()
 
     def _get_known_map_tile(self, pos: Position) -> Tile | None:
@@ -2213,8 +2248,24 @@ class Bot:
         armoured conveyors output one tile forward in their facing direction.
         Non-link buildings return `None`.
         """
-        building_type = self.ct.get_entity_type(building_id)
-        building_pos = self.ct.get_position(building_id)
+        return self._get_supply_link_output_pos_from_info(
+            building_id,
+            self.ct.get_entity_type(building_id),
+            self.ct.get_position(building_id),
+        )
+
+    def _get_supply_link_output_pos_from_info(
+        self,
+        building_id: int,
+        building_type: EntityType,
+        building_pos: Position,
+    ) -> Position | None:
+        """
+        Return a supply-link output tile using already cached building metadata.
+
+        Callers that already have a building's type and position can avoid
+        repeating those controller lookups by using this helper directly.
+        """
         if building_type == EntityType.BRIDGE:
             return self.ct.get_bridge_target(building_id)
         if building_type in {
@@ -3433,10 +3484,14 @@ class Bot:
 
         action_radius_sq = 2
         current_pos = self.turn_position or self.ct.get_position()
+        current_round = (
+            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        )
 
         candidate_tiles: list[
             tuple[tuple[int, int, int, int, int, int], Position, Position]
         ] = []
+        best_move_target: tuple[tuple[int, int, int, int, int, int], Position] | None = None
 
         for entity_id, entity_type, entity_team, harvester_pos in self.turn_nearby_building_infos:
             if entity_type != EntityType.HARVESTER:
@@ -3451,11 +3506,11 @@ class Bot:
                 candidate_pos = harvester_pos.add(direction)
                 if not self._is_in_bounds(candidate_pos):
                     continue
-                if not self.ct.is_in_vision(candidate_pos):
-                    continue
 
                 tile = self._get_known_map_tile(candidate_pos)
                 if tile is None:
+                    continue
+                if tile.last_seen_round != current_round:
                     continue
                 if tile.building_type == EntityType.SENTINEL:
                     has_adjacent_sentinel = True
@@ -3480,27 +3535,37 @@ class Bot:
                     entity_id,
                 )
                 candidate_tiles.append((sort_key, candidate_pos, harvester_pos))
+                if (
+                    current_pos.distance_squared(candidate_pos) <= action_radius_sq
+                    and candidate_pos != current_pos
+                ):
+                    continue
+                if best_move_target is None or sort_key < best_move_target[0]:
+                    best_move_target = (sort_key, candidate_pos)
 
         if not candidate_tiles:
             return False
 
-        candidate_tiles.sort(key=lambda candidate: candidate[0])
-        self.get_enemy_core_pos()
-
-        possible_enemy_core_tiles: list[Position] = []
-        possible_enemy_core_centers = []
-        if self.enemy_core_pos is not None:
-            possible_enemy_core_centers = [self.enemy_core_pos]
-        elif self.enemy_core_pos_candidates:
-            possible_enemy_core_centers = self.enemy_core_pos_candidates
-
-        for core_center_pos in possible_enemy_core_centers:
-            for core_tile in self._get_core_target_tiles(core_center_pos):
-                if core_tile not in possible_enemy_core_tiles:
-                    possible_enemy_core_tiles.append(core_tile)
-
         titanium, _ = self.turn_resources
         if titanium >= ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD:
+            candidate_tiles.sort(key=lambda candidate: candidate[0])
+            self.get_enemy_core_pos()
+
+            possible_enemy_core_tiles: list[Position] = []
+            seen_core_tiles: set[tuple[int, int]] = set()
+            possible_enemy_core_centers = (
+                [self.enemy_core_pos]
+                if self.enemy_core_pos is not None
+                else list(self.enemy_core_pos_candidates)
+            )
+            for core_center_pos in possible_enemy_core_centers:
+                for core_tile in self._get_core_target_tiles(core_center_pos):
+                    core_key = (core_tile.x, core_tile.y)
+                    if core_key in seen_core_tiles:
+                        continue
+                    seen_core_tiles.add(core_key)
+                    possible_enemy_core_tiles.append(core_tile)
+
             for _, candidate_pos, harvester_pos in candidate_tiles:
                 if candidate_pos == current_pos:
                     continue
@@ -3517,18 +3582,17 @@ class Bot:
                         continue
                     buildable_diagonal_directions.append(sentinel_direction)
 
-                preferred_directions = [
-                    sentinel_direction
-                    for sentinel_direction in buildable_diagonal_directions
-                    if any(
-                        self._sentinel_direction_covers_target(
+                preferred_directions: list[Direction] = []
+                for sentinel_direction in buildable_diagonal_directions:
+                    for core_tile in possible_enemy_core_tiles:
+                        if not self._sentinel_direction_covers_target(
                             candidate_pos,
                             sentinel_direction,
                             core_tile,
-                        )
-                        for core_tile in possible_enemy_core_tiles
-                    )
-                ]
+                        ):
+                            continue
+                        preferred_directions.append(sentinel_direction)
+                        break
                 candidate_directions = (
                     preferred_directions or buildable_diagonal_directions
                 )
@@ -3544,26 +3608,19 @@ class Bot:
                         "attacking enemy harvester",
                     )
 
-        for _, candidate_pos, _ in candidate_tiles:
-            if (
-                current_pos.distance_squared(candidate_pos) <= action_radius_sq
-                and candidate_pos != current_pos
-            ):
-                continue
+        if best_move_target is None:
+            return False
+        if not self._move_towards_action_range_with_roads(
+            best_move_target[1],
+            action_radius_sq=action_radius_sq,
+            allow_direct_target_fallback=True,
+        ):
+            return False
 
-            if not self._move_towards_action_range_with_roads(
-                candidate_pos,
-                action_radius_sq=action_radius_sq,
-                allow_direct_target_fallback=True,
-            ):
-                continue
-
-            return self._record_action(
-                BotAction.ATTACK_ENEMY_HARVESTER,
-                "attacking enemy harvester",
-            )
-
-        return False
+        return self._record_action(
+            BotAction.ATTACK_ENEMY_HARVESTER,
+            "attacking enemy harvester",
+        )
 
     def attack_enemy_walkable(self) -> bool:
         """
@@ -3582,35 +3639,23 @@ class Bot:
         can_attack = titanium >= HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD
         action_radius_sq = 2
 
-        type_rank = {
-            entity_type: idx
-            for idx, entity_type in enumerate(HARASSMENT_ENEMY_TILE_TYPE_PRIORITY)
-        }
-        special_rank = {
-            name: idx
-            for idx, name in enumerate(HARASSMENT_ENEMY_TILE_SPECIAL_PRIORITY)
-        }
-        turret_types = {
-            EntityType.GUNNER,
-            EntityType.SENTINEL,
-            EntityType.BREACH,
-        }
-
-        current_building_id = self.ct.get_tile_building_id(current_pos)
-        if current_building_id is not None:
-            current_building_type = self.ct.get_entity_type(current_building_id)
-            if (
-                current_building_type in type_rank
-                and self.ct.get_team(current_building_id) != own_team
-                and self.ct.get_hp(current_building_id)
-                < self.ct.get_max_hp(current_building_id)
-            ):
-                if can_attack and self.ct.can_fire(current_pos):
-                    self.ct.fire(current_pos)
-                    return self._record_action(
-                        BotAction.ATTACK_ENEMY_WALKABLE,
-                        "attacking enemy walkable",
-                    )
+        type_rank = HARASSMENT_ENEMY_TILE_TYPE_RANK
+        special_rank = HARASSMENT_ENEMY_TILE_SPECIAL_RANK
+        current_tile = self._get_known_map_tile(current_pos)
+        if (
+            current_tile is not None
+            and current_tile.building_id is not None
+            and current_tile.building_type in type_rank
+            and current_tile.building_team != own_team
+            and self.ct.get_hp(current_tile.building_id)
+            < self.ct.get_max_hp(current_tile.building_id)
+        ):
+            if can_attack and self.ct.can_fire(current_pos):
+                self.ct.fire(current_pos)
+                return self._record_action(
+                    BotAction.ATTACK_ENEMY_WALKABLE,
+                    "attacking enemy walkable",
+                )
 
         enemy_harvester_positions = {
             (building_pos.x, building_pos.y)
@@ -3629,16 +3674,27 @@ class Bot:
             if building_type not in SUPPLY_LINK_TYPES:
                 return special_rank["default"]
 
-            output_pos = self._get_supply_link_output_pos(building_id)
-            if output_pos is not None and self.ct.is_in_vision(output_pos):
-                output_building_id = self.ct.get_tile_building_id(output_pos)
-                if output_building_id is not None:
-                    if self.ct.get_team(output_building_id) != own_team:
-                        output_building_type = self.ct.get_entity_type(output_building_id)
-                        if output_building_type in turret_types:
-                            return special_rank["feeds_enemy_turret"]
-                        if output_building_type == EntityType.CORE:
-                            return special_rank["targets_enemy_core"]
+            output_pos = self._get_supply_link_output_pos_from_info(
+                building_id,
+                building_type,
+                building_pos,
+            )
+            output_tile = (
+                self._get_known_map_tile(output_pos)
+                if output_pos is not None and self._is_in_bounds(output_pos)
+                else None
+            )
+            if (
+                output_tile is not None
+                and output_tile.last_seen_round == self.turn_round
+                and output_tile.building_id is not None
+                and output_tile.building_team != own_team
+            ):
+                output_building_type = output_tile.building_type
+                if output_building_type in ENEMY_TURRET_TYPES:
+                    return special_rank["feeds_enemy_turret"]
+                if output_building_type == EntityType.CORE:
+                    return special_rank["targets_enemy_core"]
 
             for direction in CARDINAL_DIRECTIONS:
                 adjacent_pos = building_pos.add(direction)
@@ -3647,58 +3703,51 @@ class Bot:
 
             return special_rank["default"]
 
-        candidates: list[
-            tuple[tuple[int, int, int, int, int, int], Position, int]
-        ] = []
+        best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
+        in_range_candidates: list[tuple[tuple[int, int, int, int, int, int], Position]] = []
+
         for building_id, building_type, building_team, building_pos in self.turn_nearby_building_infos:
             if building_team == own_team:
                 continue
-            if building_type not in type_rank:
+            type_priority = type_rank.get(building_type)
+            if type_priority is None:
                 continue
 
+            distance_sq = current_pos.distance_squared(building_pos)
             candidate_key = (
                 get_special_priority(building_id, building_type, building_pos),
-                type_rank[building_type],
-                current_pos.distance_squared(building_pos),
+                type_priority,
+                distance_sq,
                 building_pos.x,
                 building_pos.y,
                 building_id,
             )
-            candidates.append((candidate_key, building_pos, building_id))
+            if best_candidate is None or candidate_key < best_candidate[0]:
+                best_candidate = (candidate_key, building_pos)
+            if building_pos == current_pos or distance_sq <= action_radius_sq:
+                in_range_candidates.append((candidate_key, building_pos))
 
-        if not candidates:
-            return False
-
-        candidates.sort(key=lambda candidate: candidate[0])
-
-        for _, target_pos, _ in candidates:
-            if target_pos == current_pos:
-                if can_attack and self.ct.can_fire(current_pos):
-                    self.ct.fire(current_pos)
-                    return self._record_action(
-                        BotAction.ATTACK_ENEMY_WALKABLE,
-                        "attacking enemy walkable",
-                    )
-                continue
-            if (
-                current_pos.distance_squared(target_pos) <= action_radius_sq
-                and can_attack
-                and self.ct.can_fire(target_pos)
-            ):
+        if can_attack and in_range_candidates:
+            in_range_candidates.sort(key=lambda candidate: candidate[0])
+            for _, target_pos in in_range_candidates:
+                if not self.ct.can_fire(target_pos):
+                    continue
                 self.ct.fire(target_pos)
                 return self._record_action(
                     BotAction.ATTACK_ENEMY_WALKABLE,
                     "attacking enemy walkable",
                 )
 
-        for _, target_pos, _ in candidates:
-            if target_pos == current_pos:
-                return self._record_action(
-                    BotAction.ATTACK_ENEMY_WALKABLE,
-                    "attacking enemy walkable",
-                )
-            if not self._move_towards_with_roads(target_pos):
-                continue
+        if best_candidate is None:
+            return False
+
+        target_pos = best_candidate[1]
+        if target_pos == current_pos:
+            return self._record_action(
+                BotAction.ATTACK_ENEMY_WALKABLE,
+                "attacking enemy walkable",
+            )
+        if self._move_towards_with_roads(target_pos):
             return self._record_action(
                 BotAction.ATTACK_ENEMY_WALKABLE,
                 "attacking enemy walkable",
@@ -3997,12 +4046,6 @@ class Bot:
                 empty_adjacent_tiles.append(adjacent_pos)
 
             for build_pos in empty_adjacent_tiles:
-                target_plan = self._get_supply_link_plan(build_pos)
-                if target_plan is None:
-                    movement_candidates.append((candidate_key, build_pos))
-                    continue
-                target_pos, use_bridge = target_plan
-
                 candidate_key = (
                     current_pos.distance_squared(build_pos),
                     build_pos.x,
@@ -4011,6 +4054,11 @@ class Bot:
                     harvester_pos.y,
                     harvester_id,
                 )
+                target_plan = self._get_supply_link_plan(build_pos)
+                if target_plan is None:
+                    movement_candidates.append((candidate_key, build_pos))
+                    continue
+                target_pos, use_bridge = target_plan
 
                 if can_build:
                     if (
@@ -5221,6 +5269,12 @@ class Bot:
         valid enemy core candidate, and only marks the enemy core position as
         resolved when exactly one candidate remains.
         """
+        current_round = (
+            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        )
+        if self._enemy_core_inference_round == current_round:
+            return self.enemy_core_pos
+
         for building_id, building_type, building_team, building_pos in self.turn_nearby_building_infos:
             if building_type != EntityType.CORE:
                 continue
@@ -5229,11 +5283,15 @@ class Bot:
 
             self.enemy_core_pos = building_pos
             self.enemy_core_pos_candidates = [self.enemy_core_pos]
+            self._enemy_core_inference_round = current_round
             return self.enemy_core_pos
 
         if self.map is None:
             self.enemy_core_pos = None
             self.enemy_core_pos_candidates = []
+            self._enemy_core_inference_round = current_round
+            self._enemy_core_knowledge_revision = -1
+            self._enemy_core_symmetry_modes = None
             return None
 
         if self.core_center_pos is None:
@@ -5241,42 +5299,57 @@ class Bot:
         if self.core_center_pos is None:
             self.enemy_core_pos = None
             self.enemy_core_pos_candidates = []
+            self._enemy_core_inference_round = current_round
+            self._enemy_core_knowledge_revision = -1
+            self._enemy_core_symmetry_modes = None
             return None
+
+        if self.enemy_core_pos is not None:
+            self.enemy_core_pos_candidates = [self.enemy_core_pos]
+            self._enemy_core_inference_round = current_round
+            return self.enemy_core_pos
 
         width = self.map.width
         height = self.map.height
         own_core_pos = self.core_center_pos
+        map_revision = self.map.knowledge_revision
+        if map_revision < self._enemy_core_knowledge_revision:
+            self._enemy_core_symmetry_modes = None
+            self._enemy_core_knowledge_revision = -1
 
-        symmetry_candidates = [
-            (
-                "rotation",
-                lambda pos: Position(width - 1 - pos.x, height - 1 - pos.y),
-                Position(width - 1 - own_core_pos.x, height - 1 - own_core_pos.y),
-            ),
-            (
-                "mirror_x",
-                lambda pos: Position(width - 1 - pos.x, pos.y),
-                Position(width - 1 - own_core_pos.x, own_core_pos.y),
-            ),
-            (
-                "mirror_y",
-                lambda pos: Position(pos.x, height - 1 - pos.y),
-                Position(own_core_pos.x, height - 1 - own_core_pos.y),
-            ),
-        ]
+        if (
+            self._enemy_core_symmetry_modes is not None
+            and map_revision == self._enemy_core_knowledge_revision
+        ):
+            self._enemy_core_inference_round = current_round
+            return self.enemy_core_pos
 
-        valid_candidate_map: dict[tuple[int, int], Position] = {}
+        matrix = self.map.matrix
+        if self._enemy_core_symmetry_modes is None:
+            symmetry_modes = {"rotation", "mirror_x", "mirror_y"}
+            positions_to_check = self.map.known_positions
+        else:
+            symmetry_modes = set(self._enemy_core_symmetry_modes)
+            positions_to_check = self.map.newly_known_positions
 
-        for _, transform, candidate_pos in symmetry_candidates:
+        for mode in tuple(symmetry_modes):
             is_valid_symmetry = True
-
-            for x, y in self.map.known_positions:
-                tile = self.map.matrix[x][y]
+            for x, y in positions_to_check:
+                tile = matrix[x][y]
                 if tile is None:
                     continue
 
-                mirrored_pos = transform(Position(x, y))
-                mirrored_tile = self.map.matrix[mirrored_pos.x][mirrored_pos.y]
+                if mode == "rotation":
+                    mirror_x = width - 1 - x
+                    mirror_y = height - 1 - y
+                elif mode == "mirror_x":
+                    mirror_x = width - 1 - x
+                    mirror_y = y
+                else:
+                    mirror_x = x
+                    mirror_y = height - 1 - y
+
+                mirrored_tile = matrix[mirror_x][mirror_y]
                 if mirrored_tile is None:
                     continue
                 if tile.environment != mirrored_tile.environment:
@@ -5284,18 +5357,36 @@ class Bot:
                     break
 
             if is_valid_symmetry:
-                valid_candidate_map[(candidate_pos.x, candidate_pos.y)] = candidate_pos
+                continue
+            symmetry_modes.discard(mode)
 
-        self.enemy_core_pos_candidates = sorted(
-            valid_candidate_map.values(),
-            key=lambda pos: (pos.x, pos.y),
-        )
+        self._enemy_core_symmetry_modes = symmetry_modes
+        self._enemy_core_knowledge_revision = map_revision
+
+        valid_candidate_map: dict[tuple[int, int], Position] = {}
+        if "rotation" in symmetry_modes:
+            candidate_pos = Position(width - 1 - own_core_pos.x, height - 1 - own_core_pos.y)
+            valid_candidate_map[(candidate_pos.x, candidate_pos.y)] = candidate_pos
+        if "mirror_x" in symmetry_modes:
+            candidate_pos = Position(width - 1 - own_core_pos.x, own_core_pos.y)
+            valid_candidate_map[(candidate_pos.x, candidate_pos.y)] = candidate_pos
+        if "mirror_y" in symmetry_modes:
+            candidate_pos = Position(own_core_pos.x, height - 1 - own_core_pos.y)
+            valid_candidate_map[(candidate_pos.x, candidate_pos.y)] = candidate_pos
+
+        sorted_candidate_keys = sorted(valid_candidate_map)
+        self.enemy_core_pos_candidates = [
+            valid_candidate_map[candidate_key]
+            for candidate_key in sorted_candidate_keys
+        ]
 
         if len(self.enemy_core_pos_candidates) == 1:
             self.enemy_core_pos = self.enemy_core_pos_candidates[0]
+            self._enemy_core_inference_round = current_round
             return self.enemy_core_pos
 
         self.enemy_core_pos = None
+        self._enemy_core_inference_round = current_round
         return None
 
     def build_supplied_sentinel(self):
