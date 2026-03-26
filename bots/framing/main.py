@@ -19,8 +19,8 @@ CARDINAL_DIRECTIONS = [
 FLOOD_FILL_SHIFTS = [direction.delta() for direction in DIRECTIONS]
 REPAIR_MIN_TITANIUM_THRESHOLD = 10
 HARVESTER_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
-CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD = 100
-HARVESTER_MIN_TITANIUM_THRESHOLD = 300
+CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD = 50
+HARVESTER_MIN_TITANIUM_THRESHOLD = 350
 ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD = 1500
@@ -30,6 +30,7 @@ CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
 BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN = 5
 AVOID_ENEMY_BUILDER_RANGE_FOR_SUPPLY_TARGETS = False
+SPAM_MARKERS = False
 BUILDER_ACTION_RADIUS_SQ = 2
 BB_EXPAND_TARGET_REUSE_ROUNDS = 8
 BB_EXPAND_MAX_POP_ATTEMPTS = 40
@@ -1960,8 +1961,10 @@ class Bot:
 
         The method ensures the role handler is initialised, prints the builder
         role for this turn, refreshes the builder-local map cache, and then
-        runs the selected handler. It also tracks whether the previous turn
-        finished, allowing the strategy executor to resume after timeouts.
+        runs the selected handler. When marker spamming is enabled, it then
+        attempts a lightweight marker placement on a nearby tile. It also
+        tracks whether the previous turn finished, allowing the strategy
+        executor to resume after timeouts.
         """
         self.update_bb_map()
 
@@ -1980,6 +1983,8 @@ class Bot:
 
         self.bb_last_turn_completed = False
         self.bb_handler()
+        if SPAM_MARKERS:
+            self.spam_marker()
         self.bb_last_turn_completed = True
 
     def _has_visible_harvester_bridge_chain_to_core(self) -> bool:
@@ -2724,6 +2729,26 @@ class Bot:
         refreshing and can be reused by many decision methods cheaply.
         """
         return self.turn_has_enemy_bot_in_vision
+
+    def spam_marker(self) -> None:
+        """
+        Place a zero-value marker on the first nearby legal tile.
+
+        The scan is intentionally limited to action-radius-adjacent offsets for
+        performance. If no nearby tile currently allows marker placement, the
+        method exits without doing anything.
+        """
+        if not SPAM_MARKERS:
+            return
+        current_pos = self.turn_position or self.ct.get_position()
+        for dx, dy in BUILDER_STAGING_OFFSETS:
+            marker_pos = Position(current_pos.x + dx, current_pos.y + dy)
+            if not self._is_in_bounds(marker_pos):
+                continue
+            if not self.ct.can_place_marker(marker_pos):
+                continue
+            self.ct.place_marker(marker_pos, 0)
+            return
 
     def is_tile_in_enemy_builder_action_range(self, pos: Position) -> bool:
         """
