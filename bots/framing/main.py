@@ -114,6 +114,8 @@ class Tile:
     building_team: Team | None = None
     builder_bot_id: int | None = None
     builder_bot_team: Team | None = None
+    is_passable: bool = True
+    last_seen_round: int = -1
 
     def update_from_controller(self, ct: Controller) -> None:
         """
@@ -124,6 +126,8 @@ class Tile:
         building or builder bot.
         """
         self.environment = ct.get_tile_env(self.position)
+        self.is_passable = ct.is_tile_passable(self.position)
+        self.last_seen_round = ct.get_current_round()
         self.building_id = ct.get_tile_building_id(self.position)
         self.builder_bot_id = ct.get_tile_builder_bot_id(self.position)
 
@@ -391,18 +395,45 @@ class Map:
         """
         return 0 <= x < self.width and 0 <= y < self.height
 
+    def _is_known_walkable_for_path(self, x: int, y: int, own_builder_id: int) -> bool:
+        """
+        Return whether a tile is currently traversable for cached-path routing.
+
+        Unknown tiles are treated as traversable so routing can cross unseen
+        space. Known walls and known non-passable building tiles are blocked.
+        Builder-bot occupancy is only treated as blocking when the occupancy
+        was observed in the current round, which avoids stale out-of-vision
+        unit snapshots locking whole routes.
+        """
+        tile = self.matrix[x][y]
+        if tile is None:
+            return True
+        if tile.environment == Environment.WALL:
+            return False
+        if tile.building_id is not None and not tile.is_passable:
+            return False
+        if (
+            tile.last_seen_round == self.ct.get_current_round()
+            and tile.builder_bot_id is not None
+            and tile.builder_bot_id != own_builder_id
+        ):
+            return False
+        return True
+
     def get_next_field_for_target(self, target_pos: Position) -> Position | None:
         """
-        Return the next path step toward a target tile while avoiding known walls.
+        Return the next path step toward a target tile over the cached world map.
 
         The search runs a grid BFS from the current bot position stored in this
-        map's controller and treats unknown tiles as passable. It returns the
+        map's controller and treats unknown tiles as passable. Known walls and
+        known non-passable structure tiles are blocked. The method returns the
         first tile on the shortest discovered path to `target_pos`, or `None`
         when no path can currently be found or the target lies outside the map.
         """
         start_pos = self.ct.get_position()
         start_key = (start_pos.x, start_pos.y)
         target_key = (target_pos.x, target_pos.y)
+        own_builder_id = self.ct.get_id()
 
         if not self._is_in_bounds(*start_key):
             return None
@@ -411,8 +442,7 @@ class Map:
         if start_key == target_key:
             return start_pos
 
-        target_tile = self.matrix[target_pos.x][target_pos.y]
-        if target_tile is not None and target_tile.environment == Environment.WALL:
+        if not self._is_known_walkable_for_path(target_pos.x, target_pos.y, own_builder_id):
             return None
 
         queue = deque([start_key])
@@ -436,8 +466,7 @@ class Map:
                 if next_key in visited:
                     continue
 
-                next_tile = self.matrix[new_x][new_y]
-                if next_tile is not None and next_tile.environment == Environment.WALL:
+                if not self._is_known_walkable_for_path(new_x, new_y, own_builder_id):
                     continue
 
                 visited.add(next_key)
@@ -464,10 +493,11 @@ class Map:
         """
         Return the next path step toward any tile that can act on a target.
 
-        The search runs a grid BFS from the current bot position and stops at
-        the closest reachable tile whose distance to `target_pos` is within the
-        given action radius. The target tile itself is excluded as a staging
-        tile so callers can stay in range without stepping onto the build tile.
+        The search runs a grid BFS from the current bot position across the
+        cached map and stops at the closest reachable tile whose distance to
+        `target_pos` is within the given action radius. The target tile itself
+        is excluded as a staging tile so callers can stay in range without
+        stepping onto the build tile.
         """
         start_pos = self.ct.get_position()
         start_key = (start_pos.x, start_pos.y)
@@ -479,8 +509,7 @@ class Map:
         if not self._is_in_bounds(*target_key):
             return None
 
-        target_tile = self.matrix[target_pos.x][target_pos.y]
-        if target_tile is not None and target_tile.environment == Environment.WALL:
+        if not self._is_known_walkable_for_path(target_pos.x, target_pos.y, own_builder_id):
             return None
 
         def is_goal(x: int, y: int) -> bool:
@@ -492,14 +521,7 @@ class Map:
             tile = self.matrix[x][y]
             if tile is None:
                 return True
-            if tile.environment == Environment.WALL:
-                return False
-            if tile.building_id is not None and tile.building_type != EntityType.ROAD:
-                return False
-            if (
-                tile.builder_bot_id is not None
-                and tile.builder_bot_id != own_builder_id
-            ):
+            if not self._is_known_walkable_for_path(x, y, own_builder_id):
                 return False
             return True
 
@@ -526,20 +548,8 @@ class Map:
                 if next_key == target_key:
                     continue
 
-                next_tile = self.matrix[new_x][new_y]
-                if next_tile is not None:
-                    if next_tile.environment == Environment.WALL:
-                        continue
-                    if (
-                        next_tile.building_id is not None
-                        and next_tile.building_type != EntityType.ROAD
-                    ):
-                        continue
-                    if (
-                        next_tile.builder_bot_id is not None
-                        and next_tile.builder_bot_id != own_builder_id
-                    ):
-                        continue
+                if not self._is_known_walkable_for_path(new_x, new_y, own_builder_id):
+                    continue
 
                 visited.add(next_key)
                 parent[next_key] = (x, y)
@@ -1583,12 +1593,26 @@ class Bot:
         """
         Advance one step toward a target while preparing the chosen path tile.
 
-        The method scores adjacent non-wall tiles by whether they improve the
-        distance to the target and whether the builder can both road and move,
-        move only, or road only. This keeps movement goal-directed while
-        remaining simple and predictable.
+        The method first asks the cached map for a BFS next step that can route
+        across all known tiles (and unknown-but-not-wall tiles), then executes
+        that step with normal road+move behavior. If no cached route step is
+        currently available, it falls back to a local greedy adjacent-tile
+        choice so the bot can still make progress this turn.
         """
         current_pos = self.ct.get_position()
+        if current_pos == target_pos:
+            return False
+
+        if self.map is not None:
+            next_step_pos = self.map.get_next_field_for_target(target_pos)
+            if next_step_pos is not None and next_step_pos != current_pos:
+                move_direction = current_pos.direction_to(next_step_pos)
+                if (
+                    move_direction != Direction.CENTRE
+                    and self._move_in_direction_with_roads(move_direction)
+                ):
+                    return True
+
         current_distance_sq = current_pos.distance_squared(target_pos)
         candidates: list[
             tuple[tuple[int, int, int, int, int, int], Direction]
@@ -1656,8 +1680,11 @@ class Bot:
             )
             if next_step_pos is not None and next_step_pos != current_pos:
                 move_direction = current_pos.direction_to(next_step_pos)
-                if move_direction != Direction.CENTRE:
-                    return self._move_in_direction_with_roads(move_direction)
+                if (
+                    move_direction != Direction.CENTRE
+                    and self._move_in_direction_with_roads(move_direction)
+                ):
+                    return True
 
         if not allow_direct_target_fallback:
             return False
