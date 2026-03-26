@@ -1250,12 +1250,23 @@ class Bot:
                 )
             )
         self.turn_nearby_unit_infos = unit_infos
-        self.turn_has_enemy_bot_in_vision = any(
-            unit_team != self.turn_team
-            for _, _, unit_team, _ in self.turn_nearby_unit_infos
-        )
+        self._update_enemy_bot_in_vision_flag()
         self._enemy_threat_cache_round = -1
         self._spatial_cache_round = -1
+
+    def _update_enemy_bot_in_vision_flag(self) -> None:
+        """
+        Cache whether at least one enemy builder bot is currently visible.
+
+        The value is reused by multiple builder decisions (for example
+        harvester holding) so that those methods can read one stable per-turn
+        boolean instead of rescanning visible units repeatedly.
+        """
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        self.turn_has_enemy_bot_in_vision = any(
+            unit_team != own_team and unit_type == EntityType.BUILDER_BOT
+            for _, unit_type, unit_team, _ in self.turn_nearby_unit_infos
+        )
 
     def _ensure_enemy_threat_cache(self) -> None:
         """
@@ -1433,9 +1444,12 @@ class Bot:
 
         The method initialises the cache on first use, otherwise swaps in the
         latest controller and updates visible map information in place. It also
-        prints the time spent on the map update for this unit and turn.
+        refreshes the cached enemy-bot-in-vision flag at the start of map
+        fetching and prints the time spent on the map update for this unit and
+        turn.
         """
         map_update_start = time.perf_counter_ns()
+        self._update_enemy_bot_in_vision_flag()
         if self.map is None:
             self.initialize_bb()
         else:
@@ -2544,8 +2558,8 @@ class Bot:
         """
         Return whether any enemy unit is currently visible to this unit.
 
-        The method scans nearby units in the current vision radius and returns
-        true as soon as it finds one that belongs to the opposing team.
+        The value is cached once per turn at the start of builder map
+        refreshing and can be reused by many decision methods cheaply.
         """
         return self.turn_has_enemy_bot_in_vision
 
@@ -5219,8 +5233,10 @@ class Bot:
         behavior. If harvester placement is currently allowed, it first tries
         to build immediately or move into action range of the best visible ore
         tile. When `hold` is true and no build action succeeds, it instead
-        claims one visible free titanium tile deterministically and stages next
-        to it without stepping onto the ore.
+        claims one visible titanium tile deterministically and stages next to
+        it without stepping onto the ore. While holding with a visible enemy
+        builder in range, the bot prefers securing that ore tile with an allied
+        barrier.
         """
         if self.map is None:
             return False
@@ -5241,11 +5257,11 @@ class Bot:
             ore_tile = self._get_known_map_tile(ore_pos)
             if ore_tile is None or ore_tile.environment != Environment.ORE_TITANIUM:
                 continue
-            has_allied_road = (
-                ore_tile.building_type == EntityType.ROAD
-                and ore_tile.building_team == own_team
-            )
-            if ore_tile.building_id is not None and not has_allied_road:
+            has_replaceable_structure = ore_tile.building_type in {
+                EntityType.ROAD,
+                EntityType.BARRIER,
+            }
+            if ore_tile.building_id is not None and not has_replaceable_structure:
                 continue
 
             target_key = (
@@ -5253,18 +5269,20 @@ class Bot:
                 ore_pos.x,
                 ore_pos.y,
             )
-            ore_candidates.append((target_key, ore_pos, has_allied_road, ore_tile))
+            ore_candidates.append(
+                (target_key, ore_pos, has_replaceable_structure, ore_tile)
+            )
 
         if can_build and ore_candidates:
             ore_candidates.sort(key=lambda target: target[0])
 
-            for _, target_pos, has_allied_road, _ore_tile in ore_candidates:
+            for _, target_pos, has_replaceable_structure, ore_tile in ore_candidates:
                 if target_pos == current_pos:
                     continue
                 if current_pos.distance_squared(target_pos) > action_radius_sq:
                     continue
 
-                if has_allied_road:
+                if has_replaceable_structure and ore_tile.building_id is not None:
                     if not self._destroy_tile_if_safe(target_pos):
                         continue
                     if not self._build_harvester_safely(target_pos):
@@ -5277,7 +5295,7 @@ class Bot:
                     "building harvester",
                 )
 
-            for _, target_pos, _has_allied_road, _ore_tile in ore_candidates:
+            for _, target_pos, _has_replaceable_structure, _ore_tile in ore_candidates:
                 if (
                     current_pos.distance_squared(target_pos) <= action_radius_sq
                     and target_pos != current_pos
@@ -5300,6 +5318,52 @@ class Bot:
             return False
         if not ore_candidates:
             return False
+
+        ore_candidates.sort(key=lambda target: target[0])
+        if self.has_enemy_bot_in_vision():
+            for _, target_pos, has_replaceable_structure, ore_tile in ore_candidates:
+                if target_pos == current_pos:
+                    continue
+                if current_pos.distance_squared(target_pos) > action_radius_sq:
+                    continue
+
+                if (
+                    ore_tile.building_type == EntityType.BARRIER
+                    and ore_tile.building_team == own_team
+                ):
+                    return self._record_action(
+                        BotAction.HOLD_TITANIUM,
+                        "holding titanium tile",
+                    )
+
+                if has_replaceable_structure and ore_tile.building_id is not None:
+                    if not self._destroy_tile_if_safe(target_pos):
+                        continue
+
+                if not self._build_barrier_safely(target_pos):
+                    continue
+
+                return self._record_action(
+                    BotAction.HOLD_TITANIUM,
+                    "holding titanium tile",
+                )
+
+            for _, target_pos, _has_replaceable_structure, _ore_tile in ore_candidates:
+                if (
+                    current_pos.distance_squared(target_pos) <= action_radius_sq
+                    and target_pos != current_pos
+                ):
+                    continue
+                if not self._move_towards_action_range_with_roads(
+                    target_pos,
+                    action_radius_sq=action_radius_sq,
+                    allow_direct_target_fallback=False,
+                ):
+                    continue
+                return self._record_action(
+                    BotAction.HOLD_TITANIUM,
+                    "holding titanium tile",
+                )
 
         allied_builder_positions = [
             unit_pos
@@ -6452,12 +6516,11 @@ class Player(Bot):
 
 INITIAL_BB = [
     Bot.run_bb_init_res,
+    Bot.run_bb_harassment,
     CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
-    CoreSpawnTurnEvent(100),
-    Bot.run_bb_harassment,
     CoreSpawnTurnEvent(150),
     CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION,
     Bot.run_bb_defender,
