@@ -1773,13 +1773,13 @@ class Bot:
         if self.protect_harvester(hold=True):
             return
 
-        if self.defend_core_prox():
-            return
-
         if titanium >= CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
             if self.complete_supply_chain():
                 return
         if self.build_missing_supply_link(hold=True):
+            return
+
+        if self.defend_core_prox():
             return
 
         if (
@@ -2410,7 +2410,8 @@ class Bot:
         """
         Return whether a tile is a valid downstream target for supply links.
 
-        Valid targets are allied supply links/core tiles, empty tiles, and road tiles.
+        Valid targets are allied supply links/core tiles, empty tiles, and road
+        tiles (including enemy roads as a fallback target category).
         """
         if tile.environment == Environment.WALL:
             return False
@@ -2426,6 +2427,24 @@ class Bot:
         if tile.building_type == EntityType.ROAD:
             return True
         return False
+
+    def _is_enemy_road_supply_target(
+        self,
+        tile: Tile,
+        own_team: Team,
+    ) -> bool:
+        """
+        Return whether a supply target tile is specifically an enemy road.
+
+        Enemy-road targets are allowed, but only as the last fallback category
+        after all reducing non-enemy-road targets have been exhausted.
+        """
+        return (
+            tile.building_type == EntityType.ROAD
+            and tile.building_id is not None
+            and tile.building_team is not None
+            and tile.building_team != own_team
+        )
 
     def _get_supply_target_priority(
         self,
@@ -2476,8 +2495,14 @@ class Bot:
 
         The selected target must have core-distance exactly one smaller than
         the build tile and is ranked by `_get_supply_target_priority`.
+        Enemy-road targets are only considered if no reducing non-enemy-road
+        target exists.
         """
         best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
+        best_enemy_road_candidate: tuple[
+            tuple[int, int, int, int, int, int],
+            Position,
+        ] | None = None
         for direction in DIRECTIONS:
             target_pos = build_pos.add(direction)
             if not self._is_in_bounds(target_pos):
@@ -2501,12 +2526,22 @@ class Bot:
                 target_pos.x,
                 target_pos.y,
             )
+            if self._is_enemy_road_supply_target(tile, own_team):
+                if (
+                    best_enemy_road_candidate is None
+                    or candidate_key < best_enemy_road_candidate[0]
+                ):
+                    best_enemy_road_candidate = (candidate_key, target_pos)
+                continue
+
             if best_candidate is None or candidate_key < best_candidate[0]:
                 best_candidate = (candidate_key, target_pos)
 
-        if best_candidate is None:
-            return None
-        return best_candidate[1]
+        if best_candidate is not None:
+            return best_candidate[1]
+        if best_enemy_road_candidate is not None:
+            return best_enemy_road_candidate[1]
+        return None
 
     def _get_best_bridge_target(
         self,
@@ -2518,12 +2553,18 @@ class Bot:
         Return the best bridge target that reduces core distance.
 
         Candidates are ranked by largest core-distance gain first, then by the
-        same target-tile priority used for conveyors.
+        same target-tile priority used for conveyors. Enemy-road targets are
+        only considered if no reducing non-enemy-road target exists.
         """
         if self.map is None:
             return None
 
         best_candidate: tuple[
+            tuple[int, int, int, int, int, int],
+            Position,
+            int,
+        ] | None = None
+        best_enemy_road_candidate: tuple[
             tuple[int, int, int, int, int, int],
             Position,
             int,
@@ -2560,12 +2601,25 @@ class Bot:
                     candidate_x,
                     candidate_y,
                 )
+                if self._is_enemy_road_supply_target(tile, own_team):
+                    if (
+                        best_enemy_road_candidate is None
+                        or candidate_key < best_enemy_road_candidate[0]
+                    ):
+                        best_enemy_road_candidate = (candidate_key, tile.position, gain)
+                    continue
+
                 if best_candidate is None or candidate_key < best_candidate[0]:
                     best_candidate = (candidate_key, tile.position, gain)
 
-        if best_candidate is None:
-            return None
-        return (best_candidate[1], best_candidate[2])
+        if best_candidate is not None:
+            return (best_candidate[1], best_candidate[2])
+        if best_enemy_road_candidate is not None:
+            return (
+                best_enemy_road_candidate[1],
+                best_enemy_road_candidate[2],
+            )
+        return None
 
     def _get_supply_link_plan(
         self,
@@ -2639,9 +2693,14 @@ class Bot:
         This is only used in action-range contexts to recover when the
         preferred conveyor target is currently illegal (for example due to a
         direction/buildability constraint) and a different legal conveyor target
-        should be used instead.
+        should be used instead. Enemy-road targets are only considered if no
+        reducing non-enemy-road target is buildable right now.
         """
         best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
+        best_enemy_road_candidate: tuple[
+            tuple[int, int, int, int, int, int],
+            Position,
+        ] | None = None
         for direction in DIRECTIONS:
             target_pos = build_pos.add(direction)
             if not self._is_in_bounds(target_pos):
@@ -2669,12 +2728,22 @@ class Bot:
                 target_pos.x,
                 target_pos.y,
             )
+            if self._is_enemy_road_supply_target(tile, own_team):
+                if (
+                    best_enemy_road_candidate is None
+                    or candidate_key < best_enemy_road_candidate[0]
+                ):
+                    best_enemy_road_candidate = (candidate_key, target_pos)
+                continue
+
             if best_candidate is None or candidate_key < best_candidate[0]:
                 best_candidate = (candidate_key, target_pos)
 
-        if best_candidate is None:
-            return None
-        return best_candidate[1]
+        if best_candidate is not None:
+            return best_candidate[1]
+        if best_enemy_road_candidate is not None:
+            return best_enemy_road_candidate[1]
+        return None
 
     def _get_buildable_supply_link_plan(
         self,
@@ -3396,17 +3465,12 @@ class Bot:
 
     def attack_enemy_bridge(self) -> bool:
         """
-        Climb onto a visible enemy bridge and hold it in place.
+        Climb onto a visible enemy bridge and destroy it.
 
         If the builder is already standing on an enemy bridge, it stays there
-        to interfere with that logistics tile instead of using an own-tile
-        attack. This avoids builders disappearing after removing the tile under
-        themselves. Otherwise it moves toward the closest visible enemy bridge,
-        preparing the path with roads when useful.
-        
-        TODO:
-        Attack the enemy bridge tile, don't just stand there. Update the docs above after this modification.
-        
+        and attacks that tile until the bridge is gone. Otherwise it moves
+        toward the closest visible enemy bridge, preparing the path with roads
+        when useful.
         """
         current_pos = self.turn_position or self.ct.get_position()
 
@@ -3416,6 +3480,12 @@ class Bot:
             and self.ct.get_entity_type(current_building_id) == EntityType.BRIDGE
             and self.ct.get_team(current_building_id) != self.ct.get_team()
         ):
+            if self.ct.can_fire(current_pos):
+                self.ct.fire(current_pos)
+                return self._record_action(
+                    BotAction.ATTACK_ENEMY_BRIDGE,
+                    "attacking enemy bridge",
+                )
             return self._record_action(
                 BotAction.ATTACK_ENEMY_BRIDGE,
                 "holding enemy bridge",
@@ -4330,13 +4400,14 @@ class Bot:
 
     def destroy_hijacked_reschain(self) -> bool:
         """
-        Destroy allied logistics buildings that directly feed enemy turrets.
+        Destroy allied logistics buildings that feed enemy combat or supply.
 
         The method checks nearby allied conveyors, armoured conveyors, and
         bridges that this builder can destroy right now. If one of those
-        buildings outputs onto an enemy turret tile, the builder destroys the
-        closest such building, breaking the hijacked resource chain. Occupied
-        logistics tiles and the builder's own current tile are never destroyed.
+        buildings outputs onto an enemy turret or enemy supply tile, the
+        builder destroys the closest such building, breaking the hijacked
+        resource chain. Occupied logistics tiles with another visible builder
+        are never destroyed.
         """
         current_pos = self.turn_position or self.ct.get_position()
         enemy_turret_types = {
@@ -4345,6 +4416,8 @@ class Bot:
             EntityType.BREACH,
             EntityType.LAUNCHER,
         }
+        enemy_supplier_types = set(SUPPLY_LINK_TYPES)
+        enemy_supplier_types.add(EntityType.SPLITTER)
         destroy_candidates: list[tuple[tuple[int, int, int, int], Position]] = []
 
         for building_id, building_type, building_team, building_pos in self.turn_nearby_building_infos:
@@ -4376,11 +4449,12 @@ class Bot:
                 continue
             if target_tile.building_team == self.ct.get_team():
                 continue
-            if target_tile.building_type not in enemy_turret_types:
+            if (
+                target_tile.building_type not in enemy_turret_types
+                and target_tile.building_type not in enemy_supplier_types
+            ):
                 continue
 
-            if building_pos == current_pos:
-                continue
             if self.ct.is_in_vision(building_pos) and not self._can_destroy_tile(
                 building_pos
             ):
@@ -4412,8 +4486,8 @@ class Bot:
         Clear enemy passable structures or bridges from allied core proximity.
 
         The method scans visible enemy buildings that are inside the fixed
-        core-proximity radius and are either passable (for example enemy roads)
-        or bridges. It keeps a sticky target when possible, destroys that
+        core-proximity radius and are passable (for example enemy roads or bridges).
+        It keeps a sticky target when possible, destroys that
         target immediately once it is inside builder action range (including
         when standing directly on it), and otherwise moves toward action range.
         """
@@ -4429,6 +4503,25 @@ class Bot:
         core_x = self.core_center_pos.x
         core_y = self.core_center_pos.y
         prox_dist = CORE_PROXIMITY_DIST
+
+        current_building_id = self.ct.get_tile_building_id(current_pos)
+        if (
+            current_building_id is not None
+            and self.ct.get_team(current_building_id) != self.turn_team
+            and max(abs(current_pos.x - core_x), abs(current_pos.y - core_y)) <= prox_dist
+        ):
+            current_tile = self._get_known_map_tile(current_pos)
+            tile_is_passable = current_tile is not None and current_tile.is_passable
+            current_type = self.ct.get_entity_type(current_building_id)
+            if current_type == EntityType.BRIDGE or tile_is_passable:
+                self.core_prox_defend_target = (current_pos.x, current_pos.y)
+                if self.ct.can_fire(current_pos):
+                    self.ct.fire(current_pos)
+                return self._record_action(
+                    BotAction.DEFEND_CORE_PROX,
+                    "defending core proximity",
+                )
+
         prox_targets: list[
             tuple[tuple[int, int, int, int, int], Position, EntityType]
         ] = []
