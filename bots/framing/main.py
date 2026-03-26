@@ -980,13 +980,13 @@ class Bot:
 
     def _has_visible_harvester_bridge_chain_to_core(self) -> bool:
         """
-        Check whether a visible allied harvester bridge chain reaches the core.
+        Check whether a visible allied harvester supply chain reaches the core.
 
-        The check builds a graph over currently visible allied bridges by
-        linking a bridge to another bridge that sits exactly on its target
-        tile. Any chain that starts at a bridge orthogonally adjacent to a
-        visible allied harvester and ends on a core footprint tile counts as
-        an established initial resource chain.
+        The check builds a directed graph over currently visible allied bridge
+        and conveyor links (including armoured conveyors) by following each
+        link's output tile. Any chain that starts at a supply link orthogonally
+        adjacent to a visible allied harvester and ends on a core footprint
+        tile counts as an established initial resource chain.
         """
         own_team = self.ct.get_team()
         if self.core_center_pos is None:
@@ -1002,9 +1002,13 @@ class Bot:
             return False
 
         harvester_positions: set[tuple[int, int]] = set()
-        bridges: dict[int, tuple[Position, Position]] = {}
-        bridge_pos_to_id: dict[tuple[int, int], int] = {}
-        has_direct_bridge_to_core = False
+        logistics_links: dict[int, tuple[Position, Position]] = {}
+        logistics_pos_to_id: dict[tuple[int, int], int] = {}
+        logistics_types = {
+            EntityType.BRIDGE,
+            EntityType.CONVEYOR,
+            EntityType.ARMOURED_CONVEYOR,
+        }
 
         for building_id in self.ct.get_nearby_buildings():
             if self.ct.get_team(building_id) != own_team:
@@ -1016,56 +1020,50 @@ class Bot:
                 harvester_positions.add((harvester_pos.x, harvester_pos.y))
                 continue
 
-            if building_type != EntityType.BRIDGE:
+            if building_type not in logistics_types:
                 continue
 
-            bridge_pos = self.ct.get_position(building_id)
-            bridge_target_pos = self.ct.get_bridge_target(building_id)
-            bridges[building_id] = (bridge_pos, bridge_target_pos)
-            bridge_pos_to_id[(bridge_pos.x, bridge_pos.y)] = building_id
-            if (bridge_target_pos.x, bridge_target_pos.y) in core_tiles:
-                has_direct_bridge_to_core = True
+            link_pos = self.ct.get_position(building_id)
+            if building_type == EntityType.BRIDGE:
+                output_pos = self.ct.get_bridge_target(building_id)
+            else:
+                output_pos = link_pos.add(self.ct.get_direction(building_id))
+            logistics_links[building_id] = (link_pos, output_pos)
+            logistics_pos_to_id[(link_pos.x, link_pos.y)] = building_id
 
-        if not bridges:
+        if not logistics_links:
             return False
-
-        if (
-            has_direct_bridge_to_core
-            and self.map is not None
-            and self.map.known_harvesters_built > 0
-        ):
-            return True
 
         if not harvester_positions:
             return False
 
-        start_bridge_ids: list[int] = []
-        for bridge_id, (bridge_pos, _) in bridges.items():
+        start_link_ids: list[int] = []
+        for link_id, (link_pos, _) in logistics_links.items():
             for direction in CARDINAL_DIRECTIONS:
-                adjacent_pos = bridge_pos.add(direction)
+                adjacent_pos = link_pos.add(direction)
                 if (adjacent_pos.x, adjacent_pos.y) in harvester_positions:
-                    start_bridge_ids.append(bridge_id)
+                    start_link_ids.append(link_id)
                     break
 
-        if not start_bridge_ids:
+        if not start_link_ids:
             return False
 
-        queue = deque(start_bridge_ids)
+        queue = deque(start_link_ids)
         visited: set[int] = set()
         while queue:
-            bridge_id = queue.popleft()
-            if bridge_id in visited:
+            link_id = queue.popleft()
+            if link_id in visited:
                 continue
-            visited.add(bridge_id)
+            visited.add(link_id)
 
-            _, bridge_target_pos = bridges[bridge_id]
-            target_key = (bridge_target_pos.x, bridge_target_pos.y)
+            _, output_pos = logistics_links[link_id]
+            target_key = (output_pos.x, output_pos.y)
             if target_key in core_tiles:
                 return True
 
-            next_bridge_id = bridge_pos_to_id.get(target_key)
-            if next_bridge_id is not None and next_bridge_id not in visited:
-                queue.append(next_bridge_id)
+            next_link_id = logistics_pos_to_id.get(target_key)
+            if next_link_id is not None and next_link_id not in visited:
+                queue.append(next_link_id)
 
         return False
 
@@ -1074,7 +1072,7 @@ class Bot:
         Promote the initial-resource builder role to scavenger once ready.
 
         The first-resource role is considered complete as soon as a visible
-        allied harvester bridge chain reaches the allied core. After that, the
+        allied harvester supply chain reaches the allied core. After that, the
         builder permanently switches its handler to `run_bb_scavenger`. When
         `run_now` is true, the scavenger handler is executed immediately.
         """
@@ -1101,9 +1099,9 @@ class Bot:
         Bootstrap the first resource flow, then hand over to scavenger logic.
 
         This role focuses on establishing an early harvester bridge chain to
-        the allied core by prioritising harvester-adjacent bridges, bridge-gap
-        continuation, and supportive hold actions. As soon as a visible chain
-        from an allied harvester reaches the core footprint, the builder
+        the allied core by prioritising harvester-adjacent links, chain-gap
+        continuation, and supportive hold actions. As soon as a visible
+        harvester supply chain reaches the core footprint, the builder
         switches permanently to the regular scavenger role.
         """
         if self._switch_init_res_to_scavenger_if_ready(run_now=True):
