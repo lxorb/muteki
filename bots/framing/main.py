@@ -98,6 +98,10 @@ class BotAction(Enum):
     BB_SCOUT = auto()
 
 
+class CoreSpawnEvent(Enum):
+    FIRST_RESOURCE_INCREASE = auto()
+
+
 @dataclass(slots=True)
 class Tile:
     position: Position
@@ -569,6 +573,9 @@ class Bot:
         cached allied core position so this information survives across rounds.
         """
         self.core_bbs_spawned = 0  # number of builder bots spawned so far (core)
+        self.core_spawn_plan_index = 0
+        self.core_completed_spawn_events: set[CoreSpawnEvent] = set()
+        self.core_previous_resources: tuple[int, int] | None = None
         self.ct: Controller | None = None
         self.map: Map | None = None
         self.bb_handler = None
@@ -576,6 +583,9 @@ class Bot:
         self.enemy_core_pos: Position | None = None
         self.enemy_core_pos_candidates: list[Position] = []
         self.harassment_scout_target: Position | None = None
+        self.init_resource_chain_complete = False
+        self.init_res_scout_radius = 2
+        self.init_res_scout_clockwise = True
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
 
@@ -618,11 +628,13 @@ class Bot:
 
         The selection uses the current round index to map early builders onto
         predefined opening roles and falls back to the configured post-opening
-        builder role later.
+        builder role later. Event markers in `INITIAL_BB` are ignored here,
+        because they are only used by the core spawn scheduler.
         """
+        initial_builder_handlers = [entry for entry in INITIAL_BB if callable(entry)]
         round_index = self.ct.get_current_round() - 1
-        if 0 <= round_index < len(INITIAL_BB):
-            return INITIAL_BB[round_index].__get__(self, type(self))
+        if 0 <= round_index < len(initial_builder_handlers):
+            return initial_builder_handlers[round_index].__get__(self, type(self))
         return FURTHER_BB.__get__(self, type(self))
 
     def get_bb_handler_name(self) -> str:
@@ -638,6 +650,7 @@ class Bot:
 
         handler_func = getattr(self.bb_handler, "__func__", self.bb_handler)
         handler_names = {
+            Bot.run_bb_init_res: "init resource",
             Bot.run_bb_maintainer: "maintainer",
             Bot.run_bb_scavenger: "scavenger",
             Bot.run_bb_harassment: "harassment",
@@ -730,22 +743,69 @@ class Bot:
         finally:
             print(f"Unit {self.ct.get_id()} turn took {self.get_ns_elapsed() / 1000}mus")
 
+    def _update_core_spawn_events(self) -> None:
+        """
+        Refresh core spawn-event flags from the current global resource state.
+
+        Events are evaluated incrementally from turn to turn. The
+        `FIRST_RESOURCE_INCREASE` event fires the first time either team
+        resource increases compared to the previous core turn.
+        """
+        current_resources = self.ct.get_global_resources()
+        if self.core_previous_resources is None:
+            self.core_previous_resources = current_resources
+            return
+
+        previous_ti, previous_ax = self.core_previous_resources
+        current_ti, current_ax = current_resources
+        if current_ti > previous_ti or current_ax > previous_ax:
+            self.core_completed_spawn_events.add(CoreSpawnEvent.FIRST_RESOURCE_INCREASE)
+        self.core_previous_resources = current_resources
+
+    def _advance_core_spawn_plan_until_next_builder(self) -> bool:
+        """
+        Advance scheduled event checkpoints and report whether spawning may continue.
+
+        The spawn plan can contain both builder-role entries and event markers.
+        Completed events are skipped. If the next pending entry is an unmet
+        event, the core must wait and returns `False`.
+        """
+        while self.core_spawn_plan_index < len(INITIAL_BB):
+            plan_entry = INITIAL_BB[self.core_spawn_plan_index]
+
+            if isinstance(plan_entry, CoreSpawnEvent):
+                if plan_entry in self.core_completed_spawn_events:
+                    self.core_spawn_plan_index += 1
+                    continue
+                return False
+
+            if callable(plan_entry):
+                return True
+
+            self.core_spawn_plan_index += 1
+
+        return True
+
     def run_core(self):
         """
-        Execute the core's turn logic.
+        Execute the core's builder spawn schedule with event checkpoints.
 
-        The current implementation only handles opening builder production and
-        spawns initial builders on random adjacent core tiles while slots remain.
-        After the opening, it continues spawning builders whenever the team has
-        at least `FURTHER_BB_THRESHOLD` titanium available, but never after the
-        core has already spawned `MAX_BOTS` builder bots in total.
+        The core follows `INITIAL_BB` as a spawn plan, where role entries can
+        be interleaved with event markers. Before spawning roles that come
+        after an event marker, the core waits until that event has fired. Once
+        the initial plan is exhausted, it spawns additional builders only above
+        `FURTHER_BB_THRESHOLD`, and never beyond `MAX_BOTS`.
         """
         if self.core_bbs_spawned >= MAX_BOTS:
             return
 
+        self._update_core_spawn_events()
+        if not self._advance_core_spawn_plan_until_next_builder():
+            return
+
         titanium, _ = self.ct.get_global_resources()
-        should_spawn = self.core_bbs_spawned < len(INITIAL_BB)
-        if not should_spawn and titanium < FURTHER_BB_THRESHOLD:
+        should_spawn_from_initial_plan = self.core_spawn_plan_index < len(INITIAL_BB)
+        if not should_spawn_from_initial_plan and titanium < FURTHER_BB_THRESHOLD:
             return
 
         spawn_directions = DIRECTIONS[:]
@@ -757,6 +817,8 @@ class Bot:
 
             self.ct.spawn_builder(spawn_pos)
             self.core_bbs_spawned += 1
+            if should_spawn_from_initial_plan:
+                self.core_spawn_plan_index += 1
             self.last_action = BotAction.SPAWN_BUILDER
             return
 
@@ -813,6 +875,180 @@ class Bot:
             return
 
         self.maintainer_patrol()
+
+    def _has_visible_harvester_bridge_chain_to_core(self) -> bool:
+        """
+        Check whether a visible allied harvester bridge chain reaches the core.
+
+        The check builds a graph over currently visible allied bridges by
+        linking a bridge to another bridge that sits exactly on its target
+        tile. Any chain that starts at a bridge orthogonally adjacent to a
+        visible allied harvester and ends on a core footprint tile counts as
+        an established initial resource chain.
+        """
+        own_team = self.ct.get_team()
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is None:
+            return False
+
+        core_tiles = {
+            (pos.x, pos.y)
+            for pos in self._get_core_footprint_positions(self.core_center_pos)
+        }
+        if not core_tiles:
+            return False
+
+        harvester_positions: set[tuple[int, int]] = set()
+        bridges: dict[int, tuple[Position, Position]] = {}
+        bridge_pos_to_id: dict[tuple[int, int], int] = {}
+        has_direct_bridge_to_core = False
+
+        for building_id in self.ct.get_nearby_buildings():
+            if self.ct.get_team(building_id) != own_team:
+                continue
+
+            building_type = self.ct.get_entity_type(building_id)
+            if building_type == EntityType.HARVESTER:
+                harvester_pos = self.ct.get_position(building_id)
+                harvester_positions.add((harvester_pos.x, harvester_pos.y))
+                continue
+
+            if building_type != EntityType.BRIDGE:
+                continue
+
+            bridge_pos = self.ct.get_position(building_id)
+            bridge_target_pos = self.ct.get_bridge_target(building_id)
+            bridges[building_id] = (bridge_pos, bridge_target_pos)
+            bridge_pos_to_id[(bridge_pos.x, bridge_pos.y)] = building_id
+            if (bridge_target_pos.x, bridge_target_pos.y) in core_tiles:
+                has_direct_bridge_to_core = True
+
+        if not bridges:
+            return False
+
+        if (
+            has_direct_bridge_to_core
+            and self.map is not None
+            and self.map.known_harvesters_built > 0
+        ):
+            return True
+
+        if not harvester_positions:
+            return False
+
+        start_bridge_ids: list[int] = []
+        for bridge_id, (bridge_pos, _) in bridges.items():
+            for direction in CARDINAL_DIRECTIONS:
+                adjacent_pos = bridge_pos.add(direction)
+                if (adjacent_pos.x, adjacent_pos.y) in harvester_positions:
+                    start_bridge_ids.append(bridge_id)
+                    break
+
+        if not start_bridge_ids:
+            return False
+
+        queue = deque(start_bridge_ids)
+        visited: set[int] = set()
+        while queue:
+            bridge_id = queue.popleft()
+            if bridge_id in visited:
+                continue
+            visited.add(bridge_id)
+
+            _, bridge_target_pos = bridges[bridge_id]
+            target_key = (bridge_target_pos.x, bridge_target_pos.y)
+            if target_key in core_tiles:
+                return True
+
+            next_bridge_id = bridge_pos_to_id.get(target_key)
+            if next_bridge_id is not None and next_bridge_id not in visited:
+                queue.append(next_bridge_id)
+
+        return False
+
+    def _switch_init_res_to_scavenger_if_ready(self, run_now: bool = False) -> bool:
+        """
+        Promote the initial-resource builder role to scavenger once ready.
+
+        The first-resource role is considered complete as soon as a visible
+        allied harvester bridge chain reaches the allied core. After that, the
+        builder permanently switches its handler to `run_bb_scavenger`. When
+        `run_now` is true, the scavenger handler is executed immediately.
+        """
+        if not self.init_resource_chain_complete:
+            self.init_resource_chain_complete = (
+                self._has_visible_harvester_bridge_chain_to_core()
+            )
+        if not self.init_resource_chain_complete:
+            return False
+
+        handler_func = getattr(self.bb_handler, "__func__", self.bb_handler)
+        if handler_func != Bot.run_bb_scavenger:
+            self.bb_handler = Bot.run_bb_scavenger.__get__(self, type(self))
+            print("initial resource chain complete, switching to scavenger")
+
+        if not run_now:
+            return False
+
+        self.bb_handler()
+        return True
+
+    def run_bb_init_res(self):
+        """
+        Bootstrap the first resource flow, then hand over to scavenger logic.
+
+        This role focuses on establishing an early harvester bridge chain to
+        the allied core by prioritising harvester-adjacent bridges, bridge-gap
+        continuation, and supportive hold actions. As soon as a visible chain
+        from an allied harvester reaches the core footprint, the builder
+        switches permanently to the regular scavenger role.
+        """
+        if self._switch_init_res_to_scavenger_if_ready(run_now=True):
+            return
+
+        if self.build_harvester_bridge():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+        
+        if self.hold_build_harvester_bridge():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+        
+        if self.protect_harvester():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+        
+        if self.hold_protect_harvester():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+        
+        if self.complete_supply_chain():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+
+        if self.build_missing_bridge():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+
+        if self.hold_missing_bridge():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+
+        if self.build_extractor():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+
+        if self.hold_visible_titanium():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+
+        if self.init_res_scout():
+            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+            return
+
+        self._switch_init_res_to_scavenger_if_ready(run_now=True)
+        return
 
     def run_bb_scavenger(self):
         """
@@ -2913,6 +3149,192 @@ class Bot:
 
     # Builder scouting, patrol, and logistics continuation
 
+    def _get_core_ring_positions(self, radius: int) -> list[Position]:
+        """
+        Return clockwise in-bounds positions on one square ring around the core.
+
+        The ring uses Chebyshev distance to the core center. Radius `2` is the
+        first ring outside the core footprint and larger radii expand outward.
+        """
+        if self.core_center_pos is None:
+            return []
+        if radius < 2:
+            return []
+
+        center_x = self.core_center_pos.x
+        center_y = self.core_center_pos.y
+        ring_positions: list[Position] = []
+
+        top_y = center_y - radius
+        bottom_y = center_y + radius
+        left_x = center_x - radius
+        right_x = center_x + radius
+
+        for x in range(left_x, right_x + 1):
+            pos = Position(x, top_y)
+            if self._is_in_bounds(pos):
+                ring_positions.append(pos)
+
+        for y in range(top_y + 1, bottom_y + 1):
+            pos = Position(right_x, y)
+            if self._is_in_bounds(pos):
+                ring_positions.append(pos)
+
+        for x in range(right_x - 1, left_x - 1, -1):
+            pos = Position(x, bottom_y)
+            if self._is_in_bounds(pos):
+                ring_positions.append(pos)
+
+        for y in range(bottom_y - 1, top_y, -1):
+            pos = Position(left_x, y)
+            if self._is_in_bounds(pos):
+                ring_positions.append(pos)
+
+        return ring_positions
+
+    def init_res_scout(self) -> bool:
+        """
+        Expand roads around the core in widening circular rings.
+
+        The scout prefers tiles on the current core ring that do not yet have
+        an allied road, walking clockwise by default and flipping direction
+        when blocked. If a ring is already roaded, it gradually increases the
+        scouting radius and continues the same pattern farther out.
+        """
+        if self.map is None:
+            return False
+
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is None:
+            return self.bb_scout()
+
+        current_pos = self.ct.get_position()
+        own_team = self.ct.get_team()
+        max_radius = max(self.map.width, self.map.height)
+        if max_radius < 2:
+            return False
+
+        def is_walkable_ring_tile(pos: Position) -> bool:
+            tile = self._get_known_map_tile(pos)
+            if tile is None:
+                return True
+            if tile.environment == Environment.WALL:
+                return False
+            if tile.building_id is None:
+                return True
+            return (
+                tile.building_type == EntityType.ROAD
+                and tile.building_team == own_team
+            )
+
+        def has_owned_road(pos: Position) -> bool:
+            tile = self._get_known_map_tile(pos)
+            return (
+                tile is not None
+                and tile.building_type == EntityType.ROAD
+                and tile.building_team == own_team
+            )
+
+        start_radius = max(2, min(self.init_res_scout_radius, max_radius))
+        ring_count = max_radius - 1
+
+        selected_radius: int | None = None
+        selected_ring: list[Position] = []
+        fallback_radius: int | None = None
+        fallback_ring: list[Position] = []
+
+        for offset in range(ring_count):
+            radius = 2 + ((start_radius - 2 + offset) % ring_count)
+            ring_positions = [
+                pos
+                for pos in self._get_core_ring_positions(radius)
+                if is_walkable_ring_tile(pos)
+            ]
+            if not ring_positions:
+                continue
+
+            roadless_ring_positions = [
+                pos for pos in ring_positions if not has_owned_road(pos)
+            ]
+            if roadless_ring_positions:
+                selected_radius = radius
+                selected_ring = ring_positions
+                break
+
+            if fallback_radius is None:
+                fallback_radius = radius
+                fallback_ring = ring_positions
+
+        if selected_radius is None:
+            if fallback_radius is None:
+                return False
+            selected_radius = fallback_radius
+            selected_ring = fallback_ring
+
+        self.init_res_scout_radius = selected_radius
+        roadless_positions = [
+            pos for pos in selected_ring if not has_owned_road(pos)
+        ]
+        target_pool = roadless_positions if roadless_positions else selected_ring
+        if not target_pool:
+            return False
+
+        if current_pos in selected_ring:
+            for step_sign in (
+                1 if self.init_res_scout_clockwise else -1,
+                -1 if self.init_res_scout_clockwise else 1,
+            ):
+                start_index = selected_ring.index(current_pos)
+                for step in range(1, len(selected_ring) + 1):
+                    next_pos = selected_ring[(start_index + step_sign * step) % len(selected_ring)]
+                    if next_pos == current_pos:
+                        continue
+                    if roadless_positions and next_pos not in roadless_positions:
+                        continue
+
+                    move_direction = current_pos.direction_to(next_pos)
+                    if move_direction == Direction.CENTRE:
+                        continue
+                    if not self._move_in_direction_with_roads(move_direction):
+                        continue
+
+                    self.init_res_scout_clockwise = step_sign == 1
+                    return self._record_action(
+                        BotAction.BB_SCOUT,
+                        "init resource scouting",
+                    )
+
+        best_target_pos = min(
+            target_pool,
+            key=lambda pos: (
+                0 if not has_owned_road(pos) else 1,
+                current_pos.distance_squared(pos),
+                pos.x,
+                pos.y,
+            ),
+        )
+
+        next_step_pos = self.map.get_next_field_for_target(best_target_pos)
+        if next_step_pos is not None and next_step_pos != current_pos:
+            move_direction = current_pos.direction_to(next_step_pos)
+            if (
+                move_direction != Direction.CENTRE
+                and self._move_in_direction_with_roads(move_direction)
+            ):
+                return self._record_action(
+                    BotAction.BB_SCOUT,
+                    "init resource scouting",
+                )
+
+        if not self._move_towards_with_roads(best_target_pos):
+            return False
+
+        return self._record_action(
+            BotAction.BB_SCOUT,
+            "init resource scouting",
+        )
+
     def bb_scout(self) -> bool:
         """
         Expand outward into lightly developed frontier areas.
@@ -3402,6 +3824,8 @@ class Player(Bot):
 
 ### constants ###
 INITIAL_BB = [
+    Bot.run_bb_init_res,
+    CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
