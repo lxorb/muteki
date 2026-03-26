@@ -3696,23 +3696,65 @@ class Bot:
         empty or occupied by a road, skipping harvester-adjacent gaps that are
         handled by `build_harvester_bridge()`. When team titanium is above the
         chain threshold, it builds or moves toward the closest legal missing
-        link. When `hold` is true and titanium is still below that threshold,
-        it instead stages near the best missing-link tile so the build can
-        happen immediately once resources recover.
+        link. If the missing-link tile is currently blocked by an enemy
+        passable structure (for example an enemy road), the builder first moves
+        onto that tile and destroys it, then continues normal link placement on
+        subsequent turns. If the builder is already standing on such a blocker
+        tile and that tile is the output target of an allied bridge or
+        conveyor, it immediately attacks the current tile before any hold or
+        fallback behavior. When `hold` is true and titanium is still below that
+        threshold, it instead stages near the best missing-link tile so the
+        build can happen immediately once resources recover.
         """
         if self.map is None:
             return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_building_id = self.ct.get_tile_building_id(current_pos)
+        if (
+            current_building_id is not None
+            and self.ct.get_team(current_building_id) != own_team
+        ):
+            for link_id, link_type, link_team, _ in self.turn_nearby_building_infos:
+                if link_team != own_team:
+                    continue
+                if not self._is_supply_link_type(link_type):
+                    continue
+                output_pos = self._get_supply_link_output_pos(link_id)
+                if output_pos != current_pos:
+                    continue
+                if not self._destroy_tile_if_safe(current_pos):
+                    if self.ct.can_fire(current_pos):
+                        self.ct.fire(current_pos)
+                        return self._record_action(
+                            BotAction.BUILD_MISSING_BRIDGE,
+                            "building missing bridge",
+                        )
+                    return self._record_action(
+                        BotAction.HOLD_MISSING_BRIDGE,
+                        "holding missing bridge position",
+                    )
+                return self._record_action(
+                    BotAction.BUILD_MISSING_BRIDGE,
+                    "building missing bridge",
+                )
 
         titanium, _ = self.turn_resources
         can_build = titanium >= CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD
         if not can_build and not hold:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
         actionable_candidates: list[
             tuple[tuple[int, int, int, int, int, int, int], Position, Position, bool]
         ] = []
         movement_candidates: list[
+            tuple[tuple[int, int, int, int, int, int, int], Position]
+        ] = []
+        enemy_blocker_action_candidates: list[
+            tuple[tuple[int, int, int, int, int, int, int], Position]
+        ] = []
+        enemy_blocker_move_candidates: list[
             tuple[tuple[int, int, int, int, int, int, int], Position]
         ] = []
         hold_candidates: list[
@@ -3748,10 +3790,6 @@ class Bot:
             if not (is_empty_build_pos or is_road_build_pos):
                 continue
 
-            target_pos = self.get_bridge_target(build_pos)
-            if target_pos is None:
-                continue
-
             build_pos_type_rank = 0 if is_empty_build_pos else 1
             candidate_key = (
                 current_pos.distance_squared(build_pos),
@@ -3764,6 +3802,25 @@ class Bot:
             )
 
             if can_build:
+                is_enemy_blocker_tile = (
+                    tile.building_id is not None
+                    and tile.building_team != self.turn_team
+                    and (tile.is_passable or tile.building_type == EntityType.BRIDGE)
+                )
+                if is_enemy_blocker_tile:
+                    if build_pos == current_pos:
+                        enemy_blocker_action_candidates.append(
+                            (candidate_key, build_pos)
+                        )
+                    else:
+                        enemy_blocker_move_candidates.append(
+                            (candidate_key, build_pos)
+                        )
+                    continue
+
+                target_pos = self.get_bridge_target(build_pos)
+                if target_pos is None:
+                    continue
                 if self._is_supply_output_tile_unsafe(build_pos, target_pos):
                     continue
                 if (
@@ -3788,6 +3845,10 @@ class Bot:
                     movement_candidates.append((candidate_key, build_pos))
                 continue
 
+            target_pos = self.get_bridge_target(build_pos)
+            if target_pos is None:
+                continue
+
             staging_pos = self._get_best_action_staging_pos(build_pos)
             if staging_pos is None:
                 continue
@@ -3804,6 +3865,26 @@ class Bot:
             hold_candidates.append((hold_key, staging_pos, build_pos))
 
         if can_build:
+            if enemy_blocker_action_candidates:
+                enemy_blocker_action_candidates.sort(key=lambda candidate: candidate[0])
+                for _, build_pos in enemy_blocker_action_candidates:
+                    if not self._destroy_tile_if_safe(build_pos):
+                        continue
+                    return self._record_action(
+                        BotAction.BUILD_MISSING_BRIDGE,
+                        "building missing bridge",
+                    )
+
+            if enemy_blocker_move_candidates:
+                enemy_blocker_move_candidates.sort(key=lambda candidate: candidate[0])
+                target_blocker_pos = enemy_blocker_move_candidates[0][1]
+                if not self._move_towards_with_roads(target_blocker_pos):
+                    return False
+                return self._record_action(
+                    BotAction.BUILD_MISSING_BRIDGE,
+                    "building missing bridge",
+                )
+
             if actionable_candidates:
                 actionable_candidates.sort(key=lambda candidate: candidate[0])
                 for _, build_pos, target_pos, is_road_build_pos in actionable_candidates:
