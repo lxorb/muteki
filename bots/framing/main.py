@@ -1546,6 +1546,91 @@ class Bot:
                 return False
         return self.ct.can_destroy(pos)
 
+    def _is_next_to_core_footprint(self, pos: Position) -> bool:
+        """
+        Check whether a tile is adjacent (including diagonals) to core footprint.
+
+        The check uses the in-bounds 3x3 core footprint and returns true when
+        `pos` is exactly one king move away from at least one core tile.
+        """
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is None:
+            return False
+
+        for core_tile in self._get_core_footprint_positions(self.core_center_pos):
+            chebyshev_dist = max(
+                abs(pos.x - core_tile.x),
+                abs(pos.y - core_tile.y),
+            )
+            if chebyshev_dist == 1:
+                return True
+
+        return False
+
+    def _should_use_conveyor_for_bridge_placement(
+        self,
+        build_pos: Position,
+        target_pos: Position,
+    ) -> bool:
+        """
+        Decide whether bridge placement should downgrade to conveyor placement.
+
+        A conveyor is used when the desired target tile is adjacent to the
+        build tile, and always when the build tile sits next to the allied core
+        footprint.
+        """
+        if build_pos != target_pos and build_pos.distance_squared(target_pos) <= 2:
+            return True
+        if self._is_next_to_core_footprint(build_pos):
+            return True
+        return False
+
+    def _can_build_bridge_or_conveyor(
+        self,
+        build_pos: Position,
+        target_pos: Position,
+    ) -> bool:
+        """
+        Check whether the bridge-placement helper can build at this tile now.
+
+        The method mirrors the bridge/conveyor fallback policy and uses
+        `can_build_conveyor` when conveyor fallback applies, otherwise
+        `can_build_bridge`.
+        """
+        if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
+            direction = build_pos.direction_to(target_pos)
+            if direction == Direction.CENTRE:
+                return False
+            return self.ct.can_build_conveyor(build_pos, direction)
+
+        return self.ct.can_build_bridge(build_pos, target_pos)
+
+    def _build_bridge_or_conveyor(
+        self,
+        build_pos: Position,
+        target_pos: Position,
+    ) -> bool:
+        """
+        Place a bridge normally, with conveyor fallback for short/core-adjacent links.
+
+        If fallback applies, the conveyor faces toward `target_pos`. Otherwise
+        a bridge is built with `target_pos` as bridge target.
+        """
+        if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
+            direction = build_pos.direction_to(target_pos)
+            if direction == Direction.CENTRE:
+                return False
+            if not self.ct.can_build_conveyor(build_pos, direction):
+                return False
+            self.ct.build_conveyor(build_pos, direction)
+            return True
+
+        if not self.ct.can_build_bridge(build_pos, target_pos):
+            return False
+        self.ct.build_bridge(build_pos, target_pos)
+        return True
+
     def _build_bridge_with_optional_road_removal(
         self,
         build_pos: Position,
@@ -1553,25 +1638,24 @@ class Bot:
         is_road_build_pos: bool,
     ) -> bool:
         """
-        Build a bridge on an empty tile or prepare one by clearing a road first.
+        Build a bridge-style supply link on an empty tile or after road removal.
 
         If the destination already contains a road, the road is removed and the
-        bridge is also placed in the same turn whenever that immediately
-        becomes legal. On empty tiles, the method only succeeds when the bridge
-        build itself is currently legal.
+        supply link is also placed in the same turn whenever that immediately
+        becomes legal. The supply link uses normal bridge placement, except it
+        falls back to conveyor placement for adjacent targets or core-adjacent
+        build tiles.
         """
         if is_road_build_pos:
             if not self._can_destroy_tile(build_pos):
                 return False
             self.ct.destroy(build_pos)
-            if self.ct.can_build_bridge(build_pos, target_pos):
-                self.ct.build_bridge(build_pos, target_pos)
+            self._build_bridge_or_conveyor(build_pos, target_pos)
             return True
 
-        if not self.ct.can_build_bridge(build_pos, target_pos):
+        if not self._build_bridge_or_conveyor(build_pos, target_pos):
             return False
 
-        self.ct.build_bridge(build_pos, target_pos)
         return True
 
     def _get_core_footprint_positions(self, core_center_pos: Position) -> list[Position]:
@@ -2107,6 +2191,8 @@ class Bot:
                 continue
             if self.ct.get_team(building_id) != own_team:
                 continue
+            if self.ct.get_hp(building_id) >= self.ct.get_max_hp(building_id):
+                continue
 
             building_type = self.ct.get_entity_type(building_id)
             if building_type not in defended_supply_types:
@@ -2454,15 +2540,15 @@ class Bot:
 
     def build_harvester_bridge(self) -> bool:
         """
-        Build a bridge orthogonally next to a nearby allied harvester that lacks one.
+        Build a chain link next to a nearby allied harvester that lacks one.
 
         The method scans visible allied harvesters, skips any that already have
-        an orthogonally adjacent allied bridge, and looks for empty orthogonal
-        neighbor tiles where a new bridge could be placed. It uses
-        `get_bridge_target` to choose the new bridge target and builds the
+        an orthogonally adjacent allied bridge or conveyor, and looks for empty
+        orthogonal neighbor tiles where a new link could be placed. It uses
+        `get_bridge_target` to choose the downstream target and builds the
         closest legal candidate when the local titanium threshold is met. If
         the chosen build tile is not yet in action range, the builder advances
-        toward action-range staging instead of trying to step onto the bridge
+        toward action-range staging instead of trying to step onto the build
         tile directly.
         """
         if self.map is None:
@@ -2499,7 +2585,7 @@ class Bot:
                 if tile is None:
                     continue
                 if (
-                    tile.building_type == EntityType.BRIDGE
+                    tile.building_type in {EntityType.BRIDGE, EntityType.CONVEYOR}
                     and tile.building_team == self.ct.get_team()
                 ):
                     has_adjacent_bridge = True
@@ -2528,7 +2614,7 @@ class Bot:
                     harvester_id,
                 )
                 if current_pos.distance_squared(bridge_pos) <= 2:
-                    if not self.ct.can_build_bridge(bridge_pos, target_pos):
+                    if not self._can_build_bridge_or_conveyor(bridge_pos, target_pos):
                         continue
                     actionable_candidates.append((candidate_key, bridge_pos, target_pos))
                     continue
@@ -2538,7 +2624,8 @@ class Bot:
         if actionable_candidates:
             actionable_candidates.sort(key=lambda candidate: candidate[0])
             _, bridge_pos, target_pos = actionable_candidates[0]
-            self.ct.build_bridge(bridge_pos, target_pos)
+            if not self._build_bridge_or_conveyor(bridge_pos, target_pos):
+                return False
             return self._record_action(
                 BotAction.BUILD_HARVESTER_BRIDGE,
                 "building harvester bridge",
@@ -2605,7 +2692,7 @@ class Bot:
                 if tile is None:
                     continue
                 if (
-                    tile.building_type == EntityType.BRIDGE
+                    tile.building_type in {EntityType.BRIDGE, EntityType.CONVEYOR}
                     and tile.building_team == self.ct.get_team()
                 ):
                     has_adjacent_bridge = True
@@ -2701,18 +2788,20 @@ class Bot:
 
     def build_missing_bridge(self) -> bool:
         """
-        Extend broken bridge chains by placing missing bridges on empty or road targets.
+        Extend broken bridge chains by placing missing links on empty or road targets.
 
         The method first prioritises adding a bridge next to a nearby allied
         harvester via `build_harvester_bridge`. If that does not build
         anything, it then looks for allied bridges whose current target tile is
-        empty or occupied by a road, and attempts to place a new bridge on that
+        empty or occupied by a road, and attempts to place a new link on that
         tile pointing onward using `get_bridge_target`, subject to its own
         titanium threshold. If the chosen missing tile is currently outside
         action range, the bot moves toward a valid action-range staging tile
         instead of giving up that turn. If a road occupies the chosen build
-        tile, the road is removed first and the bridge is placed immediately
-        when the rules allow both actions in the same turn.
+        tile, the road is removed first and the link is placed immediately
+        when the rules allow both actions in the same turn. Link placement uses
+        bridge placement by default, but falls back to conveyors for adjacent
+        targets and for core-adjacent build tiles.
         """
         if self.build_harvester_bridge():
             return True
@@ -2767,7 +2856,7 @@ class Bot:
                     continue
                 if (
                     not is_road_build_pos
-                    and not self.ct.can_build_bridge(build_pos, target_pos)
+                    and not self._can_build_bridge_or_conveyor(build_pos, target_pos)
                 ):
                     continue
 
@@ -4360,9 +4449,11 @@ class Bot:
         tile is still unknown in the cached map, or is known but not yet
         occupied by a conveyor or bridge. If the missing continuation tile is
         buildable and in action range, it extends the chain there, removing a
-        road first and placing the bridge immediately when both actions are
-        legal in the same turn. Otherwise it moves toward a tile that can
-        place that bridge while building roads on the way.
+        road first and placing the next link immediately when both actions are
+        legal in the same turn. Link placement uses normal bridges except for
+        adjacent/core-adjacent fallback where conveyors are used. Otherwise it
+        moves toward a tile that can place the continuation while building
+        roads on the way.
         """
         if self.map is None:
             return False
@@ -4428,7 +4519,10 @@ class Bot:
                 if is_road_build_pos:
                     if not self._can_destroy_tile(target_pos):
                         continue
-                elif not self.ct.can_build_bridge(target_pos, next_target_pos):
+                elif not self._can_build_bridge_or_conveyor(
+                    target_pos,
+                    next_target_pos,
+                ):
                     continue
 
                 build_pos_type_rank = 0 if is_empty_build_pos else 1
