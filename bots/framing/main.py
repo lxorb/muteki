@@ -20,6 +20,7 @@ EXTRACTOR_MIN_TITANIUM_THRESHOLD = 300
 ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
 FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
+CORE_PROXIMITY_DIST = 3
 MAX_BOTS = 6
 MAX_HARVESTORS = 999
 SURRENDER_AT_TURN = 600
@@ -91,6 +92,7 @@ class BotAction(Enum):
     BUILD_MISSING_BRIDGE = auto()
     HOLD_MISSING_BRIDGE = auto()
     DESTROY_HIJACKED_RESCHAIN = auto()
+    DEFEND_CORE_PROX = auto()
     PROTECT_HARVESTER = auto()
     HOLD_PROTECT_HARVESTER = auto()
     BUILD_EXTRACTOR = auto()
@@ -561,6 +563,37 @@ class Map:
 
         return Position(step_key[0], step_key[1])
 
+    def get_prox_dist(self) -> int:
+        """
+        Return the fixed core-proximity radius for local defense decisions.
+
+        The radius is configured globally and is intentionally constant so core
+        defense behavior stays predictable across maps.
+        """
+        return CORE_PROXIMITY_DIST
+
+    def is_inside_core_proximity(
+        self,
+        pos: Position,
+        core_center_pos: Position | None = None,
+    ) -> bool:
+        """
+        Check whether a position lies inside the chosen core proximity radius.
+
+        The check uses Chebyshev distance to the given core center (or the
+        cached allied core center when omitted) and the radius returned
+        by `get_prox_dist`.
+        """
+        core_pos = core_center_pos or self.core_center_pos
+        if core_pos is None:
+            return False
+
+        prox_dist = self.get_prox_dist()
+        return (
+            max(abs(pos.x - core_pos.x), abs(pos.y - core_pos.y))
+            <= prox_dist
+        )
+
 
 class Bot:
     # Builder lifecycle and role selection
@@ -586,6 +619,7 @@ class Bot:
         self.init_resource_chain_complete = False
         self.init_res_scout_radius = 2
         self.init_res_scout_clockwise = True
+        self.core_prox_defend_target: tuple[int, int] | None = None
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
 
@@ -1077,6 +1111,9 @@ class Bot:
             return
         
         if self.hold_protect_harvester():
+            return
+        
+        if self.defend_core_prox():
             return
         
         if self.complete_supply_chain():
@@ -2623,6 +2660,168 @@ class Bot:
             BotAction.DESTROY_HIJACKED_RESCHAIN,
             "destroying hijacked reschain",
         )
+
+    def defend_core_prox(self) -> bool:
+        """
+        Clear enemy passable structures or bridges from allied core proximity.
+
+        The method scans visible enemy buildings that are inside the fixed
+        core-proximity radius and are either passable (for example enemy roads)
+        or bridges. It locks onto one nearby target tile, moves onto it, and
+        attacks it there. If no candidate is currently reachable, the method
+        returns early instead of drifting elsewhere.
+        """
+        if self.map is None:
+            return False
+
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is None:
+            return False
+
+        current_pos = self.ct.get_position()
+        occupying_building_id = self.ct.get_tile_building_id(current_pos)
+        if (
+            occupying_building_id is not None
+            and self.ct.get_team(occupying_building_id) != self.ct.get_team()
+            and self.map.is_inside_core_proximity(
+                current_pos,
+                core_center_pos=self.core_center_pos,
+            )
+        ):
+            if self.ct.can_fire(current_pos):
+                self.ct.fire(current_pos)
+                self.core_prox_defend_target = (current_pos.x, current_pos.y)
+                return self._record_action(
+                    BotAction.DEFEND_CORE_PROX,
+                    "defending core proximity",
+                )
+            if self.ct.can_destroy(current_pos):
+                self.ct.destroy(current_pos)
+                self.core_prox_defend_target = (current_pos.x, current_pos.y)
+                return self._record_action(
+                    BotAction.DEFEND_CORE_PROX,
+                    "defending core proximity",
+                )
+
+        prox_targets: list[
+            tuple[tuple[int, int, int, int, int], Position, EntityType]
+        ] = []
+
+        for building_id in self.ct.get_nearby_buildings():
+            if self.ct.get_team(building_id) == self.ct.get_team():
+                continue
+
+            target_type = self.ct.get_entity_type(building_id)
+            target_pos = self.ct.get_position(building_id)
+            if not self.map.is_inside_core_proximity(
+                target_pos,
+                core_center_pos=self.core_center_pos,
+            ):
+                continue
+            tile_is_passable = self.ct.is_tile_passable(target_pos)
+            if not (
+                target_type == EntityType.BRIDGE
+                or tile_is_passable
+            ):
+                continue
+            if target_type == EntityType.BRIDGE and not tile_is_passable:
+                continue
+
+            type_rank = 0 if target_type == EntityType.ROAD else 1
+            candidate_key = (
+                current_pos.distance_squared(target_pos),
+                type_rank,
+                target_pos.x,
+                target_pos.y,
+                building_id,
+            )
+            prox_targets.append((candidate_key, target_pos, target_type))
+
+        if not prox_targets:
+            self.core_prox_defend_target = None
+            return False
+
+        prox_targets.sort(key=lambda candidate: candidate[0])
+        target_by_pos: dict[tuple[int, int], tuple[Position, EntityType]] = {
+            (candidate_pos.x, candidate_pos.y): (candidate_pos, candidate_type)
+            for _, candidate_pos, candidate_type in prox_targets
+        }
+
+        ordered_targets: list[tuple[Position, EntityType]] = []
+        if (
+            self.core_prox_defend_target is not None
+            and self.core_prox_defend_target in target_by_pos
+        ):
+            ordered_targets.append(target_by_pos[self.core_prox_defend_target])
+        for _, candidate_pos, candidate_type in prox_targets:
+            if (
+                ordered_targets
+                and candidate_pos == ordered_targets[0][0]
+            ):
+                continue
+            ordered_targets.append((candidate_pos, candidate_type))
+
+        for target_pos, target_type in ordered_targets:
+            target_key = (target_pos.x, target_pos.y)
+
+            if current_pos == target_pos:
+                occupying_building_id = self.ct.get_tile_building_id(current_pos)
+                if (
+                    occupying_building_id is None
+                    or self.ct.get_team(occupying_building_id) == self.ct.get_team()
+                ):
+                    if target_key == self.core_prox_defend_target:
+                        self.core_prox_defend_target = None
+                    continue
+
+                if self.ct.can_fire(current_pos):
+                    self.ct.fire(current_pos)
+                    self.core_prox_defend_target = target_key
+                    return self._record_action(
+                        BotAction.DEFEND_CORE_PROX,
+                        "defending core proximity",
+                    )
+
+                if self.ct.can_destroy(current_pos):
+                    self.ct.destroy(current_pos)
+                    self.core_prox_defend_target = target_key
+                    return self._record_action(
+                        BotAction.DEFEND_CORE_PROX,
+                        "defending core proximity",
+                    )
+
+                self.core_prox_defend_target = target_key
+                return self._record_action(
+                    BotAction.DEFEND_CORE_PROX,
+                    "defending core proximity",
+                )
+
+            next_step_pos = self.map.get_next_field_for_target(target_pos)
+            if next_step_pos is None or next_step_pos == current_pos:
+                continue
+
+            move_direction = current_pos.direction_to(next_step_pos)
+            if move_direction == Direction.CENTRE:
+                continue
+
+            can_progress = (
+                self.ct.can_move(move_direction)
+                or self.ct.can_build_road(next_step_pos)
+            )
+            if not can_progress:
+                continue
+
+            if not self._move_in_direction_with_roads(move_direction):
+                continue
+
+            self.core_prox_defend_target = target_key
+            return self._record_action(
+                BotAction.DEFEND_CORE_PROX,
+                "defending core proximity",
+            )
+
+        return False
 
     def _get_harvester_protection_candidates(
         self,
