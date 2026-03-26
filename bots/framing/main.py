@@ -29,6 +29,7 @@ HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 160
 CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
 BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN = 5
+AVOID_ENEMY_BUILDER_RANGE_FOR_SUPPLY_TARGETS = False
 BUILDER_ACTION_RADIUS_SQ = 2
 BB_EXPAND_TARGET_REUSE_ROUNDS = 8
 BB_EXPAND_MAX_POP_ATTEMPTS = 40
@@ -100,6 +101,7 @@ HARASSMENT_ENEMY_TILE_TYPE_PRIORITY = [
     EntityType.BRIDGE,
     EntityType.CONVEYOR,
     EntityType.ARMOURED_CONVEYOR,
+    EntityType.ROAD,
 ]
 HARASSMENT_ENEMY_TILE_SPECIAL_PRIORITY = [
     "feeds_enemy_turret",
@@ -156,6 +158,7 @@ class BotAction(Enum):
     NONE = auto()
     SPAWN_BUILDER = auto()
     ATTACK_ENEMY_HARVESTER = auto()
+    BUILD_SUPPLIED_SENTINEL = auto()
     ATTACK_ENEMY_WALKABLE = auto()
     REPAIR_IF_DAMAGED = auto()
     MAINTAINER_PATROL = auto()
@@ -2845,7 +2848,7 @@ class Bot:
 
         Priority order is:
         1. tiles with existing allied supply links or allied core tiles
-        2. tiles outside enemy builder action range
+        2. tiles outside enemy builder action range (optional)
         3. empty tiles, then allied roads, then enemy roads
         """
         has_allied_supply = (
@@ -2856,9 +2859,11 @@ class Bot:
             )
         )
         supply_rank = 0 if has_allied_supply else 1
-        enemy_builder_rank = (
-            1 if self.is_tile_in_enemy_builder_action_range(tile.position) else 0
-        )
+        enemy_builder_rank = 0
+        if AVOID_ENEMY_BUILDER_RANGE_FOR_SUPPLY_TARGETS:
+            enemy_builder_rank = (
+                1 if self.is_tile_in_enemy_builder_action_range(tile.position) else 0
+            )
 
         if has_allied_supply:
             type_rank = 0
@@ -4020,14 +4025,11 @@ class Bot:
 
     def attack_enemy_walkable(self) -> bool:
         """
-        Attack enemy walkable logistics tiles by configured harassment priority.
+        Attack only strategically relevant enemy logistics tiles.
 
-        The method targets visible enemy bridges/conveyors/armoured conveyors/
-        roads. Supplier tiles feeding enemy turrets, targeting enemy core
-        tiles, or adjacent to enemy harvesters are promoted above normal type
-        priority. If the bot stands on a damaged enemy target tile, it keeps
-        attacking that tile and ignores all other options for this turn, unless
-        current titanium is below the harassment attack threshold.
+        Harassment ignores generic enemy roads and suppliers and only considers
+        targets that either feed an enemy turret, target the enemy core, or sit
+        orthogonally adjacent to an enemy harvester.
         """
         current_pos = self.turn_position or self.ct.get_position()
         own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
@@ -4037,22 +4039,11 @@ class Bot:
 
         type_rank = HARASSMENT_ENEMY_TILE_TYPE_RANK
         special_rank = HARASSMENT_ENEMY_TILE_SPECIAL_RANK
-        current_tile = self._get_known_map_tile(current_pos)
-        if (
-            current_tile is not None
-            and current_tile.building_id is not None
-            and current_tile.building_type in type_rank
-            and current_tile.building_team != own_team
-            and self.ct.get_hp(current_tile.building_id)
-            < self.ct.get_max_hp(current_tile.building_id)
-        ):
-            if can_attack and self.ct.can_fire(current_pos):
-                self.ct.fire(current_pos)
-                self.harassment_attack_target = current_pos
-                return self._record_action(
-                    BotAction.ATTACK_ENEMY_WALKABLE,
-                    "attacking enemy walkable",
-                )
+        relevant_specials = {
+            special_rank["feeds_enemy_turret"],
+            special_rank["targets_enemy_core"],
+            special_rank["adjacent_enemy_harvester"],
+        }
 
         enemy_harvester_positions = {
             (building_pos.x, building_pos.y)
@@ -4068,37 +4059,72 @@ class Bot:
             building_type: EntityType,
             building_pos: Position,
         ) -> int:
-            if building_type not in SUPPLY_LINK_TYPES:
-                return special_rank["default"]
-
-            output_pos = self._get_supply_link_output_pos_from_info(
-                building_id,
-                building_type,
-                building_pos,
-            )
-            output_tile = (
-                self._get_known_map_tile(output_pos)
-                if output_pos is not None and self._is_in_bounds(output_pos)
-                else None
-            )
-            if (
-                output_tile is not None
-                and output_tile.last_seen_round == self.turn_round
-                and output_tile.building_id is not None
-                and output_tile.building_team != own_team
-            ):
-                output_building_type = output_tile.building_type
-                if output_building_type in ENEMY_TURRET_TYPES:
-                    return special_rank["feeds_enemy_turret"]
-                if output_building_type == EntityType.CORE:
-                    return special_rank["targets_enemy_core"]
-
             for direction in CARDINAL_DIRECTIONS:
                 adjacent_pos = building_pos.add(direction)
                 if (adjacent_pos.x, adjacent_pos.y) in enemy_harvester_positions:
                     return special_rank["adjacent_enemy_harvester"]
 
+            if building_type in SUPPLY_LINK_TYPES:
+                output_pos = self._get_supply_link_output_pos_from_info(
+                    building_id,
+                    building_type,
+                    building_pos,
+                )
+                output_tile = (
+                    self._get_known_map_tile(output_pos)
+                    if output_pos is not None and self._is_in_bounds(output_pos)
+                    else None
+                )
+                if (
+                    output_tile is not None
+                    and output_tile.last_seen_round == self.turn_round
+                    and output_tile.building_id is not None
+                    and output_tile.building_team != own_team
+                ):
+                    output_building_type = output_tile.building_type
+                    if output_building_type in ENEMY_TURRET_TYPES:
+                        return special_rank["feeds_enemy_turret"]
+                    if output_building_type == EntityType.CORE:
+                        return special_rank["targets_enemy_core"]
+
             return special_rank["default"]
+
+        current_tile = self._get_known_map_tile(current_pos)
+        if (
+            current_tile is not None
+            and current_tile.building_id is not None
+            and current_tile.building_type in type_rank
+            and current_tile.building_team != own_team
+        ):
+            current_special_priority = get_special_priority(
+                current_tile.building_id,
+                current_tile.building_type,
+                current_pos,
+            )
+            if (
+                current_special_priority == special_rank["targets_enemy_core"]
+                and can_attack
+                and self.ct.can_fire(current_pos)
+            ):
+                self.ct.fire(current_pos)
+                self.harassment_attack_target = current_pos
+                return self._record_action(
+                    BotAction.ATTACK_ENEMY_WALKABLE,
+                    "attacking enemy walkable",
+                )
+            if (
+                current_special_priority in relevant_specials
+                and self.ct.get_hp(current_tile.building_id)
+                < self.ct.get_max_hp(current_tile.building_id)
+                and can_attack
+                and self.ct.can_fire(current_pos)
+            ):
+                self.ct.fire(current_pos)
+                self.harassment_attack_target = current_pos
+                return self._record_action(
+                    BotAction.ATTACK_ENEMY_WALKABLE,
+                    "attacking enemy walkable",
+                )
 
         best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
         candidate_positions: dict[tuple[int, int], tuple[tuple[int, int, int, int, int, int], Position]] = {}
@@ -4110,10 +4136,17 @@ class Bot:
             type_priority = type_rank.get(building_type)
             if type_priority is None:
                 continue
+            special_priority = get_special_priority(
+                building_id,
+                building_type,
+                building_pos,
+            )
+            if special_priority not in relevant_specials:
+                continue
 
             distance_sq = current_pos.distance_squared(building_pos)
             candidate_key = (
-                get_special_priority(building_id, building_type, building_pos),
+                special_priority,
                 type_priority,
                 distance_sq,
                 building_pos.x,
@@ -4156,11 +4189,14 @@ class Bot:
                 target_pos = locked_candidate[1]
 
         if target_pos == current_pos:
-            self.harassment_attack_target = target_pos
-            return self._record_action(
-                BotAction.ATTACK_ENEMY_WALKABLE,
-                "attacking enemy walkable",
-            )
+            if can_attack and self.ct.can_fire(target_pos):
+                self.ct.fire(target_pos)
+                self.harassment_attack_target = target_pos
+                return self._record_action(
+                    BotAction.ATTACK_ENEMY_WALKABLE,
+                    "attacking enemy walkable",
+                )
+            return False
         if self._move_towards_with_roads(target_pos, use_cached_flow=True):
             self.harassment_attack_target = target_pos
             return self._record_action(
@@ -5956,7 +5992,151 @@ class Bot:
         return None
 
     def build_supplied_sentinel(self):
-        pass
+        """
+        Build a sentinel on empty outputs of visible enemy supply links.
+
+        The method scans visible enemy conveyors/armoured conveyors/bridges.
+        If one points to a currently visible empty tile, that output tile
+        becomes a sentinel candidate. Sentinel facing is selected with the
+        shared placement helper used by enemy-harvester sentinel builds, with
+        required coverage on the originating enemy supplier tile and preferred
+        coverage on enemy-core tiles when possible.
+        """
+        if self.map is None:
+            return False
+
+        titanium, _ = self.turn_resources
+        if titanium < ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD:
+            return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        current_round = (
+            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        )
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        action_radius_sq = 2
+
+        self.get_enemy_core_pos()
+        possible_enemy_core_tiles: list[Position] = []
+        seen_core_tiles: set[tuple[int, int]] = set()
+        possible_enemy_core_centers = (
+            [self.enemy_core_pos]
+            if self.enemy_core_pos is not None
+            else list(self.enemy_core_pos_candidates)
+        )
+        for core_center_pos in possible_enemy_core_centers:
+            for core_tile in self._get_core_target_tiles(core_center_pos):
+                core_key = (core_tile.x, core_tile.y)
+                if core_key in seen_core_tiles:
+                    continue
+                seen_core_tiles.add(core_key)
+                possible_enemy_core_tiles.append(core_tile)
+
+        supplier_types = {
+            EntityType.CONVEYOR,
+            EntityType.ARMOURED_CONVEYOR,
+            EntityType.BRIDGE,
+        }
+        candidate_tiles: list[
+            tuple[tuple[int, int, int, int, int, int], Position, Position]
+        ] = []
+        best_move_target: tuple[tuple[int, int, int, int, int, int], Position] | None = None
+
+        for building_id, building_type, building_team, supplier_pos in self.turn_nearby_building_infos:
+            if building_team == own_team:
+                continue
+            if building_type not in supplier_types:
+                continue
+
+            output_pos = self._get_supply_link_output_pos_from_info(
+                building_id,
+                building_type,
+                supplier_pos,
+            )
+            if output_pos is None:
+                continue
+            if not self._is_in_bounds(output_pos):
+                continue
+            if not self.ct.is_in_vision(output_pos):
+                continue
+
+            output_tile = self._get_known_map_tile(output_pos)
+            if output_tile is None:
+                continue
+            if output_tile.last_seen_round != current_round:
+                continue
+            if output_tile.building_id is not None:
+                continue
+            if output_tile.environment != Environment.EMPTY:
+                continue
+
+            candidate_key = (
+                current_pos.distance_squared(output_pos),
+                output_pos.x,
+                output_pos.y,
+                supplier_pos.x,
+                supplier_pos.y,
+                building_id,
+            )
+            candidate_tiles.append((candidate_key, output_pos, supplier_pos))
+            if (
+                current_pos.distance_squared(output_pos) <= action_radius_sq
+                and output_pos != current_pos
+            ):
+                continue
+            if best_move_target is None or candidate_key < best_move_target[0]:
+                best_move_target = (candidate_key, output_pos)
+
+        if candidate_tiles:
+            candidate_tiles.sort(key=lambda candidate: candidate[0])
+            build_options: list[
+                tuple[tuple[int, int, int, int, int, int, int], Position, Direction]
+            ] = []
+            for candidate_key, candidate_pos, supplier_pos in candidate_tiles:
+                if candidate_pos == current_pos:
+                    continue
+                if current_pos.distance_squared(candidate_pos) > action_radius_sq:
+                    continue
+
+                direction_plan = self._get_sentinel_placement_direction(
+                    candidate_pos,
+                    must_cover_targets=[supplier_pos],
+                    preferred_targets=possible_enemy_core_tiles,
+                )
+                if direction_plan is None:
+                    continue
+                sentinel_direction, covers_enemy_core = direction_plan
+                build_key = (
+                    0 if covers_enemy_core else 1,
+                    *candidate_key,
+                )
+                build_options.append((build_key, candidate_pos, sentinel_direction))
+
+            if build_options:
+                build_options.sort(key=lambda candidate: candidate[0])
+                for _, candidate_pos, sentinel_direction in build_options:
+                    if not self._build_sentinel_safely(candidate_pos, sentinel_direction):
+                        continue
+                    return self._record_action(
+                        BotAction.BUILD_SUPPLIED_SENTINEL,
+                        "building supplied sentinel",
+                    )
+
+        if best_move_target is None:
+            return False
+
+        if not self._move_towards_action_range_with_roads(
+            best_move_target[1],
+            action_radius_sq=action_radius_sq,
+            allow_direct_target_fallback=True,
+            use_cached_flow_for_fallback=True,
+        ):
+            return False
+
+        return self._record_action(
+            BotAction.BUILD_SUPPLIED_SENTINEL,
+            "building supplied sentinel",
+        )
 
 
     # Builder scouting, patrol, and logistics continuation
@@ -6852,6 +7032,7 @@ class Player(Bot):
 INITIAL_BB = [
     Bot.run_bb_init_res,
     Bot.run_bb_harassment,
+    Bot.run_bb_init_res,
     CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
