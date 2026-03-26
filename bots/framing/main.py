@@ -21,6 +21,7 @@ ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
 FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 CORE_PROXIMITY_DIST = 3
+LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
 MAX_BOTS = 6
 MAX_HARVESTORS = 999
 SURRENDER_AT_TURN = 600
@@ -98,6 +99,8 @@ class BotAction(Enum):
     BUILD_EXTRACTOR = auto()
     HOLD_TITANIUM = auto()
     BB_SCOUT = auto()
+    PATROL_SUPPLY_CHAINS = auto()
+    LAUNCHER_DEFEND = auto()
 
 
 class CoreSpawnEvent(Enum):
@@ -630,6 +633,7 @@ class Bot:
         self.init_res_scout_radius = 2
         self.init_res_scout_clockwise = True
         self.core_prox_defend_target: tuple[int, int] | None = None
+        self.defender_patrol_target: tuple[int, int] | None = None
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
 
@@ -698,6 +702,7 @@ class Bot:
             Bot.run_bb_maintainer: "maintainer",
             Bot.run_bb_scavenger: "scavenger",
             Bot.run_bb_harassment: "harassment",
+            Bot.run_bb_defender: "defender",
             Bot.run_bb_unassigned: "unassigned",
         }
         return handler_names.get(handler_func, handler_func.__name__)
@@ -1179,6 +1184,19 @@ class Bot:
             return
 
         self.harassment_scout()
+
+    def run_bb_defender(self):
+        """
+        Execute the defender builder role for the current turn.
+
+        The defender first reacts to enemy builder bots that stand on friendly
+        logistics tiles by trying to place a nearby launcher, then falls back
+        to patrolling known allied supply-chain structures.
+        """
+        if self.launcher_defend():
+            return
+
+        self.patrol_supply_chains()
 
     def run_bb_unassigned(self):
         """
@@ -1886,6 +1904,150 @@ class Bot:
             BotAction.ATTACK_ENEMY_BRIDGE,
             "attacking enemy bridge",
         )
+
+    def launcher_defend(self) -> bool:
+        """
+        Place a launcher near enemy builders that stand on allied supply tiles.
+
+        The method scans visible tiles for enemy builder bots occupying an
+        allied conveyor or bridge tile, then tries to place a launcher on one
+        of the eight neighboring tiles around that intrusion. Empty tiles are
+        preferred, and allied roads may be removed first when needed. If no
+        launcher can be placed immediately, the defender moves toward action
+        range of the best neighboring launcher tile.
+        """
+        if self.map is None:
+            return False
+
+        titanium, _ = self.ct.get_global_resources()
+        if titanium < LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD:
+            return False
+
+        own_team = self.ct.get_team()
+        current_pos = self.ct.get_position()
+        defended_supply_types = {
+            EntityType.CONVEYOR,
+            EntityType.ARMOURED_CONVEYOR,
+            EntityType.BRIDGE,
+        }
+
+        intrusion_tiles: list[tuple[tuple[int, int, int], Position]] = []
+        for pos in self.ct.get_nearby_tiles():
+            builder_id = self.ct.get_tile_builder_bot_id(pos)
+            if builder_id is None:
+                continue
+            if self.ct.get_team(builder_id) == own_team:
+                continue
+
+            building_id = self.ct.get_tile_building_id(pos)
+            if building_id is None:
+                continue
+            if self.ct.get_team(building_id) != own_team:
+                continue
+
+            building_type = self.ct.get_entity_type(building_id)
+            if building_type not in defended_supply_types:
+                continue
+
+            intrusion_key = (
+                current_pos.distance_squared(pos),
+                pos.x,
+                pos.y,
+            )
+            intrusion_tiles.append((intrusion_key, pos))
+
+        if not intrusion_tiles:
+            return False
+
+        intrusion_tiles.sort(key=lambda candidate: candidate[0])
+        actionable_candidates: list[
+            tuple[tuple[int, int, int, int, int, int], Position, bool]
+        ] = []
+        movement_candidates: list[
+            tuple[tuple[int, int, int, int, int, int], Position]
+        ] = []
+
+        for _, enemy_tile_pos in intrusion_tiles:
+            for direction in DIRECTIONS:
+                build_pos = enemy_tile_pos.add(direction)
+                if not self._is_in_bounds(build_pos):
+                    continue
+
+                build_tile = self._get_known_map_tile(build_pos)
+                if build_tile is not None and build_tile.environment == Environment.WALL:
+                    continue
+                if (
+                    build_tile is not None
+                    and build_tile.building_id is not None
+                    and build_tile.building_type != EntityType.ROAD
+                ):
+                    continue
+
+                is_road_build_pos = (
+                    build_tile is not None
+                    and build_tile.building_type == EntityType.ROAD
+                )
+                candidate_key = (
+                    current_pos.distance_squared(enemy_tile_pos),
+                    current_pos.distance_squared(build_pos),
+                    0 if not is_road_build_pos else 1,
+                    build_pos.x,
+                    build_pos.y,
+                    enemy_tile_pos.x,
+                    enemy_tile_pos.y,
+                )
+                if current_pos.distance_squared(build_pos) <= 2:
+                    if not self.ct.is_in_vision(build_pos):
+                        continue
+                    if (
+                        not is_road_build_pos
+                        and not self.ct.can_build_launcher(build_pos)
+                    ):
+                        continue
+                    if is_road_build_pos and not self._can_destroy_tile(build_pos):
+                        continue
+                    actionable_candidates.append(
+                        (candidate_key, build_pos, is_road_build_pos)
+                    )
+                    continue
+
+                movement_candidates.append((candidate_key, build_pos))
+
+        if actionable_candidates:
+            actionable_candidates.sort(key=lambda candidate: candidate[0])
+            for _, build_pos, is_road_build_pos in actionable_candidates:
+                if is_road_build_pos:
+                    if not self._can_destroy_tile(build_pos):
+                        continue
+                    self.ct.destroy(build_pos)
+
+                if not self.ct.can_build_launcher(build_pos):
+                    continue
+
+                self.ct.build_launcher(build_pos)
+                return self._record_action(
+                    BotAction.LAUNCHER_DEFEND,
+                    "launcher defending supply chain",
+                )
+
+        if not movement_candidates:
+            return False
+
+        movement_candidates.sort(key=lambda candidate: candidate[0])
+        for _, build_pos in movement_candidates:
+            if not self._move_towards_action_range_with_roads(
+                build_pos,
+                action_radius_sq=2,
+                allow_direct_target_fallback=False,
+            ):
+                continue
+
+            return self._record_action(
+                BotAction.LAUNCHER_DEFEND,
+                "moving to launcher defend",
+            )
+
+        return False
 
     def repair_if_damaged(self, check_vision_radius: bool = False) -> bool:
         """
@@ -3905,6 +4067,128 @@ class Bot:
             BotAction.MAINTAINER_PATROL,
             "patrolling base",
         )
+
+    def patrol_supply_chains(self) -> bool:
+        """
+        Patrol known allied conveyor and bridge chains across the map.
+
+        The defender first tries to step directly onto an adjacent allied
+        supply-chain tile when it is already on a chain tile, which keeps the
+        movement on top of the logistics network itself. If no adjacent chain
+        step is available, it heads toward a known chain tile target using the
+        normal wall-aware movement helper.
+        """
+        if self.map is None:
+            return False
+
+        own_team = self.ct.get_team()
+        current_pos = self.ct.get_position()
+        supply_chain_types = {
+            EntityType.CONVEYOR,
+            EntityType.ARMOURED_CONVEYOR,
+            EntityType.SPLITTER,
+            EntityType.BRIDGE,
+        }
+
+        def is_allied_supply_tile(pos: Position) -> bool:
+            tile = self._get_known_map_tile(pos)
+            return (
+                tile is not None
+                and tile.building_team == own_team
+                and tile.building_type in supply_chain_types
+            )
+
+        supply_tiles: list[Position] = []
+        for x, column in enumerate(self.map.matrix):
+            for y, tile in enumerate(column):
+                if tile is None:
+                    continue
+                if tile.building_team != own_team:
+                    continue
+                if tile.building_type not in supply_chain_types:
+                    continue
+                supply_tiles.append(Position(x, y))
+
+        if not supply_tiles:
+            self.defender_patrol_target = None
+            return False
+
+        if (
+            self.defender_patrol_target is not None
+            and not is_allied_supply_tile(
+                Position(
+                    self.defender_patrol_target[0],
+                    self.defender_patrol_target[1],
+                )
+            )
+        ):
+            self.defender_patrol_target = None
+
+        if is_allied_supply_tile(current_pos):
+            adjacent_chain_steps: list[
+                tuple[tuple[int, int, int, int], Direction, Position]
+            ] = []
+            for direction_index, direction in enumerate(DIRECTIONS):
+                next_pos = current_pos.add(direction)
+                if not self._is_in_bounds(next_pos):
+                    continue
+                if not is_allied_supply_tile(next_pos):
+                    continue
+
+                target_bias = (
+                    0
+                    if self.defender_patrol_target == (next_pos.x, next_pos.y)
+                    else 1
+                )
+                candidate_key = (
+                    target_bias,
+                    direction_index,
+                    next_pos.x,
+                    next_pos.y,
+                )
+                adjacent_chain_steps.append((candidate_key, direction, next_pos))
+
+            adjacent_chain_steps.sort(key=lambda candidate: candidate[0])
+            for _, direction, next_pos in adjacent_chain_steps:
+                if not self._move_in_direction_with_roads(direction):
+                    continue
+
+                self.defender_patrol_target = (next_pos.x, next_pos.y)
+                return self._record_action(
+                    BotAction.PATROL_SUPPLY_CHAINS,
+                    "patrolling supply chains",
+                )
+
+        ordered_targets: list[Position] = []
+        if self.defender_patrol_target is not None:
+            preferred_target = Position(
+                self.defender_patrol_target[0],
+                self.defender_patrol_target[1],
+            )
+            if preferred_target != current_pos and is_allied_supply_tile(preferred_target):
+                ordered_targets.append(preferred_target)
+
+        remaining_targets = sorted(
+            [pos for pos in supply_tiles if pos != current_pos and pos not in ordered_targets],
+            key=lambda pos: (
+                current_pos.distance_squared(pos),
+                pos.x,
+                pos.y,
+            ),
+        )
+        ordered_targets.extend(remaining_targets)
+
+        for target_pos in ordered_targets:
+            if not self._move_towards_with_roads(target_pos):
+                continue
+
+            self.defender_patrol_target = (target_pos.x, target_pos.y)
+            return self._record_action(
+                BotAction.PATROL_SUPPLY_CHAINS,
+                "patrolling supply chains",
+            )
+
+        return False
 
     def complete_supply_chain(self) -> bool:
         """
