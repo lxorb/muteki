@@ -105,6 +105,7 @@ class BotAction(Enum):
 
 class CoreSpawnEvent(Enum):
     FIRST_RESOURCE_INCREASE = auto()
+    TURN_REACHED_200 = auto()
 
 
 @dataclass(slots=True)
@@ -799,7 +800,11 @@ class Bot:
         Events are evaluated incrementally from turn to turn. The
         `FIRST_RESOURCE_INCREASE` event fires the first time either team
         resource increases compared to the previous core turn.
+        `TURN_REACHED_200` fires once round 200 or later is reached.
         """
+        if self.ct.get_current_round() >= 200:
+            self.core_completed_spawn_events.add(CoreSpawnEvent.TURN_REACHED_200)
+
         current_resources = self.ct.get_global_resources()
         if self.core_previous_resources is None:
             self.core_previous_resources = current_resources
@@ -4339,5 +4344,7 @@ INITIAL_BB = [
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
+    CoreSpawnEvent.TURN_REACHED_200,
+    Bot.run_bb_defender,
 ]
 FURTHER_BB = Bot.run_bb_scavenger
