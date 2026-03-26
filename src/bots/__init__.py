@@ -1,4 +1,3 @@
-import random
 from cambc import Controller, EntityType
 from src.lib.information import Information
 
