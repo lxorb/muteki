@@ -1324,7 +1324,7 @@ class Bot:
         scavengers, harassment units, and so on.
         """
         if self.bb_handler is None:
-            return "unassigned"
+            return "scavenger"
 
         handler_func = getattr(self.bb_handler, "__func__", self.bb_handler)
         handler_names = {
@@ -1333,7 +1333,6 @@ class Bot:
             Bot.run_bb_scavenger: "scavenger",
             Bot.run_bb_harassment: "harassment",
             Bot.run_bb_defender: "defender",
-            Bot.run_bb_unassigned: "unassigned",
         }
         return handler_names.get(handler_func, handler_func.__name__)
 
@@ -1902,21 +1901,6 @@ class Bot:
             ("patrol_supply_chains", self.patrol_supply_chains),
         ]
         self._run_bb_strategy_plan("defender", steps)
-
-    def run_bb_unassigned(self):
-        """
-        Fall back to safe generic builder behavior when no role is assigned.
-
-        An unassigned builder first takes obvious harvester opportunities, then
-        uses the normal scout fallback, and finally chills in the base instead
-        of idling completely.
-        """
-        steps = [
-            ("build_harvester", self.build_harvester),
-            ("bb_scout", self.bb_scout),
-            ("maintainer_patrol", self.maintainer_patrol),
-        ]
-        self._run_bb_strategy_plan("unassigned", steps)
 
     def run_gunner(self):
         """
@@ -6010,7 +5994,7 @@ CORE_TILE_BB_ROLE = {
     (0, -1): Bot.run_bb_scavenger,
     (1, -1): Bot.run_bb_defender,
     (-1, 0): Bot.run_bb_scavenger,
-    (0, 0): Bot.run_bb_unassigned,
+    (0, 0): Bot.run_bb_scavenger,
     (1, 0): Bot.run_bb_scavenger,
     (-1, 1): Bot.run_bb_maintainer,
     (0, 1): Bot.run_bb_init_res,
