@@ -2,6 +2,7 @@ import atexit
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
+import heapq
 import os
 import random
 import time
@@ -36,7 +37,7 @@ BUILDER_ACTION_OFFSETS = [
 SENTINEL_COVER_OFFSETS = [(dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)]
 MAX_BOTS = 6
 MAX_HARVESTORS = 999
-SURRENDER_AT_TURN = 3000
+SURRENDER_AT_TURN = 500
 
 SENTINEL_TARGET_PRIORITY = [
     EntityType.GUNNER,
@@ -948,6 +949,36 @@ class Map:
             <= prox_dist
         )
 
+    def get_sector(self, pos: Position) -> str:
+        """
+        Return the map sector of a tile relative to the allied core centre.
+
+        The map is split into `NE`, `SE`, `SW`, and `NW` sectors around the
+        core centre. Axis ties follow fixed rules so every tile has exactly one
+        sector: directly above -> `NE`, right -> `SE`, below -> `SW`,
+        and left -> `NW`.
+        """
+        core_pos = self.core_center_pos
+        if core_pos is None:
+            core_pos = Position(self.width // 2, self.height // 2)
+
+        dx = pos.x - core_pos.x
+        dy = pos.y - core_pos.y
+
+        if dx == 0 and dy == 0:
+            return "NE"
+        if dx == 0:
+            return "NE" if dy < 0 else "SW"
+        if dy == 0:
+            return "SE" if dx > 0 else "NW"
+        if dx > 0 and dy < 0:
+            return "NE"
+        if dx > 0 and dy > 0:
+            return "SE"
+        if dx < 0 and dy > 0:
+            return "SW"
+        return "NW"
+
 
 class Bot:
     # Builder lifecycle and role selection
@@ -1010,6 +1041,14 @@ class Bot:
         self._spatial_cache_round = -1
         self._spatial_unknown_prefix: list[list[int]] = []
         self._spatial_owned_prefix: list[list[int]] = []
+        self._expand_heap: list[
+            tuple[int, int, int, int, int, int, int, int]
+        ] = []
+        self._expand_candidate_revision: dict[tuple[int, int], int] = {}
+        self._expand_known_candidates: set[tuple[int, int]] = set()
+        self._expand_frontier_candidates: set[tuple[int, int]] = set()
+        self._expand_revision_counter = 0
+        self._expand_cached_map_size: tuple[int, int] | None = None
 
     def _debug_print(self, message: str) -> None:
         """
@@ -1822,7 +1861,7 @@ class Bot:
         def fallback_step() -> bool:
             if titanium < SCAVENGER_ACTIVE_TITANIUM_THRESHOLD:
                 return self.scavenger_patrol_supply_chains()
-            return self.bb_scout()
+            return self.bb_expand()
 
         steps = [
             ("destroy_hijacked_reschain", self.destroy_hijacked_reschain),
@@ -1839,7 +1878,7 @@ class Bot:
             (
                 "scavenger_patrol_supply_chains"
                 if titanium < SCAVENGER_ACTIVE_TITANIUM_THRESHOLD
-                else "bb_scout",
+                else "bb_expand",
                 fallback_step,
             ),
         ]
@@ -4857,7 +4896,7 @@ class Bot:
             and self.map.known_harvesters_built < MAX_HARVESTORS
         )
         action_radius_sq = 2
-        ore_targets: list[tuple[tuple[int, int, int], Position]] = []
+        ore_targets: list[tuple[tuple[int, int, int], Position, bool]] = []
         hold_targets: list[tuple[tuple[int, int, int, int, int], Position]] = []
 
         allied_builder_positions = []
@@ -4874,7 +4913,11 @@ class Bot:
             ore_tile = self._get_known_map_tile(ore_pos)
             if ore_tile is None or ore_tile.environment != Environment.ORE_TITANIUM:
                 continue
-            if ore_tile.building_id is not None:
+            has_allied_road = (
+                ore_tile.building_type == EntityType.ROAD
+                and ore_tile.building_team == own_team
+            )
+            if ore_tile.building_id is not None and not has_allied_road:
                 continue
 
             if can_build:
@@ -4883,7 +4926,7 @@ class Bot:
                     ore_pos.x,
                     ore_pos.y,
                 )
-                ore_targets.append((target_key, ore_pos))
+                ore_targets.append((target_key, ore_pos, has_allied_road))
 
             if not hold:
                 continue
@@ -4914,18 +4957,26 @@ class Bot:
         if can_build and ore_targets:
             ore_targets.sort(key=lambda target: target[0])
 
-            for _, target_pos in ore_targets:
+            for _, target_pos, has_allied_road in ore_targets:
                 if target_pos == current_pos:
                     continue
                 if current_pos.distance_squared(target_pos) > action_radius_sq:
                     continue
-                if self._build_harvester_safely(target_pos):
-                    return self._record_action(
-                        BotAction.BUILD_HARVESTER,
-                        "building harvester",
-                    )
 
-            for _, target_pos in ore_targets:
+                if has_allied_road:
+                    if not self._destroy_tile_if_safe(target_pos):
+                        continue
+                    if not self._build_harvester_safely(target_pos):
+                        continue
+                elif not self._build_harvester_safely(target_pos):
+                    continue
+
+                return self._record_action(
+                    BotAction.BUILD_HARVESTER,
+                    "building harvester",
+                )
+
+            for _, target_pos, _has_allied_road in ore_targets:
                 if (
                     current_pos.distance_squared(target_pos) <= action_radius_sq
                     and target_pos != current_pos
@@ -5158,7 +5209,7 @@ class Bot:
         if self.core_center_pos is None:
             self.find_core_center()
         if self.core_center_pos is None:
-            return self.bb_scout()
+            return self.bb_expand()
 
         current_pos = self.ct.get_position()
         own_team = self.ct.get_team()
@@ -5286,208 +5337,232 @@ class Bot:
             "init resource scouting",
         )
 
-    def bb_scout(self) -> bool:
+    def bb_expand(self) -> bool:
         """
-        Expand outward into lightly developed frontier areas.
+        Expand by scoring known tiles and fog frontier targets via a cached PQ.
 
-        The scavenger reevaluates its scout target every turn instead of
-        forcing one fixed direction. It prefers adjacent steps that open into
-        broader unknown space, that can receive a new road, and that are not
-        surrounded by friendly infrastructure. When no such step is directly
-        available, it heads toward the best known frontier tile with the same
-        bias, which keeps expansion on the outer edge of the base instead of
-        chasing isolated leftover holes inside already developed territory.
+        Candidate tiles are cached across turns in a priority queue so the
+        bot does not need to rescore the whole known map every round. The
+        queue contains known reachable tiles and unseen frontier tiles
+        (unknown tiles adjacent to known reachable tiles). Scores prefer fog
+        and stale intel, while still favoring nearer targets.
         """
         if self.map is None:
             return False
 
         current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.ct.get_team()
-        current_tile = self._get_known_map_tile(current_pos)
-        current_distance_to_core = (
-            current_tile.distance_to_core
-            if current_tile is not None
-            else -1
+        current_round = (
+            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
         )
+        own_builder_id = self.turn_id if self.turn_id >= 0 else self.ct.get_id()
+        current_x = current_pos.x
+        current_y = current_pos.y
+        max_manhattan = self.map.width + self.map.height
+        visible_coords = {(pos.x, pos.y) for pos in self.turn_nearby_tiles}
+        current_epoch = (current_round, current_x, current_y)
 
-        def is_walkable_scout_tile(tile: Tile | None) -> bool:
+        if self._expand_cached_map_size != (self.map.width, self.map.height):
+            self._expand_heap.clear()
+            self._expand_candidate_revision.clear()
+            self._expand_known_candidates.clear()
+            self._expand_frontier_candidates.clear()
+            self._expand_revision_counter = 0
+            self._expand_cached_map_size = (self.map.width, self.map.height)
+
+        matrix = self.map.matrix
+        known_candidates = self._expand_known_candidates
+        frontier_candidates = self._expand_frontier_candidates
+        candidate_revision = self._expand_candidate_revision
+        expand_heap = self._expand_heap
+
+        def is_known_reachable_tile(x: int, y: int) -> bool:
+            tile = matrix[x][y]
             if tile is None:
                 return False
             if tile.environment == Environment.WALL:
                 return False
-            if tile.building_id is None:
-                return True
-            return (
-                tile.building_type == EntityType.ROAD
-                and tile.building_team == own_team
+            if tile.building_id is not None and not tile.is_passable:
+                return False
+            if (
+                tile.last_seen_round == current_round
+                and tile.builder_bot_id is not None
+                and tile.builder_bot_id != own_builder_id
+            ):
+                return False
+            return True
+
+        def proximity_bonus(x: int, y: int) -> int:
+            distance = abs(current_x - x) + abs(current_y - y)
+            return max(0, max_manhattan - distance) * 10
+
+        def known_tile_score(x: int, y: int, tile: Tile) -> int:
+            if (x, y) in visible_coords:
+                return 0
+            age = max(0, current_round - tile.last_seen_round)
+            return age * 1000 + proximity_bonus(x, y)
+
+        def unseen_frontier_score(x: int, y: int) -> int:
+            return 1_000_000 + proximity_bonus(x, y)
+
+        def is_frontier_tile(x: int, y: int) -> bool:
+            if matrix[x][y] is not None:
+                return False
+            for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+                nx = x + shift_x
+                ny = y + shift_y
+                if not self.map._is_in_bounds(nx, ny):
+                    continue
+                if is_known_reachable_tile(nx, ny):
+                    return True
+            return False
+
+        def score_candidate(coord: tuple[int, int]) -> int | None:
+            x, y = coord
+
+            if coord in known_candidates:
+                if not is_known_reachable_tile(x, y):
+                    known_candidates.discard(coord)
+                    candidate_revision.pop(coord, None)
+                    return None
+                tile = matrix[x][y]
+                if tile is None:
+                    known_candidates.discard(coord)
+                    candidate_revision.pop(coord, None)
+                    return None
+                return known_tile_score(x, y, tile)
+
+            if coord in frontier_candidates:
+                if not is_frontier_tile(x, y):
+                    frontier_candidates.discard(coord)
+                    candidate_revision.pop(coord, None)
+                    return None
+                return unseen_frontier_score(x, y)
+
+            candidate_revision.pop(coord, None)
+            return None
+
+        def push_candidate(coord: tuple[int, int]) -> None:
+            score = score_candidate(coord)
+            if score is None:
+                return
+
+            x, y = coord
+            distance_sq = (
+                (current_x - x) * (current_x - x)
+                + (current_y - y) * (current_y - y)
+            )
+            self._expand_revision_counter += 1
+            revision = self._expand_revision_counter
+            candidate_revision[coord] = revision
+            heapq.heappush(
+                expand_heap,
+                (
+                    -score,
+                    distance_sq,
+                    x,
+                    y,
+                    current_epoch[0],
+                    current_epoch[1],
+                    current_epoch[2],
+                    revision,
+                ),
             )
 
-        def count_local_unknown_tiles(pos: Position, radius: int) -> int:
-            unknown_tiles = 0
-            for dx in range(-radius, radius + 1):
-                for dy in range(-radius, radius + 1):
-                    x = pos.x + dx
-                    y = pos.y + dy
-                    if not (0 <= x < self.map.width and 0 <= y < self.map.height):
+        if not known_candidates and not frontier_candidates:
+            for x, y in self.map.known_positions:
+                known_coord = (x, y)
+                known_candidates.add(known_coord)
+                for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+                    nx = x + shift_x
+                    ny = y + shift_y
+                    if not self.map._is_in_bounds(nx, ny):
                         continue
-                    if self.map.matrix[x][y] is None:
-                        unknown_tiles += 1
-            return unknown_tiles
+                    if matrix[nx][ny] is None:
+                        frontier_candidates.add((nx, ny))
 
-        def count_local_owned_infrastructure(pos: Position, radius: int) -> int:
-            owned_tiles = 0
-            for dx in range(-radius, radius + 1):
-                for dy in range(-radius, radius + 1):
-                    x = pos.x + dx
-                    y = pos.y + dy
-                    if not (0 <= x < self.map.width and 0 <= y < self.map.height):
-                        continue
-                    tile = self.map.matrix[x][y]
-                    if tile is None:
-                        continue
-                    if tile.building_team == own_team or tile.builder_bot_team == own_team:
-                        owned_tiles += 1
-            return owned_tiles
+            for coord in list(known_candidates):
+                push_candidate(coord)
+            for coord in list(frontier_candidates):
+                push_candidate(coord)
 
-        direct_candidates: list[
-            tuple[tuple[int, int, int, int, int, int, int, int, int], Direction]
-        ] = []
+        for pos in self.turn_nearby_tiles:
+            x = pos.x
+            y = pos.y
+            coord = (x, y)
+            known_candidates.add(coord)
+            frontier_candidates.discard(coord)
+            push_candidate(coord)
 
-        for direction_index, direction in enumerate(DIRECTIONS):
-            next_pos = current_pos.add(direction)
-            if not self._is_in_bounds(next_pos):
+            for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+                nx = x + shift_x
+                ny = y + shift_y
+                if not self.map._is_in_bounds(nx, ny):
+                    continue
+                if matrix[nx][ny] is None:
+                    frontier_coord = (nx, ny)
+                    frontier_candidates.add(frontier_coord)
+                    push_candidate(frontier_coord)
+
+        failed_coords: set[tuple[int, int]] = set()
+        pop_attempts = 0
+        max_pop_attempts = 96
+
+        while expand_heap and pop_attempts < max_pop_attempts:
+            pop_attempts += 1
+            (
+                neg_score,
+                _distance_sq,
+                x,
+                y,
+                score_round,
+                score_x,
+                score_y,
+                revision,
+            ) = heapq.heappop(expand_heap)
+            coord = (x, y)
+
+            if coord in failed_coords:
                 continue
 
-            next_tile = self._get_known_map_tile(next_pos)
-            if next_tile is not None and next_tile.environment == Environment.WALL:
+            if revision != candidate_revision.get(coord):
                 continue
 
-            can_move = self.ct.can_move(direction)
-            can_build_road = self.ct.can_build_road(next_pos)
-            if not can_move and not can_build_road:
+            score = score_candidate(coord)
+            if score is None:
                 continue
 
-            nearby_unknown_tiles = count_local_unknown_tiles(next_pos, 2)
-            immediate_unknown_tiles = count_local_unknown_tiles(next_pos, 1)
-            owned_infrastructure = count_local_owned_infrastructure(next_pos, 2)
-            has_owned_road = (
-                next_tile is not None
-                and next_tile.building_type == EntityType.ROAD
-                and next_tile.building_team == own_team
-            )
-            distance_to_core = (
-                next_tile.distance_to_core
-                if next_tile is not None
-                else current_distance_to_core + 1
-            )
-            action_rank = (
-                0
-                if can_build_road and can_move
-                else 1
-                if can_build_road
-                else 2
-            )
-            candidate_key = (
-                0 if nearby_unknown_tiles > 0 else 1,
-                owned_infrastructure,
-                -nearby_unknown_tiles,
-                -immediate_unknown_tiles,
-                action_rank,
-                0 if not has_owned_road else 1,
-                0 if distance_to_core > current_distance_to_core else 1,
-                -distance_to_core,
-                direction_index,
-                next_pos.x,
-                next_pos.y,
-            )
-            direct_candidates.append((candidate_key, direction))
+            if (score_round, score_x, score_y) != current_epoch:
+                push_candidate(coord)
+                continue
 
-        if direct_candidates:
-            direct_candidates.sort(key=lambda candidate: candidate[0])
-            best_direction = direct_candidates[0][1]
-            if self._move_in_direction_with_roads(best_direction):
+            if neg_score != -score:
+                push_candidate(coord)
+                continue
+
+            target_pos = Position(x, y)
+            if target_pos == current_pos:
+                continue
+
+            if self._move_towards_with_roads(target_pos):
+                for failed_coord in failed_coords:
+                    push_candidate(failed_coord)
                 return self._record_action(
                     BotAction.BB_SCOUT,
                     "expanding territory",
                 )
 
-        if not self._ensure_spatial_scan_cache():
+            failed_coords.add(coord)
+
+        for failed_coord in failed_coords:
+            push_candidate(failed_coord)
+
+        if not expand_heap:
+            for coord in list(known_candidates):
+                push_candidate(coord)
+            for coord in list(frontier_candidates):
+                push_candidate(coord)
+
             return False
-
-        unknown_prefix = self._spatial_unknown_prefix
-        owned_prefix = self._spatial_owned_prefix
-
-        def count_unknown_tiles(pos: Position, radius: int) -> int:
-            return self._query_prefix_sum(unknown_prefix, pos, radius) - 1
-
-        def count_owned_infrastructure(pos: Position, radius: int) -> int:
-            return self._query_prefix_sum(owned_prefix, pos, radius)
-
-        best_frontier_target: tuple[
-            tuple[int, int, int, int, int, int, int],
-            Position,
-        ] | None = None
-        best_expansion_target: tuple[
-            tuple[int, int, int, int, int],
-            Position,
-        ] | None = None
-
-        for x, y in self.map.known_positions:
-            tile = self.map.matrix[x][y]
-            if not is_walkable_scout_tile(tile):
-                continue
-
-            pos = Position(x, y)
-            if pos == current_pos:
-                continue
-
-            nearby_unknown_tiles = count_unknown_tiles(pos, 2)
-            immediate_unknown_tiles = count_unknown_tiles(pos, 1)
-            owned_infrastructure = count_owned_infrastructure(pos, 2)
-            target_key = (
-                owned_infrastructure,
-                -nearby_unknown_tiles,
-                -immediate_unknown_tiles,
-                -tile.distance_to_core,
-                current_pos.distance_squared(pos),
-                x,
-                y,
-            )
-            if nearby_unknown_tiles > 0:
-                if (
-                    best_frontier_target is None
-                    or target_key < best_frontier_target[0]
-                ):
-                    best_frontier_target = (target_key, pos)
-            else:
-                expansion_key = (
-                    owned_infrastructure,
-                    -tile.distance_to_core,
-                    current_pos.distance_squared(pos),
-                    x,
-                    y,
-                )
-                if (
-                    best_expansion_target is None
-                    or expansion_key < best_expansion_target[0]
-                ):
-                    best_expansion_target = (
-                        expansion_key,
-                        pos,
-                    )
-        
-        for candidate in (best_frontier_target, best_expansion_target):
-            if candidate is None:
-                continue
-
-            target_pos = candidate[1]
-            if not self._move_towards_with_roads(target_pos):
-                continue
-
-            return self._record_action(
-                BotAction.BB_SCOUT,
-                "expanding territory",
-            )
 
         return False
 
