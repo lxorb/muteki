@@ -977,6 +977,11 @@ class Bot:
         self.missing_supply_blocker_target: tuple[int, int] | None = None
         self.missing_supply_target: tuple[int, int] | None = None
         self.supply_patrol_index = 0
+        self.bb_last_turn_completed = True
+        self._bb_resume_from_incomplete_turn = False
+        self.bb_strategy_plan_key: str | None = None
+        self.bb_last_completed_strategy_index = -1
+        self.bb_last_completed_strategy_method: str | None = None
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
         self.turn_id = -1
@@ -1332,6 +1337,49 @@ class Bot:
         }
         return handler_names.get(handler_func, handler_func.__name__)
 
+    def _reset_bb_strategy_progress(self, plan_key: str | None = None) -> None:
+        """
+        Reset stored progress for ordered builder strategy execution.
+
+        The progress marker tracks which strategy method was last completed so
+        a builder can resume from the next entry after a timed-out turn.
+        """
+        self.bb_strategy_plan_key = plan_key
+        self.bb_last_completed_strategy_index = -1
+        self.bb_last_completed_strategy_method = None
+
+    def _run_bb_strategy_plan(self, plan_key: str, steps) -> bool:
+        """
+        Execute ordered builder strategy steps with timeout-resume support.
+
+        Steps are `(name, callable)` pairs. If the previous turn ended before
+        the role handler returned, the executor resumes at the step after the
+        last completed one; otherwise it starts from the beginning.
+        """
+        if self.bb_strategy_plan_key != plan_key:
+            self._reset_bb_strategy_progress(plan_key)
+
+        if not steps:
+            self._reset_bb_strategy_progress(plan_key)
+            return False
+
+        start_index = 0
+        if self._bb_resume_from_incomplete_turn:
+            start_index = self.bb_last_completed_strategy_index + 1
+
+        if start_index < 0 or start_index >= len(steps):
+            start_index = 0
+
+        for index in range(start_index, len(steps)):
+            step_name, step_func = steps[index]
+            acted = bool(step_func())
+            self.bb_last_completed_strategy_index = index
+            self.bb_last_completed_strategy_method = step_name
+            if acted:
+                return True
+
+        return False
+
     def find_core_center(self) -> Position | None:
         """
         Locate and cache the allied core centre.
@@ -1549,7 +1597,8 @@ class Bot:
 
         The method ensures the role handler is initialised, prints the builder
         role for this turn, refreshes the builder-local map cache, and then
-        runs the selected handler.
+        runs the selected handler. It also tracks whether the previous turn
+        finished, allowing the strategy executor to resume after timeouts.
         """
         if self.bb_handler is None:
             self.bb_handler = self.get_initial_bb_handler()
@@ -1560,7 +1609,14 @@ class Bot:
         if self.core_center_pos is None:
             self.find_core_center()
 
+        self._bb_resume_from_incomplete_turn = not self.bb_last_turn_completed
+        if not self._bb_resume_from_incomplete_turn:
+            self.bb_last_completed_strategy_index = -1
+            self.bb_last_completed_strategy_method = None
+
+        self.bb_last_turn_completed = False
         self.bb_handler()
+        self.bb_last_turn_completed = True
 
     def run_bb_maintainer(self):
         """
@@ -1571,31 +1627,18 @@ class Bot:
         protecting owned harvesters, and opportunistically expanding resource
         extraction before falling back to a patrol through the known base.
         """
-        if self.complete_supply_chain():
-            return
-
-        if self.attack_enemy_harvester():
-            return
-
-        if self.repair_if_damaged():
-            return
-
-        if self.build_harvester_supply_link():
-            return
-
-        if self.build_missing_supply_link():
-            return
-
-        if self.destroy_hijacked_reschain():
-            return
-
-        if self.protect_harvester():
-            return
-
-        if self.build_harvester():
-            return
-
-        self.maintainer_patrol()
+        steps = [
+            ("complete_supply_chain", self.complete_supply_chain),
+            ("attack_enemy_harvester", self.attack_enemy_harvester),
+            ("repair_if_damaged", self.repair_if_damaged),
+            ("build_harvester_supply_link", self.build_harvester_supply_link),
+            ("build_missing_supply_link", self.build_missing_supply_link),
+            ("destroy_hijacked_reschain", self.destroy_hijacked_reschain),
+            ("protect_harvester", self.protect_harvester),
+            ("build_harvester", self.build_harvester),
+            ("maintainer_patrol", self.maintainer_patrol),
+        ]
+        self._run_bb_strategy_plan("maintainer", steps)
 
     def _has_visible_harvester_bridge_chain_to_core(self) -> bool:
         """
@@ -1710,6 +1753,18 @@ class Bot:
         self.bb_handler()
         return True
 
+    def _run_init_res_strategy_step(self, acted: bool) -> bool:
+        """
+        Finalise one init-resource strategy step and recheck completion.
+
+        When a step executes, the method immediately re-evaluates whether the
+        initial resource chain is complete so the role can switch promptly.
+        """
+        if not acted:
+            return False
+        self._switch_init_res_to_scavenger_if_ready(run_now=False)
+        return True
+
     def run_bb_init_res(self):
         """
         Bootstrap the first resource flow, then hand over to scavenger logic.
@@ -1723,33 +1778,46 @@ class Bot:
         if self._switch_init_res_to_scavenger_if_ready(run_now=True):
             return
 
-        if self.build_harvester_supply_link(hold=True):
-            self._switch_init_res_to_scavenger_if_ready(run_now=False)
-            return
-
-        if self.protect_harvester(hold=True):
-            self._switch_init_res_to_scavenger_if_ready(run_now=False)
-            return
-
         titanium, _ = self.turn_resources
-        if titanium >= CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
-            if self.complete_supply_chain():
-                self._switch_init_res_to_scavenger_if_ready(run_now=False)
-                return
-        if self.build_missing_supply_link(hold=True):
-            self._switch_init_res_to_scavenger_if_ready(run_now=False)
-            return
 
-        if self.build_harvester(hold=True):
-            self._switch_init_res_to_scavenger_if_ready(run_now=False)
-            return
+        def build_harvester_supply_link_step() -> bool:
+            return self._run_init_res_strategy_step(
+                self.build_harvester_supply_link(hold=True)
+            )
 
-        if self.init_res_scout():
-            self._switch_init_res_to_scavenger_if_ready(run_now=False)
+        def protect_harvester_step() -> bool:
+            return self._run_init_res_strategy_step(
+                self.protect_harvester(hold=True)
+            )
+
+        def complete_supply_chain_step() -> bool:
+            if titanium < CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
+                return False
+            return self._run_init_res_strategy_step(self.complete_supply_chain())
+
+        def build_missing_supply_link_step() -> bool:
+            return self._run_init_res_strategy_step(
+                self.build_missing_supply_link(hold=True)
+            )
+
+        def build_harvester_step() -> bool:
+            return self._run_init_res_strategy_step(self.build_harvester(hold=True))
+
+        def init_res_scout_step() -> bool:
+            return self._run_init_res_strategy_step(self.init_res_scout())
+
+        steps = [
+            ("build_harvester_supply_link", build_harvester_supply_link_step),
+            ("protect_harvester", protect_harvester_step),
+            ("complete_supply_chain", complete_supply_chain_step),
+            ("build_missing_supply_link", build_missing_supply_link_step),
+            ("build_harvester", build_harvester_step),
+            ("init_res_scout", init_res_scout_step),
+        ]
+        if self._run_bb_strategy_plan("init_res", steps):
             return
 
         self._switch_init_res_to_scavenger_if_ready(run_now=True)
-        return
 
     def run_bb_scavenger(self):
         """
@@ -1764,38 +1832,42 @@ class Bot:
         action in hold mode instead of recomputing the same search separately.
         """
         titanium, _ = self.turn_resources
-        if self.destroy_hijacked_reschain():
-            return
 
-        if self.build_harvester_supply_link(hold=True):
-            return
+        def complete_supply_chain_step() -> bool:
+            if titanium < CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
+                return False
+            return self.complete_supply_chain()
 
-        if self.protect_harvester(hold=True):
-            return
+        def attack_enemy_harvester_step() -> bool:
+            if titanium < ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD:
+                return False
+            return self.attack_enemy_harvester()
 
-        if titanium >= CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
-            if self.complete_supply_chain():
-                return
-        if self.build_missing_supply_link(hold=True):
-            return
+        def fallback_step() -> bool:
+            if titanium < SCAVENGER_ACTIVE_TITANIUM_THRESHOLD:
+                return self.scavenger_patrol_supply_chains()
+            return self.bb_scout()
 
-        if self.defend_core_prox():
-            return
-
-        if (
-            titanium >= ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD
-            and self.attack_enemy_harvester()
-        ):
-            return
-
-        if self.build_harvester(hold=True):
-            return
-
-        if titanium < SCAVENGER_ACTIVE_TITANIUM_THRESHOLD:
-            self.scavenger_patrol_supply_chains()
-            return
-
-        self.bb_scout()
+        steps = [
+            ("destroy_hijacked_reschain", self.destroy_hijacked_reschain),
+            (
+                "build_harvester_supply_link",
+                lambda: self.build_harvester_supply_link(hold=True),
+            ),
+            ("protect_harvester", lambda: self.protect_harvester(hold=True)),
+            ("complete_supply_chain", complete_supply_chain_step),
+            ("build_missing_supply_link", lambda: self.build_missing_supply_link(hold=True)),
+            ("defend_core_prox", self.defend_core_prox),
+            ("attack_enemy_harvester", attack_enemy_harvester_step),
+            ("build_harvester", lambda: self.build_harvester(hold=True)),
+            (
+                "scavenger_patrol_supply_chains"
+                if titanium < SCAVENGER_ACTIVE_TITANIUM_THRESHOLD
+                else "bb_scout",
+                fallback_step,
+            ),
+        ]
+        self._run_bb_strategy_plan("scavenger", steps)
 
     def run_bb_harassment(self):
         """
@@ -1807,24 +1879,14 @@ class Bot:
         exposed harvesters. When no other action triggers, it advances toward
         the inferred enemy core area.
         """
-        # calc poss. enemy core locations
-        #   -> infer possible enemy core locations from own core location and map size
         self.get_enemy_core_pos()
-
-        # build gunner if poss. next to enemy harvester
-        if self.attack_enemy_harvester():
-            return
-
-        # is there a spot either next to enemy harvester or
-        # so that enemy resources will flow into the sentinel?
-        # then build a sentinel there
-        if self.build_supplied_sentinel():
-            return
-
-        if self.attack_enemy_bridge():
-            return
-
-        self.harassment_scout()
+        steps = [
+            ("attack_enemy_harvester", self.attack_enemy_harvester),
+            ("build_supplied_sentinel", self.build_supplied_sentinel),
+            ("attack_enemy_bridge", self.attack_enemy_bridge),
+            ("harassment_scout", self.harassment_scout),
+        ]
+        self._run_bb_strategy_plan("harassment", steps)
 
     def run_bb_defender(self):
         """
@@ -1835,10 +1897,11 @@ class Bot:
         to patrolling known allied supply-chain structures.
         """
         self._stamp_supply_patrol_coverage()
-        if self.launcher_defend():
-            return
-
-        self.patrol_supply_chains()
+        steps = [
+            ("launcher_defend", self.launcher_defend),
+            ("patrol_supply_chains", self.patrol_supply_chains),
+        ]
+        self._run_bb_strategy_plan("defender", steps)
 
     def run_bb_unassigned(self):
         """
@@ -1848,11 +1911,12 @@ class Bot:
         uses the normal scout fallback, and finally chills in the base instead
         of idling completely.
         """
-        if self.build_harvester():
-            return
-        if self.bb_scout():
-            return
-        self.maintainer_patrol()
+        steps = [
+            ("build_harvester", self.build_harvester),
+            ("bb_scout", self.bb_scout),
+            ("maintainer_patrol", self.maintainer_patrol),
+        ]
+        self._run_bb_strategy_plan("unassigned", steps)
 
     def run_gunner(self):
         """
