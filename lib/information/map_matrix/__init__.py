@@ -1,6 +1,7 @@
 from cambc import *
-from src.lib.information.map_matrix.field import Field
-from src.lib.information.map_matrix.direction import DirectionInfo
+
+from .direction import DirectionInfo
+from .field import Field
 
 DEFAULT_ENTRY: tuple[Field, DirectionInfo] = (Field.BUILDABLE, DirectionInfo.ALL)
 

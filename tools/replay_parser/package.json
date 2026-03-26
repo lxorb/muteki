@@ -1,0 +1,13 @@
+{
+  "name": "cbc-replay-parser",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Replay parser for cambc .replay26 files",
+  "main": "parse_replay.js",
+  "scripts": {
+    "parse": "node parse_replay.js"
+  },
+  "dependencies": {
+    "protobufjs": "^7.4.0"
+  }
+}
