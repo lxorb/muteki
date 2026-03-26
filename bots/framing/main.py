@@ -25,6 +25,7 @@ FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
+BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN = 5
 BUILDER_ACTION_RADIUS_SQ = 2
 BUILDER_ACTION_OFFSETS = [
     (dx, dy)
@@ -973,6 +974,8 @@ class Bot:
         self.init_res_scout_radius = 2
         self.init_res_scout_clockwise = True
         self.core_prox_defend_target: tuple[int, int] | None = None
+        self.missing_supply_blocker_target: tuple[int, int] | None = None
+        self.missing_supply_target: tuple[int, int] | None = None
         self.supply_patrol_index = 0
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
@@ -1577,10 +1580,10 @@ class Bot:
         if self.repair_if_damaged():
             return
 
-        if self.build_harvester_bridge():
+        if self.build_harvester_supply_link():
             return
 
-        if self.build_missing_bridge():
+        if self.build_missing_supply_link():
             return
 
         if self.destroy_hijacked_reschain():
@@ -1720,7 +1723,7 @@ class Bot:
         if self._switch_init_res_to_scavenger_if_ready(run_now=True):
             return
 
-        if self.build_harvester_bridge(hold=True):
+        if self.build_harvester_supply_link(hold=True):
             self._switch_init_res_to_scavenger_if_ready(run_now=False)
             return
 
@@ -1733,7 +1736,7 @@ class Bot:
             if self.complete_supply_chain():
                 self._switch_init_res_to_scavenger_if_ready(run_now=False)
                 return
-        if self.build_missing_bridge(hold=True):
+        if self.build_missing_supply_link(hold=True):
             self._switch_init_res_to_scavenger_if_ready(run_now=False)
             return
 
@@ -1764,7 +1767,7 @@ class Bot:
         if self.destroy_hijacked_reschain():
             return
 
-        if self.build_harvester_bridge(hold=True):
+        if self.build_harvester_supply_link(hold=True):
             return
 
         if self.protect_harvester(hold=True):
@@ -1776,7 +1779,7 @@ class Bot:
         if titanium >= CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
             if self.complete_supply_chain():
                 return
-        if self.build_missing_bridge(hold=True):
+        if self.build_missing_supply_link(hold=True):
             return
 
         if (
@@ -2124,7 +2127,7 @@ class Bot:
         Check whether a tile is orthogonally adjacent to a friendly harvester.
 
         This is used to keep generic chain continuation separate from the
-        dedicated `build_harvester_bridge` behavior.
+        dedicated `build_harvester_supply_link` behavior.
         """
         if self.map is None:
             return False
@@ -2399,144 +2402,458 @@ class Bot:
             == 2
         )
 
-    def _should_use_conveyor_for_bridge_placement(
+    def _is_valid_supply_link_target_tile(
         self,
-        build_pos: Position,
-        target_pos: Position,
+        tile: Tile,
+        own_team: Team,
     ) -> bool:
         """
-        Decide whether bridge placement should downgrade to conveyor placement.
+        Return whether a tile is a valid downstream target for supply links.
 
-        A conveyor is used when the desired target tile is adjacent to the
-        build tile, and always when the build tile sits next to the allied core
-        footprint.
+        Valid targets are allied supply links/core tiles, empty tiles, and road tiles.
         """
-        if build_pos != target_pos and build_pos.distance_squared(target_pos) <= 2:
+        if tile.environment == Environment.WALL:
+            return False
+        if tile.distance_to_core >= INFINITE_DISTANCE:
+            return False
+        if tile.building_team == own_team and (
+            tile.building_type in SUPPLY_LINK_TYPES
+            or tile.building_type == EntityType.CORE
+        ):
             return True
-        if self._is_next_to_core_footprint(build_pos):
+        if tile.building_id is None:
+            return True
+        if tile.building_type == EntityType.ROAD:
             return True
         return False
+
+    def _get_supply_target_priority(
+        self,
+        tile: Tile,
+        own_team: Team,
+    ) -> tuple[int, int, int]:
+        """
+        Return tie-break priority for selecting supply-link target tiles.
+
+        Priority order is:
+        1. tiles with existing allied supply links or allied core tiles
+        2. tiles outside enemy builder action range
+        3. empty tiles, then allied roads, then enemy roads
+        """
+        has_allied_supply = (
+            tile.building_team == own_team
+            and (
+                tile.building_type in SUPPLY_LINK_TYPES
+                or tile.building_type == EntityType.CORE
+            )
+        )
+        supply_rank = 0 if has_allied_supply else 1
+        enemy_builder_rank = (
+            1 if self.is_tile_in_enemy_builder_action_range(tile.position) else 0
+        )
+
+        if has_allied_supply:
+            type_rank = 0
+        elif tile.building_id is None:
+            type_rank = 1
+        elif tile.building_type == EntityType.ROAD and tile.building_team == own_team:
+            type_rank = 2
+        elif tile.building_type == EntityType.ROAD:
+            type_rank = 3
+        else:
+            type_rank = 4
+
+        return (supply_rank, enemy_builder_rank, type_rank)
+
+    def _get_best_conveyor_target(
+        self,
+        build_pos: Position,
+        origin_distance_to_core: int,
+        own_team: Team,
+    ) -> Position | None:
+        """
+        Return the best adjacent conveyor output that reduces core distance.
+
+        The selected target must have core-distance exactly one smaller than
+        the build tile and is ranked by `_get_supply_target_priority`.
+        """
+        best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
+        for direction in DIRECTIONS:
+            target_pos = build_pos.add(direction)
+            if not self._is_in_bounds(target_pos):
+                continue
+
+            tile = self._get_known_map_tile(target_pos)
+            if tile is None:
+                continue
+            if tile.distance_to_core != origin_distance_to_core - 1:
+                continue
+            if not self._is_valid_supply_link_target_tile(tile, own_team):
+                continue
+            if self.is_tile_in_enemy_turret_range(target_pos):
+                continue
+
+            delta_x, delta_y = direction.delta()
+            direction_rank = 0 if abs(delta_x) + abs(delta_y) == 1 else 1
+            candidate_key = (
+                direction_rank,
+                *self._get_supply_target_priority(tile, own_team),
+                target_pos.x,
+                target_pos.y,
+            )
+            if best_candidate is None or candidate_key < best_candidate[0]:
+                best_candidate = (candidate_key, target_pos)
+
+        if best_candidate is None:
+            return None
+        return best_candidate[1]
+
+    def _get_best_bridge_target(
+        self,
+        build_pos: Position,
+        origin_distance_to_core: int,
+        own_team: Team,
+    ) -> tuple[Position, int] | None:
+        """
+        Return the best bridge target that reduces core distance.
+
+        Candidates are ranked by largest core-distance gain first, then by the
+        same target-tile priority used for conveyors.
+        """
+        if self.map is None:
+            return None
+
+        best_candidate: tuple[
+            tuple[int, int, int, int, int, int],
+            Position,
+            int,
+        ] | None = None
+        bridge_x = build_pos.x
+        bridge_y = build_pos.y
+        for dx in range(-3, 4):
+            for dy in range(-3, 4):
+                candidate_x = bridge_x + dx
+                candidate_y = bridge_y + dy
+                if candidate_x == bridge_x and candidate_y == bridge_y:
+                    continue
+                if not self.map._is_in_bounds(candidate_x, candidate_y):
+                    continue
+                dist_sq = dx * dx + dy * dy
+                if dist_sq > 9:
+                    continue
+
+                tile = self.map.matrix[candidate_x][candidate_y]
+                if tile is None:
+                    continue
+                if not self._is_valid_supply_link_target_tile(tile, own_team):
+                    continue
+                if tile.distance_to_core >= origin_distance_to_core:
+                    continue
+                if self.is_tile_in_enemy_turret_range(tile.position):
+                    continue
+
+                gain = origin_distance_to_core - tile.distance_to_core
+                candidate_key = (
+                    -gain,
+                    *self._get_supply_target_priority(tile, own_team),
+                    -dist_sq,
+                    candidate_x,
+                    candidate_y,
+                )
+                if best_candidate is None or candidate_key < best_candidate[0]:
+                    best_candidate = (candidate_key, tile.position, gain)
+
+        if best_candidate is None:
+            return None
+        return (best_candidate[1], best_candidate[2])
+
+    def _get_supply_link_plan(
+        self,
+        build_pos: Position,
+    ) -> tuple[Position, bool] | None:
+        """
+        Return the preferred downstream target and whether to build a bridge.
+
+        Supply links are conveyor-first: if an adjacent conveyor target exists
+        that reduces core distance by one, conveyor is preferred unless a bridge
+        offers a long jump of at least `BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN`.
+        If no conveyor can reduce distance, a bridge is used if it reduces
+        distance by at least one. If no reducing target exists, returns `None`.
+        """
+        if self.map is None:
+            return None
+
+        origin_tile = self._get_known_map_tile(build_pos)
+        if origin_tile is None:
+            return None
+        origin_distance_to_core = origin_tile.distance_to_core
+        if origin_distance_to_core >= INFINITE_DISTANCE:
+            return None
+
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        best_conveyor_target = self._get_best_conveyor_target(
+            build_pos,
+            origin_distance_to_core,
+            own_team,
+        )
+        best_bridge_candidate = self._get_best_bridge_target(
+            build_pos,
+            origin_distance_to_core,
+            own_team,
+        )
+
+        if best_conveyor_target is not None:
+            if self._is_next_to_core_footprint(build_pos):
+                return (best_conveyor_target, False)
+            if (
+                best_bridge_candidate is None
+                or best_bridge_candidate[1] < BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN
+            ):
+                return (best_conveyor_target, False)
+
+        if best_bridge_candidate is not None:
+            return (best_bridge_candidate[0], True)
+        return None
+
+    def get_supply_link_target(self, build_pos: Position) -> Position | None:
+        """
+        Return the preferred downstream target for one new supply link.
+
+        This wraps `_get_supply_link_plan` and returns only the selected target
+        tile, independent of whether conveyor or bridge would be used.
+        """
+        plan = self._get_supply_link_plan(build_pos)
+        if plan is None:
+            return None
+        return plan[0]
+
+    def _get_best_buildable_conveyor_target(
+        self,
+        build_pos: Position,
+        origin_distance_to_core: int,
+        own_team: Team,
+    ) -> Position | None:
+        """
+        Return the best conveyor target that is immediately buildable now.
+
+        This is only used in action-range contexts to recover when the
+        preferred conveyor target is currently illegal (for example due to a
+        direction/buildability constraint) and a different legal conveyor target
+        should be used instead.
+        """
+        best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
+        for direction in DIRECTIONS:
+            target_pos = build_pos.add(direction)
+            if not self._is_in_bounds(target_pos):
+                continue
+
+            tile = self._get_known_map_tile(target_pos)
+            if tile is None:
+                continue
+            if tile.distance_to_core != origin_distance_to_core - 1:
+                continue
+            if not self._is_valid_supply_link_target_tile(tile, own_team):
+                continue
+            if self.is_tile_in_enemy_turret_range(target_pos):
+                continue
+            if self._is_supply_output_tile_unsafe(build_pos, target_pos, False):
+                continue
+            if not self.ct.can_build_conveyor(build_pos, direction):
+                continue
+
+            delta_x, delta_y = direction.delta()
+            direction_rank = 0 if abs(delta_x) + abs(delta_y) == 1 else 1
+            candidate_key = (
+                direction_rank,
+                *self._get_supply_target_priority(tile, own_team),
+                target_pos.x,
+                target_pos.y,
+            )
+            if best_candidate is None or candidate_key < best_candidate[0]:
+                best_candidate = (candidate_key, target_pos)
+
+        if best_candidate is None:
+            return None
+        return best_candidate[1]
+
+    def _get_buildable_supply_link_plan(
+        self,
+        build_pos: Position,
+        preferred_target_pos: Position,
+        preferred_use_bridge: bool,
+    ) -> tuple[Position, bool] | None:
+        """
+        Return a supply-link plan that is actually buildable at this moment.
+
+        The preferred plan is tried first. If it is not currently legal, this
+        helper attempts a bridge fallback and then a buildable-conveyor fallback
+        while keeping the same core-distance reduction rules.
+        """
+        if self._can_build_supply_link(
+            build_pos,
+            preferred_target_pos,
+            preferred_use_bridge,
+        ):
+            return (preferred_target_pos, preferred_use_bridge)
+
+        origin_tile = self._get_known_map_tile(build_pos)
+        if origin_tile is None:
+            return None
+        origin_distance_to_core = origin_tile.distance_to_core
+        if origin_distance_to_core >= INFINITE_DISTANCE:
+            return None
+
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        if not preferred_use_bridge:
+            bridge_candidate = self._get_best_bridge_target(
+                build_pos,
+                origin_distance_to_core,
+                own_team,
+            )
+            if (
+                bridge_candidate is not None
+                and self._can_build_supply_link(
+                    build_pos,
+                    bridge_candidate[0],
+                    True,
+                )
+            ):
+                return (bridge_candidate[0], True)
+
+        buildable_conveyor_target = self._get_best_buildable_conveyor_target(
+            build_pos,
+            origin_distance_to_core,
+            own_team,
+        )
+        if buildable_conveyor_target is not None:
+            return (buildable_conveyor_target, False)
+
+        if preferred_use_bridge:
+            bridge_candidate = self._get_best_bridge_target(
+                build_pos,
+                origin_distance_to_core,
+                own_team,
+            )
+            if (
+                bridge_candidate is not None
+                and self._can_build_supply_link(
+                    build_pos,
+                    bridge_candidate[0],
+                    True,
+                )
+            ):
+                return (bridge_candidate[0], True)
+
+        return None
 
     def _get_supply_output_tile(
         self,
         build_pos: Position,
         target_pos: Position,
+        use_bridge: bool,
     ) -> Position | None:
         """
-        Return the immediate output tile of the chosen bridge/conveyor link.
+        Return the immediate output tile of the chosen supply-link build.
 
-        For normal bridge placement this is the bridge target tile. For
-        conveyor fallback this is the adjacent tile in conveyor direction.
+        Bridges output directly to `target_pos`. Conveyors output one step in
+        the direction from `build_pos` toward `target_pos`.
         """
-        if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
-            direction = build_pos.direction_to(target_pos)
-            if direction == Direction.CENTRE:
-                return None
-            return build_pos.add(direction)
-
-        return target_pos
+        if use_bridge:
+            return target_pos
+        direction = build_pos.direction_to(target_pos)
+        if direction == Direction.CENTRE:
+            return None
+        return build_pos.add(direction)
 
     def _is_supply_output_tile_unsafe(
         self,
         build_pos: Position,
         target_pos: Position,
+        use_bridge: bool,
     ) -> bool:
         """
-        Return whether this link's output tile is threatened by enemies.
-
-        A link is unsafe if its effective output tile is within enemy builder
-        action radius or inside enemy turret coverage.
+        Return whether this link output would be inside enemy turret coverage.
         """
-        output_pos = self._get_supply_output_tile(build_pos, target_pos)
+        output_pos = self._get_supply_output_tile(build_pos, target_pos, use_bridge)
         if output_pos is None:
             return True
+        return self.is_tile_in_enemy_turret_range(output_pos)
 
-        return (
-            self.is_tile_in_enemy_builder_action_range(output_pos)
-            or self.is_tile_in_enemy_turret_range(output_pos)
-        )
-
-    def _can_build_bridge_or_conveyor(
+    def _can_build_supply_link(
         self,
         build_pos: Position,
         target_pos: Position,
+        use_bridge: bool,
     ) -> bool:
         """
-        Check whether the bridge-placement helper can build at this tile now.
-
-        The method mirrors the bridge/conveyor fallback policy and uses
-        `can_build_conveyor` when conveyor fallback applies, otherwise
-        `can_build_bridge`.
+        Check whether the selected supply-link build is currently legal.
         """
         if self._is_current_builder_tile(build_pos):
             return False
-        if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+        if self._is_supply_output_tile_unsafe(build_pos, target_pos, use_bridge):
             return False
 
-        if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
-            direction = build_pos.direction_to(target_pos)
-            if direction == Direction.CENTRE:
-                return False
-            return self.ct.can_build_conveyor(build_pos, direction)
+        if use_bridge:
+            return self.ct.can_build_bridge(build_pos, target_pos)
 
-        return self.ct.can_build_bridge(build_pos, target_pos)
+        direction = build_pos.direction_to(target_pos)
+        if direction == Direction.CENTRE:
+            return False
+        return self.ct.can_build_conveyor(build_pos, direction)
 
-    def _build_bridge_or_conveyor(
+    def _build_supply_link(
         self,
         build_pos: Position,
         target_pos: Position,
+        use_bridge: bool,
     ) -> bool:
         """
-        Place a bridge normally, with conveyor fallback for short/core-adjacent links.
-
-        If fallback applies, the conveyor faces toward `target_pos`. Otherwise
-        a bridge is built with `target_pos` as bridge target.
+        Build one supply link (conveyor or bridge) at a selected tile.
         """
         if self._is_current_builder_tile(build_pos):
             return False
-        if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+        if self._is_supply_output_tile_unsafe(build_pos, target_pos, use_bridge):
             return False
 
-        if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
-            direction = build_pos.direction_to(target_pos)
-            if direction == Direction.CENTRE:
+        if use_bridge:
+            if not self.ct.can_build_bridge(build_pos, target_pos):
                 return False
-            if not self.ct.can_build_conveyor(build_pos, direction):
-                return False
-            self.ct.build_conveyor(build_pos, direction)
+            self.ct.build_bridge(build_pos, target_pos)
             return True
 
-        if not self.ct.can_build_bridge(build_pos, target_pos):
+        direction = build_pos.direction_to(target_pos)
+        if direction == Direction.CENTRE:
             return False
-        self.ct.build_bridge(build_pos, target_pos)
+        if not self.ct.can_build_conveyor(build_pos, direction):
+            return False
+        self.ct.build_conveyor(build_pos, direction)
         return True
 
-    def _build_bridge_with_optional_road_removal(
+    def _build_supply_link_with_optional_road_removal(
         self,
         build_pos: Position,
         target_pos: Position,
         is_road_build_pos: bool,
+        use_bridge: bool,
     ) -> bool:
         """
-        Build a bridge-style supply link on an empty tile or after road removal.
+        Build one supply link on an empty tile or prepare a road tile first.
 
-        If the destination already contains a road, the road is removed and the
-        supply link is also placed in the same turn whenever that immediately
-        becomes legal. The supply link uses normal bridge placement, except it
-        falls back to conveyor placement for adjacent targets or core-adjacent
-        build tiles.
+        If the destination currently contains a road, the road is removed and
+        this helper returns success for that preparation step. The caller can
+        then place the supply link on the now-empty tile on the next turn.
         """
         if self._is_current_builder_tile(build_pos):
             return False
-        if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+        if self._is_supply_output_tile_unsafe(build_pos, target_pos, use_bridge):
             return False
 
         if is_road_build_pos:
             if not self._destroy_tile_if_safe(build_pos):
                 return False
-            return self._build_bridge_or_conveyor(build_pos, target_pos)
+            return True
 
-        if not self._build_bridge_or_conveyor(build_pos, target_pos):
+        if not self._build_supply_link(build_pos, target_pos, use_bridge):
             return False
 
         return True
@@ -3086,6 +3403,10 @@ class Bot:
         attack. This avoids builders disappearing after removing the tile under
         themselves. Otherwise it moves toward the closest visible enemy bridge,
         preparing the path with roads when useful.
+        
+        TODO:
+        Attack the enemy bridge tile, don't just stand there. Update the docs above after this modification.
+        
         """
         current_pos = self.turn_position or self.ct.get_position()
 
@@ -3183,7 +3504,7 @@ class Bot:
             tuple[tuple[int, int, int, int, int, int], Position, bool]
         ] = []
         movement_candidates: list[
-            tuple[tuple[int, int, int, int, int, int], Position]
+            tuple[tuple[int, int, int, int, int, int, int], Position]
         ] = []
 
         for _, enemy_tile_pos in intrusion_tiles:
@@ -3357,189 +3678,11 @@ class Bot:
 
     def get_bridge_target(self, bridge_pos: Position) -> Position | None:
         """
-        Return the best target tile for an existing bridge to point at.
-
-        If the bridge can point directly onto the allied core footprint, an
-        in-range core tile is returned immediately. Otherwise, prefer an
-        already existing allied supply link in range whose stored distance to
-        the core is strictly smaller than the originating bridge tile's
-        distance. If no such existing link exists, among all known tiles within
-        bridge range, prefer the buildable tile with the smallest stored
-        distance to the core. When multiple candidates are equally good
-        strategically, the bridge prefers the farther legal target so it uses
-        as much of the bridge's range as possible. Empty tiles are still
-        preferred over roads or markers when the stored distance is tied.
-        Titanium ore tiles are deprioritized as bridge targets whenever at
-        least one non-titanium candidate in range would still reduce
-        distance-to-core by at least one. Targets whose effective link output
-        would be in enemy builder action range or enemy turret coverage are
-        filtered out.
+        Backward-compatible alias for `get_supply_link_target`.
         """
-        if self.map is None:
-            return None
+        return self.get_supply_link_target(bridge_pos)
 
-        self._ensure_enemy_threat_cache()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
-        enemy_builder_tiles = self._enemy_builder_action_tiles
-        enemy_turret_tiles = self._enemy_turret_range_tiles
-        bridge_target_radius_sq = 9
-        bridge_x = bridge_pos.x
-        bridge_y = bridge_pos.y
-        origin_distance_to_core = self.map.distance_matrix[bridge_x][bridge_y]
-        origin_tile = self.map.matrix[bridge_pos.x][bridge_pos.y]
-        if origin_tile is not None:
-            origin_distance_to_core = origin_tile.distance_to_core
-        build_next_to_core = self._is_next_to_core_footprint(bridge_pos)
-
-        if self.core_center_pos is not None:
-            best_core_tile: tuple[tuple[int, int, int], Position] | None = None
-            for dx in range(-1, 2):
-                for dy in range(-1, 2):
-                    core_x = self.core_center_pos.x + dx
-                    core_y = self.core_center_pos.y + dy
-                    if not (0 <= core_x < self.map.width and 0 <= core_y < self.map.height):
-                        continue
-                    dist_sq = (bridge_x - core_x) * (bridge_x - core_x) + (
-                        bridge_y - core_y
-                    ) * (bridge_y - core_y)
-                    if dist_sq > bridge_target_radius_sq:
-                        continue
-                    if build_next_to_core or dist_sq <= 2:
-                        step_x = 0 if core_x == bridge_x else (1 if core_x > bridge_x else -1)
-                        step_y = 0 if core_y == bridge_y else (1 if core_y > bridge_y else -1)
-                        output_key = (bridge_x + step_x, bridge_y + step_y)
-                    else:
-                        output_key = (core_x, core_y)
-                    if (
-                        output_key in enemy_builder_tiles
-                        or output_key in enemy_turret_tiles
-                    ):
-                        continue
-
-                    candidate_key = (
-                        -dist_sq,
-                        core_x,
-                        core_y,
-                    )
-                    if best_core_tile is None or candidate_key < best_core_tile[0]:
-                        best_core_tile = (candidate_key, Position(core_x, core_y))
-
-            if best_core_tile is not None:
-                return best_core_tile[1]
-
-        best_existing_link_candidate: tuple[
-            tuple[int, int, int, int],
-            Position,
-        ] | None = None
-        best_build_candidate: tuple[
-            tuple[int, int, int, int, int],
-            Position,
-        ] | None = None
-        best_non_titanium_improving_candidate: tuple[
-            tuple[int, int, int, int, int],
-            Position,
-        ] | None = None
-
-        for dx in range(-3, 4):
-            for dy in range(-3, 4):
-                candidate_x = bridge_x + dx
-                candidate_y = bridge_y + dy
-                if candidate_x == bridge_x and candidate_y == bridge_y:
-                    continue
-                if not (0 <= candidate_x < self.map.width and 0 <= candidate_y < self.map.height):
-                    continue
-                dist_sq = dx * dx + dy * dy
-                if dist_sq > bridge_target_radius_sq:
-                    continue
-
-                if build_next_to_core or dist_sq <= 2:
-                    step_x = 0 if dx == 0 else (1 if dx > 0 else -1)
-                    step_y = 0 if dy == 0 else (1 if dy > 0 else -1)
-                    output_key = (bridge_x + step_x, bridge_y + step_y)
-                else:
-                    output_key = (candidate_x, candidate_y)
-                if output_key in enemy_builder_tiles or output_key in enemy_turret_tiles:
-                    continue
-
-                tile = self.map.matrix[candidate_x][candidate_y]
-                if tile is None:
-                    continue
-                if tile.distance_to_core >= INFINITE_DISTANCE:
-                    continue
-                if tile.environment == Environment.WALL:
-                    continue
-
-                if (
-                    tile.building_team == own_team
-                    and tile.building_type in SUPPLY_LINK_TYPES
-                    and tile.distance_to_core < origin_distance_to_core
-                ):
-                    existing_link_candidate_key = (
-                        tile.distance_to_core,
-                        -dist_sq,
-                        candidate_x,
-                        candidate_y,
-                    )
-                    if (
-                        best_existing_link_candidate is None
-                        or existing_link_candidate_key
-                        < best_existing_link_candidate[0]
-                    ):
-                        best_existing_link_candidate = (
-                            existing_link_candidate_key,
-                            Position(candidate_x, candidate_y),
-                        )
-                    continue
-
-                is_buildable = tile.building_id is None
-                is_replaceable = tile.building_type in {
-                    EntityType.ROAD,
-                    EntityType.MARKER,
-                }
-                if not (is_buildable or is_replaceable):
-                    continue
-
-                target_type_rank = (
-                    0
-                    if is_buildable
-                    else 1 if tile.building_type == EntityType.ROAD else 2
-                )
-                candidate_key = (
-                    tile.distance_to_core,
-                    target_type_rank,
-                    -dist_sq,
-                    candidate_x,
-                    candidate_y,
-                )
-                candidate_pos = Position(candidate_x, candidate_y)
-                if (
-                    best_build_candidate is None
-                    or candidate_key < best_build_candidate[0]
-                ):
-                    best_build_candidate = (candidate_key, candidate_pos)
-
-                if (
-                    tile.distance_to_core < origin_distance_to_core
-                    and tile.environment != Environment.ORE_TITANIUM
-                    and (
-                        best_non_titanium_improving_candidate is None
-                        or candidate_key < best_non_titanium_improving_candidate[0]
-                    )
-                ):
-                    best_non_titanium_improving_candidate = (
-                        candidate_key,
-                        candidate_pos,
-                    )
-
-        if best_existing_link_candidate is not None:
-            return best_existing_link_candidate[1]
-        if best_non_titanium_improving_candidate is not None:
-            return best_non_titanium_improving_candidate[1]
-        if best_build_candidate is not None:
-            return best_build_candidate[1]
-        return None
-
-    def build_harvester_bridge(self, hold: bool = False) -> bool:
+    def build_harvester_supply_link(self, hold: bool = False) -> bool:
         """
         Build or stage a supply link next to a visible allied harvester.
 
@@ -3561,7 +3704,7 @@ class Bot:
 
         current_pos = self.turn_position or self.ct.get_position()
         actionable_candidates: list[
-            tuple[tuple[int, int, int, int, int, int], Position, Position]
+            tuple[tuple[int, int, int, int, int, int], Position, Position, bool]
         ] = []
         movement_candidates: list[
             tuple[tuple[int, int, int, int, int, int], Position]
@@ -3597,9 +3740,11 @@ class Bot:
                 empty_adjacent_tiles.append(adjacent_pos)
 
             for build_pos in empty_adjacent_tiles:
-                target_pos = self.get_bridge_target(build_pos)
-                if target_pos is None:
+                target_plan = self._get_supply_link_plan(build_pos)
+                if target_plan is None:
+                    movement_candidates.append((candidate_key, build_pos))
                     continue
+                target_pos, use_bridge = target_plan
 
                 candidate_key = (
                     current_pos.distance_squared(build_pos),
@@ -3614,10 +3759,18 @@ class Bot:
                     if (
                         build_pos != current_pos
                         and current_pos.distance_squared(build_pos) <= 2
-                        and self._can_build_bridge_or_conveyor(build_pos, target_pos)
                     ):
+                        buildable_plan = self._get_buildable_supply_link_plan(
+                            build_pos,
+                            target_pos,
+                            use_bridge,
+                        )
+                        if buildable_plan is None:
+                            movement_candidates.append((candidate_key, build_pos))
+                            continue
+                        target_pos, use_bridge = buildable_plan
                         actionable_candidates.append(
-                            (candidate_key, build_pos, target_pos)
+                            (candidate_key, build_pos, target_pos, use_bridge)
                         )
                     else:
                         movement_candidates.append((candidate_key, build_pos))
@@ -3640,12 +3793,12 @@ class Bot:
         if can_build:
             if actionable_candidates:
                 actionable_candidates.sort(key=lambda candidate: candidate[0])
-                _, build_pos, target_pos = actionable_candidates[0]
-                if not self._build_bridge_or_conveyor(build_pos, target_pos):
+                _, build_pos, target_pos, use_bridge = actionable_candidates[0]
+                if not self._build_supply_link(build_pos, target_pos, use_bridge):
                     return False
                 return self._record_action(
                     BotAction.BUILD_HARVESTER_BRIDGE,
-                    "building harvester bridge",
+                    "building harvester supply link",
                 )
 
             if not movement_candidates:
@@ -3653,16 +3806,32 @@ class Bot:
 
             movement_candidates.sort(key=lambda candidate: candidate[0])
             target_build_pos = movement_candidates[0][1]
+            if (
+                target_build_pos != current_pos
+                and current_pos.distance_squared(target_build_pos) <= 2
+            ):
+                return self._record_action(
+                    BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
+                    "holding harvester supply link position",
+                )
             if not self._move_towards_action_range_with_roads(
                 target_build_pos,
                 action_radius_sq=2,
                 allow_direct_target_fallback=False,
             ):
+                if (
+                    target_build_pos != current_pos
+                    and current_pos.distance_squared(target_build_pos) <= 2
+                ):
+                    return self._record_action(
+                        BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
+                        "holding harvester supply link position",
+                    )
                 return False
 
             return self._record_action(
                 BotAction.BUILD_HARVESTER_BRIDGE,
-                "building harvester bridge",
+                "building harvester supply link",
             )
 
         if not hold_candidates:
@@ -3673,7 +3842,7 @@ class Bot:
         if current_pos.distance_squared(build_pos) <= 2 and current_pos != build_pos:
             return self._record_action(
                 BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
-                "holding harvester bridge position",
+                "holding harvester supply link position",
             )
 
         if not self._move_towards_action_range_with_roads(
@@ -3685,33 +3854,65 @@ class Bot:
 
         return self._record_action(
             BotAction.HOLD_BUILD_HARVESTER_BRIDGE,
-            "holding harvester bridge position",
+            "holding harvester supply link position",
         )
 
-    def build_missing_bridge(self, hold: bool = False) -> bool:
+    def build_harvester_bridge(self, hold: bool = False) -> bool:
         """
-        Extend a visible non-harvester supply-chain gap with a new link.
+        Backward-compatible alias for `build_harvester_supply_link`.
+        """
+        return self.build_harvester_supply_link(hold=hold)
 
-        The method looks for visible allied supply links whose output tile is
-        empty or occupied by a road, skipping harvester-adjacent gaps that are
-        handled by `build_harvester_bridge()`. When team titanium is above the
-        chain threshold, it builds or moves toward the closest legal missing
-        link. If the missing-link tile is currently blocked by an enemy
-        passable structure (for example an enemy road), the builder first moves
-        onto that tile and destroys it, then continues normal link placement on
-        subsequent turns. If the builder is already standing on such a blocker
-        tile and that tile is the output target of an allied bridge or
-        conveyor, it immediately attacks the current tile before any hold or
-        fallback behavior. When `hold` is true and titanium is still below that
-        threshold, it instead stages near the best missing-link tile so the
-        build can happen immediately once resources recover.
+    def build_missing_supply_link(self, hold: bool = False) -> bool:
+        """
+        Extend a non-harvester supply-chain gap with a new link.
+
+        The method looks for allied supply links whose output tile is empty or
+        occupied by a road, skipping harvester-adjacent gaps that are handled
+        by `build_harvester_supply_link()`. It also remembers one pending
+        missing-link tile from previous turns, so a builder keeps working on
+        that same gap even if the originating link temporarily leaves vision.
+        When team titanium is above the chain threshold, it builds or moves
+        toward the closest legal missing link. If the missing-link tile is
+        currently blocked by an enemy passable structure (for example an enemy
+        road), the builder first moves onto that tile and destroys it, then
+        continues normal link placement on subsequent turns. If the builder is
+        already standing on such a blocker tile and that tile is the output
+        target of an allied bridge or conveyor, it immediately attacks the
+        current tile before any hold or fallback behavior. When `hold` is true
+        and titanium is still below that threshold, it instead stages near the
+        best missing-link tile so the build can happen immediately once
+        resources recover.
         """
         if self.map is None:
             return False
 
         current_pos = self.turn_position or self.ct.get_position()
         own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_pos_key = (current_pos.x, current_pos.y)
+        if self.missing_supply_target is not None:
+            pending_pos = Position(
+                self.missing_supply_target[0],
+                self.missing_supply_target[1],
+            )
+            if not self._is_in_bounds(pending_pos):
+                self.missing_supply_target = None
+            else:
+                pending_tile = self._get_known_map_tile(pending_pos)
+                if pending_tile is not None:
+                    if self._is_allied_supply_link_tile(pending_tile):
+                        self.missing_supply_target = None
+                    elif pending_tile.environment != Environment.EMPTY:
+                        self.missing_supply_target = None
+
         current_building_id = self.ct.get_tile_building_id(current_pos)
+        if (
+            current_building_id is None
+            and self.missing_supply_blocker_target == current_pos_key
+        ):
+            self.missing_supply_blocker_target = None
+
+        current_tile_is_visible_supply_blocker = False
         if (
             current_building_id is not None
             and self.ct.get_team(current_building_id) != own_team
@@ -3724,20 +3925,24 @@ class Bot:
                 output_pos = self._get_supply_link_output_pos(link_id)
                 if output_pos != current_pos:
                     continue
-                if not self._destroy_tile_if_safe(current_pos):
-                    if self.ct.can_fire(current_pos):
-                        self.ct.fire(current_pos)
-                        return self._record_action(
-                            BotAction.BUILD_MISSING_BRIDGE,
-                            "building missing bridge",
-                        )
+                current_tile_is_visible_supply_blocker = True
+                break
+
+            if (
+                current_tile_is_visible_supply_blocker
+                or self.missing_supply_blocker_target == current_pos_key
+            ):
+                self.missing_supply_blocker_target = current_pos_key
+                self.missing_supply_target = current_pos_key
+                if self.ct.can_fire(current_pos):
+                    self.ct.fire(current_pos)
                     return self._record_action(
-                        BotAction.HOLD_MISSING_BRIDGE,
-                        "holding missing bridge position",
+                        BotAction.BUILD_MISSING_BRIDGE,
+                        "building missing supply link",
                     )
                 return self._record_action(
-                    BotAction.BUILD_MISSING_BRIDGE,
-                    "building missing bridge",
+                    BotAction.HOLD_MISSING_BRIDGE,
+                    "holding missing supply link position",
                 )
 
         titanium, _ = self.turn_resources
@@ -3746,7 +3951,13 @@ class Bot:
             return False
 
         actionable_candidates: list[
-            tuple[tuple[int, int, int, int, int, int, int], Position, Position, bool]
+            tuple[
+                tuple[int, int, int, int, int, int, int],
+                Position,
+                Position,
+                bool,
+                bool,
+            ]
         ] = []
         movement_candidates: list[
             tuple[tuple[int, int, int, int, int, int, int], Position]
@@ -3760,6 +3971,7 @@ class Bot:
         hold_candidates: list[
             tuple[tuple[int, int, int, int, int, int, int], Position, Position]
         ] = []
+        candidate_build_pos_keys: set[tuple[int, int]] = set()
 
         for link_id, link_type, link_team, link_pos in self.turn_nearby_building_infos:
             if not self._is_supply_link_type(link_type):
@@ -3800,6 +4012,7 @@ class Bot:
                 link_pos.y,
                 link_id,
             )
+            candidate_build_pos_keys.add((build_pos.x, build_pos.y))
 
             if can_build:
                 is_enemy_blocker_tile = (
@@ -3818,35 +4031,47 @@ class Bot:
                         )
                     continue
 
-                target_pos = self.get_bridge_target(build_pos)
-                if target_pos is None:
+                target_plan = self._get_supply_link_plan(build_pos)
+                if target_plan is None:
+                    movement_candidates.append((candidate_key, build_pos))
                     continue
-                if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+                target_pos, use_bridge = target_plan
+                if self._is_supply_output_tile_unsafe(
+                    build_pos,
+                    target_pos,
+                    use_bridge,
+                ):
                     continue
                 if (
                     build_pos != current_pos
                     and current_pos.distance_squared(build_pos) <= 2
                 ):
-                    if is_road_build_pos and not self._can_destroy_tile(build_pos):
-                        continue
-                    if (
-                        not is_road_build_pos
-                        and not self._can_build_bridge_or_conveyor(
+                    if is_road_build_pos:
+                        if not self._can_destroy_tile(build_pos):
+                            movement_candidates.append((candidate_key, build_pos))
+                            continue
+                    else:
+                        buildable_plan = self._get_buildable_supply_link_plan(
                             build_pos,
                             target_pos,
+                            use_bridge,
                         )
-                    ):
-                        continue
+                        if buildable_plan is None:
+                            movement_candidates.append((candidate_key, build_pos))
+                            continue
+                        target_pos, use_bridge = buildable_plan
 
                     actionable_candidates.append(
-                        (candidate_key, build_pos, target_pos, is_road_build_pos)
+                        (
+                            candidate_key,
+                            build_pos,
+                            target_pos,
+                            is_road_build_pos,
+                            use_bridge,
+                        )
                     )
                 else:
                     movement_candidates.append((candidate_key, build_pos))
-                continue
-
-            target_pos = self.get_bridge_target(build_pos)
-            if target_pos is None:
                 continue
 
             staging_pos = self._get_best_action_staging_pos(build_pos)
@@ -3864,15 +4089,130 @@ class Bot:
             )
             hold_candidates.append((hold_key, staging_pos, build_pos))
 
+        if (
+            self.missing_supply_target is not None
+            and self.missing_supply_target not in candidate_build_pos_keys
+        ):
+            build_pos = Position(
+                self.missing_supply_target[0],
+                self.missing_supply_target[1],
+            )
+            if self._is_in_bounds(build_pos) and not self._is_adjacent_to_allied_harvester(
+                build_pos
+            ):
+                tile = self._get_known_map_tile(build_pos)
+                if tile is not None and tile.environment == Environment.EMPTY:
+                    if self._is_allied_supply_link_tile(tile):
+                        self.missing_supply_target = None
+                    else:
+                        is_empty_build_pos = tile.building_id is None
+                        is_road_build_pos = tile.building_type == EntityType.ROAD
+                        if is_empty_build_pos or is_road_build_pos:
+                            build_pos_type_rank = 0 if is_empty_build_pos else 1
+                            candidate_key = (
+                                current_pos.distance_squared(build_pos),
+                                build_pos_type_rank,
+                                build_pos.x,
+                                build_pos.y,
+                                build_pos.x,
+                                build_pos.y,
+                                -1,
+                            )
+                            if can_build:
+                                is_enemy_blocker_tile = (
+                                    tile.building_id is not None
+                                    and tile.building_team != self.turn_team
+                                    and (
+                                        tile.is_passable
+                                        or tile.building_type == EntityType.BRIDGE
+                                    )
+                                )
+                                if is_enemy_blocker_tile:
+                                    if build_pos == current_pos:
+                                        enemy_blocker_action_candidates.append(
+                                            (candidate_key, build_pos)
+                                        )
+                                    else:
+                                        enemy_blocker_move_candidates.append(
+                                            (candidate_key, build_pos)
+                                        )
+                                else:
+                                    target_plan = self._get_supply_link_plan(build_pos)
+                                    if target_plan is None:
+                                        movement_candidates.append((candidate_key, build_pos))
+                                    else:
+                                        target_pos, use_bridge = target_plan
+                                        if self._is_supply_output_tile_unsafe(
+                                            build_pos,
+                                            target_pos,
+                                            use_bridge,
+                                        ):
+                                            movement_candidates.append((candidate_key, build_pos))
+                                        elif (
+                                            build_pos != current_pos
+                                            and current_pos.distance_squared(build_pos) <= 2
+                                        ):
+                                            if is_road_build_pos:
+                                                if not self._can_destroy_tile(build_pos):
+                                                    movement_candidates.append((candidate_key, build_pos))
+                                                else:
+                                                    actionable_candidates.append(
+                                                        (
+                                                            candidate_key,
+                                                            build_pos,
+                                                            target_pos,
+                                                            is_road_build_pos,
+                                                            use_bridge,
+                                                        )
+                                                    )
+                                            else:
+                                                buildable_plan = self._get_buildable_supply_link_plan(
+                                                    build_pos,
+                                                    target_pos,
+                                                    use_bridge,
+                                                )
+                                                if buildable_plan is None:
+                                                    movement_candidates.append((candidate_key, build_pos))
+                                                else:
+                                                    actionable_candidates.append(
+                                                        (
+                                                            candidate_key,
+                                                            build_pos,
+                                                            buildable_plan[0],
+                                                            is_road_build_pos,
+                                                            buildable_plan[1],
+                                                        )
+                                                    )
+                                        else:
+                                            movement_candidates.append((candidate_key, build_pos))
+                            else:
+                                staging_pos = self._get_best_action_staging_pos(build_pos)
+                                if staging_pos is not None:
+                                    hold_key = (
+                                        current_pos.distance_squared(staging_pos),
+                                        build_pos_type_rank,
+                                        1 if staging_pos == build_pos else 0,
+                                        staging_pos.x,
+                                        staging_pos.y,
+                                        build_pos.x,
+                                        build_pos.y,
+                                    )
+                                    hold_candidates.append(
+                                        (hold_key, staging_pos, build_pos)
+                                    )
+
         if can_build:
             if enemy_blocker_action_candidates:
                 enemy_blocker_action_candidates.sort(key=lambda candidate: candidate[0])
                 for _, build_pos in enemy_blocker_action_candidates:
-                    if not self._destroy_tile_if_safe(build_pos):
+                    if not self.ct.can_fire(build_pos):
                         continue
+                    self.ct.fire(build_pos)
+                    self.missing_supply_blocker_target = (build_pos.x, build_pos.y)
+                    self.missing_supply_target = (build_pos.x, build_pos.y)
                     return self._record_action(
                         BotAction.BUILD_MISSING_BRIDGE,
-                        "building missing bridge",
+                        "building missing supply link",
                     )
 
             if enemy_blocker_move_candidates:
@@ -3880,40 +4220,82 @@ class Bot:
                 target_blocker_pos = enemy_blocker_move_candidates[0][1]
                 if not self._move_towards_with_roads(target_blocker_pos):
                     return False
+                self.missing_supply_blocker_target = (
+                    target_blocker_pos.x,
+                    target_blocker_pos.y,
+                )
+                self.missing_supply_target = (
+                    target_blocker_pos.x,
+                    target_blocker_pos.y,
+                )
                 return self._record_action(
                     BotAction.BUILD_MISSING_BRIDGE,
-                    "building missing bridge",
+                    "building missing supply link",
                 )
 
             if actionable_candidates:
                 actionable_candidates.sort(key=lambda candidate: candidate[0])
-                for _, build_pos, target_pos, is_road_build_pos in actionable_candidates:
-                    if not self._build_bridge_with_optional_road_removal(
+                for (
+                    _,
+                    build_pos,
+                    target_pos,
+                    is_road_build_pos,
+                    use_bridge,
+                ) in actionable_candidates:
+                    if not self._build_supply_link_with_optional_road_removal(
                         build_pos,
                         target_pos,
                         is_road_build_pos,
+                        use_bridge,
                     ):
                         continue
+                    self.missing_supply_blocker_target = None
+                    if is_road_build_pos:
+                        self.missing_supply_target = (build_pos.x, build_pos.y)
+                    else:
+                        self.missing_supply_target = None
 
                     return self._record_action(
                         BotAction.BUILD_MISSING_BRIDGE,
-                        "building missing bridge",
+                        "building missing supply link",
                     )
 
             if not movement_candidates:
                 return False
 
             movement_candidates.sort(key=lambda candidate: candidate[0])
+            target_build_pos = movement_candidates[0][1]
+            self.missing_supply_target = (
+                target_build_pos.x,
+                target_build_pos.y,
+            )
+            if (
+                target_build_pos != current_pos
+                and current_pos.distance_squared(target_build_pos) <= 2
+            ):
+                return self._record_action(
+                    BotAction.HOLD_MISSING_BRIDGE,
+                    "holding missing supply link position",
+                )
+
             if not self._move_towards_action_range_with_roads(
-                movement_candidates[0][1],
+                target_build_pos,
                 action_radius_sq=2,
                 allow_direct_target_fallback=False,
             ):
+                if (
+                    target_build_pos != current_pos
+                    and current_pos.distance_squared(target_build_pos) <= 2
+                ):
+                    return self._record_action(
+                        BotAction.HOLD_MISSING_BRIDGE,
+                        "holding missing supply link position",
+                    )
                 return False
 
             return self._record_action(
                 BotAction.HOLD_MISSING_BRIDGE,
-                "holding missing bridge position",
+                "holding missing supply link position",
             )
 
         if not hold_candidates:
@@ -3921,10 +4303,11 @@ class Bot:
 
         hold_candidates.sort(key=lambda candidate: candidate[0])
         _, staging_pos, build_pos = hold_candidates[0]
+        self.missing_supply_target = (build_pos.x, build_pos.y)
         if current_pos.distance_squared(build_pos) <= 2 and current_pos != build_pos:
             return self._record_action(
                 BotAction.HOLD_MISSING_BRIDGE,
-                "holding missing bridge position",
+                "holding missing supply link position",
             )
 
         if not self._move_towards_action_range_with_roads(
@@ -3936,8 +4319,14 @@ class Bot:
 
         return self._record_action(
             BotAction.HOLD_MISSING_BRIDGE,
-            "holding missing bridge position",
+            "holding missing supply link position",
         )
+
+    def build_missing_bridge(self, hold: bool = False) -> bool:
+        """
+        Backward-compatible alias for `build_missing_supply_link`.
+        """
+        return self.build_missing_supply_link(hold=hold)
 
     def destroy_hijacked_reschain(self) -> bool:
         """
@@ -5272,8 +5661,8 @@ class Bot:
         or conveyor whose output tile is still unknown in the cached map, or is
         known but not yet occupied by another allied supply link. If the
         missing continuation tile is buildable and in action range, it extends
-        the chain there, removing a road first and placing the next link
-        immediately when both actions are legal in the same turn. Existing
+        the chain there; when the tile is a road, it first clears the road and
+        then places the next link on a following turn. Existing
         allied downstream conveyors or bridges already count as a valid
         continuation and are skipped. Otherwise it moves toward a tile that can
         place the continuation while building roads on the way.
@@ -5296,6 +5685,7 @@ class Bot:
                 tuple[int, int, int, int, int, int, int],
                 Position,
                 Position,
+                bool,
                 bool,
             ]
         ] = []
@@ -5338,57 +5728,67 @@ class Bot:
             if not (is_empty_build_pos or is_road_build_pos):
                 continue
 
-            next_target_pos = self.get_bridge_target(target_pos)
-            if next_target_pos is None:
+            target_plan = self._get_supply_link_plan(target_pos)
+            if target_plan is None:
                 continue
+            next_target_pos, use_bridge = target_plan
 
             build_pos_type_rank = 0 if is_empty_build_pos else 1
-            if current_pos.distance_squared(target_pos) <= 2:
-                if self._is_supply_output_tile_unsafe(target_pos, next_target_pos):
-                    continue
-                if is_road_build_pos:
-                    if not self._can_destroy_tile(target_pos):
-                        continue
-                elif not self._can_build_bridge_or_conveyor(
-                    target_pos,
-                    next_target_pos,
-                ):
-                    continue
-
-                candidate_key = (
-                    current_pos.distance_squared(target_pos),
-                    build_pos_type_rank,
-                    target_pos.x,
-                    target_pos.y,
-                    link_pos.x,
-                    link_pos.y,
-                    link_id,
-                )
-                if target_pos == current_pos:
-                    movement_candidates.append((candidate_key, target_pos))
-                    continue
-                actionable_candidates.append(
-                    (candidate_key, target_pos, next_target_pos, is_road_build_pos)
-                )
-                continue
-
             candidate_key = (
                 current_pos.distance_squared(target_pos),
+                build_pos_type_rank,
                 target_pos.x,
                 target_pos.y,
                 link_pos.x,
                 link_pos.y,
                 link_id,
             )
+            if current_pos.distance_squared(target_pos) <= 2:
+                if self._is_supply_output_tile_unsafe(
+                    target_pos,
+                    next_target_pos,
+                    use_bridge,
+                ):
+                    continue
+                if is_road_build_pos:
+                    if not self._can_destroy_tile(target_pos):
+                        movement_candidates.append((candidate_key, target_pos))
+                        continue
+                else:
+                    buildable_plan = self._get_buildable_supply_link_plan(
+                        target_pos,
+                        next_target_pos,
+                        use_bridge,
+                    )
+                    if buildable_plan is None:
+                        movement_candidates.append((candidate_key, target_pos))
+                        continue
+                    next_target_pos, use_bridge = buildable_plan
+
+                if target_pos == current_pos:
+                    movement_candidates.append((candidate_key, target_pos))
+                    continue
+                actionable_candidates.append(
+                    (
+                        candidate_key,
+                        target_pos,
+                        next_target_pos,
+                        is_road_build_pos,
+                        use_bridge,
+                    )
+                )
+                continue
+
             movement_candidates.append((candidate_key, target_pos))
 
         if actionable_candidates:
             actionable_candidates.sort(key=lambda candidate: candidate[0])
-            _, build_pos, target_pos, is_road_build_pos = actionable_candidates[0]
-            if not self._build_bridge_with_optional_road_removal(
+            _, build_pos, target_pos, is_road_build_pos, use_bridge = actionable_candidates[0]
+            if not self._build_supply_link_with_optional_road_removal(
                 build_pos,
                 target_pos,
                 is_road_build_pos,
+                use_bridge,
             ):
                 return False
 
@@ -5401,11 +5801,29 @@ class Bot:
             return False
 
         movement_candidates.sort(key=lambda candidate: candidate[0])
+        target_build_pos = movement_candidates[0][1]
+        if (
+            target_build_pos != current_pos
+            and current_pos.distance_squared(target_build_pos) <= 2
+        ):
+            return self._record_action(
+                BotAction.COMPLETE_SUPPLY_CHAIN,
+                "completing supply chain",
+            )
+
         if not self._move_towards_action_range_with_roads(
-            movement_candidates[0][1],
+            target_build_pos,
             action_radius_sq=2,
             allow_direct_target_fallback=False,
         ):
+            if (
+                target_build_pos != current_pos
+                and current_pos.distance_squared(target_build_pos) <= 2
+            ):
+                return self._record_action(
+                    BotAction.COMPLETE_SUPPLY_CHAIN,
+                    "completing supply chain",
+                )
             return False
 
         return self._record_action(
