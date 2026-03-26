@@ -1973,7 +1973,8 @@ class Bot:
             ("complete_supply_chain", complete_supply_chain_step),
             ("build_missing_supply_link", build_missing_supply_link_step),
             ("build_harvester", build_harvester_step),
-            ("init_res_scout", init_res_scout_step),
+            # ("init_res_scout", init_res_scout_step),
+            ("bb_expand", self.bb_expand)
         ]
         if self._run_bb_strategy_plan("init_res", steps):
             return
