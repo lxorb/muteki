@@ -1,47 +1,25 @@
-import random
-from cambc import Controller, Direction, EntityType
-from lib.id_map import IdMap
+from cambc import Controller, EntityType
 
-# non-centre directions
-DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
+from src.lib.strategy import DefaultStrategy
+
+from src.lib.strategy.builder import Strategy as BuilderStrategy
+from src.lib.strategy.core import Strategy as CoreStrategy
 
 
 class Bot:
     def __init__(self):
-        self.num_spawned = 0  # number of builder bots spawned so far (core)
-        self.id_map: IdMap = IdMap()
+        self.strategy = None
 
     def run(self, ct: Controller) -> None:
-        self.id_map.update(ct)
+        e_type = ct.get_entity_type()
 
-        print(self.id_map)
+        if self.strategy is None:
+            match e_type:
+                case EntityType.CORE:
+                    self.strategy = CoreStrategy()
+                case EntityType.BUILDER_BOT:
+                    self.strategy = BuilderStrategy()
+                case _:
+                    self.strategy = DefaultStrategy()
 
-        etype = ct.get_entity_type()
-        if etype == EntityType.CORE:
-            if self.num_spawned < 3:
-                # if we haven't spawned 3 builder bots yet, try to spawn one on a random tile
-                spawn_pos = ct.get_position().add(random.choice(DIRECTIONS))
-                if ct.can_spawn(spawn_pos):
-                    ct.spawn_builder(spawn_pos)
-                    self.num_spawned += 1
-        elif etype == EntityType.BUILDER_BOT:
-            # if we are adjacent to an ore tile, build a harvester on it
-            for d in Direction:
-                check_pos = ct.get_position().add(d)
-                if ct.can_build_harvester(check_pos):
-                    ct.build_harvester(check_pos)
-                    break
-
-            # move in a random direction
-            move_dir = random.choice(DIRECTIONS)
-            move_pos = ct.get_position().add(move_dir)
-            # we need to place a conveyor or road to stand on, before we can move onto a tile
-            if ct.can_build_road(move_pos):
-                ct.build_road(move_pos)
-            if ct.can_move(move_dir):
-                ct.move(move_dir)
-
-            # place a marker on an adjacent tile with the current round number
-            marker_pos = ct.get_position().add(random.choice(DIRECTIONS))
-            if ct.can_place_marker(marker_pos):
-                ct.place_marker(marker_pos, ct.get_current_round())
+        self.strategy.run(ct)
