@@ -5031,6 +5031,23 @@ class Bot:
             return 3  # right
         return None
 
+    def _get_titanium_diag_rank(self, ore_pos: Position, bot_pos: Position) -> int | None:
+        """
+        Return deterministic diagonal-adjacency precedence around titanium.
+
+        Diagonal precedence is NE, SE, SW, NW. Non-diagonal-adjacent
+        positions return `None`.
+        """
+        if bot_pos.x == ore_pos.x + 1 and bot_pos.y == ore_pos.y - 1:
+            return 0  # NE
+        if bot_pos.x == ore_pos.x + 1 and bot_pos.y == ore_pos.y + 1:
+            return 1  # SE
+        if bot_pos.x == ore_pos.x - 1 and bot_pos.y == ore_pos.y + 1:
+            return 2  # SW
+        if bot_pos.x == ore_pos.x - 1 and bot_pos.y == ore_pos.y - 1:
+            return 3  # NW
+        return None
+
     def _should_claim_titanium_tile(
         self,
         ore_pos: Position,
@@ -5040,9 +5057,10 @@ class Bot:
         """
         Decide whether this bot should claim holding responsibility for one ore tile.
 
-        If another allied builder is cardinal-adjacent while this bot is not,
-        the tile is not claimed. If both are cardinal-adjacent, deterministic
-        precedence top > bottom > left > right is used to pick exactly one.
+        Cardinal-adjacent builders are preferred first using deterministic
+        precedence top > bottom > left > right. If no other cardinal-adjacent
+        builder exists, diagonal-adjacent builders are preferred next with
+        precedence NE > SE > SW > NW.
         """
         current_rank = self._get_titanium_adj_rank(ore_pos, current_pos)
         other_adj_ranks = [
@@ -5050,13 +5068,25 @@ class Bot:
             for other_pos in allied_builder_positions
             if (rank := self._get_titanium_adj_rank(ore_pos, other_pos)) is not None
         ]
-        if not other_adj_ranks:
+        if other_adj_ranks:
+            if current_rank is None:
+                return False
+            return current_rank <= min(other_adj_ranks)
+
+        if current_rank is not None:
             return True
 
-        if current_rank is None:
+        current_diag_rank = self._get_titanium_diag_rank(ore_pos, current_pos)
+        other_diag_ranks = [
+            rank
+            for other_pos in allied_builder_positions
+            if (rank := self._get_titanium_diag_rank(ore_pos, other_pos)) is not None
+        ]
+        if not other_diag_ranks:
+            return True
+        if current_diag_rank is None:
             return False
-
-        return current_rank <= min(other_adj_ranks)
+        return current_diag_rank <= min(other_diag_ranks)
 
     def get_enemy_core_pos(self) -> Position | None:
         """
