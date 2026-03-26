@@ -41,6 +41,7 @@ Thumbs.db
 
 # cbc
 *.replay*
+/profiles/
 
 # local test bot
 /src/bots/test_bot.py
