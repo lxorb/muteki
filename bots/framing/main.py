@@ -3158,6 +3158,120 @@ class Bot:
 
         return False
 
+    def _is_diagonal_direction(self, direction: Direction) -> bool:
+        """
+        Return whether a direction is diagonal.
+
+        Diagonal directions have both x and y deltas non-zero and are treated
+        as fully feed-safe for sentinel orientation rules.
+        """
+        delta_x, delta_y = direction.delta()
+        return abs(delta_x) + abs(delta_y) == 2
+
+    def _get_sentinel_supplier_directions(self, sentinel_pos: Position) -> set[Direction]:
+        """
+        Return directions of adjacent supplier tiles around a sentinel placement.
+
+        A supplier is any adjacent harvester or supply-link tile (conveyor,
+        armoured conveyor, or bridge) that is currently visible in the map
+        cache. Team ownership is intentionally ignored for this orientation
+        safety rule.
+        """
+        current_round = (
+            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        )
+        supplier_types = {EntityType.HARVESTER, *SUPPLY_LINK_TYPES}
+        supplier_directions: set[Direction] = set()
+
+        for direction in DIRECTIONS:
+            supplier_pos = sentinel_pos.add(direction)
+            if not self._is_in_bounds(supplier_pos):
+                continue
+
+            tile = self._get_known_map_tile(supplier_pos)
+            if tile is None:
+                continue
+            if tile.last_seen_round != current_round:
+                continue
+            if tile.building_id is None:
+                continue
+            if tile.building_type not in supplier_types:
+                continue
+            supplier_directions.add(direction)
+
+        return supplier_directions
+
+    def _get_sentinel_placement_direction(
+        self,
+        sentinel_pos: Position,
+        must_cover_targets: list[Position],
+        preferred_targets: list[Position] | None = None,
+    ) -> tuple[Direction, bool] | None:
+        """
+        Choose the facing direction for one sentinel placement.
+
+        Precedence:
+        1) ammo feed safety: non-diagonal facings that point directly at a
+           supplier direction are rejected; diagonals are always feed-safe.
+        2) enemy-core coverage: if any safe direction covers a preferred target
+           (typically enemy core tiles), one of those is always selected.
+        3) deterministic fallback: diagonal-safe options are preferred, then
+           direction order.
+
+        The selected direction must always cover at least one required target
+        from `must_cover_targets`.
+        """
+        if not must_cover_targets:
+            return None
+
+        preferred_targets = preferred_targets or []
+        supplier_directions = self._get_sentinel_supplier_directions(sentinel_pos)
+        best_candidate: tuple[tuple[int, int, int], Direction, bool] | None = None
+
+        for direction_index, direction in enumerate(DIRECTIONS):
+            if not self._can_build_sentinel_safely(sentinel_pos, direction):
+                continue
+
+            is_diagonal = self._is_diagonal_direction(direction)
+            if not is_diagonal and direction in supplier_directions:
+                continue
+
+            covers_required = False
+            for target_pos in must_cover_targets:
+                if not self._sentinel_direction_covers_target(
+                    sentinel_pos,
+                    direction,
+                    target_pos,
+                ):
+                    continue
+                covers_required = True
+                break
+            if not covers_required:
+                continue
+
+            covers_preferred = False
+            for target_pos in preferred_targets:
+                if not self._sentinel_direction_covers_target(
+                    sentinel_pos,
+                    direction,
+                    target_pos,
+                ):
+                    continue
+                covers_preferred = True
+                break
+
+            candidate_key = (
+                0 if covers_preferred else 1,
+                0 if is_diagonal else 1,
+                direction_index,
+            )
+            if best_candidate is None or candidate_key < best_candidate[0]:
+                best_candidate = (candidate_key, direction, covers_preferred)
+
+        if best_candidate is None:
+            return None
+        return (best_candidate[1], best_candidate[2])
+
     def _is_breach_target_safe(self, target_pos: Position) -> bool:
         """
         Check whether a breach shot would avoid allied splash damage.
@@ -3566,42 +3680,32 @@ class Bot:
                     seen_core_tiles.add(core_key)
                     possible_enemy_core_tiles.append(core_tile)
 
-            for _, candidate_pos, harvester_pos in candidate_tiles:
+            build_options: list[
+                tuple[tuple[int, int, int, int, int, int, int], Position, Direction]
+            ] = []
+            for candidate_key, candidate_pos, harvester_pos in candidate_tiles:
                 if candidate_pos == current_pos:
                     continue
-                direct_direction = candidate_pos.direction_to(harvester_pos)
-                buildable_diagonal_directions = []
-                for sentinel_direction in [
-                    direct_direction.rotate_left(),
-                    direct_direction.rotate_right(),
-                ]:
-                    if not self._can_build_sentinel_safely(
-                        candidate_pos,
-                        sentinel_direction,
-                    ):
-                        continue
-                    buildable_diagonal_directions.append(sentinel_direction)
 
-                preferred_directions: list[Direction] = []
-                for sentinel_direction in buildable_diagonal_directions:
-                    for core_tile in possible_enemy_core_tiles:
-                        if not self._sentinel_direction_covers_target(
-                            candidate_pos,
-                            sentinel_direction,
-                            core_tile,
-                        ):
-                            continue
-                        preferred_directions.append(sentinel_direction)
-                        break
-                candidate_directions = (
-                    preferred_directions or buildable_diagonal_directions
+                direction_plan = self._get_sentinel_placement_direction(
+                    candidate_pos,
+                    must_cover_targets=[harvester_pos],
+                    preferred_targets=possible_enemy_core_tiles,
                 )
+                if direction_plan is None:
+                    continue
+                sentinel_direction, covers_enemy_core = direction_plan
 
-                for sentinel_direction in candidate_directions:
-                    if not self._build_sentinel_safely(
-                        candidate_pos,
-                        sentinel_direction,
-                    ):
+                build_key = (
+                    0 if covers_enemy_core else 1,
+                    *candidate_key,
+                )
+                build_options.append((build_key, candidate_pos, sentinel_direction))
+
+            if build_options:
+                build_options.sort(key=lambda candidate: candidate[0])
+                for _, candidate_pos, sentinel_direction in build_options:
+                    if not self._build_sentinel_safely(candidate_pos, sentinel_direction):
                         continue
                     return self._record_action(
                         BotAction.ATTACK_ENEMY_HARVESTER,
