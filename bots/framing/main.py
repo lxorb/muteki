@@ -24,7 +24,7 @@ CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
 MAX_BOTS = 6
 MAX_HARVESTORS = 999
-SURRENDER_AT_TURN = 600
+SURRENDER_AT_TURN = 1000
 
 SENTINEL_TARGET_PRIORITY = [
     EntityType.GUNNER,
@@ -101,11 +101,13 @@ class BotAction(Enum):
     BB_SCOUT = auto()
     PATROL_SUPPLY_CHAINS = auto()
     LAUNCHER_DEFEND = auto()
+    LAUNCHER_THROW = auto()
 
 
 class CoreSpawnEvent(Enum):
     FIRST_RESOURCE_INCREASE = auto()
     TURN_REACHED_200 = auto()
+    ENEMY_BOT_IN_CORE_VISION = auto()
 
 
 @dataclass(slots=True)
@@ -120,6 +122,7 @@ class Tile:
     builder_bot_team: Team | None = None
     is_passable: bool = True
     last_seen_round: int = -1
+    last_patrolled_index: int = -1
 
     def update_from_controller(self, ct: Controller) -> None:
         """
@@ -634,7 +637,7 @@ class Bot:
         self.init_res_scout_radius = 2
         self.init_res_scout_clockwise = True
         self.core_prox_defend_target: tuple[int, int] | None = None
-        self.defender_patrol_target: tuple[int, int] | None = None
+        self.defender_patrol_index = 0
         self.previous_action = BotAction.NONE
         self.last_action = BotAction.NONE
 
@@ -675,11 +678,24 @@ class Bot:
         """
         Choose the builder's initial role handler.
 
-        The selection uses the current round index to map early builders onto
-        predefined opening roles and falls back to the configured post-opening
-        builder role later. Event markers in `INITIAL_BB` are ignored here,
-        because they are only used by the core spawn scheduler.
+        The builder infers its initial role from the core-footprint tile it was
+        spawned on. If that mapping cannot be resolved (for example after an
+        unusual reset state), the method falls back to round-based
+        initialisation using callable entries from `INITIAL_BB`, with
+        `FURTHER_BB` as the final default.
         """
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is not None:
+            current_pos = self.ct.get_position()
+            offset = (
+                current_pos.x - self.core_center_pos.x,
+                current_pos.y - self.core_center_pos.y,
+            )
+            assigned_handler = CORE_TILE_BB_ROLE.get(offset)
+            if callable(assigned_handler):
+                return assigned_handler.__get__(self, type(self))
+
         initial_builder_handlers = [entry for entry in INITIAL_BB if callable(entry)]
         round_index = self.ct.get_current_round() - 1
         if 0 <= round_index < len(initial_builder_handlers):
@@ -801,9 +817,20 @@ class Bot:
         `FIRST_RESOURCE_INCREASE` event fires the first time either team
         resource increases compared to the previous core turn.
         `TURN_REACHED_200` fires once round 200 or later is reached.
+        `ENEMY_BOT_IN_CORE_VISION` fires once an enemy unit is visible to the
+        core.
         """
         if self.ct.get_current_round() >= 200:
             self.core_completed_spawn_events.add(CoreSpawnEvent.TURN_REACHED_200)
+
+        own_team = self.ct.get_team()
+        for unit_id in self.ct.get_nearby_units():
+            if self.ct.get_team(unit_id) == own_team:
+                continue
+            self.core_completed_spawn_events.add(
+                CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION
+            )
+            break
 
         current_resources = self.ct.get_global_resources()
         if self.core_previous_resources is None:
@@ -862,10 +889,30 @@ class Bot:
         if not should_spawn_from_initial_plan and titanium < FURTHER_BB_THRESHOLD:
             return
 
-        spawn_directions = DIRECTIONS[:]
-        random.shuffle(spawn_directions)
-        for direction in spawn_directions:
-            spawn_pos = self.ct.get_position().add(direction)
+        assigned_handler = FURTHER_BB
+        if should_spawn_from_initial_plan:
+            plan_entry = INITIAL_BB[self.core_spawn_plan_index]
+            if callable(plan_entry):
+                assigned_handler = plan_entry
+
+        core_pos = self.ct.get_position()
+        preferred_offsets = [
+            offset
+            for offset, role_handler in CORE_TILE_BB_ROLE.items()
+            if role_handler == assigned_handler
+        ]
+        if not preferred_offsets:
+            return
+
+        preferred_spawn_positions: list[Position] = []
+        for dx, dy in preferred_offsets:
+            spawn_pos = Position(core_pos.x + dx, core_pos.y + dy)
+            if not self._is_in_bounds(spawn_pos):
+                continue
+            preferred_spawn_positions.append(spawn_pos)
+
+        random.shuffle(preferred_spawn_positions)
+        for spawn_pos in preferred_spawn_positions:
             if not self.ct.can_spawn(spawn_pos):
                 continue
 
@@ -1198,6 +1245,7 @@ class Bot:
         logistics tiles by trying to place a nearby launcher, then falls back
         to patrolling known allied supply-chain structures.
         """
+        self._stamp_defender_patrol_coverage()
         if self.launcher_defend():
             return
 
@@ -1268,11 +1316,121 @@ class Bot:
         self.last_action = BotAction.BREACH_ATTACK
 
     def run_launcher(self):
-        # throw away enemy bots
-        #   -> to own turret if available
-        #   -> otherwise just maximize distance from the core
-        # throw own bot for lane traversal
-        pass
+        """
+        Throw an enemy builder bot to a road tile chosen by defense priority.
+
+        The launcher only throws enemy builder bots and only to road tiles.
+        If any legal throw destination is targetable by at least one visible
+        allied turret, such covered road tiles are preferred; among them it
+        chooses the one farthest from the allied core. If none are turret-
+        covered, it falls back to the farthest legal road tile from core.
+        """
+        if self.core_center_pos is None:
+            self.find_core_center()
+        core_ref_pos = self.core_center_pos or self.ct.get_position()
+
+        own_team = self.ct.get_team()
+        launcher_pos = self.ct.get_position()
+        enemy_builder_positions: list[Position] = []
+        for unit_id in self.ct.get_nearby_units():
+            if self.ct.get_team(unit_id) == own_team:
+                continue
+            if self.ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
+                continue
+            enemy_builder_positions.append(self.ct.get_position(unit_id))
+
+        if not enemy_builder_positions:
+            return
+
+        road_targets: list[Position] = []
+        for target_pos in self.ct.get_nearby_tiles(self.ct.get_vision_radius_sq()):
+            building_id = self.ct.get_tile_building_id(target_pos)
+            if building_id is None:
+                continue
+            if self.ct.get_entity_type(building_id) != EntityType.ROAD:
+                continue
+            road_targets.append(target_pos)
+
+        if not road_targets:
+            return
+
+        own_turret_ids: list[int] = []
+        for building_id in self.ct.get_nearby_buildings():
+            if self.ct.get_team(building_id) != own_team:
+                continue
+            building_type = self.ct.get_entity_type(building_id)
+            if building_type not in {
+                EntityType.GUNNER,
+                EntityType.SENTINEL,
+                EntityType.BREACH,
+            }:
+                continue
+            own_turret_ids.append(building_id)
+
+        def is_targetable_by_own_turret(target_pos: Position) -> bool:
+            for turret_id in own_turret_ids:
+                turret_pos = self.ct.get_position(turret_id)
+                if (
+                    turret_pos.distance_squared(target_pos)
+                    > self.ct.get_vision_radius_sq(turret_id)
+                ):
+                    continue
+
+                turret_type = self.ct.get_entity_type(turret_id)
+                if turret_type == EntityType.SENTINEL:
+                    turret_direction = self.ct.get_direction(turret_id)
+                    if self._sentinel_direction_covers_target(
+                        turret_pos,
+                        turret_direction,
+                        target_pos,
+                    ):
+                        return True
+                    continue
+
+                return True
+
+            return False
+
+        legal_launches: list[
+            tuple[tuple[int, int, int, int, int, int], Position, Position, bool]
+        ] = []
+        for bot_pos in enemy_builder_positions:
+            for target_pos in road_targets:
+                if not self.ct.can_launch(bot_pos, target_pos):
+                    continue
+
+                candidate_key = (
+                    -core_ref_pos.distance_squared(target_pos),
+                    launcher_pos.distance_squared(bot_pos),
+                    target_pos.x,
+                    target_pos.y,
+                    bot_pos.x,
+                    bot_pos.y,
+                )
+                legal_launches.append(
+                    (
+                        candidate_key,
+                        bot_pos,
+                        target_pos,
+                        is_targetable_by_own_turret(target_pos),
+                    )
+                )
+
+        if not legal_launches:
+            return
+
+        prefer_turret_covered_target = any(candidate[3] for candidate in legal_launches)
+        best_launch = min(
+            legal_launches,
+            key=lambda candidate: (
+                1 if prefer_turret_covered_target and not candidate[3] else 0,
+                candidate[0],
+            ),
+        )
+
+        _, bot_pos, target_pos, _ = best_launch
+        self.ct.launch(bot_pos, target_pos)
+        self.last_action = BotAction.LAUNCHER_THROW
 
     def surrender(self) -> bool:
         """
@@ -1973,6 +2131,26 @@ class Bot:
         ] = []
 
         for _, enemy_tile_pos in intrusion_tiles:
+            has_adjacent_allied_launcher = False
+            for direction in DIRECTIONS:
+                adjacent_pos = enemy_tile_pos.add(direction)
+                if not self._is_in_bounds(adjacent_pos):
+                    continue
+
+                adjacent_tile = self._get_known_map_tile(adjacent_pos)
+                if adjacent_tile is None:
+                    continue
+                if adjacent_tile.building_type != EntityType.LAUNCHER:
+                    continue
+                if adjacent_tile.building_team != own_team:
+                    continue
+
+                has_adjacent_allied_launcher = True
+                break
+
+            if has_adjacent_allied_launcher:
+                continue
+
             for direction in DIRECTIONS:
                 build_pos = enemy_tile_pos.add(direction)
                 if not self._is_in_bounds(build_pos):
@@ -4073,121 +4251,99 @@ class Bot:
             "patrolling base",
         )
 
+    def _stamp_defender_patrol_coverage(self) -> None:
+        """
+        Stamp current and adjacent relevant supply tiles with patrol index.
+
+        This writes the defender's current patrol index onto allied conveyor
+        and bridge tiles in the local 8-neighborhood plus the current tile.
+        """
+        if self.map is None:
+            return
+
+        own_team = self.ct.get_team()
+        current_pos = self.ct.get_position()
+        patrol_relevant_types = {
+            EntityType.CONVEYOR,
+            EntityType.ARMOURED_CONVEYOR,
+            EntityType.BRIDGE,
+        }
+        coverage_positions = [current_pos] + [
+            current_pos.add(direction) for direction in DIRECTIONS
+        ]
+        for pos in coverage_positions:
+            if not self._is_in_bounds(pos):
+                continue
+
+            tile = self._get_known_map_tile(pos)
+            if tile is None:
+                continue
+            if tile.building_team != own_team:
+                continue
+            if tile.building_type not in patrol_relevant_types:
+                continue
+
+            tile.last_patrolled_index = self.defender_patrol_index
+
     def patrol_supply_chains(self) -> bool:
         """
-        Patrol known allied conveyor and bridge chains across the map.
+        Patrol allied supply-chain tiles using an ever-increasing patrol index.
 
-        The defender first tries to step directly onto an adjacent allied
-        supply-chain tile when it is already on a chain tile, which keeps the
-        movement on top of the logistics network itself. If no adjacent chain
-        step is available, it heads toward a known chain tile target using the
-        normal wall-aware movement helper.
+        The defender tracks one global patrol index and each relevant known
+        supply tile stores its last patrolled index. Every turn this method is
+        called, the defender stamps its current tile and all adjacent tiles
+        with its current patrol index when those tiles are allied conveyors or
+        bridges. While at least one relevant tile has a lower stored index than
+        the defender's current index, the defender moves toward the closest
+        such outdated tile. If no outdated relevant tile is currently known, it
+        advances its own patrol index by one.
         """
         if self.map is None:
             return False
 
         own_team = self.ct.get_team()
         current_pos = self.ct.get_position()
-        supply_chain_types = {
+        patrol_relevant_types = {
             EntityType.CONVEYOR,
             EntityType.ARMOURED_CONVEYOR,
-            EntityType.SPLITTER,
             EntityType.BRIDGE,
         }
 
-        def is_allied_supply_tile(pos: Position) -> bool:
-            tile = self._get_known_map_tile(pos)
+        def is_relevant_supply_tile(tile: Tile | None) -> bool:
             return (
                 tile is not None
                 and tile.building_team == own_team
-                and tile.building_type in supply_chain_types
+                and tile.building_type in patrol_relevant_types
             )
 
-        supply_tiles: list[Position] = []
+        self._stamp_defender_patrol_coverage()
+
+        outdated_targets: list[tuple[tuple[int, int, int, int], Position]] = []
         for x, column in enumerate(self.map.matrix):
             for y, tile in enumerate(column):
-                if tile is None:
+                if not is_relevant_supply_tile(tile):
                     continue
-                if tile.building_team != own_team:
+                if tile.last_patrolled_index >= self.defender_patrol_index:
                     continue
-                if tile.building_type not in supply_chain_types:
-                    continue
-                supply_tiles.append(Position(x, y))
 
-        if not supply_tiles:
-            self.defender_patrol_target = None
+                target_pos = Position(x, y)
+                candidate_key = (
+                    current_pos.distance_squared(target_pos),
+                    tile.last_patrolled_index,
+                    target_pos.x,
+                    target_pos.y,
+                )
+                outdated_targets.append((candidate_key, target_pos))
+
+        if not outdated_targets:
+            self.defender_patrol_index += 1
             return False
 
-        if (
-            self.defender_patrol_target is not None
-            and not is_allied_supply_tile(
-                Position(
-                    self.defender_patrol_target[0],
-                    self.defender_patrol_target[1],
-                )
-            )
-        ):
-            self.defender_patrol_target = None
-
-        if is_allied_supply_tile(current_pos):
-            adjacent_chain_steps: list[
-                tuple[tuple[int, int, int, int], Direction, Position]
-            ] = []
-            for direction_index, direction in enumerate(DIRECTIONS):
-                next_pos = current_pos.add(direction)
-                if not self._is_in_bounds(next_pos):
-                    continue
-                if not is_allied_supply_tile(next_pos):
-                    continue
-
-                target_bias = (
-                    0
-                    if self.defender_patrol_target == (next_pos.x, next_pos.y)
-                    else 1
-                )
-                candidate_key = (
-                    target_bias,
-                    direction_index,
-                    next_pos.x,
-                    next_pos.y,
-                )
-                adjacent_chain_steps.append((candidate_key, direction, next_pos))
-
-            adjacent_chain_steps.sort(key=lambda candidate: candidate[0])
-            for _, direction, next_pos in adjacent_chain_steps:
-                if not self._move_in_direction_with_roads(direction):
-                    continue
-
-                self.defender_patrol_target = (next_pos.x, next_pos.y)
-                return self._record_action(
-                    BotAction.PATROL_SUPPLY_CHAINS,
-                    "patrolling supply chains",
-                )
-
-        ordered_targets: list[Position] = []
-        if self.defender_patrol_target is not None:
-            preferred_target = Position(
-                self.defender_patrol_target[0],
-                self.defender_patrol_target[1],
-            )
-            if preferred_target != current_pos and is_allied_supply_tile(preferred_target):
-                ordered_targets.append(preferred_target)
-
-        remaining_targets = sorted(
-            [pos for pos in supply_tiles if pos != current_pos and pos not in ordered_targets],
-            key=lambda pos: (
-                current_pos.distance_squared(pos),
-                pos.x,
-                pos.y,
-            ),
-        )
-        ordered_targets.extend(remaining_targets)
-
-        for target_pos in ordered_targets:
+        outdated_targets.sort(key=lambda candidate: candidate[0])
+        for _, target_pos in outdated_targets:
             if not self._move_towards_with_roads(target_pos):
                 continue
 
-            self.defender_patrol_target = (target_pos.x, target_pos.y)
             return self._record_action(
                 BotAction.PATROL_SUPPLY_CHAINS,
                 "patrolling supply chains",
@@ -4337,7 +4493,6 @@ class Player(Bot):
     pass
 
 
-### constants ###
 INITIAL_BB = [
     Bot.run_bb_init_res,
     CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
@@ -4345,6 +4500,18 @@ INITIAL_BB = [
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
     CoreSpawnEvent.TURN_REACHED_200,
+    CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION,
     Bot.run_bb_defender,
 ]
 FURTHER_BB = Bot.run_bb_scavenger
+CORE_TILE_BB_ROLE = {
+    (-1, -1): Bot.run_bb_scavenger,
+    (0, -1): Bot.run_bb_scavenger,
+    (1, -1): Bot.run_bb_defender,
+    (-1, 0): Bot.run_bb_scavenger,
+    (0, 0): Bot.run_bb_unassigned,
+    (1, 0): Bot.run_bb_scavenger,
+    (-1, 1): Bot.run_bb_maintainer,
+    (0, 1): Bot.run_bb_init_res,
+    (1, 1): Bot.run_bb_defender,
+}
