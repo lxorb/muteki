@@ -34,6 +34,14 @@ SPAM_MARKERS = False
 BUILDER_ACTION_RADIUS_SQ = 2
 BB_EXPAND_TARGET_REUSE_ROUNDS = 8
 BB_EXPAND_MAX_POP_ATTEMPTS = 40
+BB_EXPAND_FRONTIER_BASE_SCORE = 1200
+BB_EXPAND_STALE_BASE_SCORE = 200
+BB_EXPAND_VISIBLE_BASE_SCORE = 50
+BB_EXPAND_STALE_SCORE_PER_ROUND = 12
+BB_EXPAND_STALE_SCORE_CAP = 800
+BB_EXPAND_DISTANCE_PENALTY = 1
+BB_EXPAND_SEPARATION_BONUS_MULT = 8
+BB_EXPAND_SEPARATION_BONUS_CAP_SQ = 25
 BUILDER_ACTION_OFFSETS = [
     (dx, dy)
     for dx in range(-1, 2)
@@ -6373,6 +6381,35 @@ class Bot:
         current_x = current_pos.x
         current_y = current_pos.y
         visible_coords = {(pos.x, pos.y) for pos in self.turn_nearby_tiles}
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        handler_func = getattr(self.bb_handler, "__func__", self.bb_handler)
+        is_scavenger_expand = handler_func == Bot.run_bb_scavenger
+        nearby_other_builder_positions: list[Position] = []
+        other_builder_vision_coords: set[tuple[int, int]] = set()
+
+        if is_scavenger_expand:
+            for unit_id, unit_type, unit_team, unit_pos in self.turn_nearby_unit_infos:
+                if unit_type != EntityType.BUILDER_BOT:
+                    continue
+                if unit_team != own_team:
+                    continue
+                if unit_id == own_builder_id:
+                    continue
+
+                nearby_other_builder_positions.append(unit_pos)
+                vision_radius_sq = self.ct.get_vision_radius_sq(unit_id)
+                vision_limit = int(vision_radius_sq**0.5)
+                for dx in range(-vision_limit, vision_limit + 1):
+                    for dy in range(-vision_limit, vision_limit + 1):
+                        if dx * dx + dy * dy > vision_radius_sq:
+                            continue
+                        target_x = unit_pos.x + dx
+                        target_y = unit_pos.y + dy
+                        if target_x < 0 or target_x >= self.map.width:
+                            continue
+                        if target_y < 0 or target_y >= self.map.height:
+                            continue
+                        other_builder_vision_coords.add((target_x, target_y))
 
         if self._expand_cached_map_size != (self.map.width, self.map.height):
             self._expand_heap.clear()
@@ -6451,18 +6488,45 @@ class Bot:
                     candidate_revision.pop(coord, None)
                     return None
                 if coord in visible_coords:
-                    return (2, 0, x, y)
-                return (1, tile.last_seen_round, x, y)
-
-            if coord in frontier_candidates:
+                    base_score = BB_EXPAND_VISIBLE_BASE_SCORE
+                else:
+                    unseen_rounds = max(0, current_round - tile.last_seen_round)
+                    base_score = (
+                        BB_EXPAND_STALE_BASE_SCORE
+                        + min(
+                            BB_EXPAND_STALE_SCORE_CAP,
+                            unseen_rounds * BB_EXPAND_STALE_SCORE_PER_ROUND,
+                        )
+                    )
+            elif coord in frontier_candidates:
                 if not is_frontier_tile(x, y):
                     frontier_candidates.discard(coord)
                     candidate_revision.pop(coord, None)
                     return None
-                return (0, 0, x, y)
+                base_score = BB_EXPAND_FRONTIER_BASE_SCORE
+            else:
+                candidate_revision.pop(coord, None)
+                return None
 
-            candidate_revision.pop(coord, None)
-            return None
+            distance_sq = (x - current_x) * (x - current_x) + (y - current_y) * (y - current_y)
+            score = max(0, base_score - distance_sq * BB_EXPAND_DISTANCE_PENALTY)
+
+            if is_scavenger_expand:
+                if coord in other_builder_vision_coords:
+                    score = 0
+                elif nearby_other_builder_positions:
+                    min_other_dist_sq = min(
+                        (x - other_pos.x) * (x - other_pos.x)
+                        + (y - other_pos.y) * (y - other_pos.y)
+                        for other_pos in nearby_other_builder_positions
+                    )
+                    separation_bonus = (
+                        min(min_other_dist_sq, BB_EXPAND_SEPARATION_BONUS_CAP_SQ)
+                        * BB_EXPAND_SEPARATION_BONUS_MULT
+                    )
+                    score += separation_bonus
+
+            return (score, distance_sq, x, y)
 
         def push_candidate(coord: tuple[int, int]) -> None:
             priority = get_candidate_priority(coord)
@@ -6472,9 +6536,10 @@ class Bot:
             self._expand_revision_counter += 1
             revision = self._expand_revision_counter
             candidate_revision[coord] = revision
+            score, distance_sq, x, y = priority
             heapq.heappush(
                 expand_heap,
-                (*priority, revision),
+                (-score, distance_sq, x, y, revision),
             )
 
         if self._expand_target_coord is not None:
@@ -6544,7 +6609,7 @@ class Bot:
 
         while expand_heap and pop_attempts < max_pop_attempts:
             pop_attempts += 1
-            tier, aux, x, y, revision = heapq.heappop(expand_heap)
+            neg_score, distance_sq, x, y, revision = heapq.heappop(expand_heap)
             coord = (x, y)
 
             if coord in failed_coords:
@@ -6557,7 +6622,7 @@ class Bot:
             if priority is None:
                 continue
 
-            if priority != (tier, aux, x, y):
+            if priority != (-neg_score, distance_sq, x, y):
                 push_candidate(coord)
                 continue
 
