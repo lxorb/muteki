@@ -22,6 +22,7 @@ FURTHER_BB_THRESHOLD = 800
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
+BUILDER_ACTION_RADIUS_SQ = 2
 MAX_BOTS = 6
 MAX_HARVESTORS = 999
 SURRENDER_AT_TURN = 1000
@@ -1559,6 +1560,23 @@ class Bot:
                 return True
         return False
 
+    def is_tile_in_enemy_builder_action_range(self, pos: Position) -> bool:
+        """
+        Return whether a visible enemy builder bot can act on a tile this turn.
+
+        Builder-bot action range is radius squared 2. The check only uses
+        currently visible enemy builder bots.
+        """
+        own_team = self.ct.get_team()
+        for unit_id in self.ct.get_nearby_units():
+            if self.ct.get_team(unit_id) == own_team:
+                continue
+            if self.ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
+                continue
+            if self.ct.get_position(unit_id).distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ:
+                return True
+        return False
+
     def _is_on_direction_ray(
         self,
         origin: Position,
@@ -1675,6 +1693,45 @@ class Bot:
             return True
         return False
 
+    def _get_supply_output_tile(
+        self,
+        build_pos: Position,
+        target_pos: Position,
+    ) -> Position | None:
+        """
+        Return the immediate output tile of the chosen bridge/conveyor link.
+
+        For normal bridge placement this is the bridge target tile. For
+        conveyor fallback this is the adjacent tile in conveyor direction.
+        """
+        if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
+            direction = build_pos.direction_to(target_pos)
+            if direction == Direction.CENTRE:
+                return None
+            return build_pos.add(direction)
+
+        return target_pos
+
+    def _is_supply_output_tile_unsafe(
+        self,
+        build_pos: Position,
+        target_pos: Position,
+    ) -> bool:
+        """
+        Return whether this link's output tile is threatened by enemies.
+
+        A link is unsafe if its effective output tile is within enemy builder
+        action radius or inside enemy turret coverage.
+        """
+        output_pos = self._get_supply_output_tile(build_pos, target_pos)
+        if output_pos is None:
+            return True
+
+        return (
+            self.is_tile_in_enemy_builder_action_range(output_pos)
+            or self.is_tile_in_enemy_turret_range(output_pos)
+        )
+
     def _can_build_bridge_or_conveyor(
         self,
         build_pos: Position,
@@ -1687,6 +1744,9 @@ class Bot:
         `can_build_conveyor` when conveyor fallback applies, otherwise
         `can_build_bridge`.
         """
+        if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+            return False
+
         if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
             direction = build_pos.direction_to(target_pos)
             if direction == Direction.CENTRE:
@@ -1706,6 +1766,9 @@ class Bot:
         If fallback applies, the conveyor faces toward `target_pos`. Otherwise
         a bridge is built with `target_pos` as bridge target.
         """
+        if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+            return False
+
         if self._should_use_conveyor_for_bridge_placement(build_pos, target_pos):
             direction = build_pos.direction_to(target_pos)
             if direction == Direction.CENTRE:
@@ -1735,6 +1798,9 @@ class Bot:
         falls back to conveyor placement for adjacent targets or core-adjacent
         build tiles.
         """
+        if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+            return False
+
         if is_road_build_pos:
             if not self._can_destroy_tile(build_pos):
                 return False
@@ -2489,6 +2555,8 @@ class Bot:
         or markers when the stored distance is tied. Titanium ore tiles are
         deprioritized as bridge targets whenever at least one non-titanium
         candidate in range would still reduce distance-to-core by at least one.
+        Targets whose effective link output would be in enemy builder action
+        range or enemy turret coverage are filtered out.
         """
         if self.map is None:
             return None
@@ -2513,6 +2581,8 @@ class Bot:
                     ):
                         continue
                     if bridge_pos.distance_squared(core_tile) > bridge_target_radius_sq:
+                        continue
+                    if self._is_supply_output_tile_unsafe(bridge_pos, core_tile):
                         continue
 
                     candidate_key = (
@@ -2555,6 +2625,8 @@ class Bot:
                 if tile.distance_to_core >= INFINITE_DISTANCE:
                     continue
                 if tile.environment == Environment.WALL:
+                    continue
+                if self._is_supply_output_tile_unsafe(bridge_pos, candidate_pos):
                     continue
 
                 if (
@@ -2941,6 +3013,8 @@ class Bot:
                 continue
             build_pos_type_rank = 0 if is_empty_build_pos else 1
             if current_pos.distance_squared(build_pos) <= 2:
+                if self._is_supply_output_tile_unsafe(build_pos, target_pos):
+                    continue
                 if is_road_build_pos and not self._can_destroy_tile(build_pos):
                     continue
                 if (
@@ -4608,6 +4682,8 @@ class Bot:
                 continue
 
             if current_pos.distance_squared(target_pos) <= 2:
+                if self._is_supply_output_tile_unsafe(target_pos, next_target_pos):
+                    continue
                 if is_road_build_pos:
                     if not self._can_destroy_tile(target_pos):
                         continue
