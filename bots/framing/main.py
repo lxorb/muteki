@@ -3787,6 +3787,50 @@ class Bot:
 
         return False
 
+    def _get_titanium_adj_rank(self, ore_pos: Position, bot_pos: Position) -> int | None:
+        """
+        Return deterministic cardinal-adjacency precedence around a titanium tile.
+
+        Precedence order is top, bottom, left, right. Non-cardinal-adjacent
+        positions return `None`.
+        """
+        if bot_pos.x == ore_pos.x and bot_pos.y == ore_pos.y - 1:
+            return 0  # top
+        if bot_pos.x == ore_pos.x and bot_pos.y == ore_pos.y + 1:
+            return 1  # bottom
+        if bot_pos.x == ore_pos.x - 1 and bot_pos.y == ore_pos.y:
+            return 2  # left
+        if bot_pos.x == ore_pos.x + 1 and bot_pos.y == ore_pos.y:
+            return 3  # right
+        return None
+
+    def _should_claim_titanium_tile(
+        self,
+        ore_pos: Position,
+        current_pos: Position,
+        allied_builder_positions: list[Position],
+    ) -> bool:
+        """
+        Decide whether this bot should claim holding responsibility for one ore tile.
+
+        If another allied builder is cardinal-adjacent while this bot is not,
+        the tile is not claimed. If both are cardinal-adjacent, deterministic
+        precedence top > bottom > left > right is used to pick exactly one.
+        """
+        current_rank = self._get_titanium_adj_rank(ore_pos, current_pos)
+        other_adj_ranks = [
+            rank
+            for other_pos in allied_builder_positions
+            if (rank := self._get_titanium_adj_rank(ore_pos, other_pos)) is not None
+        ]
+        if not other_adj_ranks:
+            return True
+
+        if current_rank is None:
+            return False
+
+        return current_rank <= min(other_adj_ranks)
+
     def hold_visible_titanium(self) -> bool:
         """
         Hold a visible free titanium tile instead of scouting away from it.
@@ -3795,11 +3839,21 @@ class Bot:
         not yet build a harvester there, it moves to or stays on a nearby
         staging tile within action range of that deposit. The builder never
         steps onto the titanium tile itself and never roads it, which keeps
-        the deposit clean for the later harvester build.
+        the deposit clean for the later harvester build. When multiple allied
+        builders could hold the same ore, deterministic claiming ensures at
+        most one holder per titanium tile.
         """
         current_pos = self.ct.get_position()
         current_id = self.ct.get_id()
+        own_team = self.ct.get_team()
         ore_targets: list[tuple[tuple[int, int, int], Position, Position]] = []
+        allied_builder_positions = [
+            self.ct.get_position(unit_id)
+            for unit_id in self.ct.get_nearby_units()
+            if self.ct.get_team(unit_id) == own_team
+            and self.ct.get_entity_type(unit_id) == EntityType.BUILDER_BOT
+            and unit_id != current_id
+        ]
 
         for ore_pos in self.ct.get_nearby_tiles():
             if self.ct.get_tile_env(ore_pos) != Environment.ORE_TITANIUM:
@@ -3809,6 +3863,12 @@ class Bot:
 
             occupying_builder_id = self.ct.get_tile_builder_bot_id(ore_pos)
             if occupying_builder_id is not None and occupying_builder_id != current_id:
+                continue
+            if not self._should_claim_titanium_tile(
+                ore_pos,
+                current_pos,
+                allied_builder_positions,
+            ):
                 continue
 
             staging_positions: list[Position] = []
