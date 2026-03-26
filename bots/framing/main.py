@@ -172,6 +172,7 @@ class BotAction(Enum):
     DEFEND_CORE_PROX = auto()
     PROTECT_HARVESTER = auto()
     HOLD_PROTECT_HARVESTER = auto()
+    WALL_TITANIUM = auto()
     BUILD_HARVESTER = auto()
     HOLD_TITANIUM = auto()
     BB_SCOUT = auto()
@@ -225,6 +226,7 @@ class Map:
         self.known_positions: list[tuple[int, int]] = []
         self.newly_known_positions: list[tuple[int, int]] = []
         self.knowledge_revision = 0
+        self.path_revision = 0
         self.supply_link_positions: set[tuple[int, int]] = set()
         self._initialise_bfs_buffers()
 
@@ -252,6 +254,7 @@ class Map:
         self.known_positions = []
         self.newly_known_positions = []
         self.knowledge_revision += 1
+        self.path_revision += 1
         self.supply_link_positions.clear()
         self._initialise_bfs_buffers()
 
@@ -280,6 +283,7 @@ class Map:
         get_tile_env = ct.get_tile_env
         distance_dirty = self._update_core_center_pos(nearby_building_infos, own_team)
         knowledge_changed = distance_dirty
+        path_changed = distance_dirty
         newly_known_positions: list[tuple[int, int]] = []
         building_at_pos: dict[tuple[int, int], tuple[int, EntityType, Team]] = {}
         builder_at_pos: dict[tuple[int, int], tuple[int, Team]] = {}
@@ -313,6 +317,7 @@ class Map:
             x = pos.x
             y = pos.y
             tile = matrix[x][y]
+            had_tile = tile is not None
 
             if tile is None:
                 environment = get_tile_env(pos)
@@ -327,6 +332,11 @@ class Map:
                 knowledge_changed = True
                 if environment == Environment.WALL:
                     distance_dirty = True
+                path_changed = True
+            previous_building_id = tile.building_id
+            previous_building_type = tile.building_type
+            previous_building_team = tile.building_team
+            previous_is_passable = tile.is_passable
             tile.last_seen_round = current_round
 
             building_info = building_at_pos.get((x, y))
@@ -357,6 +367,13 @@ class Map:
                     )
                 )
             )
+            if had_tile and (
+                previous_building_id != tile.building_id
+                or previous_building_type != tile.building_type
+                or previous_building_team != tile.building_team
+                or previous_is_passable != tile.is_passable
+            ):
+                path_changed = True
             if (
                 tile.building_id is not None
                 and tile.building_type == EntityType.HARVESTER
@@ -378,6 +395,9 @@ class Map:
         self.newly_known_positions = newly_known_positions
         if knowledge_changed:
             self.knowledge_revision += 1
+        if path_changed:
+            self.path_revision += 1
+            self.invalidate_cached_target_flow()
 
         if distance_dirty:
             self._refresh_distance_matrix()
@@ -422,6 +442,9 @@ class Map:
         self._bfs_parent = [-1] * cell_count
         self._bfs_goal = [0] * cell_count
         self._bfs_queue = [0] * cell_count
+        self._flow_dist = [INFINITE_DISTANCE] * cell_count
+        self._flow_target_key: tuple[int, int] | None = None
+        self._flow_path_revision = -1
 
     def _next_bfs_token(self) -> int:
         """
@@ -732,6 +755,146 @@ class Map:
             return None
 
         return Position(step_idx % width, step_idx // width)
+
+    def invalidate_cached_target_flow(self) -> None:
+        """
+        Drop the cached reverse-flow field used by targeted movement helpers.
+
+        Callers can use this when a cached step failed in practice so the next
+        lookup recomputes routes from the latest known map state.
+        """
+        self._flow_target_key = None
+        self._flow_path_revision = -1
+
+    def _ensure_cached_target_flow(
+        self,
+        target_pos: Position,
+    ) -> bool:
+        """
+        Ensure the reverse-flow distance field for one target is available.
+
+        The field is computed once per `(target, path_revision)` pair and then
+        reused across turns, so repeated movement toward the same harassment
+        target does not trigger a full BFS each turn.
+        """
+        target_x = target_pos.x
+        target_y = target_pos.y
+        if not self._is_in_bounds(target_x, target_y):
+            return False
+
+        target_tile = self.matrix[target_x][target_y]
+        if target_tile is not None:
+            if target_tile.environment == Environment.WALL:
+                return False
+            if target_tile.building_id is not None and not target_tile.is_passable:
+                return False
+
+        target_key = (target_x, target_y)
+        if (
+            self._flow_target_key == target_key
+            and self._flow_path_revision == self.path_revision
+        ):
+            return True
+
+        flow_dist = self._flow_dist
+        cell_count = self.width * self.height
+        for idx in range(cell_count):
+            flow_dist[idx] = INFINITE_DISTANCE
+
+        queue: deque[int] = deque()
+        start_idx = self._to_index(target_x, target_y)
+        flow_dist[start_idx] = 0
+        queue.append(start_idx)
+
+        matrix = self.matrix
+        width = self.width
+        height = self.height
+        while queue:
+            idx = queue.popleft()
+            x = idx % width
+            y = idx // width
+            next_distance = flow_dist[idx] + 1
+
+            for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+                new_x = x + shift_x
+                new_y = y + shift_y
+                if new_x < 0 or new_x >= width or new_y < 0 or new_y >= height:
+                    continue
+
+                next_idx = new_y * width + new_x
+                if next_distance >= flow_dist[next_idx]:
+                    continue
+
+                next_tile = matrix[new_x][new_y]
+                if next_tile is not None:
+                    if next_tile.environment == Environment.WALL:
+                        continue
+                    if (
+                        next_tile.building_id is not None
+                        and not next_tile.is_passable
+                    ):
+                        continue
+
+                flow_dist[next_idx] = next_distance
+                queue.append(next_idx)
+
+        self._flow_target_key = target_key
+        self._flow_path_revision = self.path_revision
+        return True
+
+    def get_next_field_for_target_cached(self, target_pos: Position) -> Position | None:
+        """
+        Return one step toward a target using the cached reverse-flow field.
+
+        The method reuses a precomputed distance field from the target across
+        the known map and only recalculates that field when target or path
+        revision changes. Dynamic builder occupancy is still checked live when
+        choosing the next local step.
+        """
+        if not self._ensure_cached_target_flow(target_pos):
+            return None
+
+        start_pos = self.ct.get_position()
+        start_x = start_pos.x
+        start_y = start_pos.y
+        if not self._is_in_bounds(start_x, start_y):
+            return None
+        if start_x == target_pos.x and start_y == target_pos.y:
+            return start_pos
+
+        own_builder_id = self.ct.get_id()
+        start_idx = self._to_index(start_x, start_y)
+        start_distance = self._flow_dist[start_idx]
+        if start_distance >= INFINITE_DISTANCE:
+            return None
+
+        best_step: tuple[tuple[int, int, int, int], Position] | None = None
+        for shift_x, shift_y in FLOOD_FILL_SHIFTS:
+            new_x = start_x + shift_x
+            new_y = start_y + shift_y
+            if not self._is_in_bounds(new_x, new_y):
+                continue
+            if not self._is_known_walkable_for_path(new_x, new_y, own_builder_id):
+                continue
+
+            next_idx = self._to_index(new_x, new_y)
+            next_distance = self._flow_dist[next_idx]
+            if next_distance >= start_distance:
+                continue
+
+            next_pos = Position(new_x, new_y)
+            candidate_key = (
+                next_distance,
+                next_pos.distance_squared(target_pos),
+                new_x,
+                new_y,
+            )
+            if best_step is None or candidate_key < best_step[0]:
+                best_step = (candidate_key, next_pos)
+
+        if best_step is None:
+            return None
+        return best_step[1]
 
     def get_next_known_walkable_field_for_target(
         self,
@@ -1067,6 +1230,7 @@ class Bot:
         self.enemy_core_pos: Position | None = None
         self.enemy_core_pos_candidates: list[Position] = []
         self.harassment_scout_target: Position | None = None
+        self.harassment_attack_target: Position | None = None
         self.init_resource_chain_complete = False
         self.init_res_scout_radius = 2
         self.init_res_scout_clockwise = True
@@ -2050,17 +2214,12 @@ class Bot:
         Execute the harassment builder role for the current turn.
 
         Harassment prioritises targeted economic disruption first.
-
-        The action order is:
-        1) attack enemy harvester
-        2) build supplied sentinel
-        3) attack high-priority enemy walkable logistics tiles
-        4) move toward the inferred enemy core area
         """
         self.get_enemy_core_pos()
         steps = [
             ("attack_enemy_harvester", self.attack_enemy_harvester),
             ("build_supplied_sentinel", self.build_supplied_sentinel),
+            ("wall_titanium", self.wall_titanium),
             ("attack_enemy_walkable", self.attack_enemy_walkable),
             ("harassment_scout", self.harassment_scout),
         ]
@@ -3495,35 +3654,59 @@ class Bot:
         self.ct.move(direction)
         return True
 
-    def _move_towards_with_roads(self, target_pos: Position) -> bool:
+    def _move_towards_with_roads(
+        self,
+        target_pos: Position,
+        use_cached_flow: bool = False,
+    ) -> bool:
         """
         Advance one step toward a target while preparing the chosen path tile.
 
-        The method first asks the cached map for a BFS next step that can route
-        across all known tiles (and unknown-but-not-wall tiles), then executes
-        that step with normal road+move behavior. If no cached route step is
-        currently available, it falls back to a local greedy adjacent-tile
-        choice so the bot can still make progress this turn.
+        In normal mode, the method keeps the old direct-step + BFS + local
+        greedy fallback behavior. When `use_cached_flow` is enabled, it first
+        asks the map for a cached reverse-flow step toward `target_pos` and
+        only falls back to full BFS/greedy logic when that cached step is not
+        currently usable.
         """
         current_pos = self.ct.get_position()
         if current_pos == target_pos:
             return False
 
+        if use_cached_flow and self.map is not None:
+            next_step_pos = self.map.get_next_field_for_target_cached(target_pos)
+            if next_step_pos is not None and next_step_pos != current_pos:
+                move_direction = current_pos.direction_to(next_step_pos)
+                if (
+                    move_direction != Direction.CENTRE
+                    and self._move_in_direction_with_roads(move_direction)
+                ):
+                    return True
+                self.map.invalidate_cached_target_flow()
+                next_step_pos = self.map.get_next_field_for_target_cached(target_pos)
+                if next_step_pos is not None and next_step_pos != current_pos:
+                    move_direction = current_pos.direction_to(next_step_pos)
+                    if (
+                        move_direction != Direction.CENTRE
+                        and self._move_in_direction_with_roads(move_direction)
+                    ):
+                        return True
+
         current_distance_sq = current_pos.distance_squared(target_pos)
-        direct_direction = current_pos.direction_to(target_pos)
-        if direct_direction != Direction.CENTRE:
-            direct_pos = current_pos.add(direct_direction)
-            if (
-                self._is_in_bounds(direct_pos)
-                and self.ct.get_tile_env(direct_pos) != Environment.WALL
-                and direct_pos.distance_squared(target_pos) < current_distance_sq
-                and (
-                    self.ct.can_move(direct_direction)
-                    or self.ct.can_build_road(direct_pos)
-                )
-                and self._move_in_direction_with_roads(direct_direction)
-            ):
-                return True
+        if not use_cached_flow:
+            direct_direction = current_pos.direction_to(target_pos)
+            if direct_direction != Direction.CENTRE:
+                direct_pos = current_pos.add(direct_direction)
+                if (
+                    self._is_in_bounds(direct_pos)
+                    and self.ct.get_tile_env(direct_pos) != Environment.WALL
+                    and direct_pos.distance_squared(target_pos) < current_distance_sq
+                    and (
+                        self.ct.can_move(direct_direction)
+                        or self.ct.can_build_road(direct_pos)
+                    )
+                    and self._move_in_direction_with_roads(direct_direction)
+                ):
+                    return True
 
         if self.map is not None:
             next_step_pos = self.map.get_next_field_for_target(target_pos)
@@ -3644,6 +3827,7 @@ class Bot:
         target_pos: Position,
         action_radius_sq: int = 2,
         allow_direct_target_fallback: bool = False,
+        use_cached_flow_for_fallback: bool = False,
     ) -> bool:
         """
         Advance toward any tile that can act on a target, not onto the target.
@@ -3677,7 +3861,10 @@ class Bot:
         if not allow_direct_target_fallback:
             return False
 
-        return self._move_towards_with_roads(target_pos)
+        return self._move_towards_with_roads(
+            target_pos,
+            use_cached_flow=use_cached_flow_for_fallback,
+        )
 
 
     # Builder actions and tactical helpers
@@ -3822,6 +4009,7 @@ class Bot:
             best_move_target[1],
             action_radius_sq=action_radius_sq,
             allow_direct_target_fallback=True,
+            use_cached_flow_for_fallback=True,
         ):
             return False
 
@@ -3860,6 +4048,7 @@ class Bot:
         ):
             if can_attack and self.ct.can_fire(current_pos):
                 self.ct.fire(current_pos)
+                self.harassment_attack_target = current_pos
                 return self._record_action(
                     BotAction.ATTACK_ENEMY_WALKABLE,
                     "attacking enemy walkable",
@@ -3912,6 +4101,7 @@ class Bot:
             return special_rank["default"]
 
         best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
+        candidate_positions: dict[tuple[int, int], tuple[tuple[int, int, int, int, int, int], Position]] = {}
         in_range_candidates: list[tuple[tuple[int, int, int, int, int, int], Position]] = []
 
         for building_id, building_type, building_team, building_pos in self.turn_nearby_building_infos:
@@ -3932,6 +4122,10 @@ class Bot:
             )
             if best_candidate is None or candidate_key < best_candidate[0]:
                 best_candidate = (candidate_key, building_pos)
+            candidate_positions[(building_pos.x, building_pos.y)] = (
+                candidate_key,
+                building_pos,
+            )
             if building_pos == current_pos or distance_sq <= action_radius_sq:
                 in_range_candidates.append((candidate_key, building_pos))
 
@@ -3941,24 +4135,165 @@ class Bot:
                 if not self.ct.can_fire(target_pos):
                     continue
                 self.ct.fire(target_pos)
+                self.harassment_attack_target = target_pos
                 return self._record_action(
                     BotAction.ATTACK_ENEMY_WALKABLE,
                     "attacking enemy walkable",
                 )
 
         if best_candidate is None:
+            self.harassment_attack_target = None
             return False
 
         target_pos = best_candidate[1]
+        if self.harassment_attack_target is not None:
+            locked_key = (
+                self.harassment_attack_target.x,
+                self.harassment_attack_target.y,
+            )
+            locked_candidate = candidate_positions.get(locked_key)
+            if locked_candidate is not None:
+                target_pos = locked_candidate[1]
+
         if target_pos == current_pos:
+            self.harassment_attack_target = target_pos
             return self._record_action(
                 BotAction.ATTACK_ENEMY_WALKABLE,
                 "attacking enemy walkable",
             )
-        if self._move_towards_with_roads(target_pos):
+        if self._move_towards_with_roads(target_pos, use_cached_flow=True):
+            self.harassment_attack_target = target_pos
             return self._record_action(
                 BotAction.ATTACK_ENEMY_WALKABLE,
                 "attacking enemy walkable",
+            )
+
+        return False
+
+    def wall_titanium(self) -> bool:
+        """
+        Opportunistically wall visible titanium without long detours.
+
+        The harassment bot only acts when it can either place a barrier right
+        now (inside action radius) or reach action radius with exactly one
+        move. Titanium tiles that already contain a barrier are ignored
+        entirely by this method.
+        """
+        current_pos = self.turn_position or self.ct.get_position()
+        immediate_candidates: list[
+            tuple[tuple[int, int, int, int], Position, bool]
+        ] = []
+        one_step_targets: list[
+            tuple[tuple[int, int, int, int], Position]
+        ] = []
+
+        for ore_pos in self.turn_nearby_tiles:
+            tile = self._get_known_map_tile(ore_pos)
+            if tile is None or tile.environment != Environment.ORE_TITANIUM:
+                continue
+
+            if tile.building_type == EntityType.BARRIER:
+                continue
+
+            is_replace = tile.building_type == EntityType.ROAD
+            if tile.building_id is not None and not is_replace:
+                continue
+
+            distance_sq = current_pos.distance_squared(ore_pos)
+            if distance_sq <= BUILDER_ACTION_RADIUS_SQ:
+                candidate_key = (
+                    distance_sq,
+                    0 if not is_replace else 1,
+                    ore_pos.x,
+                    ore_pos.y,
+                )
+                immediate_candidates.append((candidate_key, ore_pos, is_replace))
+                continue
+
+            best_move_key: tuple[int, int, int, int] | None = None
+            for direction in DIRECTIONS:
+                next_pos = current_pos.add(direction)
+                if not self._is_in_bounds(next_pos):
+                    continue
+                if self.ct.get_tile_env(next_pos) == Environment.WALL:
+                    continue
+                if (
+                    not self.ct.can_move(direction)
+                    and not self.ct.can_build_road(next_pos)
+                ):
+                    continue
+                if next_pos.distance_squared(ore_pos) > BUILDER_ACTION_RADIUS_SQ:
+                    continue
+
+                candidate_key = (
+                    next_pos.distance_squared(ore_pos),
+                    next_pos.x,
+                    next_pos.y,
+                    0 if self.ct.can_move(direction) else 1,
+                )
+                if best_move_key is None or candidate_key < best_move_key:
+                    best_move_key = candidate_key
+
+            if best_move_key is None:
+                continue
+            one_step_key = (
+                distance_sq,
+                ore_pos.x,
+                ore_pos.y,
+                best_move_key[3],
+            )
+            one_step_targets.append((one_step_key, ore_pos))
+
+        if immediate_candidates:
+            immediate_candidates.sort(key=lambda candidate: candidate[0])
+            for _, target_pos, is_replace in immediate_candidates:
+                if is_replace and not self._destroy_tile_if_safe(target_pos):
+                    continue
+                if not self._build_barrier_safely(target_pos):
+                    continue
+                return self._record_action(
+                    BotAction.WALL_TITANIUM,
+                    "walling titanium",
+                )
+
+        if not one_step_targets:
+            return False
+
+        one_step_targets.sort(key=lambda candidate: candidate[0])
+        for _, target_pos in one_step_targets:
+            best_direction: Direction | None = None
+            best_direction_key: tuple[int, int, int, int] | None = None
+            for direction in DIRECTIONS:
+                next_pos = current_pos.add(direction)
+                if not self._is_in_bounds(next_pos):
+                    continue
+                if self.ct.get_tile_env(next_pos) == Environment.WALL:
+                    continue
+                if (
+                    not self.ct.can_move(direction)
+                    and not self.ct.can_build_road(next_pos)
+                ):
+                    continue
+                if next_pos.distance_squared(target_pos) > BUILDER_ACTION_RADIUS_SQ:
+                    continue
+
+                direction_key = (
+                    next_pos.distance_squared(target_pos),
+                    0 if self.ct.can_move(direction) else 1,
+                    next_pos.x,
+                    next_pos.y,
+                )
+                if best_direction_key is None or direction_key < best_direction_key:
+                    best_direction_key = direction_key
+                    best_direction = direction
+
+            if best_direction is None:
+                continue
+            if not self._move_in_direction_with_roads(best_direction):
+                continue
+            return self._record_action(
+                BotAction.WALL_TITANIUM,
+                "walling titanium",
             )
 
         return False
@@ -6085,7 +6420,7 @@ class Bot:
         for target_pos in candidate_targets:
             if target_pos == current_pos and len(candidate_targets) > 1:
                 continue
-            if not self._move_towards_with_roads(target_pos):
+            if not self._move_towards_with_roads(target_pos, use_cached_flow=True):
                 continue
 
             self.harassment_scout_target = target_pos
