@@ -23,9 +23,13 @@ CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD = 50
 HARVESTER_MIN_TITANIUM_THRESHOLD = 350
 ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
-HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD = 1500
+HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD = 1600
 HARASSMENT_SPAWN_TITANIUM_STEP = 100
 HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 160
+DISABLE_HARASSMENT = True
+FOUNDRY_TURN_CONSTANT = 1500
+MIN_FOUNDRY_TITANIUM_CONSTANT = 1000
+AXIONITE_FARMING_BOTS_TO_SPAWN = 2
 CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
 BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN = 5
@@ -143,6 +147,9 @@ WALKABLE_BUILDING_TYPES = {
     EntityType.BRIDGE,
     EntityType.ROAD,
 }
+SUPPLY_CHAIN_TITANIUM = "titanium"
+SUPPLY_CHAIN_AXIONITE = "axionite"
+SUPPLY_CHAIN_MIXED = "mixed"
 
 _PROFILE_DIR = os.environ.get("FRAMING_PROFILE_DIR")
 if _PROFILE_DIR:
@@ -176,6 +183,9 @@ class BotAction(Enum):
     COMPLETE_SUPPLY_CHAIN = auto()
     SENTINEL_ATTACK = auto()
     BREACH_ATTACK = auto()
+    BUILD_FOUNDRY = auto()
+    ATTACK_RES_BLOCKING_ENEMY_TILE = auto()
+    BUILD_FOUNDRY_SUPPLY_LINK = auto()
     BUILD_HARVESTER_BRIDGE = auto()
     HOLD_BUILD_HARVESTER_BRIDGE = auto()
     BUILD_MISSING_BRIDGE = auto()
@@ -217,6 +227,8 @@ class Tile:
     is_passable: bool = True
     last_seen_round: int = -1
     last_patrolled_index: int = -1
+    supply_chain_kind: str | None = None
+    supply_chain_kind_round: int = -1
 
 class Map:
     def __init__(self, ct: Controller):
@@ -234,7 +246,11 @@ class Map:
         self.distance_matrix: list[list[int]] = self._create_distance_matrix()
         self.core_center_pos: Position | None = None
         self.known_harvester_ids: set[int] = set()
+        self.known_foundry_ids: set[int] = set()
+        self.known_core_adjacent_splitter_ids: set[int] = set()
         self.known_harvesters_built = 0
+        self.has_foundry = False
+        self.has_core_adjacent_splitter = False
         self.known_positions: list[tuple[int, int]] = []
         self.newly_known_positions: list[tuple[int, int]] = []
         self.knowledge_revision = 0
@@ -262,7 +278,11 @@ class Map:
         self.distance_matrix = self._create_distance_matrix()
         self.core_center_pos = None
         self.known_harvester_ids.clear()
+        self.known_foundry_ids.clear()
+        self.known_core_adjacent_splitter_ids.clear()
         self.known_harvesters_built = 0
+        self.has_foundry = False
+        self.has_core_adjacent_splitter = False
         self.known_positions = []
         self.newly_known_positions = []
         self.knowledge_revision += 1
@@ -291,6 +311,8 @@ class Map:
         matrix = self.matrix
         known_positions = self.known_positions
         known_harvester_ids = self.known_harvester_ids
+        known_foundry_ids = self.known_foundry_ids
+        known_core_adjacent_splitter_ids = self.known_core_adjacent_splitter_ids
         supply_link_positions = self.supply_link_positions
         get_tile_env = ct.get_tile_env
         distance_dirty = self._update_core_center_pos(nearby_building_infos, own_team)
@@ -361,6 +383,24 @@ class Map:
                 tile.building_type = building_info[1]
                 tile.building_team = building_info[2]
 
+            if (
+                previous_building_id is not None
+                and previous_building_type == EntityType.FOUNDRY
+                and previous_building_team == own_team
+                and (
+                    tile.building_id != previous_building_id
+                    or tile.building_type != EntityType.FOUNDRY
+                    or tile.building_team != own_team
+                )
+            ):
+                known_foundry_ids.discard(previous_building_id)
+            if (
+                tile.building_id is not None
+                and tile.building_type == EntityType.FOUNDRY
+                and tile.building_team == own_team
+            ):
+                known_foundry_ids.add(tile.building_id)
+
             builder_info = builder_at_pos.get((x, y))
             if builder_info is None:
                 tile.builder_bot_id = None
@@ -402,8 +442,37 @@ class Map:
                 supply_link_positions.add(coord)
             else:
                 supply_link_positions.discard(coord)
+            if tile.building_type not in SUPPLY_LINK_TYPES and tile.building_type != EntityType.SPLITTER:
+                tile.supply_chain_kind = None
+                tile.supply_chain_kind_round = -1
 
         self.known_harvesters_built = len(known_harvester_ids)
+        self.has_foundry = len(known_foundry_ids) > 0
+        known_core_adjacent_splitter_ids.clear()
+        core_center_pos = self.core_center_pos
+        if core_center_pos is not None:
+            for x, y in known_positions:
+                tile = matrix[x][y]
+                if tile is None:
+                    continue
+                if (
+                    tile.building_id is None
+                    or tile.building_type != EntityType.SPLITTER
+                    or tile.building_team != own_team
+                ):
+                    continue
+                if (
+                    max(
+                        abs(tile.position.x - core_center_pos.x),
+                        abs(tile.position.y - core_center_pos.y),
+                    )
+                    != 2
+                ):
+                    continue
+                known_core_adjacent_splitter_ids.add(tile.building_id)
+        self.has_core_adjacent_splitter = (
+            len(known_core_adjacent_splitter_ids) > 0
+        )
         self.newly_known_positions = newly_known_positions
         if knowledge_changed:
             self.knowledge_revision += 1
@@ -1232,6 +1301,7 @@ class Bot:
         """
         self.core_bbs_spawned = 0  # number of builder bots spawned so far (core)
         self.core_harassment_bbs_spawned = 0
+        self.core_foundry_bbs_spawned = 0
         self.core_spawn_plan_index = 0
         self.core_completed_spawn_events: set[CoreSpawnEvent] = set()
         self.core_previous_resources: tuple[int, int] | None = None
@@ -1301,6 +1371,10 @@ class Bot:
         self._enemy_core_inference_round = -1
         self._enemy_core_knowledge_revision = -1
         self._enemy_core_symmetry_modes: set[str] | None = None
+        self._known_allied_foundry_positions_cache_round = -1
+        self._known_allied_foundry_positions_cache_revision = -1
+        self._known_allied_foundry_positions_cache_team: Team | None = None
+        self._known_allied_foundry_positions_cache: list[Position] = []
 
     def _debug_print(self, message: str) -> None:
         """
@@ -1611,6 +1685,7 @@ class Bot:
             self.turn_round,
             self.turn_team if self.turn_team is not None else self.ct.get_team(),
         )
+        self._refresh_visible_supply_chain_kinds()
         if self.map.core_center_pos is not None:
             self.core_center_pos = self.map.core_center_pos
 
@@ -1637,6 +1712,7 @@ class Bot:
                 self.turn_round,
                 self.turn_team if self.turn_team is not None else self.ct.get_team(),
             )
+        self._refresh_visible_supply_chain_kinds()
         if self.map.core_center_pos is not None:
             self.core_center_pos = self.map.core_center_pos
         map_update_elapsed = time.perf_counter_ns() - map_update_start
@@ -1663,10 +1739,21 @@ class Bot:
                 current_pos.y - self.core_center_pos.y,
             )
             assigned_handler = CORE_TILE_BB_ROLE.get(offset)
+            if (
+                DISABLE_HARASSMENT
+                and assigned_handler == Bot.run_bb_harassment
+            ):
+                assigned_handler = Bot.run_bb_scavenger
             if callable(assigned_handler):
                 return assigned_handler.__get__(self, type(self))
 
-        initial_builder_handlers = [entry for entry in INITIAL_BB if callable(entry)]
+        initial_builder_handlers = []
+        for entry in INITIAL_BB:
+            if not callable(entry):
+                continue
+            if DISABLE_HARASSMENT and entry == Bot.run_bb_harassment:
+                continue
+            initial_builder_handlers.append(entry)
         round_index = self.ct.get_current_round() - 1
         if 0 <= round_index < len(initial_builder_handlers):
             return initial_builder_handlers[round_index].__get__(self, type(self))
@@ -1688,6 +1775,7 @@ class Bot:
             Bot.run_bb_init_res: "init resource",
             Bot.run_bb_scavenger: "scavenger",
             Bot.run_bb_harassment: "harassment",
+            Bot.run_bb_foundry: "foundry",
             Bot.run_bb_defender: "defender",
         }
         return handler_names.get(handler_func, handler_func.__name__)
@@ -1886,6 +1974,12 @@ class Bot:
                 return False
 
             if callable(plan_entry):
+                if (
+                    DISABLE_HARASSMENT
+                    and plan_entry == Bot.run_bb_harassment
+                ):
+                    self.core_spawn_plan_index += 1
+                    continue
                 return True
 
             self.core_spawn_plan_index += 1
@@ -1899,24 +1993,40 @@ class Bot:
         The core follows `INITIAL_BB` as a spawn plan, where role entries can
         be interleaved with event markers. Before spawning roles that come
         after an event marker, the core waits until that event has fired.
-        Harassment spawning by dynamic titanium threshold is evaluated
-        independently and can override the initial plan for that turn. Outside
-        of `INITIAL_BB`, the core only spawns harassment builders.
+        Foundry spawning and harassment spawning by dynamic thresholds are
+        evaluated independently and can override the initial plan for that
+        turn. Outside of `INITIAL_BB`, the core spawns foundry/harassment
+        builders when their respective conditions are met.
         """
         if self.core_bbs_spawned >= MAX_BOTS:
             return
 
         self._update_core_spawn_events()
         titanium, _ = self.ct.get_global_resources()
+        has_visible_allied_foundry = any(
+            building_type == EntityType.FOUNDRY and building_team == self.turn_team
+            for _, building_type, building_team, _ in self.turn_nearby_building_infos
+        )
+        force_foundry_spawn = (
+            self.ct.get_current_round() >= FOUNDRY_TURN_CONSTANT
+            and titanium >= MIN_FOUNDRY_TITANIUM_CONSTANT
+            and not has_visible_allied_foundry
+            and self.core_foundry_bbs_spawned < AXIONITE_FARMING_BOTS_TO_SPAWN
+        )
         harassment_threshold = (
             HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD
             + self.core_harassment_bbs_spawned * HARASSMENT_SPAWN_TITANIUM_STEP
         )
-        force_harassment_spawn = titanium >= harassment_threshold
+        force_harassment_spawn = (
+            not DISABLE_HARASSMENT
+            and titanium >= harassment_threshold
+        )
 
         assigned_handler = Bot.run_bb_harassment
         should_spawn_from_initial_plan = False
-        if force_harassment_spawn:
+        if force_foundry_spawn:
+            assigned_handler = Bot.run_bb_foundry
+        elif force_harassment_spawn:
             assigned_handler = Bot.run_bb_harassment
         else:
             if not self._advance_core_spawn_plan_until_next_builder():
@@ -1956,6 +2066,8 @@ class Bot:
 
             self.ct.spawn_builder(spawn_pos)
             self.core_bbs_spawned += 1
+            if assigned_handler == Bot.run_bb_foundry:
+                self.core_foundry_bbs_spawned += 1
             if assigned_handler == Bot.run_bb_harassment:
                 self.core_harassment_bbs_spawned += 1
             if should_spawn_from_initial_plan:
@@ -2241,6 +2353,46 @@ class Bot:
         ]
         self._run_bb_strategy_plan("harassment", steps)
 
+    def run_bb_foundry(self):
+        """
+        Execute the foundry-focused builder role for the current turn.
+
+        This role first ensures an allied foundry exists next to core, then
+        focuses on axionite harvesting and supply links directed toward that
+        foundry.
+        """
+        steps = [
+            ("build_core_splitter", self.build_core_splitter),
+            ("connect_core_splitter", self.connect_core_splitter),
+            ("build_foundry", self.build_foundry),
+            ("attack_res_blocking_enemy_tile", self.attack_res_blocking_enemy_tile),
+            (
+                "build_harvester_axionite",
+                lambda: self.build_harvester(
+                    hold=True,
+                    resource_environment=Environment.ORE_AXIONITE,
+                    enforce_harvester_cap=False,
+                ),
+            ),
+            (
+                "build_harvester_supply_link_axionite",
+                lambda: self.build_harvester_supply_link(
+                    hold=True,
+                    resource_environment=Environment.ORE_AXIONITE,
+                    destination_building_type=EntityType.FOUNDRY,
+                ),
+            ),
+            (
+                "build_missing_supply_link_axionite",
+                lambda: self.build_missing_supply_link(
+                    hold=True,
+                    destination_building_type=EntityType.FOUNDRY,
+                ),
+            ),
+            ("foundry_expand", self.foundry_expand),
+        ]
+        self._run_bb_strategy_plan("foundry", steps)
+
     def run_bb_defender(self):
         """
         Execute the defender builder role for the current turn.
@@ -2265,7 +2417,10 @@ class Bot:
         helper naturally respects the gunner's facing and closest-tile rules by
         filtering through `can_fire()` first.
         """
-        target_pos = self._get_best_fire_target(GUNNER_TARGET_PRIORITY)
+        target_pos = self._get_best_fire_target(
+            GUNNER_TARGET_PRIORITY,
+            target_filter=self._allow_sentinel_gunner_fire_target,
+        )
         if target_pos is None:
             return
 
@@ -2281,7 +2436,10 @@ class Bot:
         legally fire at right now, and chooses the closest tile from the first
         matching priority bucket.
         """
-        target_pos = self._get_best_fire_target(SENTINEL_TARGET_PRIORITY)
+        target_pos = self._get_best_fire_target(
+            SENTINEL_TARGET_PRIORITY,
+            target_filter=self._allow_sentinel_gunner_fire_target,
+        )
         if target_pos is None:
             return
 
@@ -2463,6 +2621,19 @@ class Bot:
             and self.core_center_pos.y - 1 <= pos.y <= self.core_center_pos.y + 1
         )
 
+    def _is_core_footprint_tile(self, pos: Position) -> bool:
+        """
+        Return whether a position is part of the allied core 3x3 footprint.
+        """
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is None:
+            return False
+        return (
+            self.core_center_pos.x - 1 <= pos.x <= self.core_center_pos.x + 1
+            and self.core_center_pos.y - 1 <= pos.y <= self.core_center_pos.y + 1
+        )
+
     def _is_in_bounds(self, pos: Position) -> bool:
         """
         Check whether a position lies inside the current map bounds.
@@ -2551,6 +2722,114 @@ class Bot:
             return building_pos.add(self.ct.get_direction(building_id))
         return None
 
+    def _resource_environment_to_supply_chain_kind(
+        self,
+        environment: Environment,
+    ) -> str | None:
+        """
+        Map an ore environment to the corresponding supply-chain kind label.
+        """
+        if environment == Environment.ORE_TITANIUM:
+            return SUPPLY_CHAIN_TITANIUM
+        if environment == Environment.ORE_AXIONITE:
+            return SUPPLY_CHAIN_AXIONITE
+        return None
+
+    def _refresh_visible_supply_chain_kinds(self) -> None:
+        """
+        Label visible allied supplier tiles as titanium/axionite chains.
+
+        The label is propagated downstream from visible allied harvesters
+        through visible allied suppliers (conveyors, bridges, splitters). A
+        supplier reached by both ore types is marked mixed. Unreached visible
+        suppliers are marked unknown for the current round.
+        """
+        if self.map is None:
+            return
+
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_round = (
+            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        )
+        matrix = self.map.matrix
+        supplier_outputs: dict[tuple[int, int], list[tuple[int, int]]] = {}
+        supplier_keys: set[tuple[int, int]] = set()
+
+        for building_id, building_type, building_team, building_pos in self.turn_nearby_building_infos:
+            if building_team != own_team:
+                continue
+            source_key = (building_pos.x, building_pos.y)
+            if building_type in SUPPLY_LINK_TYPES:
+                output_pos = self._get_supply_link_output_pos_from_info(
+                    building_id,
+                    building_type,
+                    building_pos,
+                )
+                if output_pos is None or not self._is_in_bounds(output_pos):
+                    continue
+                supplier_keys.add(source_key)
+                supplier_outputs[source_key] = [(output_pos.x, output_pos.y)]
+                continue
+
+            if building_type == EntityType.SPLITTER:
+                direction = self.ct.get_direction(building_id)
+                output_keys = [
+                    (output_pos.x, output_pos.y)
+                    for output_pos in self._get_splitter_output_positions(
+                        building_pos,
+                        direction,
+                    )
+                ]
+                if not output_keys:
+                    continue
+                supplier_keys.add(source_key)
+                supplier_outputs[source_key] = output_keys
+
+        if not supplier_keys:
+            return
+
+        labels_by_key: dict[tuple[int, int], set[str]] = {}
+        queue: deque[tuple[tuple[int, int], str]] = deque()
+        for _harvester_id, building_type, building_team, building_pos in self.turn_nearby_building_infos:
+            if building_team != own_team or building_type != EntityType.HARVESTER:
+                continue
+            harvester_tile = self._get_known_map_tile(building_pos)
+            if harvester_tile is None:
+                continue
+            chain_kind = self._resource_environment_to_supply_chain_kind(
+                harvester_tile.environment
+            )
+            if chain_kind is None:
+                continue
+            for direction in CARDINAL_DIRECTIONS:
+                supplier_pos = building_pos.add(direction)
+                supplier_key = (supplier_pos.x, supplier_pos.y)
+                if supplier_key in supplier_keys:
+                    queue.append((supplier_key, chain_kind))
+
+        while queue:
+            supplier_key, chain_kind = queue.popleft()
+            seen_kinds = labels_by_key.setdefault(supplier_key, set())
+            if chain_kind in seen_kinds:
+                continue
+            seen_kinds.add(chain_kind)
+            for out_key in supplier_outputs.get(supplier_key, []):
+                if out_key in supplier_keys:
+                    queue.append((out_key, chain_kind))
+
+        for x, y in supplier_keys:
+            tile = matrix[x][y]
+            if tile is None:
+                continue
+            kinds = labels_by_key.get((x, y))
+            if not kinds:
+                tile.supply_chain_kind = None
+            elif len(kinds) == 1:
+                tile.supply_chain_kind = next(iter(kinds))
+            else:
+                tile.supply_chain_kind = SUPPLY_CHAIN_MIXED
+            tile.supply_chain_kind_round = current_round
+
     def _is_adjacent_to_allied_harvester(self, pos: Position) -> bool:
         """
         Check whether a tile is orthogonally adjacent to a friendly harvester.
@@ -2559,6 +2838,53 @@ class Bot:
         dedicated `build_harvester_supply_link` behavior.
         """
         return (pos.x, pos.y) in self.turn_allied_harvester_adjacent_keys
+
+    def _is_position_connected_to_visible_harvester(self, target_pos: Position) -> bool:
+        """
+        Return whether a visible allied harvester can feed a target tile.
+
+        The check traverses visible allied supply links backwards from the
+        target tile and succeeds once an orthogonally adjacent allied harvester
+        is reached.
+        """
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        harvester_keys: set[tuple[int, int]] = set()
+        output_to_sources: dict[tuple[int, int], list[tuple[int, int]]] = {}
+
+        for (
+            _building_id,
+            building_type,
+            building_team,
+            building_pos,
+        ) in self.turn_nearby_building_infos:
+            if building_team != own_team:
+                continue
+            if building_type == EntityType.HARVESTER:
+                harvester_keys.add((building_pos.x, building_pos.y))
+
+        for _link_id, _link_type, link_pos, output_pos in self.turn_allied_supply_link_infos:
+            if output_pos is None:
+                continue
+            output_key = (output_pos.x, output_pos.y)
+            output_to_sources.setdefault(output_key, []).append((link_pos.x, link_pos.y))
+
+        target_key = (target_pos.x, target_pos.y)
+        visited: set[tuple[int, int]] = {target_key}
+        queue: deque[tuple[int, int]] = deque([target_key])
+        while queue:
+            x, y = queue.popleft()
+            for direction in CARDINAL_DIRECTIONS:
+                dx, dy = direction.delta()
+                if (x + dx, y + dy) in harvester_keys:
+                    return True
+
+            for source_key in output_to_sources.get((x, y), []):
+                if source_key in visited:
+                    continue
+                visited.add(source_key)
+                queue.append(source_key)
+
+        return False
 
     def _record_action(self, action: BotAction, message: str) -> bool:
         """
@@ -2688,6 +3014,41 @@ class Bot:
         if not self._can_build_harvester_safely(pos):
             return False
         self.ct.build_harvester(pos)
+        return True
+
+    def _can_build_foundry_safely(self, pos: Position) -> bool:
+        """
+        Return whether a foundry can be built without replacing the current tile.
+        """
+        return (not self._is_current_builder_tile(pos)) and self.ct.can_build_foundry(
+            pos
+        )
+
+    def _build_foundry_safely(self, pos: Position) -> bool:
+        """
+        Build a foundry only when the build tile is not the current tile.
+        """
+        if not self._can_build_foundry_safely(pos):
+            return False
+        self.ct.build_foundry(pos)
+        return True
+
+    def _can_build_splitter_safely(self, pos: Position, direction: Direction) -> bool:
+        """
+        Return whether a splitter can be built without replacing the current tile.
+        """
+        return (not self._is_current_builder_tile(pos)) and self.ct.can_build_splitter(
+            pos,
+            direction,
+        )
+
+    def _build_splitter_safely(self, pos: Position, direction: Direction) -> bool:
+        """
+        Build a splitter only when the build tile is not the current tile.
+        """
+        if not self._can_build_splitter_safely(pos, direction):
+            return False
+        self.ct.build_splitter(pos, direction)
         return True
 
     def _can_build_launcher_safely(self, pos: Position) -> bool:
@@ -2827,10 +3188,42 @@ class Bot:
             == 2
         )
 
+    def _is_destination_compatible_allied_supply_tile(
+        self,
+        tile: Tile,
+        own_team: Team,
+        destination_building_type: EntityType,
+    ) -> bool:
+        """
+        Check whether an allied occupied tile is a valid chain sink target.
+
+        For foundry chains, only axionite-labeled allied supplier tiles and the
+        foundry itself are considered compatible. This prevents axionite links
+        from merging into titanium lines that route into core.
+        """
+        if tile.building_team != own_team or tile.building_type is None:
+            return False
+        if tile.building_type == destination_building_type:
+            return True
+
+        if destination_building_type == EntityType.FOUNDRY:
+            if tile.building_type == EntityType.CORE:
+                return False
+            if tile.building_type in SUPPLY_LINK_TYPES or tile.building_type == EntityType.SPLITTER:
+                return tile.supply_chain_kind == SUPPLY_CHAIN_AXIONITE
+            return False
+
+        if tile.building_type in SUPPLY_LINK_TYPES or tile.building_type == EntityType.SPLITTER:
+            return True
+        if tile.building_type == EntityType.CORE:
+            return True
+        return False
+
     def _is_valid_supply_link_target_tile(
         self,
         tile: Tile,
         own_team: Team,
+        destination_building_type: EntityType = EntityType.CORE,
     ) -> bool:
         """
         Return whether a tile is a valid downstream target for supply links.
@@ -2842,9 +3235,10 @@ class Bot:
             return False
         if tile.distance_to_core >= INFINITE_DISTANCE:
             return False
-        if tile.building_team == own_team and (
-            tile.building_type in SUPPLY_LINK_TYPES
-            or tile.building_type == EntityType.CORE
+        if self._is_destination_compatible_allied_supply_tile(
+            tile,
+            own_team,
+            destination_building_type,
         ):
             return True
         if tile.building_id is None:
@@ -2875,6 +3269,7 @@ class Bot:
         self,
         tile: Tile,
         own_team: Team,
+        destination_building_type: EntityType = EntityType.CORE,
     ) -> tuple[int, int, int]:
         """
         Return tie-break priority for selecting supply-link target tiles.
@@ -2884,12 +3279,10 @@ class Bot:
         2. tiles outside enemy builder action range (optional)
         3. empty tiles, then allied roads, then enemy roads
         """
-        has_allied_supply = (
-            tile.building_team == own_team
-            and (
-                tile.building_type in SUPPLY_LINK_TYPES
-                or tile.building_type == EntityType.CORE
-            )
+        has_allied_supply = self._is_destination_compatible_allied_supply_tile(
+            tile,
+            own_team,
+            destination_building_type,
         )
         supply_rank = 0 if has_allied_supply else 1
         enemy_builder_rank = 0
@@ -2910,6 +3303,249 @@ class Bot:
             type_rank = 4
 
         return (supply_rank, enemy_builder_rank, type_rank)
+
+    def _get_known_allied_foundry_positions(self) -> list[Position]:
+        """
+        Return all currently known allied foundry tile positions.
+        """
+        if self.map is None:
+            return []
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_round = self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        map_revision = self.map.knowledge_revision
+        if (
+            self._known_allied_foundry_positions_cache_round == current_round
+            and self._known_allied_foundry_positions_cache_revision == map_revision
+            and self._known_allied_foundry_positions_cache_team == own_team
+        ):
+            return self._known_allied_foundry_positions_cache
+
+        foundry_positions: list[Position] = []
+        for x, y in self.map.known_positions:
+            tile = self.map.matrix[x][y]
+            if tile is None:
+                continue
+            if tile.building_type != EntityType.FOUNDRY:
+                continue
+            if tile.building_team != own_team:
+                continue
+            if tile.building_id is None:
+                continue
+            foundry_positions.append(tile.position)
+        self._known_allied_foundry_positions_cache_round = current_round
+        self._known_allied_foundry_positions_cache_revision = map_revision
+        self._known_allied_foundry_positions_cache_team = own_team
+        self._known_allied_foundry_positions_cache = foundry_positions
+        return foundry_positions
+
+    def _get_known_core_adjacent_splitter_positions(self) -> list[Position]:
+        """
+        Return all currently known allied splitter tiles next to core.
+        """
+        if self.map is None:
+            return []
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is None:
+            return []
+
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        center = self.core_center_pos
+        splitter_positions: list[Position] = []
+        for x, y in self.map.known_positions:
+            tile = self.map.matrix[x][y]
+            if tile is None:
+                continue
+            if tile.building_id is None:
+                continue
+            if tile.building_type != EntityType.SPLITTER:
+                continue
+            if tile.building_team != own_team:
+                continue
+            if max(abs(tile.position.x - center.x), abs(tile.position.y - center.y)) != 2:
+                continue
+            splitter_positions.append(tile.position)
+        return splitter_positions
+
+    def _get_splitter_output_positions(
+        self,
+        splitter_pos: Position,
+        splitter_direction: Direction,
+    ) -> list[Position]:
+        """
+        Return in-bounds output tiles for one splitter orientation.
+        """
+        side_left = splitter_direction.rotate_left().rotate_left()
+        side_right = splitter_direction.rotate_right().rotate_right()
+        output_positions: list[Position] = []
+        for output_direction in (splitter_direction, side_left, side_right):
+            output_pos = splitter_pos.add(output_direction)
+            if self._is_in_bounds(output_pos):
+                output_positions.append(output_pos)
+        return output_positions
+
+    def _get_supply_link_plan_to_foundry(
+        self,
+        build_pos: Position,
+    ) -> tuple[Position, bool] | None:
+        """
+        Return a supply-link plan that progresses toward allied foundries.
+
+        The plan is conveyor-first, with optional bridge use when a bridge
+        gives a significantly larger distance gain toward the nearest foundry.
+        """
+        if self.map is None:
+            return None
+
+        foundry_positions = self._get_known_allied_foundry_positions()
+        if not foundry_positions:
+            return None
+
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        origin_dist = min(
+            build_pos.distance_squared(foundry_pos)
+            for foundry_pos in foundry_positions
+        )
+
+        best_conveyor: tuple[tuple[int, int, int, int, int, int], Position, int] | None = None
+        best_bridge: tuple[tuple[int, int, int, int, int, int], Position, int] | None = None
+        best_conveyor_fallback: tuple[
+            tuple[int, int, int, int, int, int],
+            Position,
+        ] | None = None
+        best_bridge_fallback: tuple[
+            tuple[int, int, int, int, int, int],
+            Position,
+        ] | None = None
+
+        for direction in DIRECTIONS:
+            target_pos = build_pos.add(direction)
+            if not self._is_in_bounds(target_pos):
+                continue
+            tile = self._get_known_map_tile(target_pos)
+            if tile is None:
+                continue
+            if not self._is_valid_supply_link_target_tile(
+                tile,
+                own_team,
+                destination_building_type=EntityType.FOUNDRY,
+            ):
+                continue
+            if self.is_tile_in_enemy_turret_range(target_pos):
+                continue
+
+            target_dist = min(
+                target_pos.distance_squared(foundry_pos)
+                for foundry_pos in foundry_positions
+            )
+            delta_x, delta_y = direction.delta()
+            direction_rank = 0 if abs(delta_x) + abs(delta_y) == 1 else 1
+            candidate_key = (
+                target_dist,
+                direction_rank,
+                *self._get_supply_target_priority(
+                    tile,
+                    own_team,
+                    destination_building_type=EntityType.FOUNDRY,
+                ),
+                target_pos.x,
+                target_pos.y,
+            )
+            gain = origin_dist - target_dist
+            if gain > 0:
+                if best_conveyor is None or candidate_key < best_conveyor[0]:
+                    best_conveyor = (candidate_key, target_pos, gain)
+            elif best_conveyor_fallback is None or candidate_key < best_conveyor_fallback[0]:
+                best_conveyor_fallback = (candidate_key, target_pos)
+
+        bridge_x = build_pos.x
+        bridge_y = build_pos.y
+        for dx in range(-3, 4):
+            for dy in range(-3, 4):
+                candidate_x = bridge_x + dx
+                candidate_y = bridge_y + dy
+                if candidate_x == bridge_x and candidate_y == bridge_y:
+                    continue
+                if not self.map._is_in_bounds(candidate_x, candidate_y):
+                    continue
+                dist_sq = dx * dx + dy * dy
+                if dist_sq > 9:
+                    continue
+
+                tile = self.map.matrix[candidate_x][candidate_y]
+                if tile is None:
+                    continue
+                if not self._is_valid_supply_link_target_tile(
+                    tile,
+                    own_team,
+                    destination_building_type=EntityType.FOUNDRY,
+                ):
+                    continue
+                if self.is_tile_in_enemy_turret_range(tile.position):
+                    continue
+
+                target_dist = min(
+                    tile.position.distance_squared(foundry_pos)
+                    for foundry_pos in foundry_positions
+                )
+                gain = origin_dist - target_dist
+                if gain > 0:
+                    candidate_key = (
+                        target_dist,
+                        *self._get_supply_target_priority(
+                            tile,
+                            own_team,
+                            destination_building_type=EntityType.FOUNDRY,
+                        ),
+                        -gain,
+                        candidate_x,
+                        candidate_y,
+                    )
+                    if best_bridge is None or candidate_key < best_bridge[0]:
+                        best_bridge = (candidate_key, tile.position, gain)
+                else:
+                    fallback_key = (
+                        target_dist,
+                        *self._get_supply_target_priority(
+                            tile,
+                            own_team,
+                            destination_building_type=EntityType.FOUNDRY,
+                        ),
+                        dist_sq,
+                        candidate_x,
+                        candidate_y,
+                    )
+                    if (
+                        best_bridge_fallback is None
+                        or fallback_key < best_bridge_fallback[0]
+                    ):
+                        best_bridge_fallback = (fallback_key, tile.position)
+
+        if best_conveyor is not None:
+            if self._is_next_to_core_footprint(build_pos):
+                return (best_conveyor[1], False)
+            if (
+                best_bridge is None
+                or best_bridge[2] - best_conveyor[2] < BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN
+            ):
+                return (best_conveyor[1], False)
+
+        if best_bridge is not None:
+            return (best_bridge[1], True)
+
+        if best_conveyor_fallback is not None:
+            if self._is_next_to_core_footprint(build_pos):
+                return (best_conveyor_fallback[1], False)
+            if best_bridge_fallback is not None:
+                conveyor_dist = best_conveyor_fallback[0][0]
+                bridge_dist = best_bridge_fallback[0][0]
+                if bridge_dist + 2 < conveyor_dist:
+                    return (best_bridge_fallback[1], True)
+            return (best_conveyor_fallback[1], False)
+
+        if best_bridge_fallback is not None:
+            return (best_bridge_fallback[1], True)
+        return None
 
     def _get_best_conveyor_target(
         self,
@@ -3051,6 +3687,7 @@ class Bot:
     def _get_supply_link_plan(
         self,
         build_pos: Position,
+        destination_building_type: EntityType = EntityType.CORE,
     ) -> tuple[Position, bool] | None:
         """
         Return the preferred downstream target and whether to build a bridge.
@@ -3061,6 +3698,9 @@ class Bot:
         If no conveyor can reduce distance, a bridge is used if it reduces
         distance by at least one. If no reducing target exists, returns `None`.
         """
+        if destination_building_type == EntityType.FOUNDRY:
+            return self._get_supply_link_plan_to_foundry(build_pos)
+
         if self.map is None:
             return None
 
@@ -3177,6 +3817,7 @@ class Bot:
         build_pos: Position,
         preferred_target_pos: Position,
         preferred_use_bridge: bool,
+        destination_building_type: EntityType = EntityType.CORE,
     ) -> tuple[Position, bool] | None:
         """
         Return a supply-link plan that is actually buildable at this moment.
@@ -3191,6 +3832,18 @@ class Bot:
             preferred_use_bridge,
         ):
             return (preferred_target_pos, preferred_use_bridge)
+
+        if destination_building_type == EntityType.FOUNDRY:
+            fallback_plan = self._get_supply_link_plan_to_foundry(build_pos)
+            if fallback_plan is None:
+                return None
+            if self._can_build_supply_link(
+                build_pos,
+                fallback_plan[0],
+                fallback_plan[1],
+            ):
+                return fallback_plan
+            return None
 
         origin_tile = self._get_known_map_tile(build_pos)
         if origin_tile is None:
@@ -3581,10 +4234,36 @@ class Bot:
 
         return True
 
+    def _allow_sentinel_gunner_fire_target(
+        self,
+        entity_id: int,
+        entity_type: EntityType,
+        target_pos: Position,
+    ) -> bool:
+        """
+        Gate gunner/sentinel targets to avoid hitting allied builders on roads.
+
+        Sentinel and gunner must never fire at an enemy road tile while an
+        allied builder bot stands on that same tile.
+        """
+        if entity_type != EntityType.ROAD:
+            return True
+        if self.ct.get_team(entity_id) == self.ct.get_team():
+            return True
+        if not self.ct.is_in_vision(target_pos):
+            return True
+
+        builder_bot_id = self.ct.get_tile_builder_bot_id(target_pos)
+        if builder_bot_id is None:
+            return True
+
+        return self.ct.get_team(builder_bot_id) != self.ct.get_team()
+
     def _get_best_fire_target(
         self,
         target_priority: list[EntityType],
         safety_check=None,
+        target_filter=None,
     ) -> Position | None:
         """
         Choose the best currently fireable target tile from a priority list.
@@ -3593,7 +4272,9 @@ class Bot:
         at right now, and returns the closest target tile belonging to the
         first enemy entity type that appears in the configured priority order.
         An optional safety predicate can reject otherwise fireable tiles, for
-        example to avoid breach splash on allied entities.
+        example to avoid breach splash on allied entities. An optional target
+        predicate can also reject otherwise valid targets based on entity and
+        tile context.
         """
         current_pos = self.ct.get_position()
         fireable_targets: list[tuple[EntityType, tuple[int, int, int], Position]] = []
@@ -3608,6 +4289,11 @@ class Bot:
                     if not self.ct.can_fire(target_pos):
                         continue
                     if safety_check is not None and not safety_check(target_pos):
+                        continue
+                    if (
+                        target_filter is not None
+                        and not target_filter(entity_id, entity_type, target_pos)
+                    ):
                         continue
 
                     candidate_key = (
@@ -4600,7 +5286,12 @@ class Bot:
         """
         return self.get_supply_link_target(bridge_pos)
 
-    def build_harvester_supply_link(self, hold: bool = False) -> bool:
+    def build_harvester_supply_link(
+        self,
+        hold: bool = False,
+        resource_environment: Environment = Environment.ORE_TITANIUM,
+        destination_building_type: EntityType = EntityType.CORE,
+    ) -> bool:
         """
         Build or stage a supply link next to a visible allied harvester.
 
@@ -4614,6 +5305,11 @@ class Bot:
         """
         if self.map is None:
             return False
+        if (
+            destination_building_type == EntityType.FOUNDRY
+            and not self.map.has_foundry
+        ):
+            return False
 
         titanium, _ = self.turn_resources
         can_build = titanium >= HARVESTER_BRIDGE_MIN_TITANIUM_THRESHOLD
@@ -4622,13 +5318,23 @@ class Bot:
 
         current_pos = self.turn_position or self.ct.get_position()
         actionable_candidates: list[
-            tuple[tuple[int, int, int, int, int, int], Position, Position, bool]
+            tuple[
+                tuple[int, int, int, int, int, int, int],
+                Position,
+                Position,
+                bool,
+                bool,
+            ]
         ] = []
         movement_candidates: list[
-            tuple[tuple[int, int, int, int, int, int], Position]
+            tuple[tuple[int, int, int, int, int, int, int], Position]
         ] = []
         hold_candidates: list[
-            tuple[tuple[int, int, int, int, int, int], Position, Position]
+            tuple[
+                tuple[int, int, int, int, int, int, int],
+                Position,
+                Position,
+            ]
         ] = []
 
         for harvester_id, harvester_type, harvester_team, harvester_pos in self.turn_nearby_building_infos:
@@ -4636,8 +5342,14 @@ class Bot:
                 continue
             if harvester_team != self.turn_team:
                 continue
+            harvester_tile = self._get_known_map_tile(harvester_pos)
+            if (
+                harvester_tile is None
+                or harvester_tile.environment != resource_environment
+            ):
+                continue
 
-            empty_adjacent_tiles: list[Position] = []
+            build_adjacent_tiles: list[tuple[Position, bool]] = []
             for direction in CARDINAL_DIRECTIONS:
                 adjacent_pos = harvester_pos.add(direction)
                 if not self._is_in_bounds(adjacent_pos):
@@ -4649,24 +5361,33 @@ class Bot:
                 if tile is None:
                     continue
                 if self._is_allied_supply_link_tile(tile):
-                    empty_adjacent_tiles = []
+                    if destination_building_type == EntityType.FOUNDRY:
+                        continue
+                    build_adjacent_tiles = []
                     break
-                if tile.building_id is not None:
+                if tile.environment == Environment.WALL:
                     continue
-                if tile.environment != Environment.EMPTY:
+                is_empty_tile = tile.building_id is None
+                is_road_tile = tile.building_type == EntityType.ROAD
+                if not (is_empty_tile or is_road_tile):
                     continue
-                empty_adjacent_tiles.append(adjacent_pos)
+                build_adjacent_tiles.append((adjacent_pos, is_road_tile))
 
-            for build_pos in empty_adjacent_tiles:
+            for build_pos, is_road_build_pos in build_adjacent_tiles:
+                build_pos_type_rank = 1 if is_road_build_pos else 0
                 candidate_key = (
                     current_pos.distance_squared(build_pos),
+                    build_pos_type_rank,
                     build_pos.x,
                     build_pos.y,
                     harvester_pos.x,
                     harvester_pos.y,
                     harvester_id,
                 )
-                target_plan = self._get_supply_link_plan(build_pos)
+                target_plan = self._get_supply_link_plan(
+                    build_pos,
+                    destination_building_type=destination_building_type,
+                )
                 if target_plan is None:
                     movement_candidates.append((candidate_key, build_pos))
                     continue
@@ -4677,17 +5398,29 @@ class Bot:
                         build_pos != current_pos
                         and current_pos.distance_squared(build_pos) <= 2
                     ):
-                        buildable_plan = self._get_buildable_supply_link_plan(
-                            build_pos,
-                            target_pos,
-                            use_bridge,
-                        )
-                        if buildable_plan is None:
-                            movement_candidates.append((candidate_key, build_pos))
-                            continue
-                        target_pos, use_bridge = buildable_plan
+                        if is_road_build_pos:
+                            if not self._can_destroy_tile(build_pos):
+                                movement_candidates.append((candidate_key, build_pos))
+                                continue
+                        else:
+                            buildable_plan = self._get_buildable_supply_link_plan(
+                                build_pos,
+                                target_pos,
+                                use_bridge,
+                                destination_building_type=destination_building_type,
+                            )
+                            if buildable_plan is None:
+                                movement_candidates.append((candidate_key, build_pos))
+                                continue
+                            target_pos, use_bridge = buildable_plan
                         actionable_candidates.append(
-                            (candidate_key, build_pos, target_pos, use_bridge)
+                            (
+                                candidate_key,
+                                build_pos,
+                                target_pos,
+                                is_road_build_pos,
+                                use_bridge,
+                            )
                         )
                     else:
                         movement_candidates.append((candidate_key, build_pos))
@@ -4710,8 +5443,15 @@ class Bot:
         if can_build:
             if actionable_candidates:
                 actionable_candidates.sort(key=lambda candidate: candidate[0])
-                _, build_pos, target_pos, use_bridge = actionable_candidates[0]
-                if not self._build_supply_link(build_pos, target_pos, use_bridge):
+                _, build_pos, target_pos, is_road_build_pos, use_bridge = (
+                    actionable_candidates[0]
+                )
+                if not self._build_supply_link_with_optional_road_removal(
+                    build_pos,
+                    target_pos,
+                    is_road_build_pos,
+                    use_bridge,
+                ):
                     return False
                 return self._record_action(
                     BotAction.BUILD_HARVESTER_BRIDGE,
@@ -4780,7 +5520,11 @@ class Bot:
         """
         return self.build_harvester_supply_link(hold=hold)
 
-    def build_missing_supply_link(self, hold: bool = False) -> bool:
+    def build_missing_supply_link(
+        self,
+        hold: bool = False,
+        destination_building_type: EntityType = EntityType.CORE,
+    ) -> bool:
         """
         Extend a non-harvester supply-chain gap with a new link.
 
@@ -4802,6 +5546,11 @@ class Bot:
         resources recover.
         """
         if self.map is None:
+            return False
+        if (
+            destination_building_type == EntityType.FOUNDRY
+            and not self.map.has_foundry
+        ):
             return False
 
         current_pos = self.turn_position or self.ct.get_position()
@@ -4935,7 +5684,10 @@ class Bot:
                         )
                     continue
 
-                target_plan = self._get_supply_link_plan(build_pos)
+                target_plan = self._get_supply_link_plan(
+                    build_pos,
+                    destination_building_type=destination_building_type,
+                )
                 if target_plan is None:
                     movement_candidates.append((candidate_key, build_pos))
                     continue
@@ -4959,6 +5711,7 @@ class Bot:
                             build_pos,
                             target_pos,
                             use_bridge,
+                            destination_building_type=destination_building_type,
                         )
                         if buildable_plan is None:
                             movement_candidates.append((candidate_key, build_pos))
@@ -5041,7 +5794,10 @@ class Bot:
                                             (candidate_key, build_pos)
                                         )
                                 else:
-                                    target_plan = self._get_supply_link_plan(build_pos)
+                                    target_plan = self._get_supply_link_plan(
+                                        build_pos,
+                                        destination_building_type=destination_building_type,
+                                    )
                                     if target_plan is None:
                                         movement_candidates.append((candidate_key, build_pos))
                                     else:
@@ -5074,6 +5830,7 @@ class Bot:
                                                     build_pos,
                                                     target_pos,
                                                     use_bridge,
+                                                    destination_building_type=destination_building_type,
                                                 )
                                                 if buildable_plan is None:
                                                     movement_candidates.append((candidate_key, build_pos))
@@ -5423,6 +6180,90 @@ class Bot:
 
         return False
 
+    def _is_enemy_walkable_resource_blocker(
+        self,
+        tile: Tile,
+        own_team: Team,
+    ) -> bool:
+        """
+        Check whether a resource tile is blocked by an enemy walkable structure.
+
+        The blocker must be an enemy-owned building on the resource tile and
+        currently walkable/passable so a builder can stand on it and destroy it.
+        """
+        if tile.building_id is None:
+            return False
+        if tile.building_team is None or tile.building_team == own_team:
+            return False
+        if tile.building_type is None:
+            return False
+        return tile.building_type in WALKABLE_BUILDING_TYPES or tile.is_passable
+
+    def attack_res_blocking_enemy_tile(
+        self,
+        resource_environment: Environment = Environment.ORE_AXIONITE,
+    ) -> bool:
+        """
+        Remove enemy walkable buildings that block known target resource tiles.
+
+        The method searches known tiles of the requested resource type (axionite
+        for foundry bots) and targets enemy walkable structures on top of them.
+        If already in action range, it destroys the blocker immediately.
+        Otherwise it path-moves toward the blocker with roads so it can be
+        destroyed in the next turns.
+        """
+        if self.map is None:
+            return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        action_candidates: list[tuple[tuple[int, int, int], Position]] = []
+        move_candidates: list[tuple[tuple[int, int, int], Position]] = []
+
+        for x, y in self.map.known_positions:
+            tile = self.map.matrix[x][y]
+            if tile is None:
+                continue
+            if tile.environment != resource_environment:
+                continue
+            if not self._is_enemy_walkable_resource_blocker(tile, own_team):
+                continue
+
+            target_pos = tile.position
+            candidate_key = (
+                current_pos.distance_squared(target_pos),
+                target_pos.x,
+                target_pos.y,
+            )
+            if current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ:
+                action_candidates.append((candidate_key, target_pos))
+            else:
+                move_candidates.append((candidate_key, target_pos))
+
+        if action_candidates:
+            action_candidates.sort(key=lambda candidate: candidate[0])
+            for _, target_pos in action_candidates:
+                if not self._destroy_tile_if_safe(target_pos):
+                    continue
+                return self._record_action(
+                    BotAction.ATTACK_RES_BLOCKING_ENEMY_TILE,
+                    "attacking resource blocking enemy tile",
+                )
+
+        if not move_candidates:
+            return False
+
+        move_candidates.sort(key=lambda candidate: candidate[0])
+        for _, target_pos in move_candidates:
+            if not self._move_towards_with_roads(target_pos, use_cached_flow=True):
+                continue
+            return self._record_action(
+                BotAction.ATTACK_RES_BLOCKING_ENEMY_TILE,
+                "attacking resource blocking enemy tile",
+            )
+
+        return False
+
     def _get_harvester_protection_candidates(
         self,
     ) -> list[tuple[tuple[int, int, int, int, int, int, int], Position, bool]]:
@@ -5628,19 +6469,26 @@ class Bot:
             "holding harvester protection position",
         )
 
-    def build_harvester(self, hold: bool = False) -> bool:
+    def build_harvester(
+        self,
+        hold: bool = False,
+        resource_environment: Environment = Environment.ORE_TITANIUM,
+        enforce_harvester_cap: bool = True,
+    ) -> bool:
         """
-        Build or hold a visible titanium tile for later harvester placement.
+        Build or hold a visible ore tile for later harvester placement.
 
-        The method scans every visible titanium deposit once and reuses that
+        The method scans every visible deposit of the configured ore once and reuses that
         information for both the normal build behavior and the fallback hold
         behavior. If harvester placement is currently allowed, it first tries
         to build immediately or move into action range of the best visible ore
         tile. When `hold` is true and no build action succeeds, it instead
-        claims one visible titanium tile deterministically and stages next to
+        claims one visible ore tile deterministically and stages next to
         it without stepping onto the ore. While holding with a visible enemy
         builder in range, the bot prefers securing that ore tile with an allied
-        barrier.
+        barrier. Scavengers skip enemy-hold behavior for already protected
+        titanium ore so they can continue expanding instead of idling there.
+        Scavengers also ignore titanium ore blocked by an enemy barrier.
         """
         if self.map is None:
             return False
@@ -5648,18 +6496,32 @@ class Bot:
         current_pos = self.turn_position or self.ct.get_position()
         current_id = self.turn_id
         own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        handler_func = getattr(self.bb_handler, "__func__", None)
+        is_scavenger_handler = handler_func == Bot.run_bb_scavenger
         titanium, _ = self.turn_resources
+        cap_ok = True
+        if enforce_harvester_cap and resource_environment == Environment.ORE_TITANIUM:
+            cap_ok = self.map.known_harvesters_built < MAX_HARVESTORS
         can_build = (
             not self.has_enemy_bot_in_vision()
             and titanium >= HARVESTER_MIN_TITANIUM_THRESHOLD
-            and self.map.known_harvesters_built < MAX_HARVESTORS
+            and cap_ok
         )
         action_radius_sq = 2
         ore_candidates: list[tuple[tuple[int, int, int], Position, bool, Tile]] = []
 
         for ore_pos in self.turn_nearby_tiles:
             ore_tile = self._get_known_map_tile(ore_pos)
-            if ore_tile is None or ore_tile.environment != Environment.ORE_TITANIUM:
+            if ore_tile is None or ore_tile.environment != resource_environment:
+                continue
+            if (
+                is_scavenger_handler
+                and resource_environment == Environment.ORE_TITANIUM
+                and ore_tile.building_type == EntityType.BARRIER
+                and ore_tile.building_team is not None
+                and ore_tile.building_team != own_team
+            ):
+                # Scavengers must treat enemy-barriered titanium as non-ore.
                 continue
             has_replaceable_structure = ore_tile.building_type in {
                 EntityType.ROAD,
@@ -5725,7 +6587,20 @@ class Bot:
 
         ore_candidates.sort(key=lambda target: target[0])
         if self.has_enemy_bot_in_vision():
-            for _, target_pos, has_replaceable_structure, ore_tile in ore_candidates:
+            enemy_hold_candidates = ore_candidates
+            if is_scavenger_handler and resource_environment == Environment.ORE_TITANIUM:
+                enemy_hold_candidates = [
+                    candidate
+                    for candidate in ore_candidates
+                    if not (
+                        candidate[3].building_type == EntityType.BARRIER
+                        and candidate[3].building_team == own_team
+                    )
+                ]
+                if not enemy_hold_candidates:
+                    return False
+
+            for _, target_pos, has_replaceable_structure, ore_tile in enemy_hold_candidates:
                 if target_pos == current_pos:
                     continue
                 if current_pos.distance_squared(target_pos) > action_radius_sq:
@@ -5752,7 +6627,7 @@ class Bot:
                     "holding titanium tile",
                 )
 
-            for _, target_pos, _has_replaceable_structure, _ore_tile in ore_candidates:
+            for _, target_pos, _has_replaceable_structure, _ore_tile in enemy_hold_candidates:
                 if (
                     current_pos.distance_squared(target_pos) <= action_radius_sq
                     and target_pos != current_pos
@@ -5781,12 +6656,13 @@ class Bot:
             occupying_builder_id = ore_tile.builder_bot_id
             if occupying_builder_id is not None and occupying_builder_id != current_id:
                 continue
-            if not self._should_claim_titanium_tile(
-                ore_pos,
-                current_pos,
-                allied_builder_positions,
-            ):
-                continue
+            if resource_environment == Environment.ORE_TITANIUM:
+                if not self._should_claim_titanium_tile(
+                    ore_pos,
+                    current_pos,
+                    allied_builder_positions,
+                ):
+                    continue
 
             staging_pos = self._get_best_action_staging_pos(ore_pos)
             if staging_pos is None:
@@ -6171,6 +7047,440 @@ class Bot:
             "building supplied sentinel",
         )
 
+    def build_core_splitter(self) -> bool:
+        """
+        Ensure one allied splitter exists adjacent to the allied core.
+
+        The method first tries to intercept an allied conveyor that currently
+        outputs into the core footprint. If none exists, it falls back to
+        general core-adjacent placements in the order empty tiles, allied
+        roads, then allied bridges.
+        """
+        if self.map is None:
+            return False
+        if self.core_center_pos is None:
+            self.find_core_center()
+        if self.core_center_pos is None:
+            return False
+
+        if self.map.has_core_adjacent_splitter:
+            return False
+        existing_splitters = self._get_known_core_adjacent_splitter_positions()
+        if existing_splitters:
+            self.map.has_core_adjacent_splitter = True
+            return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        core_tile_keys = {
+            (pos.x, pos.y)
+            for pos in self._get_core_footprint_positions(self.core_center_pos)
+        }
+        core_adjacent_positions = self._get_core_ring_positions(2)
+        if not core_adjacent_positions:
+            return False
+
+        best_for_pos: dict[tuple[int, int], tuple[tuple[int, int, int, int, int], Direction]] = {}
+
+        for link_id, link_type, link_pos, output_pos in self.turn_allied_supply_link_infos:
+            if link_type not in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR}:
+                continue
+            if output_pos is None:
+                continue
+            if (output_pos.x, output_pos.y) not in core_tile_keys:
+                continue
+            if not self._is_next_to_core_footprint(link_pos):
+                continue
+            if not self.ct.is_in_vision(link_pos):
+                continue
+            direction = self.ct.get_direction(link_id)
+            if direction not in CARDINAL_DIRECTIONS:
+                continue
+            pos_key = (link_pos.x, link_pos.y)
+            candidate_key = (
+                0,
+                current_pos.distance_squared(link_pos),
+                link_pos.x,
+                link_pos.y,
+                0,
+            )
+            previous = best_for_pos.get(pos_key)
+            if previous is None or candidate_key < previous[0]:
+                best_for_pos[pos_key] = (candidate_key, direction)
+
+        for candidate_pos in core_adjacent_positions:
+            if candidate_pos == current_pos:
+                continue
+            tile = self._get_known_map_tile(candidate_pos)
+            if tile is None:
+                continue
+            if tile.environment == Environment.WALL:
+                continue
+
+            fallback_rank = None
+            if tile.building_id is None:
+                fallback_rank = 1
+            elif tile.building_team == own_team and tile.building_type == EntityType.ROAD:
+                fallback_rank = 2
+            elif tile.building_team == own_team and tile.building_type == EntityType.BRIDGE:
+                fallback_rank = 3
+            if fallback_rank is None:
+                continue
+
+            direction_choices: list[Direction] = []
+            for direction in CARDINAL_DIRECTIONS:
+                target_pos = candidate_pos.add(direction)
+                if (target_pos.x, target_pos.y) in core_tile_keys:
+                    direction_choices.append(direction)
+            if not direction_choices:
+                continue
+
+            for direction_index, direction in enumerate(direction_choices):
+                pos_key = (candidate_pos.x, candidate_pos.y)
+                candidate_key = (
+                    fallback_rank,
+                    current_pos.distance_squared(candidate_pos),
+                    candidate_pos.x,
+                    candidate_pos.y,
+                    direction_index,
+                )
+                previous = best_for_pos.get(pos_key)
+                if previous is None or candidate_key < previous[0]:
+                    best_for_pos[pos_key] = (candidate_key, direction)
+
+        candidates: list[tuple[tuple[int, int, int, int, int], Position, Direction]] = []
+        for (x, y), (candidate_key, direction) in best_for_pos.items():
+            candidates.append((candidate_key, Position(x, y), direction))
+        if not candidates:
+            return False
+        candidates.sort(key=lambda item: item[0])
+
+        for _, target_pos, splitter_direction in candidates:
+            if current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ:
+                if not self.ct.is_in_vision(target_pos):
+                    continue
+                tile = self._get_known_map_tile(target_pos)
+                if tile is None:
+                    continue
+
+                if tile.building_id is not None:
+                    if tile.building_team != own_team:
+                        continue
+                    if tile.building_type == EntityType.SPLITTER:
+                        current_direction = self.ct.get_direction(tile.building_id)
+                        if current_direction == splitter_direction:
+                            self.map.has_core_adjacent_splitter = True
+                            return False
+                    if not self._destroy_tile_if_safe(target_pos):
+                        continue
+                    return self._record_action(
+                        BotAction.BUILD_FOUNDRY_SUPPLY_LINK,
+                        "building core splitter",
+                    )
+
+                if not self._build_splitter_safely(target_pos, splitter_direction):
+                    continue
+                self.map.has_core_adjacent_splitter = True
+                return self._record_action(
+                    BotAction.BUILD_FOUNDRY_SUPPLY_LINK,
+                    "building core splitter",
+                )
+
+            if not self._move_towards_action_range_with_roads(
+                target_pos,
+                action_radius_sq=BUILDER_ACTION_RADIUS_SQ,
+                allow_direct_target_fallback=False,
+            ):
+                continue
+            return self._record_action(
+                BotAction.BUILD_FOUNDRY_SUPPLY_LINK,
+                "building core splitter",
+            )
+
+        return False
+
+    def connect_core_splitter(self) -> bool:
+        """
+        Ensure a core-adjacent splitter has titanium input from the supply net.
+
+        If no visible chain from any visible allied harvester reaches the
+        splitter, the bot repurposes one nearby allied supply element by
+        destroying it and then replacing it with a bridge targeting the
+        splitter.
+        """
+        if self.map is None:
+            return False
+        if self.map.has_foundry:
+            return False
+
+        splitter_positions = self._get_known_core_adjacent_splitter_positions()
+        if not splitter_positions:
+            return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        splitter_positions.sort(
+            key=lambda pos: (
+                current_pos.distance_squared(pos),
+                pos.x,
+                pos.y,
+            )
+        )
+        splitter_pos = splitter_positions[0]
+        splitter_key = (splitter_pos.x, splitter_pos.y)
+
+        # If any visible allied link already outputs into the splitter tile,
+        # treat the splitter as connected and avoid repeated rerouting spam.
+        if splitter_key in self.turn_allied_supply_output_keys:
+            return False
+
+        if self._is_position_connected_to_visible_harvester(splitter_pos):
+            return False
+
+        core_tile_keys = set()
+        if self.core_center_pos is not None:
+            core_tile_keys = {
+                (pos.x, pos.y)
+                for pos in self._get_core_footprint_positions(self.core_center_pos)
+            }
+
+        candidate_sources: list[tuple[tuple[int, int, int, int, int], Position]] = []
+        for dx in range(-3, 4):
+            for dy in range(-3, 4):
+                if dx == 0 and dy == 0:
+                    continue
+                if dx * dx + dy * dy > 9:
+                    continue
+                source_pos = Position(splitter_pos.x + dx, splitter_pos.y + dy)
+                if not self._is_in_bounds(source_pos):
+                    continue
+                if (source_pos.x, source_pos.y) in core_tile_keys:
+                    continue
+
+                tile = self._get_known_map_tile(source_pos)
+                if tile is None:
+                    continue
+                if tile.environment == Environment.WALL:
+                    continue
+
+                source_rank = None
+                if (
+                    tile.building_id is not None
+                    and tile.building_team == own_team
+                    and tile.building_type in SUPPLY_LINK_TYPES
+                    and tile.building_type != EntityType.SPLITTER
+                ):
+                    source_rank = 0
+                elif tile.building_id is None:
+                    source_rank = 1
+                elif (
+                    tile.building_id is not None
+                    and tile.building_team == own_team
+                    and tile.building_type == EntityType.ROAD
+                ):
+                    source_rank = 2
+                if source_rank is None:
+                    continue
+
+                candidate_key = (
+                    source_rank,
+                    current_pos.distance_squared(source_pos),
+                    source_pos.distance_squared(splitter_pos),
+                    source_pos.x,
+                    source_pos.y,
+                )
+                candidate_sources.append((candidate_key, source_pos))
+
+        if not candidate_sources:
+            return False
+        candidate_sources.sort(key=lambda item: item[0])
+
+        for _, source_pos in candidate_sources:
+            if current_pos.distance_squared(source_pos) <= BUILDER_ACTION_RADIUS_SQ:
+                if not self.ct.is_in_vision(source_pos):
+                    continue
+                source_tile = self._get_known_map_tile(source_pos)
+                if source_tile is None:
+                    continue
+
+                if source_tile.building_id is not None:
+                    if source_tile.building_team != own_team:
+                        continue
+                    if source_tile.building_type == EntityType.SPLITTER:
+                        continue
+                    if (
+                        source_tile.building_type not in SUPPLY_LINK_TYPES
+                        and source_tile.building_type != EntityType.ROAD
+                    ):
+                        continue
+                    if not self._destroy_tile_if_safe(source_pos):
+                        continue
+                    return self._record_action(
+                        BotAction.BUILD_FOUNDRY_SUPPLY_LINK,
+                        "connecting core splitter",
+                    )
+
+                if self._is_current_builder_tile(source_pos):
+                    continue
+                if not self.ct.can_build_bridge(source_pos, splitter_pos):
+                    continue
+                self.ct.build_bridge(source_pos, splitter_pos)
+                return self._record_action(
+                    BotAction.BUILD_FOUNDRY_SUPPLY_LINK,
+                    "connecting core splitter",
+                )
+
+            if not self._move_towards_action_range_with_roads(
+                source_pos,
+                action_radius_sq=BUILDER_ACTION_RADIUS_SQ,
+                allow_direct_target_fallback=False,
+            ):
+                continue
+            return self._record_action(
+                BotAction.BUILD_FOUNDRY_SUPPLY_LINK,
+                "connecting core splitter",
+            )
+
+        return False
+
+    def build_foundry(self) -> bool:
+        """
+        Build one allied foundry on a tile adjacent to a core-adjacent splitter.
+
+        Splitter placement is handled separately. This method only finds the
+        best legal tile around an existing core-adjacent splitter and builds
+        the foundry there.
+        """
+        if self.map is None:
+            return False
+        if self.map.has_foundry:
+            return False
+
+        splitter_positions = self._get_known_core_adjacent_splitter_positions()
+        if not splitter_positions:
+            return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        splitter_positions.sort(
+            key=lambda pos: (
+                current_pos.distance_squared(pos),
+                pos.x,
+                pos.y,
+            )
+        )
+        splitter_pos = splitter_positions[0]
+
+        preferred_outputs: set[tuple[int, int]] = set()
+        splitter_tile = self._get_known_map_tile(splitter_pos)
+        if (
+            splitter_tile is not None
+            and splitter_tile.building_id is not None
+            and self.ct.is_in_vision(splitter_pos)
+        ):
+            splitter_direction = self.ct.get_direction(splitter_tile.building_id)
+            for output_pos in self._get_splitter_output_positions(
+                splitter_pos,
+                splitter_direction,
+            ):
+                preferred_outputs.add((output_pos.x, output_pos.y))
+
+        candidates: list[tuple[tuple[int, int, int, int, int, int], Position]] = []
+        for direction_index, direction in enumerate(CARDINAL_DIRECTIONS):
+            foundry_pos = splitter_pos.add(direction)
+            if not self._is_in_bounds(foundry_pos):
+                continue
+            if foundry_pos == current_pos:
+                continue
+            if self._is_core_footprint_tile(foundry_pos):
+                continue
+            if not self._is_next_to_core_footprint(foundry_pos):
+                continue
+
+            tile = self._get_known_map_tile(foundry_pos)
+            if tile is None:
+                continue
+            if tile.environment == Environment.WALL:
+                continue
+
+            tile_rank = None
+            if tile.building_id is None:
+                tile_rank = 0
+            elif tile.building_team == own_team and tile.building_type == EntityType.ROAD:
+                tile_rank = 1
+            elif tile.building_team == own_team and tile.building_type == EntityType.BRIDGE:
+                tile_rank = 2
+            elif (
+                tile.building_team == own_team
+                and tile.building_type in SUPPLY_LINK_TYPES
+            ):
+                tile_rank = 3
+            elif tile.building_team == own_team and tile.building_type == EntityType.SPLITTER:
+                tile_rank = 4
+            if tile_rank is None:
+                continue
+
+            candidate_key = (
+                0 if (foundry_pos.x, foundry_pos.y) in preferred_outputs else 1,
+                tile_rank,
+                current_pos.distance_squared(foundry_pos),
+                direction_index,
+                foundry_pos.x,
+                foundry_pos.y,
+            )
+            candidates.append((candidate_key, foundry_pos))
+
+        if not candidates:
+            return False
+        candidates.sort(key=lambda item: item[0])
+
+        for _, foundry_pos in candidates:
+            if current_pos.distance_squared(foundry_pos) <= BUILDER_ACTION_RADIUS_SQ:
+                if not self.ct.is_in_vision(foundry_pos):
+                    continue
+                tile = self._get_known_map_tile(foundry_pos)
+                if tile is None:
+                    continue
+
+                if tile.building_id is not None:
+                    if tile.building_team != own_team:
+                        continue
+                    if tile.building_type == EntityType.FOUNDRY:
+                        self.map.has_foundry = True
+                        return False
+                    if (
+                        tile.building_type not in SUPPLY_LINK_TYPES
+                        and tile.building_type != EntityType.ROAD
+                    ):
+                        continue
+                    if not self._destroy_tile_if_safe(foundry_pos):
+                        continue
+                    return self._record_action(
+                        BotAction.BUILD_FOUNDRY,
+                        "building foundry",
+                    )
+
+                if not self._build_foundry_safely(foundry_pos):
+                    continue
+                self.map.has_foundry = True
+                return self._record_action(
+                    BotAction.BUILD_FOUNDRY,
+                    "building foundry",
+                )
+
+            if not self._move_towards_action_range_with_roads(
+                foundry_pos,
+                action_radius_sq=BUILDER_ACTION_RADIUS_SQ,
+                allow_direct_target_fallback=False,
+            ):
+                continue
+            return self._record_action(
+                BotAction.BUILD_FOUNDRY,
+                "building foundry",
+            )
+
+        return False
+
 
     # Builder scouting, patrol, and logistics continuation
 
@@ -6359,6 +7669,58 @@ class Bot:
             BotAction.BB_SCOUT,
             "init resource scouting",
         )
+
+    def foundry_expand(self) -> bool:
+        """
+        Scout for axionite with a cheaper fallback than full global expand.
+
+        The foundry bot first walks toward the best known axionite tile that is
+        not blocked by an enemy barrier, preferring tiles without an allied
+        harvester yet. If no such ore is known, it falls back to the ring-based
+        init-resource scout to keep exploration costs low.
+        """
+        if self.map is None:
+            return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        best_target: tuple[tuple[int, int, int, int], Position] | None = None
+
+        for x, y in self.map.known_positions:
+            tile = self.map.matrix[x][y]
+            if tile is None:
+                continue
+            if tile.environment != Environment.ORE_AXIONITE:
+                continue
+            if (
+                tile.building_type == EntityType.BARRIER
+                and tile.building_team is not None
+                and tile.building_team != own_team
+            ):
+                continue
+
+            has_allied_harvester = (
+                tile.building_type == EntityType.HARVESTER
+                and tile.building_team == own_team
+            )
+            target_pos = tile.position
+            candidate_key = (
+                1 if has_allied_harvester else 0,
+                current_pos.distance_squared(target_pos),
+                x,
+                y,
+            )
+            if best_target is None or candidate_key < best_target[0]:
+                best_target = (candidate_key, target_pos)
+
+        if best_target is not None:
+            if self._move_towards_with_roads(best_target[1], use_cached_flow=True):
+                return self._record_action(
+                    BotAction.BB_SCOUT,
+                    "foundry scouting",
+                )
+
+        return self.init_res_scout()
 
     def bb_expand(self) -> bool:
         """
@@ -7126,8 +8488,8 @@ INITIAL_BB = [
     CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
+    CoreSpawnTurnEvent(100),
     Bot.run_bb_scavenger,
-    CoreSpawnTurnEvent(150),
     CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION,
     Bot.run_bb_defender,
 ]
@@ -7136,7 +8498,7 @@ CORE_TILE_BB_ROLE = {
     (0, -1): Bot.run_bb_harassment,
     (1, -1): Bot.run_bb_defender,
     (-1, 0): Bot.run_bb_scavenger,
-    (0, 0): Bot.run_bb_scavenger,
+    (0, 0): Bot.run_bb_foundry,
     (1, 0): Bot.run_bb_harassment,
     (-1, 1): Bot.run_bb_scavenger,
     (0, 1): Bot.run_bb_init_res,
