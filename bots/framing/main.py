@@ -1436,6 +1436,7 @@ class Bot:
         self.core_harassment_bbs_spawned = 0
         self.core_foundry_bbs_spawned = 0
         self.core_spawn_plan_index = 0
+        self.core_spawn_tile_usage_counts: dict[tuple[int, int], int] = {}
         self.core_completed_spawn_events: set[CoreSpawnEvent] = set()
         self.core_previous_resources: tuple[int, int] | None = None
         self.ct: Controller | None = None
@@ -2242,20 +2243,27 @@ class Bot:
         if not preferred_offsets:
             return
 
-        preferred_spawn_positions: list[Position] = []
-        for dx, dy in preferred_offsets:
+        ordered_offsets = sorted(
+            preferred_offsets,
+            key=lambda offset: (
+                self.core_spawn_tile_usage_counts.get(offset, 0),
+                offset[0],
+                offset[1],
+            ),
+        )
+        for offset in ordered_offsets:
+            dx, dy = offset
             spawn_pos = Position(core_pos.x + dx, core_pos.y + dy)
             if not self._is_in_bounds(spawn_pos):
                 continue
-            preferred_spawn_positions.append(spawn_pos)
-
-        random.shuffle(preferred_spawn_positions)
-        for spawn_pos in preferred_spawn_positions:
             if not self.ct.can_spawn(spawn_pos):
                 continue
 
             self.ct.spawn_builder(spawn_pos)
             self.core_bbs_spawned += 1
+            self.core_spawn_tile_usage_counts[offset] = (
+                self.core_spawn_tile_usage_counts.get(offset, 0) + 1
+            )
             if assigned_handler == Bot.run_bb_foundry:
                 self.core_foundry_bbs_spawned += 1
             if assigned_handler == Bot.run_bb_harassment:
@@ -9390,8 +9398,8 @@ class Player(Bot):
 
 INITIAL_BB = [
     Bot.run_bb_init_res,
+    Bot.run_bb_init_res,
     Bot.run_bb_harassment,
-    # Bot.run_bb_init_res,
     CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
@@ -9401,13 +9409,13 @@ INITIAL_BB = [
     Bot.run_bb_scavenger,
 ]
 CORE_TILE_BB_ROLE = {
-    (-1, -1): Bot.run_bb_scavenger,
+    (-1, -1): Bot.run_bb_init_res,
     (0, -1): Bot.run_bb_harassment,
     (1, -1): Bot.run_bb_defender,
     (-1, 0): Bot.run_bb_scavenger,
     (0, 0): Bot.run_bb_foundry,
     (1, 0): Bot.run_bb_harassment,
     (-1, 1): Bot.run_bb_scavenger,
-    (0, 1): Bot.run_bb_init_res,
-    (1, 1): Bot.run_bb_defender,
+    (0, 1): Bot.run_bb_scavenger,
+    (1, 1): Bot.run_bb_init_res,
 }
