@@ -6,7 +6,14 @@ import heapq
 import os
 import random
 import time
-from cambc import Controller, Direction, EntityType, Environment, Position, Team
+from cambc import (
+    Controller,
+    Direction,
+    EntityType,
+    Environment,
+    Position,
+    Team,
+)
 
 SURRENDER_AT_TURN = 1000
 ENABLE_LAUNCHER_ENEMY_CORE_BLOCK = False
@@ -34,12 +41,13 @@ HARASSMENT_SPAWN_TITANIUM_STEP = 100
 HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 20
 MIN_TITANIUM_LAUNCHER_ENEMY_CORE = 400
 AXIONITE_FARMING_BOTS_TO_SPAWN = 2
-CORE_PROXIMITY_DIST = 3
+CORE_PROXIMITY_DIST = 2
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
 BRIDGE_LONG_JUMP_CORE_DISTANCE_GAIN = 5
 AVOID_ENEMY_BUILDER_RANGE_FOR_SUPPLY_TARGETS = False
 SPAM_MARKERS = False
 BUILDER_ACTION_RADIUS_SQ = 2
+ENEMY_LAUNCHER_PICKUP_OFFSETS = [direction.delta() for direction in DIRECTIONS]
 BB_EXPAND_TARGET_REUSE_ROUNDS = 8
 BB_EXPAND_MAX_POP_ATTEMPTS = 40
 BB_EXPAND_FRONTIER_BASE_SCORE = 1200
@@ -233,6 +241,7 @@ class Tile:
     last_patrolled_index: int = -1
     supply_chain_kind: str | None = None
     supply_chain_kind_round: int = -1
+    in_enemy_launcher_pickup_zone: bool = False
 
 class Map:
     def __init__(self, ct: Controller):
@@ -325,6 +334,8 @@ class Map:
         newly_known_positions: list[tuple[int, int]] = []
         building_at_pos: dict[tuple[int, int], tuple[int, EntityType, Team]] = {}
         builder_at_pos: dict[tuple[int, int], tuple[int, Team]] = {}
+        enemy_visible_launcher_positions: set[tuple[int, int]] = set()
+        visible_position_keys = {(pos.x, pos.y) for pos in visible_positions}
 
         for building_id, building_type, building_team, building_pos in nearby_building_infos:
             if building_type == EntityType.CORE:
@@ -345,6 +356,8 @@ class Map:
                 building_type,
                 building_team,
             )
+            if building_type == EntityType.LAUNCHER and building_team != own_team:
+                enemy_visible_launcher_positions.add((building_pos.x, building_pos.y))
 
         for unit_id, unit_type, unit_team, unit_pos in nearby_unit_infos:
             if unit_type != EntityType.BUILDER_BOT:
@@ -376,7 +389,31 @@ class Map:
             previous_building_type = tile.building_type
             previous_building_team = tile.building_team
             previous_is_passable = tile.is_passable
+            previous_in_enemy_launcher_pickup_zone = tile.in_enemy_launcher_pickup_zone
             tile.last_seen_round = current_round
+
+            has_visible_enemy_launcher_adjacent = False
+            all_adjacent_vision_known = True
+            for dx, dy in ENEMY_LAUNCHER_PICKUP_OFFSETS:
+                adjacent_x = x + dx
+                adjacent_y = y + dy
+                if not self._is_in_bounds(adjacent_x, adjacent_y):
+                    continue
+                adjacent_key = (adjacent_x, adjacent_y)
+                if adjacent_key in enemy_visible_launcher_positions:
+                    has_visible_enemy_launcher_adjacent = True
+                    break
+                if adjacent_key not in visible_position_keys:
+                    all_adjacent_vision_known = False
+
+            if has_visible_enemy_launcher_adjacent:
+                tile.in_enemy_launcher_pickup_zone = True
+            elif all_adjacent_vision_known:
+                tile.in_enemy_launcher_pickup_zone = False
+            else:
+                tile.in_enemy_launcher_pickup_zone = (
+                    previous_in_enemy_launcher_pickup_zone
+                )
 
             building_info = building_at_pos.get((x, y))
             if building_info is None:
@@ -1646,15 +1683,17 @@ class Bot:
                 continue
 
             if building_type == EntityType.LAUNCHER:
-                radius_sq = self.ct.get_vision_radius_sq(building_id)
-                limit = int(radius_sq**0.5)
-                for dx in range(-limit, limit + 1):
-                    for dy in range(-limit, limit + 1):
-                        if dx * dx + dy * dy > radius_sq:
-                            continue
-                        target_pos = Position(building_pos.x + dx, building_pos.y + dy)
-                        if self._is_in_bounds(target_pos):
-                            launcher_tiles.add((target_pos.x, target_pos.y))
+                continue
+
+        if self.map is not None:
+            current_round = self.bb_ctx_round
+            for visible_pos in self.turn_nearby_tiles:
+                tile = self._get_known_map_tile(visible_pos)
+                if tile is None or tile.last_seen_round != current_round:
+                    continue
+                if not tile.in_enemy_launcher_pickup_zone:
+                    continue
+                launcher_tiles.add((visible_pos.x, visible_pos.y))
 
         self._enemy_builder_action_tiles = builder_tiles
         self._enemy_turret_range_tiles = turret_tiles
@@ -3424,11 +3463,18 @@ class Bot:
 
     def is_tile_in_enemy_launcher_range(self, pos: Position) -> bool:
         """
-        Check whether a tile is within range of any visible enemy launcher.
+        Check whether a tile can be picked up by any visible enemy launcher.
 
-        The launcher danger field is approximated by each visible enemy
-        launcher's radius-squared neighborhood.
+        A launcher can only pick up adjacent (orthogonal or diagonal) builder
+        bots, so launcher danger is modeled as the 8-neighbor ring around each
+        visible enemy launcher.
         """
+        tile = self._get_known_map_tile(pos)
+        if (
+            tile is not None
+            and tile.last_seen_round == self.bb_ctx_round
+        ):
+            return tile.in_enemy_launcher_pickup_zone
         self._ensure_enemy_threat_cache()
         return (pos.x, pos.y) in self._enemy_launcher_range_tiles
 
@@ -4836,6 +4882,7 @@ class Bot:
         action_radius_sq: int = 2,
         allow_direct_target_fallback: bool = False,
         use_cached_flow_for_fallback: bool = False,
+        avoid_enemy_launchers: bool = False,
     ) -> bool:
         """
         Advance toward any tile that can act on a target, not onto the target.
@@ -4844,7 +4891,9 @@ class Bot:
         staging tile within `action_radius_sq` of `target_pos`, then performs
         one road+move step in that direction. When no such staged step is
         currently known, callers may optionally allow a direct fallback toward
-        the target tile itself.
+        the target tile itself. When `avoid_enemy_launchers` is enabled, staged
+        and fallback movement avoids tiles that enemy launchers can pick up
+        from.
         """
         current_pos = self.ct.get_position()
         if (
@@ -4853,12 +4902,21 @@ class Bot:
         ):
             return False
 
+        def is_launcher_safe(pos: Position) -> bool:
+            if not avoid_enemy_launchers:
+                return True
+            return not self.is_tile_in_enemy_launcher_range(pos)
+
         if self.map is not None:
             next_step_pos = self.map.get_next_field_for_action_range(
                 target_pos,
                 action_radius_sq=action_radius_sq,
             )
-            if next_step_pos is not None and next_step_pos != current_pos:
+            if (
+                next_step_pos is not None
+                and next_step_pos != current_pos
+                and is_launcher_safe(next_step_pos)
+            ):
                 move_direction = current_pos.direction_to(next_step_pos)
                 if (
                     move_direction != Direction.CENTRE
@@ -4872,6 +4930,7 @@ class Bot:
         return self._move_towards_with_roads(
             target_pos,
             use_cached_flow=use_cached_flow_for_fallback,
+            avoid_enemy_launchers=avoid_enemy_launchers,
         )
 
 
@@ -5502,6 +5561,7 @@ class Bot:
                 target_pos,
                 action_radius_sq=action_radius_sq,
                 allow_direct_target_fallback=False,
+                avoid_enemy_launchers=True,
             ):
                 continue
             return self._record_action(
