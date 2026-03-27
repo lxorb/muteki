@@ -2081,34 +2081,33 @@ class Bot:
         self.previous_action = self.last_action
         self.last_action = BotAction.NONE
 
-        try:
-            if self.surrender():
-                return
+        if self.surrender():
+            return
 
-            match etype:
-                case EntityType.CORE:
-                    self.run_core()
-                case EntityType.BUILDER_BOT:
-                    self.run_bb()
-                case EntityType.GUNNER:
-                    self.run_gunner()
-                case EntityType.SENTINEL:
-                    self.run_sentinel()
-                case EntityType.BREACH:
-                    self.run_breach()
-                case EntityType.LAUNCHER:
-                    self.run_launcher()
-        finally:
-            elapsed_mus = self.get_ns_elapsed() / 1000
-            if etype == EntityType.BUILDER_BOT:
-                print(
-                    f"Unit {self.ct.get_id()} type: {self.turn_type_name} "
-                    f"action: {self._get_action_name()} "
-                    f"turn took {elapsed_mus}mus"
-                )
-            else:
-                self._debug_print(
-                    f"Unit {self.ct.get_id()} turn took {elapsed_mus}mus"
+        match etype:
+            case EntityType.CORE:
+                self.run_core()
+            case EntityType.BUILDER_BOT:
+                self.run_bb()
+            case EntityType.GUNNER:
+                self.run_gunner()
+            case EntityType.SENTINEL:
+                self.run_sentinel()
+            case EntityType.BREACH:
+                self.run_breach()
+            case EntityType.LAUNCHER:
+                self.run_launcher()
+        
+        elapsed_mus = self.get_ns_elapsed() / 1000
+        if etype == EntityType.BUILDER_BOT:
+            print(
+                f"Unit {self.ct.get_id()} type: {self.turn_type_name} "
+                f"action: {self._get_action_name()} "
+                f"turn took {elapsed_mus}mus"
+            )
+        else:
+            self._debug_print(
+                f"Unit {self.ct.get_id()} turn took {elapsed_mus}mus"
                 )
 
     def _update_core_spawn_events(self) -> None:
