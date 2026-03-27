@@ -8,9 +8,12 @@ import random
 import time
 from cambc import Controller, Direction, EntityType, Environment, Position, Team
 
-SURRENDER_AT_TURN = 2001
-ENABLE_LAUNCHER_ENEMY_CORE_BLOCK = True
+SURRENDER_AT_TURN = 1000
+ENABLE_LAUNCHER_ENEMY_CORE_BLOCK = False
 DISABLE_HARASSMENT = False
+
+FOUNDRY_TURN_CONSTANT = 1600
+MIN_FOUNDRY_TITANIUM_CONSTANT = 1000
 INFINITE_DISTANCE = 10**9
 DEBUG_OUTPUT = False
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
@@ -28,10 +31,8 @@ ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 300
 SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD = 1600
 HARASSMENT_SPAWN_TITANIUM_STEP = 100
-HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 160
+HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 20
 MIN_TITANIUM_LAUNCHER_ENEMY_CORE = 400
-FOUNDRY_TURN_CONSTANT = 1600
-MIN_FOUNDRY_TITANIUM_CONSTANT = 1000
 AXIONITE_FARMING_BOTS_TO_SPAWN = 2
 CORE_PROXIMITY_DIST = 3
 LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD = 70
@@ -1391,6 +1392,7 @@ class Bot:
         self._enemy_threat_cache_round = -1
         self._enemy_builder_action_tiles: set[tuple[int, int]] = set()
         self._enemy_turret_range_tiles: set[tuple[int, int]] = set()
+        self._enemy_launcher_range_tiles: set[tuple[int, int]] = set()
         self._spatial_cache_round = -1
         self._spatial_unknown_prefix: list[list[int]] = []
         self._spatial_owned_prefix: list[list[int]] = []
@@ -1409,6 +1411,12 @@ class Bot:
         self._known_allied_foundry_positions_cache_revision = -1
         self._known_allied_foundry_positions_cache_team: Team | None = None
         self._known_allied_foundry_positions_cache: list[Position] = []
+        self.bb_ctx_pos: Position | None = None
+        self.bb_ctx_team: Team | None = None
+        self.bb_ctx_round = -1
+        self.bb_ctx_titanium = 0
+        self.bb_ctx_axionite = 0
+        self.bb_ctx_action_radius_sq = BUILDER_ACTION_RADIUS_SQ
 
     def _debug_print(self, message: str) -> None:
         """
@@ -1455,6 +1463,11 @@ class Bot:
         self.turn_map_width = ct.get_map_width()
         self.turn_map_height = ct.get_map_height()
         self.turn_resources = ct.get_global_resources()
+        self.bb_ctx_pos = self.turn_position
+        self.bb_ctx_team = self.turn_team
+        self.bb_ctx_round = self.turn_round
+        self.bb_ctx_titanium, self.bb_ctx_axionite = self.turn_resources
+        self.bb_ctx_action_radius_sq = BUILDER_ACTION_RADIUS_SQ
         self.turn_nearby_tiles = list(ct.get_nearby_tiles())
         self.turn_nearby_buildings = list(ct.get_nearby_buildings())
         self.turn_nearby_units = list(ct.get_nearby_units())
@@ -1546,7 +1559,7 @@ class Bot:
         harvester holding) so that those methods can read one stable per-turn
         boolean instead of rescanning visible units repeatedly.
         """
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         self.turn_has_enemy_bot_in_vision = any(
             unit_team != own_team and unit_type == EntityType.BUILDER_BOT
             for _, unit_type, unit_team, _ in self.turn_nearby_unit_infos
@@ -1566,7 +1579,8 @@ class Bot:
 
         builder_tiles: set[tuple[int, int]] = set()
         turret_tiles: set[tuple[int, int]] = set()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        launcher_tiles: set[tuple[int, int]] = set()
+        own_team = self.bb_ctx_team
 
         for _, unit_type, unit_team, unit_pos in self.turn_nearby_unit_infos:
             if unit_team == own_team or unit_type != EntityType.BUILDER_BOT:
@@ -1629,9 +1643,22 @@ class Bot:
                         target_pos = Position(line_pos.x + off_x, line_pos.y + off_y)
                         if self._is_in_bounds(target_pos):
                             turret_tiles.add((target_pos.x, target_pos.y))
+                continue
+
+            if building_type == EntityType.LAUNCHER:
+                radius_sq = self.ct.get_vision_radius_sq(building_id)
+                limit = int(radius_sq**0.5)
+                for dx in range(-limit, limit + 1):
+                    for dy in range(-limit, limit + 1):
+                        if dx * dx + dy * dy > radius_sq:
+                            continue
+                        target_pos = Position(building_pos.x + dx, building_pos.y + dy)
+                        if self._is_in_bounds(target_pos):
+                            launcher_tiles.add((target_pos.x, target_pos.y))
 
         self._enemy_builder_action_tiles = builder_tiles
         self._enemy_turret_range_tiles = turret_tiles
+        self._enemy_launcher_range_tiles = launcher_tiles
         self._enemy_threat_cache_round = current_round
 
     def _ensure_spatial_scan_cache(self) -> bool:
@@ -1649,7 +1676,7 @@ class Bot:
         if self._spatial_cache_round == current_round:
             return True
 
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         width = self.map.width
         height = self.map.height
         matrix = self.map.matrix
@@ -2129,6 +2156,7 @@ class Bot:
             self.bb_handler = self.get_initial_bb_handler()
 
         self.turn_type_name = self.get_bb_handler_name()
+        self._initialize_bb_turn_context()
 
         self._bb_resume_from_incomplete_turn = not self.bb_last_turn_completed
         if not self._bb_resume_from_incomplete_turn:
@@ -2141,6 +2169,25 @@ class Bot:
             self.spam_marker()
         self.bb_last_turn_completed = True
 
+    def _initialize_bb_turn_context(self) -> None:
+        """
+        Cache repeated builder-turn values used by many decision methods.
+
+        This method is called once at the start of every builder turn so hot
+        strategy methods can reuse shared values (position, team, round,
+        resources, and action radius) without repeating the same unpacking and
+        fallback logic.
+        """
+        self.bb_ctx_pos = self.turn_position or self.ct.get_position()
+        self.bb_ctx_team = (
+            self.turn_team if self.turn_team is not None else self.ct.get_team()
+        )
+        self.bb_ctx_round = (
+            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        )
+        self.bb_ctx_titanium, self.bb_ctx_axionite = self.turn_resources
+        self.bb_ctx_action_radius_sq = BUILDER_ACTION_RADIUS_SQ
+
     def _has_visible_harvester_bridge_chain_to_core(self) -> bool:
         """
         Check whether a visible allied harvester supply chain reaches the core.
@@ -2151,7 +2198,7 @@ class Bot:
         adjacent to a visible allied harvester and ends on a core footprint
         tile counts as an established initial resource chain.
         """
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         if self.core_center_pos is None:
             self.find_core_center()
         if self.core_center_pos is None:
@@ -2279,7 +2326,7 @@ class Bot:
         if self._switch_init_res_to_scavenger_if_ready(run_now=True):
             return
 
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
 
         def build_harvester_supply_link_step() -> bool:
             return self._run_init_res_strategy_step(
@@ -2333,7 +2380,7 @@ class Bot:
         cannot yet act on it, the scavenger reuses the corresponding builder
         action in hold mode instead of recomputing the same search separately.
         """
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
 
         def complete_supply_chain_step() -> bool:
             if titanium < CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
@@ -2382,8 +2429,8 @@ class Bot:
             ("attack_enemy_harvester", self.attack_enemy_harvester),
             ("build_supplied_sentinel", self.build_supplied_sentinel),
             ("wall_titanium", self.wall_titanium),
+            ("attack_enemy_supply_targets", self.attack_enemy_supply_targets),
             ("block_enemy_core", self.block_enemy_core),
-            ("attack_enemy_walkable", self.attack_enemy_walkable),
             ("harassment_scout", self.harassment_scout),
         ]
         self._run_bb_strategy_plan("harassment", steps)
@@ -2498,6 +2545,33 @@ class Bot:
 
         self.ct.fire(target_pos)
         self.last_action = BotAction.BREACH_ATTACK
+
+    def _is_launcher_enemy_core_adjacent_mode(self) -> bool:
+        """
+        Return whether the launcher is adjacent to the inferred enemy core.
+
+        Adjacency is measured against the enemy core center using Chebyshev
+        distance 2, which corresponds to being diagonally/orthogonally adjacent
+        to the enemy core footprint.
+        """
+        self.get_enemy_core_pos()
+        enemy_core_centers = (
+            [self.enemy_core_pos]
+            if self.enemy_core_pos is not None
+            else list(self.enemy_core_pos_candidates)
+        )
+        if not enemy_core_centers:
+            return False
+
+        launcher_pos = self.ct.get_position()
+        return any(
+            max(
+                abs(launcher_pos.x - enemy_center.x),
+                abs(launcher_pos.y - enemy_center.y),
+            )
+            == 2
+            for enemy_center in enemy_core_centers
+        )
 
     def _run_launcher_enemy_core_proximity(self) -> bool:
         """
@@ -2644,8 +2718,17 @@ class Bot:
         chooses the one farthest from the allied core. If none are turret-
         covered, it falls back to the farthest legal road tile from core.
         """
+        launcher_id = self.ct.get_id()
+        enemy_core_adjacent_mode = self._is_launcher_enemy_core_adjacent_mode()
+        if enemy_core_adjacent_mode:
+            print(f"Launcher {launcher_id} mode: enemy_core_adjacency")
+        else:
+            print(f"Launcher {launcher_id} mode: regular")
+
         if self._run_launcher_enemy_core_proximity():
             return
+        if enemy_core_adjacent_mode:
+            print(f"Launcher {launcher_id} mode fallback: regular")
 
         if self.core_center_pos is None:
             self.find_core_center()
@@ -2920,10 +3003,8 @@ class Bot:
         if self.map is None:
             return
 
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
-        current_round = (
-            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
-        )
+        own_team = self.bb_ctx_team
+        current_round = self.bb_ctx_round
         matrix = self.map.matrix
         supplier_outputs: dict[tuple[int, int], list[tuple[int, int]]] = {}
         supplier_keys: set[tuple[int, int]] = set()
@@ -3020,7 +3101,7 @@ class Bot:
         target tile and succeeds once an orthogonally adjacent allied harvester
         is reached.
         """
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         harvester_keys: set[tuple[int, int]] = set()
         output_to_sources: dict[tuple[int, int], list[tuple[int, int]]] = {}
 
@@ -3104,7 +3185,7 @@ class Bot:
         must not be the target tile itself, and must be a visible walkable tile
         that is not occupied by another builder bot.
         """
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         current_id = self.turn_id
         best_staging: tuple[tuple[int, int, int], Position] | None = None
 
@@ -3282,7 +3363,7 @@ class Bot:
         """
         if not SPAM_MARKERS:
             return
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         for dx, dy in BUILDER_STAGING_OFFSETS:
             marker_pos = Position(current_pos.x + dx, current_pos.y + dy)
             if not self._is_in_bounds(marker_pos):
@@ -3340,6 +3421,16 @@ class Bot:
         """
         self._ensure_enemy_threat_cache()
         return (pos.x, pos.y) in self._enemy_turret_range_tiles
+
+    def is_tile_in_enemy_launcher_range(self, pos: Position) -> bool:
+        """
+        Check whether a tile is within range of any visible enemy launcher.
+
+        The launcher danger field is approximated by each visible enemy
+        launcher's radius-squared neighborhood.
+        """
+        self._ensure_enemy_threat_cache()
+        return (pos.x, pos.y) in self._enemy_launcher_range_tiles
 
     def _is_next_to_core_footprint(self, pos: Position) -> bool:
         """
@@ -3483,8 +3574,8 @@ class Bot:
         """
         if self.map is None:
             return []
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
-        current_round = self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
+        own_team = self.bb_ctx_team
+        current_round = self.bb_ctx_round
         map_revision = self.map.knowledge_revision
         if (
             self._known_allied_foundry_positions_cache_round == current_round
@@ -3522,7 +3613,7 @@ class Bot:
         if self.core_center_pos is None:
             return []
 
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         center = self.core_center_pos
         splitter_positions: list[Position] = []
         for x, y in self.map.known_positions:
@@ -3574,7 +3665,7 @@ class Bot:
         if not foundry_positions:
             return None
 
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         origin_dist = min(
             build_pos.distance_squared(foundry_pos)
             for foundry_pos in foundry_positions
@@ -3884,7 +3975,7 @@ class Bot:
         if origin_distance_to_core >= INFINITE_DISTANCE:
             return None
 
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         best_conveyor_target = self._get_best_conveyor_target(
             build_pos,
             origin_distance_to_core,
@@ -4025,7 +4116,7 @@ class Bot:
         if origin_distance_to_core >= INFINITE_DISTANCE:
             return None
 
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         if not preferred_use_bridge:
             bridge_candidate = self._get_best_bridge_target(
                 build_pos,
@@ -4277,9 +4368,7 @@ class Bot:
         cache. Team ownership is intentionally ignored for this orientation
         safety rule.
         """
-        current_round = (
-            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
-        )
+        current_round = self.bb_ctx_round
         supplier_types = {EntityType.HARVESTER, *SUPPLY_LINK_TYPES}
         supplier_directions: set[Direction] = set()
 
@@ -4555,23 +4644,34 @@ class Bot:
         self,
         target_pos: Position,
         use_cached_flow: bool = False,
+        avoid_enemy_launchers: bool = True,
     ) -> bool:
         """
         Advance one step toward a target while preparing the chosen path tile.
-
+        
         In normal mode, the method keeps the old direct-step + BFS + local
         greedy fallback behavior. When `use_cached_flow` is enabled, it first
         asks the map for a cached reverse-flow step toward `target_pos` and
         only falls back to full BFS/greedy logic when that cached step is not
-        currently usable.
+        currently usable. When `avoid_enemy_launchers` is enabled, candidate
+        steps covered by visible enemy launchers are ignored.
         """
         current_pos = self.ct.get_position()
         if current_pos == target_pos:
             return False
 
+        def is_launcher_safe(pos: Position) -> bool:
+            if not avoid_enemy_launchers:
+                return True
+            return not self.is_tile_in_enemy_launcher_range(pos)
+
         if use_cached_flow and self.map is not None:
             next_step_pos = self.map.get_next_field_for_target_cached(target_pos)
-            if next_step_pos is not None and next_step_pos != current_pos:
+            if (
+                next_step_pos is not None
+                and next_step_pos != current_pos
+                and is_launcher_safe(next_step_pos)
+            ):
                 move_direction = current_pos.direction_to(next_step_pos)
                 if (
                     move_direction != Direction.CENTRE
@@ -4580,7 +4680,11 @@ class Bot:
                     return True
                 self.map.invalidate_cached_target_flow()
                 next_step_pos = self.map.get_next_field_for_target_cached(target_pos)
-                if next_step_pos is not None and next_step_pos != current_pos:
+                if (
+                    next_step_pos is not None
+                    and next_step_pos != current_pos
+                    and is_launcher_safe(next_step_pos)
+                ):
                     move_direction = current_pos.direction_to(next_step_pos)
                     if (
                         move_direction != Direction.CENTRE
@@ -4596,6 +4700,7 @@ class Bot:
                 if (
                     self._is_in_bounds(direct_pos)
                     and self.ct.get_tile_env(direct_pos) != Environment.WALL
+                    and is_launcher_safe(direct_pos)
                     and direct_pos.distance_squared(target_pos) < current_distance_sq
                     and (
                         self.ct.can_move(direct_direction)
@@ -4607,7 +4712,11 @@ class Bot:
 
         if self.map is not None:
             next_step_pos = self.map.get_next_field_for_target(target_pos)
-            if next_step_pos is not None and next_step_pos != current_pos:
+            if (
+                next_step_pos is not None
+                and next_step_pos != current_pos
+                and is_launcher_safe(next_step_pos)
+            ):
                 move_direction = current_pos.direction_to(next_step_pos)
                 if (
                     move_direction != Direction.CENTRE
@@ -4624,6 +4733,8 @@ class Bot:
             if not self._is_in_bounds(next_pos):
                 continue
             if self.ct.get_tile_env(next_pos) == Environment.WALL:
+                continue
+            if not is_launcher_safe(next_pos):
                 continue
 
             can_move = self.ct.can_move(direction)
@@ -4784,11 +4895,9 @@ class Bot:
         if self.map is None:
             return False
 
-        action_radius_sq = 2
-        current_pos = self.turn_position or self.ct.get_position()
-        current_round = (
-            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
-        )
+        action_radius_sq = self.bb_ctx_action_radius_sq
+        current_pos = self.bb_ctx_pos
+        current_round = self.bb_ctx_round
 
         candidate_tiles: list[
             tuple[tuple[int, int, int, int, int, int], Position, Position]
@@ -4848,7 +4957,7 @@ class Bot:
         if not candidate_tiles:
             return False
 
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
         if titanium >= ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD:
             candidate_tiles.sort(key=lambda candidate: candidate[0])
             self.get_enemy_core_pos()
@@ -4915,7 +5024,7 @@ class Bot:
             "attacking enemy harvester",
         )
 
-    def attack_enemy_walkable(self) -> bool:
+    def attack_enemy_supply_targets(self) -> bool:
         """
         Attack only strategically relevant enemy logistics tiles.
 
@@ -4923,11 +5032,11 @@ class Bot:
         targets that either feed an enemy turret, target the enemy core, or sit
         orthogonally adjacent to an enemy harvester.
         """
-        current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
-        titanium, _ = self.turn_resources
+        current_pos = self.bb_ctx_pos
+        own_team = self.bb_ctx_team
+        titanium = self.bb_ctx_titanium
         can_attack = titanium >= HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD
-        action_radius_sq = 2
+        action_radius_sq = self.bb_ctx_action_radius_sq
 
         type_rank = HARASSMENT_ENEMY_TILE_TYPE_RANK
         special_rank = HARASSMENT_ENEMY_TILE_SPECIAL_RANK
@@ -5012,6 +5121,7 @@ class Bot:
             and current_tile.building_id is not None
             and current_tile.building_type in type_rank
             and current_tile.building_team != own_team
+            and not self.is_tile_in_enemy_launcher_range(current_pos)
         ):
             current_special_priority = get_special_priority(
                 current_tile.building_id,
@@ -5027,7 +5137,7 @@ class Bot:
                 self.harassment_attack_target = current_pos
                 return self._record_action(
                     BotAction.ATTACK_ENEMY_WALKABLE,
-                    "attacking enemy walkable",
+                    "attacking enemy supply targets",
                 )
             if (
                 current_special_priority in relevant_specials
@@ -5040,7 +5150,7 @@ class Bot:
                 self.harassment_attack_target = current_pos
                 return self._record_action(
                     BotAction.ATTACK_ENEMY_WALKABLE,
-                    "attacking enemy walkable",
+                    "attacking enemy supply targets",
                 )
 
         best_candidate: tuple[tuple[int, int, int, int, int, int], Position] | None = None
@@ -5052,6 +5162,8 @@ class Bot:
                 continue
             type_priority = type_rank.get(building_type)
             if type_priority is None:
+                continue
+            if self.is_tile_in_enemy_launcher_range(building_pos):
                 continue
             special_priority = get_special_priority(
                 building_id,
@@ -5088,7 +5200,7 @@ class Bot:
                 self.harassment_attack_target = target_pos
                 return self._record_action(
                     BotAction.ATTACK_ENEMY_WALKABLE,
-                    "attacking enemy walkable",
+                    "attacking enemy supply targets",
                 )
 
         if best_candidate is None:
@@ -5111,14 +5223,14 @@ class Bot:
                 self.harassment_attack_target = target_pos
                 return self._record_action(
                     BotAction.ATTACK_ENEMY_WALKABLE,
-                    "attacking enemy walkable",
+                    "attacking enemy supply targets",
                 )
             return False
         if self._move_towards_with_roads(target_pos, use_cached_flow=True):
             self.harassment_attack_target = target_pos
             return self._record_action(
                 BotAction.ATTACK_ENEMY_WALKABLE,
-                "attacking enemy walkable",
+                "attacking enemy supply targets",
             )
 
         return False
@@ -5132,7 +5244,7 @@ class Bot:
         move. Titanium tiles that already contain a barrier are ignored
         entirely by this method.
         """
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         immediate_candidates: list[
             tuple[tuple[int, int, int, int], Position, bool]
         ] = []
@@ -5275,8 +5387,8 @@ class Bot:
         if not enemy_core_centers:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        titanium, _ = self.turn_resources
+        current_pos = self.bb_ctx_pos
+        titanium = self.bb_ctx_titanium
         launcher_mode = ENABLE_LAUNCHER_ENEMY_CORE_BLOCK and (
             titanium >= MIN_TITANIUM_LAUNCHER_ENEMY_CORE
         )
@@ -5353,7 +5465,12 @@ class Bot:
                     continue
                 if tile.environment != Environment.EMPTY:
                     continue
-                if not self._build_launcher_safely(target_pos):
+                if self._build_launcher_safely(target_pos):
+                    return self._record_action(
+                        BotAction.BLOCK_ENEMY_CORE,
+                        "blocking enemy core",
+                    )
+                if not self._build_barrier_safely(target_pos):
                     continue
                 return self._record_action(
                     BotAction.BLOCK_ENEMY_CORE,
@@ -5408,12 +5525,12 @@ class Bot:
         if self.map is None:
             return False
 
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
         if titanium < LAUNCHER_DEFEND_MIN_TITANIUM_THRESHOLD:
             return False
 
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
-        current_pos = self.turn_position or self.ct.get_position()
+        own_team = self.bb_ctx_team
+        current_pos = self.bb_ctx_pos
         intrusion_tiles: list[tuple[tuple[int, int, int], Position]] = []
         for pos in self.ct.get_nearby_tiles():
             builder_id = self.ct.get_tile_builder_bot_id(pos)
@@ -5564,8 +5681,8 @@ class Bot:
         stand on and advances toward the closest one, building a road first when
         that path still needs to be prepared.
         """
-        current_pos = self.turn_position or self.ct.get_position()
-        titanium, _ = self.turn_resources
+        current_pos = self.bb_ctx_pos
+        titanium = self.bb_ctx_titanium
 
         current_building_id = self.ct.get_tile_building_id(current_pos)
         if current_building_id is not None:
@@ -5652,12 +5769,12 @@ class Bot:
         ):
             return False
 
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
         can_build = titanium >= HARVESTER_BRIDGE_MIN_TITANIUM_THRESHOLD
         if not can_build and not hold:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         actionable_candidates: list[
             tuple[
                 tuple[int, int, int, int, int, int, int],
@@ -5894,8 +6011,8 @@ class Bot:
         ):
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_pos = self.bb_ctx_pos
+        own_team = self.bb_ctx_team
         current_pos_key = (current_pos.x, current_pos.y)
         if self.missing_supply_target is not None:
             pending_pos = Position(
@@ -5945,7 +6062,7 @@ class Bot:
                     "holding missing supply link position",
                 )
 
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
         can_build = titanium >= CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD
         if not can_build and not hold:
             return False
@@ -6341,7 +6458,7 @@ class Bot:
         resource chain. Occupied logistics tiles with another visible builder
         are never destroyed.
         """
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         enemy_turret_types = {
             EntityType.GUNNER,
             EntityType.SENTINEL,
@@ -6418,7 +6535,7 @@ class Bot:
         if self.core_center_pos is None:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         core_x = self.core_center_pos.x
         core_y = self.core_center_pos.y
         prox_dist = CORE_PROXIMITY_DIST
@@ -6556,8 +6673,8 @@ class Bot:
         if self.map is None:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_pos = self.bb_ctx_pos
+        own_team = self.bb_ctx_team
         action_candidates: list[tuple[tuple[int, int, int], Position]] = []
         move_candidates: list[tuple[tuple[int, int, int], Position]] = []
 
@@ -6622,7 +6739,7 @@ class Bot:
         if self.turn_round == self._harvester_protection_cache_round:
             return self._harvester_protection_cache
 
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         pulling_building_types = {
             EntityType.CONVEYOR,
             EntityType.ARMOURED_CONVEYOR,
@@ -6710,7 +6827,7 @@ class Bot:
         if not barrier_candidates:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         barrier_ti, barrier_ax = self.ct.get_barrier_cost()
         titanium, axionite = self.turn_resources
         can_afford_barrier = titanium >= barrier_ti and axionite >= barrier_ax
@@ -6834,12 +6951,12 @@ class Bot:
         if self.map is None:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         current_id = self.turn_id
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         handler_func = getattr(self.bb_handler, "__func__", None)
         is_scavenger_handler = handler_func == Bot.run_bb_scavenger
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
         cap_ok = True
         if enforce_harvester_cap and resource_environment == Environment.ORE_TITANIUM:
             cap_ok = self.map.known_harvesters_built < MAX_HARVESTORS
@@ -6848,7 +6965,7 @@ class Bot:
             and titanium >= HARVESTER_MIN_TITANIUM_THRESHOLD
             and cap_ok
         )
-        action_radius_sq = 2
+        action_radius_sq = self.bb_ctx_action_radius_sq
         ore_candidates: list[tuple[tuple[int, int, int], Position, bool, Tile]] = []
 
         for ore_pos in self.turn_nearby_tiles:
@@ -7121,9 +7238,7 @@ class Bot:
         valid enemy core candidate, and only marks the enemy core position as
         resolved when exactly one candidate remains.
         """
-        current_round = (
-            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
-        )
+        current_round = self.bb_ctx_round
         if self._enemy_core_inference_round == current_round:
             return self.enemy_core_pos
 
@@ -7255,16 +7370,14 @@ class Bot:
         if self.map is None:
             return False
 
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
         if titanium < ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        current_round = (
-            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
-        )
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
-        action_radius_sq = 2
+        current_pos = self.bb_ctx_pos
+        current_round = self.bb_ctx_round
+        own_team = self.bb_ctx_team
+        action_radius_sq = self.bb_ctx_action_radius_sq
 
         self.get_enemy_core_pos()
         possible_enemy_core_tiles: list[Position] = []
@@ -7411,8 +7524,8 @@ class Bot:
             self.map.has_core_adjacent_splitter = True
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_pos = self.bb_ctx_pos
+        own_team = self.bb_ctx_team
         core_tile_keys = {
             (pos.x, pos.y)
             for pos in self._get_core_footprint_positions(self.core_center_pos)
@@ -7558,8 +7671,8 @@ class Bot:
         if not splitter_positions:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_pos = self.bb_ctx_pos
+        own_team = self.bb_ctx_team
         splitter_positions.sort(
             key=lambda pos: (
                 current_pos.distance_squared(pos),
@@ -7701,8 +7814,8 @@ class Bot:
         if not splitter_positions:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_pos = self.bb_ctx_pos
+        own_team = self.bb_ctx_team
         splitter_positions.sort(
             key=lambda pos: (
                 current_pos.distance_squared(pos),
@@ -8023,8 +8136,8 @@ class Bot:
         if self.map is None:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        current_pos = self.bb_ctx_pos
+        own_team = self.bb_ctx_team
         best_target: tuple[tuple[int, int, int, int], Position] | None = None
 
         for x, y in self.map.known_positions:
@@ -8076,15 +8189,13 @@ class Bot:
         if self.map is None:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
-        current_round = (
-            self.turn_round if self.turn_round >= 0 else self.ct.get_current_round()
-        )
+        current_pos = self.bb_ctx_pos
+        current_round = self.bb_ctx_round
         own_builder_id = self.turn_id if self.turn_id >= 0 else self.ct.get_id()
         current_x = current_pos.x
         current_y = current_pos.y
         visible_coords = {(pos.x, pos.y) for pos in self.turn_nearby_tiles}
-        own_team = self.turn_team if self.turn_team is not None else self.ct.get_team()
+        own_team = self.bb_ctx_team
         handler_func = getattr(self.bb_handler, "__func__", self.bb_handler)
         is_scavenger_expand = handler_func == Bot.run_bb_scavenger
         nearby_other_builder_positions: list[Position] = []
@@ -8568,7 +8679,7 @@ class Bot:
         if self.map is None:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         self._stamp_supply_patrol_coverage()
 
         best_target: tuple[tuple[int, int, int, int], Position] | None = None
@@ -8654,7 +8765,7 @@ class Bot:
         """
         if self.map is None:
             return False
-        titanium, _ = self.turn_resources
+        titanium = self.bb_ctx_titanium
         if titanium < CHAIN_BRIDGE_MIN_TITANIUM_THRESHOLD:
             return False
         if self.previous_action not in {
@@ -8664,7 +8775,7 @@ class Bot:
         }:
             return False
 
-        current_pos = self.turn_position or self.ct.get_position()
+        current_pos = self.bb_ctx_pos
         actionable_candidates: list[
             tuple[
                 tuple[int, int, int, int, int, int, int],
@@ -8825,14 +8936,14 @@ class Player(Bot):
 INITIAL_BB = [
     Bot.run_bb_init_res,
     Bot.run_bb_harassment,
-    Bot.run_bb_init_res,
+    # Bot.run_bb_init_res,
     CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
     Bot.run_bb_scavenger,
     Bot.run_bb_scavenger,
-    CoreSpawnTurnEvent(100),
-    Bot.run_bb_scavenger,
     CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION,
     Bot.run_bb_defender,
+    CoreSpawnTurnEvent(100),
+    Bot.run_bb_scavenger,
 ]
 CORE_TILE_BB_ROLE = {
     (-1, -1): Bot.run_bb_scavenger,
