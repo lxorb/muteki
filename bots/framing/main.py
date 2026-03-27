@@ -26,8 +26,10 @@ SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD = 1600
 HARASSMENT_SPAWN_TITANIUM_STEP = 100
 HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 160
+ENABLE_LAUNCHER_ENEMY_CORE_BLOCK = True
+MIN_TITANIUM_LAUNCHER_ENEMY_CORE = 400
 DISABLE_HARASSMENT = False
-FOUNDRY_TURN_CONSTANT = 1500
+FOUNDRY_TURN_CONSTANT = 1600
 MIN_FOUNDRY_TITANIUM_CONSTANT = 1000
 AXIONITE_FARMING_BOTS_TO_SPAWN = 2
 CORE_PROXIMITY_DIST = 3
@@ -60,7 +62,7 @@ BUILDER_STAGING_OFFSETS = [
 SENTINEL_COVER_OFFSETS = [(dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)]
 MAX_BOTS = 999
 MAX_HARVESTORS = 999
-SURRENDER_AT_TURN = 3000
+SURRENDER_AT_TURN = 999
 
 SENTINEL_TARGET_PRIORITY = [
     EntityType.GUNNER,
@@ -175,6 +177,7 @@ class BotAction(Enum):
     SPAWN_BUILDER = auto()
     ATTACK_ENEMY_HARVESTER = auto()
     BUILD_SUPPLIED_SENTINEL = auto()
+    BLOCK_ENEMY_CORE = auto()
     ATTACK_ENEMY_WALKABLE = auto()
     REPAIR_IF_DAMAGED = auto()
     MAINTAINER_PATROL = auto()
@@ -2348,6 +2351,7 @@ class Bot:
             ("attack_enemy_harvester", self.attack_enemy_harvester),
             ("build_supplied_sentinel", self.build_supplied_sentinel),
             ("wall_titanium", self.wall_titanium),
+            ("block_enemy_core", self.block_enemy_core),
             ("attack_enemy_walkable", self.attack_enemy_walkable),
             ("harassment_scout", self.harassment_scout),
         ]
@@ -2464,6 +2468,141 @@ class Bot:
         self.ct.fire(target_pos)
         self.last_action = BotAction.BREACH_ATTACK
 
+    def _run_launcher_enemy_core_proximity(self) -> bool:
+        """
+        Use a dedicated throw policy for launchers near the enemy core.
+
+        When this launcher is diagonally/orthogonally adjacent to the enemy
+        core footprint, it throws enemy builder bots to legal road targets with
+        this priority:
+        1. targets covered by allied turrets
+        2. among those, tiles farthest from the enemy core
+        """
+        self.get_enemy_core_pos()
+        enemy_core_centers = (
+            [self.enemy_core_pos]
+            if self.enemy_core_pos is not None
+            else list(self.enemy_core_pos_candidates)
+        )
+        if not enemy_core_centers:
+            return False
+
+        launcher_pos = self.ct.get_position()
+        is_enemy_core_adjacent = any(
+            max(
+                abs(launcher_pos.x - enemy_center.x),
+                abs(launcher_pos.y - enemy_center.y),
+            )
+            == 2
+            for enemy_center in enemy_core_centers
+        )
+        if not is_enemy_core_adjacent:
+            return False
+
+        own_team = self.ct.get_team()
+        enemy_builder_positions: list[Position] = []
+        for unit_id in self.ct.get_nearby_units():
+            if self.ct.get_team(unit_id) == own_team:
+                continue
+            if self.ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
+                continue
+            enemy_builder_positions.append(self.ct.get_position(unit_id))
+        if not enemy_builder_positions:
+            return False
+
+        road_targets: list[Position] = []
+        for target_pos in self.ct.get_nearby_tiles(self.ct.get_vision_radius_sq()):
+            building_id = self.ct.get_tile_building_id(target_pos)
+            if building_id is None:
+                continue
+            if self.ct.get_entity_type(building_id) != EntityType.ROAD:
+                continue
+            road_targets.append(target_pos)
+        if not road_targets:
+            return False
+
+        own_turret_ids: list[int] = []
+        for building_id in self.ct.get_nearby_buildings():
+            if self.ct.get_team(building_id) != own_team:
+                continue
+            building_type = self.ct.get_entity_type(building_id)
+            if building_type not in {
+                EntityType.GUNNER,
+                EntityType.SENTINEL,
+                EntityType.BREACH,
+            }:
+                continue
+            own_turret_ids.append(building_id)
+
+        def is_targetable_by_own_turret(target_pos: Position) -> bool:
+            for turret_id in own_turret_ids:
+                turret_pos = self.ct.get_position(turret_id)
+                if (
+                    turret_pos.distance_squared(target_pos)
+                    > self.ct.get_vision_radius_sq(turret_id)
+                ):
+                    continue
+
+                turret_type = self.ct.get_entity_type(turret_id)
+                if turret_type == EntityType.SENTINEL:
+                    turret_direction = self.ct.get_direction(turret_id)
+                    if self._sentinel_direction_covers_target(
+                        turret_pos,
+                        turret_direction,
+                        target_pos,
+                    ):
+                        return True
+                    continue
+
+                return True
+
+            return False
+
+        legal_launches: list[
+            tuple[tuple[int, int, int, int, int, int], Position, Position, bool]
+        ] = []
+        for bot_pos in enemy_builder_positions:
+            for target_pos in road_targets:
+                if not self.ct.can_launch(bot_pos, target_pos):
+                    continue
+                enemy_core_dist = min(
+                    target_pos.distance_squared(enemy_center)
+                    for enemy_center in enemy_core_centers
+                )
+                candidate_key = (
+                    -enemy_core_dist,
+                    launcher_pos.distance_squared(bot_pos),
+                    target_pos.x,
+                    target_pos.y,
+                    bot_pos.x,
+                    bot_pos.y,
+                )
+                legal_launches.append(
+                    (
+                        candidate_key,
+                        bot_pos,
+                        target_pos,
+                        is_targetable_by_own_turret(target_pos),
+                    )
+                )
+
+        if not legal_launches:
+            return False
+
+        prefer_turret_covered_target = any(candidate[3] for candidate in legal_launches)
+        best_launch = min(
+            legal_launches,
+            key=lambda candidate: (
+                1 if prefer_turret_covered_target and not candidate[3] else 0,
+                candidate[0],
+            ),
+        )
+
+        _, bot_pos, target_pos, _ = best_launch
+        self.ct.launch(bot_pos, target_pos)
+        self.last_action = BotAction.LAUNCHER_THROW
+        return True
+
     def run_launcher(self):
         """
         Throw an enemy builder bot to a road tile chosen by defense priority.
@@ -2474,6 +2613,9 @@ class Bot:
         chooses the one farthest from the allied core. If none are turret-
         covered, it falls back to the farthest legal road tile from core.
         """
+        if self._run_launcher_enemy_core_proximity():
+            return
+
         if self.core_center_pos is None:
             self.find_core_center()
         core_ref_pos = self.core_center_pos or self.ct.get_position()
@@ -5049,6 +5191,149 @@ class Bot:
             return self._record_action(
                 BotAction.WALL_TITANIUM,
                 "walling titanium",
+            )
+
+        return False
+
+    def block_enemy_core(self, move_if_out_of_range: bool = True) -> bool:
+        """
+        Block the enemy core perimeter with barriers or launchers.
+
+        The method only triggers when there is at least one known empty tile
+        diagonally or orthogonally adjacent to the enemy core footprint. By
+        default it builds a barrier on such a tile. If
+        `ENABLE_LAUNCHER_ENEMY_CORE_BLOCK` is enabled and titanium reaches
+        `MIN_TITANIUM_LAUNCHER_ENEMY_CORE`, it tries to build a launcher
+        instead. If no empty perimeter tile exists in launcher mode but at
+        least one perimeter barrier exists, it replaces that barrier with a
+        launcher (destroy first, build next turn). When no actionable target
+        is currently in range, movement toward action range is controlled by
+        `move_if_out_of_range`.
+        """
+        self.get_enemy_core_pos()
+        enemy_core_centers = (
+            [self.enemy_core_pos]
+            if self.enemy_core_pos is not None
+            else list(self.enemy_core_pos_candidates)
+        )
+        if not enemy_core_centers:
+            return False
+
+        current_pos = self.turn_position or self.ct.get_position()
+        titanium, _ = self.turn_resources
+        launcher_mode = ENABLE_LAUNCHER_ENEMY_CORE_BLOCK and (
+            titanium >= MIN_TITANIUM_LAUNCHER_ENEMY_CORE
+        )
+        action_radius_sq = BUILDER_ACTION_RADIUS_SQ
+        empty_by_key: dict[tuple[int, int], Position] = {}
+        barrier_by_key: dict[tuple[int, int], Position] = {}
+
+        for enemy_core_center in enemy_core_centers:
+            core_tiles = self._get_core_footprint_positions(enemy_core_center)
+            core_tile_keys = {(pos.x, pos.y) for pos in core_tiles}
+            for core_tile in core_tiles:
+                for direction in DIRECTIONS:
+                    candidate_pos = core_tile.add(direction)
+                    if not self._is_in_bounds(candidate_pos):
+                        continue
+                    candidate_key = (candidate_pos.x, candidate_pos.y)
+                    if candidate_key in core_tile_keys:
+                        continue
+
+                    tile = self._get_known_map_tile(candidate_pos)
+                    if tile is not None and tile.environment == Environment.WALL:
+                        continue
+                    if tile is None:
+                        continue
+                    if tile.building_id is None and tile.environment == Environment.EMPTY:
+                        empty_by_key[candidate_key] = candidate_pos
+                        continue
+                    if tile.building_type == EntityType.BARRIER:
+                        barrier_by_key[candidate_key] = candidate_pos
+
+        empty_candidates = sorted(
+            empty_by_key.values(),
+            key=lambda pos: (
+                current_pos.distance_squared(pos),
+                pos.x,
+                pos.y,
+            ),
+        )
+        barrier_candidates = sorted(
+            barrier_by_key.values(),
+            key=lambda pos: (
+                current_pos.distance_squared(pos),
+                pos.x,
+                pos.y,
+            ),
+        )
+
+        if not empty_candidates and not (launcher_mode and barrier_candidates):
+            return False
+
+        if launcher_mode:
+            active_candidates = empty_candidates if empty_candidates else barrier_candidates
+        else:
+            active_candidates = empty_candidates
+
+        for target_pos in active_candidates:
+            if target_pos == current_pos:
+                continue
+            if current_pos.distance_squared(target_pos) > action_radius_sq:
+                continue
+
+            tile = self._get_known_map_tile(target_pos)
+            if launcher_mode:
+                if tile is not None and tile.building_type == EntityType.BARRIER:
+                    if not self._destroy_tile_if_safe(target_pos):
+                        continue
+                    return self._record_action(
+                        BotAction.BLOCK_ENEMY_CORE,
+                        "blocking enemy core",
+                    )
+                if tile is None:
+                    continue
+                if tile.building_id is not None:
+                    continue
+                if tile.environment != Environment.EMPTY:
+                    continue
+                if not self._build_launcher_safely(target_pos):
+                    continue
+                return self._record_action(
+                    BotAction.BLOCK_ENEMY_CORE,
+                    "blocking enemy core",
+                )
+
+            if tile is None:
+                continue
+            if tile.building_id is not None:
+                continue
+            if tile.environment != Environment.EMPTY:
+                continue
+            if not self._build_barrier_safely(target_pos):
+                continue
+            return self._record_action(
+                BotAction.BLOCK_ENEMY_CORE,
+                "blocking enemy core",
+            )
+
+        if not move_if_out_of_range:
+            return False
+
+        for target_pos in active_candidates:
+            if target_pos == current_pos:
+                continue
+            if current_pos.distance_squared(target_pos) <= action_radius_sq:
+                continue
+            if not self._move_towards_action_range_with_roads(
+                target_pos,
+                action_radius_sq=action_radius_sq,
+                allow_direct_target_fallback=False,
+            ):
+                continue
+            return self._record_action(
+                BotAction.BLOCK_ENEMY_CORE,
+                "blocking enemy core",
             )
 
         return False
