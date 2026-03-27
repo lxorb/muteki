@@ -8,6 +8,9 @@ import random
 import time
 from cambc import Controller, Direction, EntityType, Environment, Position, Team
 
+SURRENDER_AT_TURN = 2001
+ENABLE_LAUNCHER_ENEMY_CORE_BLOCK = True
+DISABLE_HARASSMENT = False
 INFINITE_DISTANCE = 10**9
 DEBUG_OUTPUT = False
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
@@ -26,9 +29,7 @@ SCAVENGER_ACTIVE_TITANIUM_THRESHOLD = 200
 HARASSMENT_SPAWN_BASE_TITANIUM_THRESHOLD = 1600
 HARASSMENT_SPAWN_TITANIUM_STEP = 100
 HARASSMENT_ATTACK_MIN_TITANIUM_THRESHOLD = 160
-ENABLE_LAUNCHER_ENEMY_CORE_BLOCK = True
 MIN_TITANIUM_LAUNCHER_ENEMY_CORE = 400
-DISABLE_HARASSMENT = False
 FOUNDRY_TURN_CONSTANT = 1600
 MIN_FOUNDRY_TITANIUM_CONSTANT = 1000
 AXIONITE_FARMING_BOTS_TO_SPAWN = 2
@@ -62,7 +63,6 @@ BUILDER_STAGING_OFFSETS = [
 SENTINEL_COVER_OFFSETS = [(dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)]
 MAX_BOTS = 999
 MAX_HARVESTORS = 999
-SURRENDER_AT_TURN = 999
 
 SENTINEL_TARGET_PRIORITY = [
     EntityType.GUNNER,
@@ -355,6 +355,7 @@ class Map:
             y = pos.y
             tile = matrix[x][y]
             had_tile = tile is not None
+            created_new_tile = False
 
             if tile is None:
                 environment = get_tile_env(pos)
@@ -369,7 +370,7 @@ class Map:
                 knowledge_changed = True
                 if environment == Environment.WALL:
                     distance_dirty = True
-                path_changed = True
+                created_new_tile = True
             previous_building_id = tile.building_id
             previous_building_type = tile.building_type
             previous_building_team = tile.building_team
@@ -422,12 +423,9 @@ class Map:
                     )
                 )
             )
-            if had_tile and (
-                previous_building_id != tile.building_id
-                or previous_building_type != tile.building_type
-                or previous_building_team != tile.building_team
-                or previous_is_passable != tile.is_passable
-            ):
+            if created_new_tile and not tile.is_passable:
+                path_changed = True
+            if had_tile and previous_is_passable != tile.is_passable:
                 path_changed = True
             if (
                 tile.building_id is not None
@@ -527,6 +525,10 @@ class Map:
         self._bfs_goal = [0] * cell_count
         self._bfs_queue = [0] * cell_count
         self._flow_dist = [INFINITE_DISTANCE] * cell_count
+        self._flow_seen = [0] * cell_count
+        self._flow_queue = [0] * cell_count
+        self._flow_token = 0
+        self._flow_active_token = 0
         self._flow_target_key: tuple[int, int] | None = None
         self._flow_path_revision = -1
 
@@ -543,6 +545,19 @@ class Map:
             self._bfs_goal = [0] * (self.width * self.height)
             self._bfs_token = 1
         return self._bfs_token
+
+    def _next_flow_token(self) -> int:
+        """
+        Return a fresh token for the cached reverse-flow distance field.
+
+        Flow entries marked with older tokens are treated as absent, which
+        avoids clearing whole arrays on every target-flow recomputation.
+        """
+        self._flow_token += 1
+        if self._flow_token >= 2_000_000_000:
+            self._flow_seen = [0] * (self.width * self.height)
+            self._flow_token = 1
+        return self._flow_token
 
     def _to_index(self, x: int, y: int) -> int:
         """
@@ -849,6 +864,7 @@ class Map:
         """
         self._flow_target_key = None
         self._flow_path_revision = -1
+        self._flow_active_token = 0
 
     def _ensure_cached_target_flow(
         self,
@@ -881,20 +897,22 @@ class Map:
             return True
 
         flow_dist = self._flow_dist
-        cell_count = self.width * self.height
-        for idx in range(cell_count):
-            flow_dist[idx] = INFINITE_DISTANCE
-
-        queue: deque[int] = deque()
+        flow_seen = self._flow_seen
+        queue = self._flow_queue
+        token = self._next_flow_token()
         start_idx = self._to_index(target_x, target_y)
         flow_dist[start_idx] = 0
-        queue.append(start_idx)
+        flow_seen[start_idx] = token
+        queue[0] = start_idx
+        head = 0
+        tail = 1
 
         matrix = self.matrix
         width = self.width
         height = self.height
-        while queue:
-            idx = queue.popleft()
+        while head < tail:
+            idx = queue[head]
+            head += 1
             x = idx % width
             y = idx // width
             next_distance = flow_dist[idx] + 1
@@ -906,7 +924,10 @@ class Map:
                     continue
 
                 next_idx = new_y * width + new_x
-                if next_distance >= flow_dist[next_idx]:
+                if (
+                    flow_seen[next_idx] == token
+                    and next_distance >= flow_dist[next_idx]
+                ):
                     continue
 
                 next_tile = matrix[new_x][new_y]
@@ -919,11 +940,14 @@ class Map:
                     ):
                         continue
 
+                flow_seen[next_idx] = token
                 flow_dist[next_idx] = next_distance
-                queue.append(next_idx)
+                queue[tail] = next_idx
+                tail += 1
 
         self._flow_target_key = target_key
         self._flow_path_revision = self.path_revision
+        self._flow_active_token = token
         return True
 
     def get_next_field_for_target_cached(self, target_pos: Position) -> Position | None:
@@ -947,10 +971,15 @@ class Map:
             return start_pos
 
         own_builder_id = self.ct.get_id()
-        start_idx = self._to_index(start_x, start_y)
-        start_distance = self._flow_dist[start_idx]
-        if start_distance >= INFINITE_DISTANCE:
+        flow_token = self._flow_active_token
+        if flow_token <= 0:
             return None
+        flow_seen = self._flow_seen
+        flow_dist = self._flow_dist
+        start_idx = self._to_index(start_x, start_y)
+        if flow_seen[start_idx] != flow_token:
+            return None
+        start_distance = flow_dist[start_idx]
 
         best_step: tuple[tuple[int, int, int, int], Position] | None = None
         for shift_x, shift_y in FLOOD_FILL_SHIFTS:
@@ -962,7 +991,9 @@ class Map:
                 continue
 
             next_idx = self._to_index(new_x, new_y)
-            next_distance = self._flow_dist[next_idx]
+            if flow_seen[next_idx] != flow_token:
+                continue
+            next_distance = flow_dist[next_idx]
             if next_distance >= start_distance:
                 continue
 
@@ -4914,23 +4945,41 @@ class Bot:
                 and building_team != own_team
             )
         }
+        enemy_harvester_adjacent_keys: set[tuple[int, int]] = set()
+        for harvester_x, harvester_y in enemy_harvester_positions:
+            for direction in CARDINAL_DIRECTIONS:
+                dx, dy = direction.delta()
+                enemy_harvester_adjacent_keys.add(
+                    (harvester_x + dx, harvester_y + dy)
+                )
+        special_priority_cache: dict[int, int] = {}
+        supply_output_pos_cache: dict[int, Position | None] = {}
 
         def get_special_priority(
             building_id: int,
             building_type: EntityType,
             building_pos: Position,
         ) -> int:
-            for direction in CARDINAL_DIRECTIONS:
-                adjacent_pos = building_pos.add(direction)
-                if (adjacent_pos.x, adjacent_pos.y) in enemy_harvester_positions:
-                    return special_rank["adjacent_enemy_harvester"]
+            cached_priority = special_priority_cache.get(building_id)
+            if cached_priority is not None:
+                return cached_priority
+
+            if (building_pos.x, building_pos.y) in enemy_harvester_adjacent_keys:
+                special_priority_cache[building_id] = special_rank[
+                    "adjacent_enemy_harvester"
+                ]
+                return special_priority_cache[building_id]
 
             if building_type in SUPPLY_LINK_TYPES:
-                output_pos = self._get_supply_link_output_pos_from_info(
-                    building_id,
-                    building_type,
-                    building_pos,
-                )
+                if building_id in supply_output_pos_cache:
+                    output_pos = supply_output_pos_cache[building_id]
+                else:
+                    output_pos = self._get_supply_link_output_pos_from_info(
+                        building_id,
+                        building_type,
+                        building_pos,
+                    )
+                    supply_output_pos_cache[building_id] = output_pos
                 output_tile = (
                     self._get_known_map_tile(output_pos)
                     if output_pos is not None and self._is_in_bounds(output_pos)
@@ -4944,11 +4993,18 @@ class Bot:
                 ):
                     output_building_type = output_tile.building_type
                     if output_building_type in ENEMY_TURRET_TYPES:
-                        return special_rank["feeds_enemy_turret"]
+                        special_priority_cache[building_id] = special_rank[
+                            "feeds_enemy_turret"
+                        ]
+                        return special_priority_cache[building_id]
                     if output_building_type == EntityType.CORE:
-                        return special_rank["targets_enemy_core"]
+                        special_priority_cache[building_id] = special_rank[
+                            "targets_enemy_core"
+                        ]
+                        return special_priority_cache[building_id]
 
-            return special_rank["default"]
+            special_priority_cache[building_id] = special_rank["default"]
+            return special_priority_cache[building_id]
 
         current_tile = self._get_known_map_tile(current_pos)
         if (
