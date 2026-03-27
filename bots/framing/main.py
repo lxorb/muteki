@@ -85,7 +85,7 @@ HARVESTER_MIN_TITANIUM_THRESHOLD = DynamicTitaniumThreshold(
         ("get_launcher_cost", 1.0),
         ("get_bridge_cost", 1.0),
     ),
-    multiplier=1.2,
+    multiplier=1.5,
     include_scale_factor=True,
 )
 ENEMY_HARVESTER_SENTINEL_MIN_TITANIUM_THRESHOLD = 200
@@ -9401,8 +9401,6 @@ INITIAL_BB = [
     Bot.run_bb_init_res,
     Bot.run_bb_harassment,
     CoreSpawnEvent.FIRST_RESOURCE_INCREASE,
-    Bot.run_bb_scavenger,
-    Bot.run_bb_scavenger,
     CoreSpawnEvent.ENEMY_BOT_IN_CORE_VISION,
     Bot.run_bb_defender,
     CoreSpawnTurnEvent(100),
