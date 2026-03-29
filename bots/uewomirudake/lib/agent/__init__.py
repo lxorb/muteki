@@ -38,8 +38,7 @@ class Agent:
         # -> this is saved after one strategy method in the list of strategy elements
         #    finishes execution to be able to continue after TLE's
         self.last_strategy_index = -1
-
-        self.bb_strategy = None
+        
         # this saves the strategy of the builder bot
         self.t_start = 0
 
@@ -223,77 +222,3 @@ class Agent:
         """
         Infer a similar priority ordering for the gunner based on the sentinel priority list. 
         """
-
-    def s_sentinel_next_to_enemy_harvester(self, move_towards: bool = True, destroy_enemy_tile: bool = False, hold: bool = False):
-        """
-        If there is an empty or own road tile next to an enemy harvester, build a
-        sentinel there. 
-        come up with priorities if there are multiple such fields here as well
-        # TODO: review this priority ordering
-        """
-
-    def s_block_enemy_supply_chain(self, move_towards: bool = True):
-        """
-        Build a barrier at a tile where an enemy conveyor or bridge is pointing at. 
-        Also come up with a priority for such tiles. Distance should of course be very important
-        to prevent builder bots from walking between the same two tiles all the time. 
-        # TODO: review this priority ordering
-        """
-
-    def s_block_titanium(self, move_towards: bool = True):
-        """
-        Build barriers on top of titanium tiles.
-        The idea is that this does not prevent us from building an extractor over it later if we decide to do so
-        but this keeps the opponent from building an own harvester or barrier and also could potentially
-        deny resources for the opponent effectively cutting him off. 
-        """
-
-    def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
-        """
-        This makes the builder bot attack a conveyor or bridge that is next to an 
-        enemy harvester, cutting him off from resources. This later allows building a turret next to it. 
-        Come up with some priority ordering here.
-        # TODO: review priority
-        """
-
-    def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
-        """
-        This makes the builder bot attack a conveyor or bridge that is pointing
-        to the enemy core. Also use a prioritization here. (come up with one)
-        # TODO: review priority
-        """
-
-### HERE WILL BE A CONSTANT THAT IS A DICTIONARY FROM SUCH AN ENUM
-# to a stretegy that sets the strategy per builder bot type. 
-# infer the strategies (i.e. the ordering of the strategy submethods from the old framing bot)
-
-# strategy for initial res bot:
-# s_build_harvester_supply_link
-# s_harvester_launcher
-# s_harvester_barrier
-# s_build_missing_supply_link
-# s_build_harvester
-# s_expand
-
-# strategy for scavenger:
-# s_destroy_hijacked_supply_link
-# s_build_harvester_supply_link
-# s_harvester_launcher
-# s_harvester_barrier
-# s_build_missing_supply_link
-# s_sentinel_next_to_enemy_harvester with true, false, false
-# s_build_harvester
-# s_expand
-
-# strategy for harassment:
-# s_sentinel_next_to_enemy_harvester with true, false, false
-# s_block_enemy_supply_chain
-# s_block_titanium
-# s_attack_enemy_harvester_supply_link
-# s_attack_enemy_core_supply_link
-
-# foundry bot
-# still TODO
-
-# defender bot
-# still TODO

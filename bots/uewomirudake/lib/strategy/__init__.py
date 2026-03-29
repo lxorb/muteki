@@ -6,7 +6,7 @@ from cambc import (
     Position,
     Team,
 )
-import time
+from lib.agent.builder import BuilderAgent
 
 ### HERE YOU SHOULD CREATE AN ENUM FOR ALL POSSIBLE BUILDER BOT TYPES
 # these are:
@@ -15,6 +15,8 @@ import time
 # defender
 # initial_res
 # foundrybot
+
+
 
 class Strategy:
     """
@@ -39,9 +41,7 @@ class Strategy:
         self.pre_strategy_methods = pre_strategy_methods or []
         self.strategy_methods = strategy_methods or []
         self.post_strategy_methods = post_strategy_methods or []
-
-    def u_execute_strategy(self, bot):
-        pass
+        self.last_executed_index = -1
 
 ### CONSTANT THAT IS A DICTIONARY FROM SUCH AN ENUM
 # to a stretegy that sets the strategy per builder bot type. 
