@@ -61,7 +61,7 @@ class BuilderAgent(Agent):
         if getattr(method, "__self__", None) is self:
             return method
         return method.__get__(self, type(self))
-    
+
     def c_get_bound_method_and_args(self, strategy_entry):
         if isinstance(strategy_entry, tuple):
             method, *args = strategy_entry
@@ -118,7 +118,7 @@ class BuilderAgent(Agent):
         to the enemy core.
         If the bot is already standing on a bridge or conveyor that is pointing to the enemy core, attack it. 
         If this hit would destroy that tile, only attack it if it is not in action radius of an enemy bot. 
-        Use a method of the map to get all orthogonally adjacent fields to the enemy core.
+        Use a method of the map to get all orthogonally adjacent fields to the enemy core in vision range.
         Filter out all that are not supplier tiles or that don't target the enemy core.
         Also filter out all that are in the range of enemy launchers or enemy turrets that have ammo. 
         Then pick the one with the lowest distance.
@@ -155,10 +155,18 @@ HARASSMENT_STRATEGY = [
 
 # TODO
 FOUNDRY_STRATEGY = [
-
+    # INSERT SPLITTER
+    # BUILD FOUNDRY (next to splitter)
+    # BUILD AXIONITE HARVESTER SUPPLY LINK
+    (BuilderAgent.s_harvester_barrier, True, True),
+    # BUILD MISSING AXIONITE SUPPLY LINK
+    # BUILD AXIONITE HARVESTER
+    # SCOUT (search for axionite)
 ]
 
 # TODO
+# SHOULD PATROL SUPPLY CHAINS AND REBUILD 
+# THINGS DESTROYED BY THE ENEMY
 DEFENDER_STRATEGY = [
-
+    
 ]
