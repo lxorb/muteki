@@ -1,4 +1,4 @@
-from lib.agent import Agent
+from agent import Agent
 
 class TurretAgent(Agent):
     pass
