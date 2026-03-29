@@ -61,7 +61,7 @@ class BuilderAgent(Agent):
         if getattr(method, "__self__", None) is self:
             return method
         return method.__get__(self, type(self))
-
+    
     def c_get_bound_method_and_args(self, strategy_entry):
         if isinstance(strategy_entry, tuple):
             method, *args = strategy_entry
@@ -79,41 +79,49 @@ class BuilderAgent(Agent):
         """
         If there is an empty or own road tile next to an enemy harvester, build a
         sentinel there.
-        come up with priorities if there are multiple such fields here as well
-
-        prioritize such tiles by:
-        - distance
+        Prioritize all available tiles by distance. 
+        A list of all harvesters in vision radius and of the distance to the bot for every field
+        was already precalculated in the map class.
         """
 
-    def s_block_enemy_supply_chain(self, move_towards: bool = True):
+    def s_block_enemy_supply_chain(self, move_towards: bool = True, hold: bool = True):
         """
         Build a barrier at a tile where an enemy conveyor or bridge is pointing at.
-        Also come up with a priority for such tiles. Distance should of course be very important
-        to prevent builder bots from walking between the same two tiles all the time.
-        # TODO: review this priority ordering
+        Prioritize them by distance.
+        
         """
 
-    def s_block_titanium(self, move_towards: bool = True):
+
+    def s_block_titanium(self, move_towards: bool = True, hold: bool = True):
         """
         Build barriers on top of titanium tiles.
         The idea is that this does not prevent us from building an extractor over it later if we decide to do so
         but this keeps the opponent from building an own harvester or barrier and also could potentially
         deny resources for the opponent effectively cutting him off.
+        A list of all known titanium tiles should already be saved in the map object.
+        All of them that are empty should be added to the list and then sorted by distance. 
         """
+
 
     def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
         """
         This makes the builder bot attack a conveyor or bridge that is next to an
         enemy harvester, cutting him off from resources. This later allows building a turret next to it.
-        Come up with some priority ordering here.
-        # TODO: review priority
+        The map object already keeps track of a list of all enemy harvesters.
+        Using that list, get all neighbors of these, filtering out all that are not enemy supply links.
+        Then pick the one with the lowest distance to this bot. 
         """
 
     def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
         """
         This makes the builder bot attack a conveyor or bridge that is pointing
-        to the enemy core. Also use a prioritization here. (come up with one)
-        # TODO: review priority
+        to the enemy core.
+        If the bot is already standing on a bridge or conveyor that is pointing to the enemy core, attack it. 
+        If this hit would destroy that tile, only attack it if it is not in action radius of an enemy bot. 
+        Use a method of the map to get all orthogonally adjacent fields to the enemy core.
+        Filter out all that are not supplier tiles or that don't target the enemy core.
+        Also filter out all that are in the range of enemy launchers or enemy turrets that have ammo. 
+        Then pick the one with the lowest distance.
         """
 
 
@@ -138,8 +146,8 @@ SCAVENGER_STRATEGY = [
 ]
 
 HARASSMENT_STRATEGY = [
-    (BuilderAgent.s_sentinel_next_to_enemy_harvester, True, False, False),
-    (BuilderAgent.s_block_enemy_supply_chain, True),
+    (BuilderAgent.s_sentinel_next_to_enemy_harvester, True, True, True),
+    (BuilderAgent.s_block_enemy_supply_chain, True, True),
     (BuilderAgent.s_block_titanium, True),
     (BuilderAgent.s_attack_enemy_harvester_supply_link, True),
     (BuilderAgent.s_attack_enemy_core_supply_link, True)
