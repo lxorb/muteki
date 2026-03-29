@@ -1,3 +1,5 @@
+from cambc import Environment
+
 from lib.agent import Agent
 
 
@@ -41,8 +43,10 @@ class BuilderAgent(Agent):
         self.last_turn_completed = False
         self.bb_last_turn_completed = False
         for idx in range(start_index, len(self.strategy_methods)):
-            strategy_method = self.c_get_bound_method(self.strategy_methods[idx])
-            acted = bool(strategy_method())
+            strategy_method, strategy_args = self.c_get_bound_method_and_args(
+                self.strategy_methods[idx]
+            )
+            acted = bool(strategy_method(*strategy_args))
             self.last_strategy_index = idx
             if acted:
                 self.last_turn_completed = True
@@ -58,6 +62,14 @@ class BuilderAgent(Agent):
             return method
         return method.__get__(self, type(self))
 
+    def c_get_bound_method_and_args(self, strategy_entry):
+        if isinstance(strategy_entry, tuple):
+            method, *args = strategy_entry
+        else:
+            method = strategy_entry
+            args = []
+        return self.c_get_bound_method(method), tuple(args)
+
     def s_sentinel_next_to_enemy_harvester(
         self,
         move_towards: bool = True,
@@ -68,7 +80,9 @@ class BuilderAgent(Agent):
         If there is an empty or own road tile next to an enemy harvester, build a
         sentinel there.
         come up with priorities if there are multiple such fields here as well
-        # TODO: review this priority ordering
+
+        prioritize such tiles by:
+        - distance
         """
 
     def s_block_enemy_supply_chain(self, move_towards: bool = True):
@@ -103,37 +117,40 @@ class BuilderAgent(Agent):
         """
 
 
-### HERE WILL BE A CONSTANT THAT IS A DICTIONARY FROM SUCH AN ENUM
-# to a stretegy that sets the strategy per builder bot type.
-# infer the strategies (i.e. the ordering of the strategy submethods from the old framing bot)
+INITIAL_RES_STRATEGY = [
+    (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
+    (BuilderAgent.s_harvester_launcher, True, True),
+    (BuilderAgent.s_harvester_barrier, True, True),
+    (BuilderAgent.s_build_missing_supply_link, True, True, True),
+    (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
+    (BuilderAgent.s_expand,)
+]
 
-# strategy for initial res bot:
-# s_build_harvester_supply_link
-# s_harvester_launcher
-# s_harvester_barrier
-# s_build_missing_supply_link
-# s_build_harvester
-# s_expand
+SCAVENGER_STRATEGY = [
+    (BuilderAgent.s_destroy_hijacked_supply_link, True),
+    (BuilderAgent.s_build_harvester_supply_link, True, True),
+    (BuilderAgent.s_harvester_launcher, True, True),
+    (BuilderAgent.s_harvester_barrier, True, True),
+    (BuilderAgent.s_build_missing_supply_link, True, True, True),
+    (BuilderAgent.s_sentinel_next_to_enemy_harvester, True, False, False),
+    (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
+    (BuilderAgent.s_expand,)
+]
 
-# strategy for scavenger:
-# s_destroy_hijacked_supply_link
-# s_build_harvester_supply_link
-# s_harvester_launcher
-# s_harvester_barrier
-# s_build_missing_supply_link
-# s_sentinel_next_to_enemy_harvester with true, false, false
-# s_build_harvester
-# s_expand
+HARASSMENT_STRATEGY = [
+    (BuilderAgent.s_sentinel_next_to_enemy_harvester, True, False, False),
+    (BuilderAgent.s_block_enemy_supply_chain, True),
+    (BuilderAgent.s_block_titanium, True),
+    (BuilderAgent.s_attack_enemy_harvester_supply_link, True),
+    (BuilderAgent.s_attack_enemy_core_supply_link, True)
+]
 
-# strategy for harassment:
-# s_sentinel_next_to_enemy_harvester with true, false, false
-# s_block_enemy_supply_chain
-# s_block_titanium
-# s_attack_enemy_harvester_supply_link
-# s_attack_enemy_core_supply_link
+# TODO
+FOUNDRY_STRATEGY = [
 
-# foundry bot
-# still TODO
+]
 
-# defender bot
-# still TODO
+# TODO
+DEFENDER_STRATEGY = [
+
+]
