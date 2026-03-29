@@ -1,4 +1,4 @@
-from agent import Agent
+from lib.agent import Agent
 
 class CoreAgent(Agent):
     pass
