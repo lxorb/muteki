@@ -1,6 +1,6 @@
 from cambc import Controller, EntityType
 
-from lib.agents import Agent
+from lib.agent import Agent
 
 class Player:
     def __init__(self):
