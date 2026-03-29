@@ -6,6 +6,7 @@ from cambc import (
     Position,
     Team,
 )
+import time
 
 # every method that starts with u_ was initially creaetd by a user
 # every method that was created by ai should start with c_
@@ -14,32 +15,32 @@ from cambc import (
 
 class Tile:
     def __init__(self):
-        position: Position
-        environment: Environment
-        own_core_dist: int
-        enemy_core_dist: int
-        building_id: int
-        building_type: EntityType | None
-        building_team: Team | None
-        builder_bot_id: int | None = None
-        builder_bot_team: Team | None = None
-        is_passable: bool
+        self.position: Position = Position(-1, -1)
+        self.environment: Environment = Environment.EMPTY
+        self.own_core_dist: int = 10**9
+        self.enemy_core_dist: int = 10**9
+        self.building_id: int | None = None
+        self.building_type: EntityType | None = None
+        self.building_team: Team | None = None
+        self.builder_bot_id: int | None = None
+        self.builder_bot_team: Team | None = None
+        self.is_passable: bool = False
         # -> can a builder bot walk on this tile?
-        last_seen_turn: int
-        in_enemy_launcher_pickup_zone: bool = False
+        self.last_seen_turn: int = -1
+        self.in_enemy_launcher_pickup_zone: bool = False
         # -> can an enemy launcher pickup bots on this tile?
-        in_action_radius: bool = False
-        in_vision_radius: bool = False
-        last_titanium_onit_turn: int
+        self.in_action_radius: bool = False
+        self.in_vision_radius: bool = False
+        self.last_titanium_onit_turn: int = -1
         # -> the turn where there was titanium on this tile for the last time
-        is_core_tile: bool
-        resource_target: Position
+        self.is_core_tile: bool = False
+        self.resource_target: Position | None = None
         # -> target tile, i.e. which tile bridge or conveyor is pointing at
-        in_enemy_attack_range: bool 
+        self.in_enemy_attack_range: bool = False
         # -> this just considers enemy turrets that can attack, not enemy launchers
-        is_in_enemy_bot_actiono_range: bool
+        self.is_in_enemy_bot_actiono_range: bool = False
 
-        known_missing_supply_links: list[Position]
+        self.known_missing_supply_links: list[Position] = []
         # this keeps a list of missing supply link tiles
         # i.e. if there is an own conveyor or an own bridge that points onto a tile 
         # that is not a core tile and also not an own supply link tile then, the target field should be in this list
@@ -63,14 +64,19 @@ class Map:
         and everything about the map in terms of metadata like width and height should be fetched.
 
         """
-        self.change_controller(self, ct: Controller)
+        self.u_change_controller(ct)
         self.width = ct.get_map_width()
         self.height = ct.get_map_height()
-        self.matrix: list[list[Tile]] = None # new matrix with tile objects
+        self.matrix: list[list[Tile]] = [
+            [Tile() for _ in range(self.height)] for _ in range(self.width)
+        ]
+        for x in range(self.width):
+            for y in range(self.height):
+                self.matrix[x][y].position = Position(x, y)
         self.core_center_pos: Position | None = None
         self.enemy_core_center_pos: Position | None = None
         # -> this only saves the enemy core pos if it is known (if there is just one candidate remaining)
-        self.enemy_core_center_pos_candidates: Position | None = None
+        self.enemy_core_center_pos_candidates: list[Position] = []
         # save the following as attributes for better caching
         # (should of course be updated on update vision)
         # buildings in vision (list of Position)
@@ -81,8 +87,19 @@ class Map:
         # axionite tiles in vision (list of Position)
         # enemy harvesters in sight (list of Position)
         # own harvesters in sight (list of Position)
-        # 
-
+        self.buildings_in_vision: list[Position] = []
+        self.orthogonally_adjacent_tiles: list[Position] = []
+        self.diagonally_adjacent_tiles: list[Position] = []
+        self.has_enemy_bot_in_vision: bool = False
+        self.titanium_tiles_in_vision: list[Position] = []
+        self.axionite_tiles_in_vision: list[Position] = []
+        self.enemy_harvesters_in_sight: list[Position] = []
+        self.own_harvesters_in_sight: list[Position] = []
+        self.committed_path: list[Position] = []
+        self.committed_path_allow_build_new_tiles: bool = True
+        self.committed_path_allow_enemy_tiles: bool = True
+        self.committed_path_destination: Position | None = None
+        self.known_missing_supply_links: list[Position] = []
         
 
     def u_change_controller(self, ct: Controller):
@@ -139,7 +156,7 @@ class Map:
         """
         pass
 
-    def u_calculate_all_shortest_walk_paths(selfallow_enemy_tiles: bool = True, allow_build_new_tiles: bool = True, source: Position = None):
+    def u_calculate_all_shortest_walk_paths(self, allow_enemy_tiles: bool = True, allow_build_new_tiles: bool = True, source: Position = None):
         """
         This calculates the shortest paths to all tiles that have been in visoinn radius at least once or that are at least in one of the 8
         neighboring fields to a tile that has been visited before. 
@@ -147,7 +164,7 @@ class Map:
         """
         pass
 
-    def u_calculate_shortest_action_path_to(self, ...):
+    def u_calculate_shortest_action_path_to(self, target: Position, action_radius_sq: int = 2, allow_enemy_tiles: bool = True, allow_build_new_tiles: bool = True, source: Position = None):
         """
         Similar to calculate_shortest_walk_path_to, but it only calculates the shortest path so that the target field will be in action range.
         I.e. this calculates the shortest path so that the builder bot is at the end of the path on one of the eight neighbor tiles of the target tile.
@@ -275,10 +292,12 @@ class Strategy:
     Also, of course post methods should be executed afterwards.
     Resuming is just for the main methods, not for pre or post. 
     """
-    def __init__(self, ...):
-        pass
+    def __init__(self, pre_strategy_methods = None, strategy_methods = None, post_strategy_methods = None):
+        self.pre_strategy_methods = pre_strategy_methods or []
+        self.strategy_methods = strategy_methods or []
+        self.post_strategy_methods = post_strategy_methods or []
 
-    def u_execute_strategy(self, ...):
+    def u_execute_strategy(self, bot):
         pass
 
 class Bot:
@@ -289,9 +308,10 @@ class Bot:
         # -> resources in last turn
         self.ct: Controller | None = None
         self.map: Map | None = None
-        self.recource_increase_once: bool
+        self.recource_increase_once = False
         # -> the first time the core registers an increase in it's resources
         #    this variable is set to true and then left at that value
+        self.first_turn_initialized = False
 
         self.bb_last_turn_completed = True
         # this safes whether the last turn was completed or had TLE
@@ -302,8 +322,11 @@ class Bot:
         self.last_strategy_subaction = None
         # -> this is saved after one strategy method in the list of strategy elements
         #    finishes execution to be able to continue after TLE's
+        self.last_strategy_index = -1
 
-        self.bb_strategy # this saves the strategy of the builder bot
+        self.bb_strategy = None
+        # this saves the strategy of the builder bot
+        self.t_start = 0
 
     def u_first_turn_init(self):
         # run the infer_strategy_by_spawning_tile
@@ -444,7 +467,7 @@ class Bot:
 
         """
 
-    def s_build_harvester(self, move_towards: bool = True, hold: bool = True, destroy_enemy_tile: bool = True, resource = titanium):
+    def s_build_harvester(self, move_towards: bool = True, hold: bool = True, destroy_enemy_tile: bool = True, resource: Environment = Environment.ORE_TITANIUM):
         """
         The goal of this method is to build new harvesters. 
         For all titanium tiles in sight, come up with a nice priority ordering that prefers specific tiles for
