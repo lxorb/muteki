@@ -1,8 +1,9 @@
 # Let's create a new information-class, combining previous ideas of id_map and map_matrx
 from cambc import *
-from src.lib.information.map_matrix import create_matrix_entry, DEFAULT_ENTRY, DirectionInfo
-from src.lib.information.map_matrix.field import Field
-from src.lib.information.id_map.unit import Unit, exists
+
+from .id_map.unit import Unit, exists
+from .map_matrix import DEFAULT_ENTRY, DirectionInfo, create_matrix_entry
+from .map_matrix.field import Field
 
 
 class Information:
@@ -41,7 +42,9 @@ class Information:
             self.max_seen_id = unit_id
             self.id_map[unit_id] = Unit(unit_id, self.ct)
             position = self.id_map[unit_id].position
-            self.map_matrix[position.x][position.y] = create_matrix_entry(unit_id, self.ct)
+            self.map_matrix[position.x][position.y] = create_matrix_entry(
+                unit_id, self.ct
+            )
 
     def update_all(self):
 

@@ -1,6 +1,7 @@
 from collections import deque
-from src.lib.information.map_matrix.direction import DirectionInfo
-from src.lib.information.map_matrix.field import Field
+
+from ..information.map_matrix.direction import DirectionInfo
+from ..information.map_matrix.field import Field
 
 
 def get_neighbor_cost(current, direction, shiftx, shifty, map_matrix, end_position):
