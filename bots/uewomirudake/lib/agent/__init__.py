@@ -32,12 +32,6 @@ class Agent:
         # (use the dedicated map method for this)
         pass
 
-    def u_infer_strategy_by_spawning_tile(self):
-        # there should be a constant declared somewhere that
-        # assigns each of the nine core tiles 
-        # a builder bot strategy that should be executed then
-        pass
-
     def u_run(self, ct: Controller) -> None:
         # first safe the controller as self.ct
         # then run turn_init that runs the map initialization and other important init stuff
@@ -45,10 +39,6 @@ class Agent:
         # actually initializing it
         # make a match statement where you check for the type of this units
         # execute the corresponding handler function depending on the type of the unnit
-        # at the end of this turn, execute the u_turn_post function
-        pass
-
-    def u_turn_post(self):
         pass
 
     def u_get_ns_elapsed(self):
@@ -73,22 +63,6 @@ class Agent:
         """
         Execute this agent's per-turn behavior.
 
-        Concrete agent classes should implement their own handler logic instead
-        of routing through unit-type-specific base-class methods.
+        Concrete agent classes should implement their own handler logic.
         """
         raise NotImplementedError
-
-    def u_get_sentinel_orientation(self, pos: Position) -> Direction:
-        """
-        Assuming a sentinel should be placed on a specific tile, determine it's orientation.
-        Most importantly, a sentinel should always be feeded with resources. (it can't be feeded from the direction it is pointing at).
-        Then, it should point at the enemy core if possible. 
-        Then, it should point at enemy turrets if possible. 
-        Then, it should point at enemy bridges / conveyors.
-        Make a priority ordering using this as the base idea.
-        """
-
-    def u_get_gunner_orientation(self):
-        """
-        Infer a similar priority ordering for the gunner based on the sentinel priority list. 
-        """

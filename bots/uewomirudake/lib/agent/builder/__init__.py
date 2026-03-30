@@ -7,6 +7,7 @@ from lib.map import Map
 
 
 BB_ACTION_RADIUS_SQ = 2
+BRIDGE_PREFERRED_DIST = 5
 
 
 class BuilderAgent(Agent):
@@ -24,6 +25,12 @@ class BuilderAgent(Agent):
         # run the infer_strategy_by_spawning_tile
         self.first_turn_initialized = True
 
+    def u_infer_strategy_by_spawning_tile(self):
+        # there should be a constant declared somewhere that
+        # assigns each of the nine core tiles
+        # a builder bot strategy that should be executed then
+        pass
+
     def u_run(self):
         if not self.first_turn_initialized:
             self.u_first_turn_init()
@@ -32,6 +39,51 @@ class BuilderAgent(Agent):
 
     def u_handler(self):
         return self.u_execute_strategy()
+
+    def u_get_sentinel_orientation(self, pos: Position) -> Direction:
+        """
+        Assuming a sentinel should be placed on a specific tile, determine it's orientation.
+        Most importantly, a sentinel should always be feeded with resources. (it can't be feeded from the direction it is pointing at).
+        Then, it should point at the enemy core if possible.
+        Then, it should point at enemy turrets if possible.
+        Then, it should point at enemy bridges / conveyors.
+        Make a priority ordering using this as the base idea.
+        """
+
+    def u_get_gunner_orientation(self):
+        """
+        Infer a similar priority ordering for the gunner based on the sentinel priority list.
+        """
+
+    def u_get_supplier_build_plan(
+        self,
+        pos: Position,
+    ) -> tuple[EntityType | None, Direction | Position | None]:
+        """
+        Return the supplier type to build at one tile plus its chosen target.
+
+        Delegates candidate selection to the conveyor- and bridge-planning map
+        helpers. If both plans exist, prefer the bridge only when it skips at
+        least `BRIDGE_PREFERRED_DIST` cached core-distance steps.
+        """
+        conveyor_direction = self.map.u_best_conveyor_orientation(pos)
+        bridge_target = self.map.u_best_bridge_target(pos)
+
+        if conveyor_direction is None and bridge_target is None:
+            return (None, None)
+        if conveyor_direction is None:
+            return (EntityType.BRIDGE, bridge_target)
+        if bridge_target is None:
+            return (EntityType.CONVEYOR, conveyor_direction)
+
+        source_tile = self.map.u_get_pos_tile(pos)
+        bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
+        bridge_dist_covered = (
+            source_tile.own_core_dist - bridge_target_tile.own_core_dist
+        )
+        if bridge_dist_covered >= BRIDGE_PREFERRED_DIST:
+            return (EntityType.BRIDGE, bridge_target)
+        return (EntityType.CONVEYOR, conveyor_direction)
 
     def u_execute_strategy(self) -> bool:
         """
@@ -316,13 +368,72 @@ class BuilderAgent(Agent):
         attack_enemy_passable: bool = True,
     ):
         """
-        The goal of this method is to ensure complete supply chains.
-        Basically, if there is some tile known to be pointed at by a conveyor or bridge but the tile itself
-        is not a core tile, nor an own supply link tile itself, then we want to build a supply link
-        at that location. This will then probably result in a new tile flagged as missing supply link resulting
-        in a chain-like behaviour till we reach the core with our supply link chain
+        Fill the highest-priority cached supply-link gap.
 
+        Uses cached missing-link positions, keeps tiles that can host a new
+        supplier, prioritizes gaps closer to the core and then the builder, and
+        relies on the supplier-plan helper to choose whether the tile should
+        become a conveyor or a bridge plus its optimal target.
         """
+        current_pos = self.map.current_pos
+        own_team = self.map.own_team
+
+        def can_use_tile(pos: Position) -> bool:
+            target_tile = self.map.u_get_pos_tile(pos)
+            if target_tile.is_core_tile:
+                return False
+            if target_tile.building_id is None:
+                return True
+            if (
+                target_tile.building_team == own_team
+                and target_tile.building_type in {EntityType.ROAD, EntityType.BARRIER}
+            ):
+                return True
+            return (
+                attack_enemy_passable
+                and target_tile.building_team != own_team
+                and target_tile.is_passable
+            )
+
+        candidate_positions = self.u_filter_tiles(
+            list(dict.fromkeys(self.map.known_missing_supply_links)),
+            can_use_tile,
+        )
+        if not candidate_positions:
+            return False
+
+        candidate_positions = self.u_prioritize_tiles(
+            candidate_positions,
+            lambda pos: self.map.u_get_pos_tile(pos).own_core_dist,
+            lambda pos: current_pos.distance_squared(pos),
+        )
+
+        for target_pos in candidate_positions:
+            supplier_type, supplier_target = self.u_get_supplier_build_plan(target_pos)
+            if supplier_type is None:
+                continue
+            if supplier_type == EntityType.CONVEYOR:
+                if self.u_build_at(
+                    target_pos,
+                    supplier_type,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=attack_enemy_passable,
+                    facing_direction=supplier_target,
+                ):
+                    return True
+            elif supplier_type == EntityType.BRIDGE:
+                if self.u_build_at(
+                    target_pos,
+                    supplier_type,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=attack_enemy_passable,
+                    target_pos=supplier_target,
+                ):
+                    return True
+
+        return False
 
     def s_build_harvester(
         self,
