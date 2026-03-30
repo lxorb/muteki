@@ -114,6 +114,30 @@ class BuilderAgent(Agent):
             key=lambda pos: tuple(criterion(pos) for criterion in criteria),
         )
 
+    def u_move_to(self, pos: Position) -> bool:
+        current_pos = self.map.current_pos
+        candidate_moves: list[tuple[int, int, Direction]] = []
+        current_distance_sq = current_pos.distance_squared(pos)
+        for direction in Direction:
+            if direction == Direction.CENTRE:
+                continue
+            if not self.ct.can_move(direction):
+                continue
+            next_pos = current_pos.add(direction)
+            next_distance_sq = next_pos.distance_squared(pos)
+            if next_distance_sq >= current_distance_sq:
+                continue
+            candidate_moves.append(
+                (next_distance_sq, 0 if next_pos == pos else 1, direction)
+            )
+
+        if not candidate_moves:
+            return False
+
+        candidate_moves.sort(key=lambda move: move[:2])
+        self.ct.move(candidate_moves[0][2])
+        return True
+
     def u_build_at(
         self,
         pos: Position,
@@ -211,28 +235,7 @@ class BuilderAgent(Agent):
 
         if not move_towards:
             return False
-
-        candidate_moves: list[tuple[int, int, Direction]] = []
-        current_distance_sq = current_pos.distance_squared(pos)
-        for direction in Direction:
-            if direction == Direction.CENTRE:
-                continue
-            if not self.ct.can_move(direction):
-                continue
-            next_pos = current_pos.add(direction)
-            next_distance_sq = next_pos.distance_squared(pos)
-            if next_distance_sq >= current_distance_sq:
-                continue
-            candidate_moves.append(
-                (next_distance_sq, 0 if next_pos == pos else 1, direction)
-            )
-
-        if not candidate_moves:
-            return False
-
-        candidate_moves.sort(key=lambda move: move[:2])
-        self.ct.move(candidate_moves[0][2])
-        return True
+        return self.u_move_to(pos)
 
     def s_build_harvester_supply_link(
         self, move_towards: bool = True, hold: bool = True
@@ -479,15 +482,55 @@ class BuilderAgent(Agent):
 
         return False
 
-    # TODO
     def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
         """
-        This makes the builder bot attack a conveyor or bridge that is next to an
-        enemy harvester, cutting him off from resources. This later allows building a turret next to it.
-        The map object already keeps track of a list of all enemy harvesters.
-        Using that list, get all neighbors of these, filtering out all that are not enemy supply links.
-        Then pick the one with the lowest distance to this bot.
+        Attack the closest enemy supply link next to a visible enemy harvester.
+
+        Uses cached enemy harvester positions, keeps only adjacent enemy
+        conveyor or bridge tiles that the builder can stand on, and then either
+        attacks from the current tile or moves toward the best target.
         """
+        current_pos = self.map.current_pos
+        own_team = self.map.own_team
+
+        candidate_positions: list[Position] = []
+        for harvester_pos in self.map.enemy_harvesters_in_sight:
+            for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
+                candidate_positions.append(candidate_pos)
+
+        candidate_positions = list(dict.fromkeys(candidate_positions))
+        candidate_positions = self.u_filter_tiles(
+            candidate_positions,
+            lambda pos: self.map.u_get_pos_tile(pos).in_vision_radius,
+            lambda pos: self.map.u_get_pos_tile(pos).building_team != own_team,
+            lambda pos: self.map.u_get_pos_tile(pos).building_type
+            in {EntityType.CONVEYOR, EntityType.BRIDGE},
+            lambda pos: self.map.u_get_pos_tile(pos).is_passable,
+        )
+        if not candidate_positions:
+            return False
+
+        candidate_positions = self.u_prioritize_tiles(
+            candidate_positions,
+            lambda pos: current_pos.distance_squared(pos),
+        )
+
+        for target_pos in candidate_positions:
+            if target_pos != current_pos:
+                continue
+            if not self.ct.can_fire(current_pos):
+                continue
+            self.ct.fire(current_pos)
+            return True
+
+        if not move_towards:
+            return False
+
+        for target_pos in candidate_positions:
+            if self.u_move_to(target_pos):
+                return True
+
+        return False
 
     # TODO
     def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
