@@ -1,18 +1,25 @@
-
+from typing import TypedDict
 
 from lib.agent import Agent
-from constants import BBType, MAX_BOTS
+from constants import BBType, BB_TYPE_CORE_TILE, FOUNDRY_TURN, MIN_FOUNDRY_TITANIUM, AXIONITE_FARMING_BOTS_TO_SPAWN = 2
 
-from cambc import Controller, Direction, EntityType
+from cambc import Controller, Direction, EntityType, Position, Environment, Team
 
-from lib.agent.constants import BB_TYPE_CORE_TILE
+
+class PerViewIterStorage(TypedDict):
+    enemy_detected: bool
+    has_visible_allied_foundry: bool
 
 
 class CoreAgent(Agent):
     def __init__(self, ct: Controller):
         super().__init__(ct)
 
-        # spawn count per field
+        # performance variable is persistent across calc_per_view_field iterations
+        # reset every round: not_iterative_update_at_turn_begin
+        self.per_view_iter_storage: PerViewIterStorage = PerViewIterStorage(enemy_detected=False, has_visible_allied_foundry=False)
+
+        # spawn count per tile
         self.spawn_tile_counts: dict[Direction, int] = dict.fromkeys(Direction, 0)
 
         # builder bot spawn count by type
@@ -30,17 +37,34 @@ class CoreAgent(Agent):
         # turn number enemy in core vision range detected
         self.last_turn_enemy_detected: int = 0
 
-    def calc_per_view_field(self) -> None:
+
+    def cacl_per_view_field(
+            self,
+            i: int,
+            pos: Position,
+            bot: tuple[int, EntityType, Team] | None,
+            building: tuple[int, EntityType, Team] | None,
+            empty: bool,
+            env: Environment,
+            passable: bool,
+    ) -> None:
+        if not self.per_view_iter_storage['enemy_detected'] and bot and bot[2] != self.team:
+            self.last_turn_enemy_detected = self.round
+            self.per_view_iter_storage['enemy_detected'] = True
+
+        if not self.per_view_iter_storage['has_visible_allied_foundry'] and building:
+            temp = building[1] == EntityType.FOUNDRY and building[2] == self.team
+            self.per_view_iter_storage['has_visible_allied_foundry'] = temp
 
 
-    def make_turn_on_calc(self) -> None:
-        for u_id in self.ct.get_nearby_units():
-            if self.ct.get_team(u_id) != self.ct.get_team():
-                self.last_turn_enemy_detected = self.ct.get_current_round()
-                break
+    def not_iterative_update_at_turn_begin(self) -> None:
+        self.per_view_iter_storage['enemy_detected'] = False
+        self.per_view_iter_storage['has_visible_allied_foundry'] = False
 
         self.resource_history.append(self.ct.get_global_resources())
 
+
+    def make_turn_on_calc(self) -> None:
         now = self.resource_history[-1]
         past = self.resource_history[-2]
 
@@ -48,16 +72,11 @@ class CoreAgent(Agent):
             self.last_turn_resource_increase = self.ct.get_current_round()
 
 
-        has_visible_allied_foundry = any(
-            building_type == EntityType.FOUNDRY and building_team == self.turn_team
-            for _, building_type, building_team, _ in self.ct.get_nearby_buildings()
-        )
-
         force_foundry_spawn = (
-                self.ct.get_current_round() >= FOUNDRY_TURN
-                and titanium >= MIN_FOUNDRY_TITANIUM
-                and not has_visible_allied_foundry
-                and self.core_foundry_bbs_spawned < AXIONITE_FARMING_BOTS_TO_SPAWN
+            self.round >= FOUNDRY_TURN
+            and self.resource_history[-1][0] >= MIN_FOUNDRY_TITANIUM
+            and not self.per_view_iter_storage['has_visible_allied_foundry']
+            and self.spawn_type_counts.get(BBType.FOUNDRY, int('inf')) < AXIONITE_FARMING_BOTS_TO_SPAWN
         )
 
         harassment_threshold = (

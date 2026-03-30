@@ -15,14 +15,22 @@ from cambc import (
 
 class Agent(ABC):
     def __init__(self, ct: Controller):
+        # ----------- Attributes that are automatically updated (in this class) -----------
+
         # the controller that is used to communicate with the game
         self.ct: Controller = ct
 
-        # the map that is used to store the map data
-        self.map: Map = Map(self.ct)
-
         # unit id
         self.id: int = self.ct.get_id()
+
+        # team: 'a' or 'b'
+        self.team: Team = self.ct.get_team()
+
+        # auto increased round counter
+        self.round: int = self.ct.get_current_round()
+
+        # the map that is used to store the map data
+        self.map: Map = Map(self.ct)
 
         # None by constructor; False at the start of run; True at the end of run
         self.last_turn_completed: bool | None = None
@@ -32,32 +40,44 @@ class Agent(ABC):
         self.time_start: float | None = None
         self.time_end: float | None = None
 
-        # Attributes that may have to be updated depending on the agent type
+        # ----------- Attributes that may be changed (in subclasses) -----------
 
         # position
         self.position: Position = self.ct.get_position()
 
 
-    def pre_calc_on_view(self):
-        for i, (pos, build_id, unit_id, entity_id) in enumerate(
-                zip(
-                    self.ct.get_nearby_tiles(),
-                    self.ct.get_nearby_buildings(),
-                    self.ct.get_nearby_units(),
-                    self.ct.get_nearby_entities()
-                )
+    def _pre_calc_on_view(self):
+        for i, pos in enumerate(
+            self.ct.get_nearby_tiles()
         ):
+            bot_id = self.ct.get_tile_builder_bot_id(pos)
+            build_id = self.ct.get_tile_building_id(pos)
+            empty = self.ct.is_tile_empty(pos)
+            env = self.ct.get_tile_env(pos)
+            passable = self.ct.is_tile_passable(pos)
 
-            self.cacl_per_view_field()
+            bot = None
+            if bot_id:
+                bot = (bot_id, self.ct.get_entity_type(bot_id), self.ct.get_team(bot_id))
+
+            build = None
+            if build_id:
+                build = (build_id, self.ct.get_entity_type(build_id), self.ct.get_team(build_id))
+
+            self.cacl_per_view_field(i, pos, bot, build, empty, env, passable)
+
 
     def make_turn(self) -> None:
         self.last_turn_completed = False
         self.time_start = time.perf_counter_ns()
 
-        self.pre_calc_on_view()
+        self.not_iterative_update_at_turn_begin()
+
+        self._pre_calc_on_view()
 
         self.make_turn_on_calc()
 
+        self.round += 1
         self.time_end = time.perf_counter_ns()
         self.time_delta = (self.time_end or float('inf')) - (self.time_start or float('-inf'))
         self.last_turn_completed = True
@@ -74,7 +94,21 @@ class Agent(ABC):
 
 
     @abstractmethod
-    def cacl_per_view_field(self) -> None:
+    def not_iterative_update_at_turn_begin(self) -> None:
+        pass
+
+
+    @abstractmethod
+    def cacl_per_view_field(
+            self,
+            i: int,
+            pos: Position,
+            bot: tuple[int, EntityType, Team] | None,
+            building: tuple[int, EntityType, Team] | None,
+            empty: bool,
+            env: Environment,
+            passable: bool,
+    ) -> None:
         pass
 
 

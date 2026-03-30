@@ -24,6 +24,7 @@ INITIAL_BB_STRATEGIES: list[BBType] = [
 MAX_BOTS: int = 10
 FOUNDRY_TURN: int = 1600
 MIN_FOUNDRY_TITANIUM: int = 1000
+AXIONITE_FARMING_BOTS_TO_SPAWN = 2
 
 
 mapping: dict[Direction, BBType] = {
