@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from cambc import Direction, EntityType, Environment, Position
 
 from lib.agent import Agent
@@ -87,6 +89,30 @@ class BuilderAgent(Agent):
             method = strategy_entry
             args = []
         return self.c_get_bound_method(method), tuple(args)
+
+    def u_filter_tiles(
+        self,
+        positions: list[Position],
+        *predicates: Callable[[Position], bool],
+    ) -> list[Position]:
+        filtered_positions = list(positions)
+        for predicate in predicates:
+            filtered_positions = [
+                pos for pos in filtered_positions if predicate(pos)
+            ]
+        return filtered_positions
+
+    def u_prioritize_tiles(
+        self,
+        positions: list[Position],
+        *criteria: Callable[[Position], object],
+    ) -> list[Position]:
+        if not criteria:
+            return list(positions)
+        return sorted(
+            positions,
+            key=lambda pos: tuple(criterion(pos) for criterion in criteria),
+        )
 
     def u_build_at(
         self,
@@ -310,50 +336,60 @@ class BuilderAgent(Agent):
         if not enemy_harvesters:
             return False
 
-        candidates: list[tuple[tuple[int, int], Position, str]] = []
+        tile_kind_by_pos: dict[Position, str | None] = {}
+
+        def get_tile_kind(pos: Position) -> str | None:
+            if pos not in tile_kind_by_pos:
+                candidate_tile = self.map.u_get_pos_tile(pos)
+                if candidate_tile.building_id is None:
+                    tile_kind_by_pos[pos] = (
+                        "empty"
+                        if candidate_tile.environment == Environment.EMPTY
+                        else None
+                    )
+                elif (
+                    candidate_tile.building_type == EntityType.ROAD
+                    and candidate_tile.building_team == own_team
+                ):
+                    tile_kind_by_pos[pos] = "own_road"
+                elif (
+                    attack_enemy_passable
+                    and candidate_tile.building_team != own_team
+                    and candidate_tile.is_passable
+                ):
+                    tile_kind_by_pos[pos] = "enemy_passable"
+                else:
+                    tile_kind_by_pos[pos] = None
+            return tile_kind_by_pos[pos]
+
+        candidate_positions: list[Position] = []
         for harvester_pos in enemy_harvesters:
             for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
-                candidate_tile = self.map.u_get_pos_tile(candidate_pos)
-                if not candidate_tile.in_vision_radius:
-                    continue
+                candidate_positions.append(candidate_pos)
 
-                if (
-                    candidate_tile.builder_bot_id is not None
-                    and candidate_pos != current_pos
-                ):
-                    continue
-
-                tile_kind: str | None = None
-                if candidate_tile.building_id is None:
-                    if candidate_tile.environment == Environment.EMPTY:
-                        tile_kind = "empty"
-                else:
-                    if (
-                        candidate_tile.building_type == EntityType.ROAD
-                        and candidate_tile.building_team == own_team
-                    ):
-                        tile_kind = "own_road"
-                    elif (
-                        attack_enemy_passable
-                        and candidate_tile.building_team != own_team
-                        and candidate_tile.is_passable
-                    ):
-                        tile_kind = "enemy_passable"
-
-                if tile_kind is None:
-                    continue
-
-                candidate_key = (
-                    current_pos.distance_squared(candidate_pos),
-                    0 if tile_kind == "empty" else 1 if tile_kind == "own_road" else 2,
-                )
-                candidates.append((candidate_key, candidate_pos, tile_kind))
-
-        if not candidates:
+        candidate_positions = list(dict.fromkeys(candidate_positions))
+        candidate_positions = self.u_filter_tiles(
+            candidate_positions,
+            lambda pos: self.map.u_get_pos_tile(pos).in_vision_radius,
+            lambda pos: (
+                self.map.u_get_pos_tile(pos).builder_bot_id is None
+                or pos == current_pos
+            ),
+            lambda pos: get_tile_kind(pos) is not None,
+        )
+        if not candidate_positions:
             return False
 
-        candidates.sort(key=lambda candidate: candidate[0])
-        for _, candidate_pos, _ in candidates:
+        candidate_positions = self.u_prioritize_tiles(
+            candidate_positions,
+            lambda pos: current_pos.distance_squared(pos),
+            lambda pos: (
+                0
+                if get_tile_kind(pos) == "empty"
+                else 1 if get_tile_kind(pos) == "own_road" else 2
+            ),
+        )
+        for candidate_pos in candidate_positions:
             sentinel_direction = self.u_get_sentinel_orientation(candidate_pos)
             if self.u_build_at(
                 candidate_pos,
@@ -377,30 +413,25 @@ class BuilderAgent(Agent):
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        enemy_supply_targets: list[tuple[tuple[int, int], Position]] = []
-        for target_pos in self.map.enemy_supply_targets_in_vision:
-            target_tile = self.map.u_get_pos_tile(target_pos)
-            if target_tile.building_id is None:
-                tile_priority = 0
-            elif (
-                target_tile.building_type == EntityType.ROAD
-                and target_tile.building_team == own_team
-            ):
-                tile_priority = 1
-            else:
-                continue
-
-            candidate_key = (
-                current_pos.distance_squared(target_pos),
-                tile_priority,
-            )
-            enemy_supply_targets.append((candidate_key, target_pos))
-
+        enemy_supply_targets = self.u_filter_tiles(
+            list(dict.fromkeys(self.map.enemy_supply_targets_in_vision)),
+            lambda pos: (
+                self.map.u_get_pos_tile(pos).building_id is None
+                or (
+                    self.map.u_get_pos_tile(pos).building_type == EntityType.ROAD
+                    and self.map.u_get_pos_tile(pos).building_team == own_team
+                )
+            ),
+        )
         if not enemy_supply_targets:
             return False
 
-        enemy_supply_targets.sort(key=lambda candidate: candidate[0])
-        for _, target_pos in enemy_supply_targets:
+        enemy_supply_targets = self.u_prioritize_tiles(
+            enemy_supply_targets,
+            lambda pos: current_pos.distance_squared(pos),
+            lambda pos: 0 if self.map.u_get_pos_tile(pos).building_id is None else 1,
+        )
+        for target_pos in enemy_supply_targets:
             if self.u_build_at(
                 target_pos,
                 EntityType.BARRIER,
@@ -422,22 +453,21 @@ class BuilderAgent(Agent):
         """
         current_pos = self.map.current_pos
 
-        titanium_targets: list[tuple[int, Position]] = []
-        for target_pos in self.map.known_accessible_titanium_tiles:
-            target_tile = self.map.u_get_pos_tile(target_pos)
-            if target_tile.environment != Environment.ORE_TITANIUM:
-                continue
-            if target_tile.building_id is not None:
-                continue
-            titanium_targets.append(
-                (current_pos.distance_squared(target_pos), target_pos)
-            )
-
+        titanium_targets = self.u_filter_tiles(
+            list(dict.fromkeys(self.map.known_accessible_titanium_tiles)),
+            lambda pos: (
+                self.map.u_get_pos_tile(pos).environment == Environment.ORE_TITANIUM
+            ),
+            lambda pos: self.map.u_get_pos_tile(pos).building_id is None,
+        )
         if not titanium_targets:
             return False
 
-        titanium_targets.sort(key=lambda candidate: candidate[0])
-        for _, target_pos in titanium_targets:
+        titanium_targets = self.u_prioritize_tiles(
+            titanium_targets,
+            lambda pos: current_pos.distance_squared(pos),
+        )
+        for target_pos in titanium_targets:
             if self.u_build_at(
                 target_pos,
                 EntityType.BARRIER,
