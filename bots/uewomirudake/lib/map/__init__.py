@@ -57,6 +57,7 @@ class Map:
         self.enemy_harvesters_in_sight: list[Position] = []
         self.enemy_supply_targets_in_vision: list[Position] = []
         self.own_harvesters_in_sight: list[Position] = []
+        self.own_supply_links_in_sight: list[Position] = []
         self.committed_path: list[Position] = []
         self.committed_path_allow_build_new_tiles: bool = True
         self.committed_path_allow_enemy_tiles: bool = True

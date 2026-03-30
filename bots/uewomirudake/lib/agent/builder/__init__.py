@@ -166,7 +166,18 @@ class BuilderAgent(Agent):
             key=lambda pos: tuple(criterion(pos) for criterion in criteria),
         )
 
-    def u_move_to(self, pos: Position) -> bool:
+    def u_is_enemy_turret_target_tile(self, pos: Position) -> bool:
+        target_tile = self.map.u_get_pos_tile(pos)
+        return (
+            target_tile.in_enemy_attack_range
+            or target_tile.in_enemy_launcher_pickup_zone
+        )
+
+    def u_move_to(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+    ) -> bool:
         current_pos = self.map.current_pos
         candidate_moves: list[tuple[int, int, Direction]] = []
         current_distance_sq = current_pos.distance_squared(pos)
@@ -176,6 +187,11 @@ class BuilderAgent(Agent):
             if not self.ct.can_move(direction):
                 continue
             next_pos = current_pos.add(direction)
+            if (
+                avoid_enemy_turrets
+                and self.u_is_enemy_turret_target_tile(next_pos)
+            ):
+                continue
             next_distance_sq = next_pos.distance_squared(pos)
             if next_distance_sq >= current_distance_sq:
                 continue
@@ -195,6 +211,7 @@ class BuilderAgent(Agent):
         pos: Position,
         move_towards: bool,
         destroy_condition: Callable[[Position], bool] | None = None,
+        avoid_enemy_turrets: bool = True,
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
@@ -221,7 +238,10 @@ class BuilderAgent(Agent):
 
         if not move_towards:
             return False
-        return self.u_move_to(pos)
+        return self.u_move_to(
+            pos,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+        )
 
     def u_build_at(
         self,
@@ -232,9 +252,16 @@ class BuilderAgent(Agent):
         attack_enemy_passable: bool,
         facing_direction: Direction | None = None,
         target_pos: Position | None = None,
+        avoid_enemy_turrets: bool = True,
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
+
+        if (
+            avoid_enemy_turrets
+            and self.u_is_enemy_turret_target_tile(pos)
+        ):
+            return False
 
         titanium_cost, axionite_cost = getattr(
             self.ct, f"get_{building_type.value}_cost"
@@ -318,11 +345,15 @@ class BuilderAgent(Agent):
                 pos,
                 move_towards=False,
                 destroy_condition=lambda _: True,
+                avoid_enemy_turrets=avoid_enemy_turrets,
             )
 
         if not move_towards:
             return False
-        return self.u_move_to(pos)
+        return self.u_move_to(
+            pos,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+        )
 
     def s_build_harvester_supply_link(
         self, move_towards: bool = True, hold: bool = True
@@ -532,8 +563,8 @@ class BuilderAgent(Agent):
         """
         This method should destroy an own conveyor / bridge / splitter that points at an enemy
         turret (gunner / sentinel / breach).
-        Come up with a good prioritzation system for hijacked supply link fields.
-        # TODO: review the priority ordering here
+        Use the own_supply_links_in_sight attribute of map. 
+        Prioritize by distance to the builder bot first. 
         """
 
     def s_sentinel_next_to_enemy_harvester(
