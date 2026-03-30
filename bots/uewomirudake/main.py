@@ -2,6 +2,7 @@ from cambc import Controller, EntityType
 
 from lib.agent import Agent
 
+
 class Player:
     def __init__(self):
         self.agent: Agent | None = None
@@ -13,5 +14,5 @@ class Player:
             match entity_type:
                 case _:
                     self.agent = Agent()
-        
-        self.agent.run(ct)
+
+        self.agent.u_run(ct)

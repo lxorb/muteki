@@ -20,23 +20,12 @@ class BuilderAgent(Agent):
         self.last_turn_completed = True
         self.bb_last_turn_completed = True
 
-    # TODO
-    def u_first_turn_init(self):
-        self.map = Map(self.ct)
-        # run the infer_strategy_by_spawning_tile
-        self.first_turn_initialized = True
 
     def u_infer_strategy_by_spawning_tile(self):
         # there should be a constant declared somewhere that
         # assigns each of the nine core tiles
         # a builder bot strategy that should be executed then
         pass
-
-    def u_run(self):
-        if not self.first_turn_initialized:
-            self.u_first_turn_init()
-        self.map.u_update_vision()
-        self.u_handler()
 
     def u_handler(self):
         return self.u_execute_strategy()
@@ -136,43 +125,6 @@ class BuilderAgent(Agent):
         self.last_turn_completed = True
         self.bb_last_turn_completed = True
         return False
-
-    def c_get_bound_method(self, method):
-        if getattr(method, "__self__", None) is self:
-            return method
-        return method.__get__(self, type(self))
-
-    def c_get_bound_method_and_args(self, strategy_entry):
-        if isinstance(strategy_entry, tuple):
-            method, *args = strategy_entry
-        else:
-            method = strategy_entry
-            args = []
-        return self.c_get_bound_method(method), tuple(args)
-
-    def u_filter_tiles(
-        self,
-        positions: list[Position],
-        *predicates: Callable[[Position], bool],
-    ) -> list[Position]:
-        filtered_positions = list(positions)
-        for predicate in predicates:
-            filtered_positions = [
-                pos for pos in filtered_positions if predicate(pos)
-            ]
-        return filtered_positions
-
-    def u_prioritize_tiles(
-        self,
-        positions: list[Position],
-        *criteria: Callable[[Position], object],
-    ) -> list[Position]:
-        if not criteria:
-            return list(positions)
-        return sorted(
-            positions,
-            key=lambda pos: tuple(criterion(pos) for criterion in criteria),
-        )
 
     def u_is_enemy_turret_target_tile(self, pos: Position) -> bool:
         target_tile = self.map.u_get_pos_tile(pos)

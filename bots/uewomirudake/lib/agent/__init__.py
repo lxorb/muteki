@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from cambc import (
     Controller,
     Direction,
@@ -9,37 +11,27 @@ from cambc import (
 import time
 from lib.map import Map
 
+
 class Agent:
     def __init__(self):
         self.ct: Controller | None = None
         self.map: Map | None = None
         self.first_turn_initialized = False
-
         self.last_strategy_subaction = None
         # -> this is saved after one strategy method in the list of strategy elements
         #    finishes execution to be able to continue after TLE's
         self.last_strategy_index = -1
-        
-        # this saves the strategy of the builder bot
+        # -> this saves the strategy of the builder bot
         self.t_start = 0
 
-    def run(self, ct: Controller) -> None:
-        """Provide the standard bot-facing entrypoint wrapper."""
-        self.u_run(ct)
-
-    def u_turn_init(self):
-        ### this does standard init per turn like updating map with new visionn information 
-        # (use the dedicated map method for this)
-        pass
-
     def u_run(self, ct: Controller) -> None:
-        # first safe the controller as self.ct
-        # then run turn_init that runs the map initialization and other important init stuff
-        # that needs to run every time like also updating the map with the new controller before
-        # actually initializing it
-        # make a match statement where you check for the type of this units
-        # execute the corresponding handler function depending on the type of the unnit
-        pass
+        if not self.first_turn_initialized:
+            self.map = Map(self.ct)
+            # TODO: run the infer_strategy_by_spawning_tile
+            self.first_turn_initialized = True
+        self.ct = ct
+        self.map.u_update_vision()
+        self.u_handler(ct)
 
     def u_get_ns_elapsed(self):
         """
@@ -58,7 +50,42 @@ class Agent:
         used by the elapsed-time helper.
         """
         return 2_000_000 - time.perf_counter_ns() + self.t_start
-    
+
+    def c_get_bound_method(self, method):
+        if getattr(method, "__self__", None) is self:
+            return method
+        return method.__get__(self, type(self))
+
+    def c_get_bound_method_and_args(self, strategy_entry):
+        if isinstance(strategy_entry, tuple):
+            method, *args = strategy_entry
+        else:
+            method = strategy_entry
+            args = []
+        return self.c_get_bound_method(method), tuple(args)
+
+    def u_filter_tiles(
+        self,
+        positions: list[Position],
+        *predicates: Callable[[Position], bool],
+    ) -> list[Position]:
+        filtered_positions = list(positions)
+        for predicate in predicates:
+            filtered_positions = [pos for pos in filtered_positions if predicate(pos)]
+        return filtered_positions
+
+    def u_prioritize_tiles(
+        self,
+        positions: list[Position],
+        *criteria: Callable[[Position], object],
+    ) -> list[Position]:
+        if not criteria:
+            return list(positions)
+        return sorted(
+            positions,
+            key=lambda pos: tuple(criterion(pos) for criterion in criteria),
+        )
+
     def u_handler(self):
         """
         Execute this agent's per-turn behavior.
