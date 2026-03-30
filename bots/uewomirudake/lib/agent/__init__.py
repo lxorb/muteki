@@ -31,7 +31,7 @@ class Agent:
             # TODO: run the infer_strategy_by_spawning_tile
             self.first_turn_initialized = True
         else:
-            self.map.u_change_controller(ct)
+            self.map.ct = ct
         self.map.u_update_vision()
         self.u_handler()
 

@@ -1,72 +1,108 @@
-from cambc import (
-    Controller,
-    Direction,
-    EntityType,
-    Environment,
-    GameConstants,
-    Position,
-    Team,
-)
-import time
+from collections import deque
+from enum import Enum
+
+from cambc import Controller, Direction, EntityType, GameConstants, Position, Team
 
 from lib.map.tile import Tile
 
 
+class SymmetryMode(Enum):
+    ROTATION = "rotation"
+    MIRROR_X = "mirror_x"
+    MIRROR_Y = "mirror_y"
+
+
 class Map:
     def __init__(self, ct: Controller):
-        """
-        Create a map cache for a single bot instance.
-
-        Here the whole map should be initialized, all tiles should be created
-        and everything about the map in terms of metadata like width and height should be fetched.
-
-        """
-        self.u_change_controller(ct)
         self.width = ct.get_map_width()
         self.height = ct.get_map_height()
         self.matrix: list[list[Tile]] = [
-            [Tile() for _ in range(self.height)] for _ in range(self.width)
+            [Tile(Position(x, y), self) for y in range(self.height)]
+            for x in range(self.width)
         ]
-        for x in range(self.width):
-            for y in range(self.height):
-                self.matrix[x][y].position = Position(x, y)
+
+        self.symmetry_mode: SymmetryMode | None = None
+        self.symmetry_mode_candidates = [
+            SymmetryMode.ROTATION,
+            SymmetryMode.MIRROR_X,
+            SymmetryMode.MIRROR_Y,
+        ]
         self.core_center_pos: Position | None = None
         self.enemy_core_center_pos: Position | None = None
-        # -> this only saves the enemy core pos if it is known (if there is just one candidate remaining)
-        self.enemy_core_center_pos_candidates: list[Position] = []
+        self.enemy_core_center_pos_candidates: list[tuple[SymmetryMode, Position]] = []
 
-        self.orthogonally_adjacent_tiles: list[Position] = []
-        self.diagonally_adjacent_tiles: list[Position] = []
-        self.has_enemy_bot_in_vision: bool = False
-        self.titanium_tiles_in_vision: list[Position] = []
-        self.known_accessible_titanium_tiles: list[Position] = []
-        # -> should include all titanium tiles (even if not in vision) that
-        #    don't have an own harvester and that don't have an enemy building on them
-        self.axionite_tiles_in_vision: list[Position] = []
-        self.known_accessible_axionite_tiles: list[Position] = []
-        # -> analogous to known_accessible_titanium_tiles
-        self.enemy_harvesters_in_sight: list[Position] = []
-        self.enemy_supply_targets_in_vision: list[Position] = []
-        self.own_harvesters_in_sight: list[Position] = []
-        self.own_supply_links_in_sight: list[Position] = []
         self.committed_path: list[Position] = []
-        self.committed_path_allow_build_new_tiles: bool = True
-        self.committed_path_allow_enemy_tiles: bool = True
+        self.committed_path_allow_build_new_tiles = True
+        self.committed_path_allow_enemy_tiles = True
         self.committed_path_destination: Position | None = None
-        self.known_missing_supply_links: list[Position] = []
-        self.current_pos: Position | None = None
-        self.own_team: Team | None = None
-        self.titanium: int = 0
-        self.axionite: int = 0
 
-    def u_change_controller(self, ct: Controller):
         self.ct = ct
+        self._reset_turn_state()
+
+    def _get_resource_amount(self, resource_name: str) -> int:
+        getter = getattr(self.ct, f"get_{resource_name}", None)
+        if getter is None:
+            return 0
+        try:
+            return int(getter())
+        except Exception:
+            return 0
+
+    def _reset_turn_state(self) -> None:
+        self.current_pos = self.ct.get_position()
+        self.titanium = self._get_resource_amount("titanium")
+        self.axionite = self._get_resource_amount("axionite")
+
+        self.orthogonally_adjacent_tiles = list(
+            self.u_iter_adjacent_positions(
+                self.current_pos,
+                consider_diagonal=False,
+            )
+        )
+        self.diagonally_adjacent_tiles = [
+            pos
+            for pos in self.u_iter_adjacent_positions(self.current_pos)
+            if pos not in self.orthogonally_adjacent_tiles
+        ]
+
+        self.has_enemy_bot_in_vision = False
+        self.titanium_tiles_in_vision: list[Position] = []
+        self.axionite_tiles_in_vision: list[Position] = []
+        self.enemy_harvesters_in_sight: list[Position] = []
+        self.own_harvesters_in_sight: list[Position] = []
+        self.enemy_supply_targets_in_vision: list[Position] = []
+        self.own_supply_targets_in_vision: list[Position] = []
+        self.own_supply_links_in_sight: list[Position] = []
+        self.buildings_in_vision: list[Position] = []
+        self.own_missing_supply_links: list[Position] = []
+        self.enemy_missing_supply_links: list[Position] = []
+
+    @property
+    def known_missing_supply_links(self) -> list[Position]:
+        return self.own_missing_supply_links
 
     def u_get_pos_tile(self, pos: Position) -> Tile:
         return self.matrix[pos.x][pos.y]
 
-    def u_in_bounds(self, pos: Position) -> bool:
+    def _is_in_bounds(self, pos: Position) -> bool:
         return 0 <= pos.x < self.width and 0 <= pos.y < self.height
+
+    def u_in_bounds(self, pos: Position) -> bool:
+        return self._is_in_bounds(pos)
+
+    def _in_bounds_positions(
+        self,
+        positions: list[Position] | tuple[Position, ...],
+    ) -> list[Position]:
+        seen: set[tuple[int, int]] = set()
+        valid_positions: list[Position] = []
+        for pos in positions:
+            key = (pos.x, pos.y)
+            if key in seen or not self._is_in_bounds(pos):
+                continue
+            seen.add(key)
+            valid_positions.append(pos)
+        return valid_positions
 
     def u_iter_adjacent_positions(self, pos: Position, consider_diagonal: bool = True):
         for direction in Direction:
@@ -80,7 +116,7 @@ class Map:
             }:
                 continue
             next_pos = pos.add(direction)
-            if not self.u_in_bounds(next_pos):
+            if not self._is_in_bounds(next_pos):
                 continue
             yield next_pos
 
@@ -133,7 +169,7 @@ class Map:
             return False
 
         delta_x, delta_y = direction.delta()
-        max_steps = max(self.ct.get_map_width(), self.ct.get_map_height())
+        max_steps = max(self.width, self.height)
 
         for step in range(max_steps + 1):
             line_pos = Position(
@@ -173,114 +209,130 @@ class Map:
 
         return (delta_x * dir_x) + (delta_y * dir_y) > 0
 
+    def c_get_core_footprint_positions(self, center: Position) -> list[Position]:
+        return self._in_bounds_positions(
+            [
+                Position(center.x + dx, center.y + dy)
+                for dx in range(-1, 2)
+                for dy in range(-1, 2)
+            ]
+        )
+
+    def c_refresh_distance_field(
+        self,
+        seed_positions: list[Position] | tuple[Position, ...],
+        attribute_name: str,
+    ) -> None:
+        queue: deque[Position] = deque()
+
+        for seed_pos in self._in_bounds_positions(seed_positions):
+            tile = self.matrix[seed_pos.x][seed_pos.y]
+            setattr(tile, attribute_name, 0)
+            queue.append(seed_pos)
+
+        while queue:
+            current_pos = queue.popleft()
+            current_tile = self.matrix[current_pos.x][current_pos.y]
+            current_dist = getattr(current_tile, attribute_name)
+
+            for direction in Tile.DIRECTIONS:
+                dx, dy = direction.delta()
+                neighbor_pos = Position(current_pos.x + dx, current_pos.y + dy)
+                if not self._is_in_bounds(neighbor_pos):
+                    continue
+
+                neighbor_tile = self.matrix[neighbor_pos.x][neighbor_pos.y]
+                if not neighbor_tile._is_intrinsically_passable():
+                    continue
+
+                next_dist = current_dist + 1
+                if next_dist >= getattr(neighbor_tile, attribute_name):
+                    continue
+
+                setattr(neighbor_tile, attribute_name, next_dist)
+                queue.append(neighbor_pos)
+
+    def c_refresh_core_distances(self) -> None:
+        inf = 10**9
+        for column in self.matrix:
+            for tile in column:
+                tile.own_core_dist = inf
+                tile.enemy_core_dist = inf
+
+        if self.core_center_pos is not None:
+            self.c_refresh_distance_field(
+                self.c_get_core_footprint_positions(self.core_center_pos),
+                "own_core_dist",
+            )
+
+        if self.enemy_core_center_pos is not None:
+            self.c_refresh_distance_field(
+                self.c_get_core_footprint_positions(self.enemy_core_center_pos),
+                "enemy_core_dist",
+            )
+
     def u_get_core_relative_tile(self):
-        """
-        Should return an element of the set {-1, 0, 1}^2 depending on the position of the builder bot.
-        """
+        if self.core_center_pos is None:
+            return None
+
+        delta_x = max(-1, min(1, self.current_pos.x - self.core_center_pos.x))
+        delta_y = max(-1, min(1, self.current_pos.y - self.core_center_pos.y))
+        return (delta_x, delta_y)
 
     def u_calc_core_center_pos(self):
-        # you can use the self.ct here
-        # assume the current builder bot is standing on some core tile
-        # for this calculation
-        # based on that, get the core and safe the core center pos in the corresponding attribute
-        pass
+        if self.core_center_pos is not None:
+            return self.core_center_pos
 
-    def u_update_vision(self):
-        """
-        using self.ct first, get the current vision radius
-        then update all maps tile in vision radius with all available information
-        For that purpose, take a look at the __init__ attributes of the tile class
-        Then set everything to the corresponding value.
-        Do one simple for loop first that updates all the easy stats like last_seen_turn or
-        in_action_radius and everything
-        The distance to both the own as also to the enemy core should be updated in a lazy way.
-        If distance is not known, initialize it to an infinite value, i.e. something like 10^5 should suffice.
-        Then, using a queue-like behaviour, update all distances lazily to keep performance as optimal as possible.
-        Still, distances should be all updated till they are correct for the current knowledge of the map.
+        current_tile = self.u_get_pos_tile(self.current_pos)
+        core_tile = current_tile
+        if (
+            core_tile.building.entity_type != EntityType.CORE
+            or core_tile.building.team != self.own_team
+        ):
+            core_tile = None
+            for building_pos in self.buildings_in_vision:
+                candidate_tile = self.u_get_pos_tile(building_pos)
+                if (
+                    candidate_tile.building.entity_type == EntityType.CORE
+                    and candidate_tile.building.team == self.own_team
+                ):
+                    core_tile = candidate_tile
+                    break
+            if core_tile is None:
+                return None
 
-        Every attribute of the map and every attribute of tiles that can be initialized should be initialized for caching.
-
-        This method should also update the candidates list of potential enemy core center candidates.
-        I.e. either if we see the enemy core center then set the enemy core center position to that one.
-        and if a tile is in sight from that we can infer that one of the candidates can't be the enemy core center, than
-        remove that candidate from the candidates list
-        if there is just one candidate left, that must be the enemy core center pos
-
-        """
-        pass
+        self.core_center_pos = self.ct.get_position(core_tile.building.id)
+        if not self.enemy_core_center_pos_candidates:
+            center = self.core_center_pos
+            self.enemy_core_center_pos_candidates = [
+                (
+                    SymmetryMode.ROTATION,
+                    Position(self.width - 1 - center.x, self.height - 1 - center.y),
+                ),
+                (
+                    SymmetryMode.MIRROR_X,
+                    Position(center.x, self.height - 1 - center.y),
+                ),
+                (
+                    SymmetryMode.MIRROR_Y,
+                    Position(self.width - 1 - center.x, center.y),
+                ),
+            ]
+        return self.core_center_pos
 
     def u_calc_enemy_core_center_candidates(self):
-        # calculates candidates for enemy center core position
-        # using the possible symmetry of the map (see the docs)
-        pass
+        return list(self.enemy_core_center_pos_candidates)
 
-    # generally for all path findings, if there is a choice where there are tiles that seem equally good
-    # then prioritize tiles of the own team
-    # if there is still a tie then prioritize by bridges > conveyors > roads > core_tile
-    # make this priority configurable easily and hence modular
-    def u_calculate_shortest_walk_path_to(
+    def u_update_supply_information(
         self,
-        dest: Position,
-        allow_enemy_tiles: bool = True,
-        allow_build_new_tiles: bool = True,
-        source: Position = None,
-    ):
-        """
-        Calculates the shortest path to a specific target position.
-        Depending on the parameters, the output will vary a bit. For example, allow enemy tiles decides whether the bot is allowed to use enemy tiles.
-        And allow_buid_new_tiles sets whether it is allowed to build new tiles for the path, i.e. then empty fields are treated like roads.
-        If no source is specified, just use the current builder bots location as the source.
-        Return a list of positions as the output.
-        Unknown tiles are just assumed to be empty tiles.
-        """
-        pass
-
-    def u_calculate_all_shortest_walk_paths(
-        self,
-        allow_enemy_tiles: bool = True,
-        allow_build_new_tiles: bool = True,
-        source: Position = None,
-    ):
-        """
-        This calculates the shortest paths to all tiles that have been in visoinn radius at least once or that are at least in one of the 8
-        neighboring fields to a tile that has been visited before.
-
-        """
-        pass
-
-    def u_calculate_shortest_action_path_to(
-        self,
-        target: Position,
-        action_radius_sq: int = 2,
-        allow_enemy_tiles: bool = True,
-        allow_build_new_tiles: bool = True,
-        source: Position = None,
-    ):
-        """
-        Similar to calculate_shortest_walk_path_to, but it only calculates the shortest path so that the target field will be in action range.
-        I.e. this calculates the shortest path so that the builder bot is at the end of the path on one of the eight neighbor tiles of the target tile.
-
-        """
-        pass
-
-    def u_commit_new_path(self, path):
-        """
-        This saves a specific path as an attribute with datatype list of positions.
-        The first element of the list should always be the next tile of the path.
-        Basically the goal of this is to set a path and then the builder bot will pursue that path till it reaches the destination.
-
-        """
-        pass
-
-    def u_follow_commit_path(self):
-        """
-        This method goes along the currently active commited path.
-        This method of course validates whether the path is still possible.
-        general Side note: there should be attributes for the commited path saving whether to
-        build new roads or whether it is allowed to use enemy tiles
-        these both should as the default be true
-
-        """
+        visible_positions: list[Position] | None = None,
+    ) -> None:
+        if visible_positions is None:
+            visible_positions = self.ct.get_nearby_tiles()
+        for pos in visible_positions:
+            tile = self.u_get_pos_tile(pos)
+            tile.update_supply_targets_in_vision()
+            tile.update_missing_links()
 
     def u_move_to(self, allow_build: bool = True):
         """
@@ -355,3 +407,17 @@ class Map:
         This prioritizing should be written in a modular way so that is easily adjustable.
 
         """
+        
+    def u_update_vision(self):
+        self._reset_turn_state()
+
+        visible_positions = self.ct.get_nearby_tiles()
+        for pos in visible_positions:
+            tile = self.u_get_pos_tile(pos)
+            tile.update_attributes()
+
+        if self.core_center_pos is None:
+            self.u_calc_core_center_pos()
+
+        self.u_update_supply_information(visible_positions)
+        self.c_refresh_core_distances()

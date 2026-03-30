@@ -83,7 +83,9 @@ class TurretAgent(Agent):
         """
         candidate_targets = self.u_filter_tiles(
             self.ct.get_attackable_tiles(),
-            lambda pos: self.map.u_get_pos_tile(pos).in_vision_radius,
+            lambda pos: (
+                self.map.u_get_pos_tile(pos).last_seen_turn == self.ct.get_current_round()
+            ),
             self.ct.can_fire,
             lambda pos: self.u_get_target_priority_key(pos) is not None,
         )
@@ -127,9 +129,9 @@ class TurretAgent(Agent):
         launcher_pos = self.map.current_pos
         throwable_positions = self.u_filter_tiles(
             list(self.map.u_iter_adjacent_positions(launcher_pos)),
-            lambda pos: self.map.u_get_pos_tile(pos).builder_bot_id is not None,
+            lambda pos: self.map.u_get_pos_tile(pos).bot.id is not None,
             lambda pos: (
-                self.map.u_get_pos_tile(pos).builder_bot_team != self.map.own_team
+                self.map.u_get_pos_tile(pos).bot.team != self.map.own_team
             ),
         )
         throwable_positions = self.u_prioritize_tiles(
@@ -149,39 +151,39 @@ class TurretAgent(Agent):
         pos: Position,
     ) -> tuple[int, int | None]:
         target_tile = self.map.u_get_pos_tile(pos)
-        if target_tile.building_team == self.map.own_team:
-            if target_tile.building_type == EntityType.BRIDGE:
+        if target_tile.building.team == self.map.own_team:
+            if target_tile.building.entity_type == EntityType.BRIDGE:
                 return (
                     LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_bridge"],
-                    target_tile.builder_bot_hp,
+                    target_tile.bot.hp,
                 )
-            if target_tile.building_type == EntityType.CONVEYOR:
+            if target_tile.building.entity_type == EntityType.CONVEYOR:
                 return (
                     LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_conveyor"],
-                    target_tile.builder_bot_hp,
+                    target_tile.bot.hp,
                 )
-            if target_tile.building_type == EntityType.ARMOURED_CONVEYOR:
+            if target_tile.building.entity_type == EntityType.ARMOURED_CONVEYOR:
                 return (
                     LAUNCHER_THROWABLE_PRIORITY_RANK[
                         "enemy_bot_on_ally_armoured_conveyor"
                     ],
-                    target_tile.builder_bot_hp,
+                    target_tile.bot.hp,
                 )
-            if target_tile.building_type == EntityType.ROAD:
+            if target_tile.building.entity_type == EntityType.ROAD:
                 return (
                     LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_road"],
-                    target_tile.builder_bot_hp,
+                    target_tile.bot.hp,
                 )
 
-        if target_tile.building_id is None:
+        if target_tile.building.id is None:
             return (
                 LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_empty_tile"],
-                target_tile.builder_bot_hp,
+                target_tile.bot.hp,
             )
 
         return (
             LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_elsewhere"],
-            target_tile.builder_bot_hp,
+            target_tile.bot.hp,
         )
 
     def u_get_launcher_throw_target(self, bot_pos: Position) -> Position | None:
@@ -189,7 +191,7 @@ class TurretAgent(Agent):
         candidate_targets = self.u_filter_tiles(
             self.ct.get_attackable_tiles(),
             lambda pos: self.map.u_get_pos_tile(pos).is_passable,
-            lambda pos: self.map.u_get_pos_tile(pos).builder_bot_id is None,
+            lambda pos: self.map.u_get_pos_tile(pos).bot.id is None,
             lambda pos: launcher_pos.distance_squared(pos) > 2,
             lambda pos: self.ct.can_launch(bot_pos, pos),
         )
@@ -213,30 +215,30 @@ class TurretAgent(Agent):
     def u_is_in_own_turret_attack_range(self, target_pos: Position) -> bool:
         for building_pos in self.map.buildings_in_vision:
             building_tile = self.map.u_get_pos_tile(building_pos)
-            if building_tile.building_team != self.map.own_team:
+            if building_tile.building.team != self.map.own_team:
                 continue
-            if building_tile.building_type == EntityType.GUNNER:
+            if building_tile.building.entity_type == EntityType.GUNNER:
                 if self.map.u_gunner_covers_target(
                     building_pos,
-                    building_tile.building_direction,
+                    building_tile.building.direction,
                     target_pos,
-                    building_tile.building_vision_radius_sq,
+                    building_tile.building.vision_radius_sq,
                 ):
                     return True
                 continue
-            if building_tile.building_type == EntityType.SENTINEL:
+            if building_tile.building.entity_type == EntityType.SENTINEL:
                 if self.map.u_sentinel_covers_target(
                     building_pos,
-                    building_tile.building_direction,
+                    building_tile.building.direction,
                     target_pos,
-                    building_tile.building_vision_radius_sq,
+                    building_tile.building.vision_radius_sq,
                 ):
                     return True
                 continue
-            if building_tile.building_type == EntityType.BREACH:
+            if building_tile.building.entity_type == EntityType.BREACH:
                 if self.map.u_breach_covers_target(
                     building_pos,
-                    building_tile.building_direction,
+                    building_tile.building.direction,
                     target_pos,
                 ):
                     return True
@@ -249,21 +251,21 @@ class TurretAgent(Agent):
     ) -> tuple[int, ...] | None:
         target_tile = self.map.u_get_pos_tile(pos)
         own_team = self.map.own_team
-        building_id = target_tile.building_id
-        builder_bot_id = target_tile.builder_bot_id
+        building_id = target_tile.building.id
+        builder_bot_id = target_tile.bot.id
 
         enemy_building_id = None
-        enemy_building_type = target_tile.building_type
+        enemy_building_type = target_tile.building.entity_type
         if (
             building_id is not None
-            and target_tile.building_team != own_team
+            and target_tile.building.team != own_team
         ):
             enemy_building_id = building_id
 
         enemy_builder_bot_id = None
         if (
             builder_bot_id is not None
-            and target_tile.builder_bot_team != own_team
+            and target_tile.bot.team != own_team
         ):
             enemy_builder_bot_id = builder_bot_id
 
@@ -274,7 +276,7 @@ class TurretAgent(Agent):
             return (
                 TURRET_TARGET_PRIORITY_RANK[enemy_building_type],
                 0 if self.u_enemy_turret_targets_self(enemy_building_id) else 1,
-                target_tile.building_hp,
+                target_tile.building.hp,
             )
 
         if enemy_builder_bot_id is not None:
@@ -284,7 +286,7 @@ class TurretAgent(Agent):
                     if self.c_is_enemy_bot_on_ally_tile(target_tile)
                     else "enemy_bot_on_non_ally_tile"
                 ],
-                target_tile.builder_bot_hp,
+                target_tile.bot.hp,
             )
 
         if (
@@ -295,38 +297,38 @@ class TurretAgent(Agent):
 
         return (
             TURRET_TARGET_PRIORITY_RANK[enemy_building_type],
-            target_tile.building_hp,
+            target_tile.building.hp,
         )
 
     def c_is_enemy_bot_on_ally_tile(self, target_tile) -> bool:
-        if target_tile.building_id is None:
+        if target_tile.building.id is None:
             return False
-        return target_tile.building_team == self.map.own_team
+        return target_tile.building.team == self.map.own_team
 
     def u_enemy_turret_targets_self(self, enemy_turret_id: int) -> bool:
         enemy_turret_pos = self.ct.get_position(enemy_turret_id)
         enemy_turret_tile = self.map.u_get_pos_tile(enemy_turret_pos)
-        turret_type = enemy_turret_tile.building_type
+        turret_type = enemy_turret_tile.building.entity_type
         target_pos = self.map.current_pos
 
         if turret_type == EntityType.GUNNER:
             return self.map.u_gunner_covers_target(
                 enemy_turret_pos,
-                enemy_turret_tile.building_direction,
+                enemy_turret_tile.building.direction,
                 target_pos,
-                enemy_turret_tile.building_vision_radius_sq,
+                enemy_turret_tile.building.vision_radius_sq,
             )
         if turret_type == EntityType.SENTINEL:
             return self.map.u_sentinel_covers_target(
                 enemy_turret_pos,
-                enemy_turret_tile.building_direction,
+                enemy_turret_tile.building.direction,
                 target_pos,
-                enemy_turret_tile.building_vision_radius_sq,
+                enemy_turret_tile.building.vision_radius_sq,
             )
         if turret_type == EntityType.BREACH:
             return self.map.u_breach_covers_target(
                 enemy_turret_pos,
-                enemy_turret_tile.building_direction,
+                enemy_turret_tile.building.direction,
                 target_pos,
             )
         return False

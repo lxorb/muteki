@@ -114,13 +114,13 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         target_tile = self.map.u_get_pos_tile(pos)
 
         if current_pos == pos:
-            if target_tile.building_id is None:
+            if target_tile.building.id is None:
                 return False
             if not self.ct.can_fire(current_pos):
                 return False
 
             would_destroy = (
-                self.ct.get_hp(target_tile.building_id)
+                target_tile.building.hp
                 <= GameConstants.BUILDER_BOT_ATTACK_DAMAGE
             )
             if (
@@ -167,13 +167,13 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
             self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
         )
         can_hold_build_target = (
-            target_tile.building_id is None
+            target_tile.building.id is None
             or (
-                target_tile.building_type == EntityType.ROAD
-                and target_tile.building_team == self.map.own_team
+                target_tile.building.entity_type == EntityType.ROAD
+                and target_tile.building.team == self.map.own_team
             )
             or (
-                target_tile.building_type == EntityType.BARRIER
+                target_tile.building.entity_type == EntityType.BARRIER
                 and building_type != EntityType.BARRIER
             )
         )
@@ -198,9 +198,9 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
 
         if current_pos.distance_squared(pos) <= BB_ACTION_RADIUS_SQ and pos != current_pos:
             if (
-                target_tile.building_team == self.map.own_team
-                and target_tile.building_type in {EntityType.ROAD, EntityType.BARRIER}
-                and target_tile.building_type != building_type
+                target_tile.building.team == self.map.own_team
+                and target_tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}
+                and target_tile.building.entity_type != building_type
                 and self.ct.can_destroy(pos)
             ):
                 self.ct.destroy(pos)
@@ -236,7 +236,7 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         if (
             attack_enemy_passable
             and target_tile.is_passable
-            and target_tile.building_team != self.map.own_team
+            and target_tile.building.team != self.map.own_team
         ):
             return self.u_attack_passable(
                 pos,
