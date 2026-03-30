@@ -25,11 +25,13 @@ class Agent:
         self.t_start = 0
 
     def u_run(self, ct: Controller) -> None:
+        self.ct = ct
         if not self.first_turn_initialized:
-            self.map = Map(self.ct)
+            self.map = Map(ct)
             # TODO: run the infer_strategy_by_spawning_tile
             self.first_turn_initialized = True
-        self.ct = ct
+        else:
+            self.map.u_change_controller(ct)
         self.map.u_update_vision()
         self.u_handler()
 

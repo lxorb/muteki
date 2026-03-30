@@ -39,3 +39,12 @@ class BuilderAgent(
 
     def u_handler(self):
         return self.u_execute_strategy()
+
+
+from .strategies import (
+    DEFENDER_STRATEGY,
+    FOUNDRY_STRATEGY,
+    HARASSMENT_STRATEGY,
+    INITRES_STRATEGY,
+    SCAVENGER_STRATEGY,
+)
