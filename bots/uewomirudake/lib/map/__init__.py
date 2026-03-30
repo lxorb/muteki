@@ -55,6 +55,7 @@ class Map:
         self.known_accessible_axionite_tiles: list[Position] = []
         # -> analogous to known_accessible_titanium_tiles
         self.enemy_harvesters_in_sight: list[Position] = []
+        self.enemy_supply_targets_in_vision: list[Position] = []
         self.own_harvesters_in_sight: list[Position] = []
         self.committed_path: list[Position] = []
         self.committed_path_allow_build_new_tiles: bool = True
@@ -75,9 +76,7 @@ class Map:
     def u_in_bounds(self, pos: Position) -> bool:
         return 0 <= pos.x < self.width and 0 <= pos.y < self.height
 
-    def u_iter_adjacent_positions(
-        self, pos: Position, consider_diagonal: bool = True
-    ):
+    def u_iter_adjacent_positions(self, pos: Position, consider_diagonal: bool = True):
         for direction in Direction:
             if direction == Direction.CENTRE:
                 continue

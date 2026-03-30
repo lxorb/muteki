@@ -289,7 +289,6 @@ class BuilderAgent(Agent):
         # TODO: review the priority ordering here
         """
 
-    # TODO
     def s_sentinel_next_to_enemy_harvester(
         self,
         move_towards: bool = True,
@@ -311,7 +310,7 @@ class BuilderAgent(Agent):
         if not enemy_harvesters:
             return False
 
-        candidates: list[tuple[tuple[int, int, int], Position, str]] = []
+        candidates: list[tuple[tuple[int, int], Position, str]] = []
         for harvester_pos in enemy_harvesters:
             for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
                 candidate_tile = self.map.u_get_pos_tile(candidate_pos)
@@ -345,7 +344,6 @@ class BuilderAgent(Agent):
                     continue
 
                 candidate_key = (
-                    candidate_tile.builder_bot_dist,
                     current_pos.distance_squared(candidate_pos),
                     0 if tile_kind == "empty" else 1 if tile_kind == "own_road" else 2,
                 )
@@ -369,13 +367,50 @@ class BuilderAgent(Agent):
 
         return False
 
-    # TODO
     def s_block_enemy_supply_chain(self, move_towards: bool = True, hold: bool = True):
         """
-        Build a barrier at a tile where an enemy conveyor or bridge is pointing at.
-        Prioritize them by distance.
+        Build a barrier on the closest visible enemy resource target.
 
+        Uses cached map targets, prefers shorter squared distance, and
+        delegates build, attack, movement, and hold handling to `u_build_at`.
         """
+        current_pos = self.map.current_pos
+        own_team = self.map.own_team
+
+        enemy_supply_targets: list[tuple[tuple[int, int], Position]] = []
+        for target_pos in self.map.enemy_supply_targets_in_vision:
+            target_tile = self.map.u_get_pos_tile(target_pos)
+            if target_tile.building_id is None:
+                tile_priority = 0
+            elif (
+                target_tile.building_type == EntityType.ROAD
+                and target_tile.building_team == own_team
+            ):
+                tile_priority = 1
+            else:
+                continue
+
+            candidate_key = (
+                current_pos.distance_squared(target_pos),
+                tile_priority,
+            )
+            enemy_supply_targets.append((candidate_key, target_pos))
+
+        if not enemy_supply_targets:
+            return False
+
+        enemy_supply_targets.sort(key=lambda candidate: candidate[0])
+        for _, target_pos in enemy_supply_targets:
+            if self.u_build_at(
+                target_pos,
+                EntityType.BARRIER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=True,
+            ):
+                return True
+
+        return False
 
     # TODO
     def s_block_titanium(self, move_towards: bool = True, hold: bool = True):
