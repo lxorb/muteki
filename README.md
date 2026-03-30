@@ -35,6 +35,13 @@ git submodule update --init --recursive
 
 Install the black python formatter - automatic formatting on save is already configured, so try modifying something slightly and saving then to see if the automatic formatting kicks in. 
 
+## Naming Conventions
+
+Methods whose names start with `u_` were initially created by a user.
+Methods created by AI should start with `c_`.
+This rule does not apply to conventional special method names such as `__init__`.
+Methods whose names start with `s_` are strategy submethods.
+
 ## Resources
 - [docs](https://docs.battlecode.cam/getting-started/installation)
 - [Reference Table](https://docs.battlecode.cam/spec/reference)

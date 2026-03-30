@@ -1,7 +1,7 @@
 from cambc import Controller, EntityType
 
 from lib.agent import Agent
-from lib.agent.builder import BuilderAgent, INITRES_STRATEGY
+from lib.agent.builder import BuilderAgent
 from lib.agent.core import CoreAgent
 from lib.agent.turret import TurretAgent
 
@@ -18,7 +18,7 @@ class Player:
                 case EntityType.CORE:
                     self.agent = CoreAgent()
                 case EntityType.BUILDER_BOT:
-                    self.agent = BuilderAgent(INITRES_STRATEGY)
+                    self.agent = BuilderAgent(None)
                 case (
                     EntityType.GUNNER
                     | EntityType.SENTINEL

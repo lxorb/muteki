@@ -1,6 +1,7 @@
 from cambc import Environment
 
 from . import BuilderAgent
+from .types import StrategyEntry
 
 
 INITRES_STRATEGY = [
@@ -44,3 +45,15 @@ FOUNDRY_STRATEGY = [
 # SHOULD PATROL SUPPLY CHAINS AND REBUILD
 # THINGS DESTROYED BY THE ENEMY
 DEFENDER_STRATEGY = []
+
+BUILDER_STRATEGY_BY_CORE_RELATIVE_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
+    (-1, -1): HARASSMENT_STRATEGY,
+    (0, -1): SCAVENGER_STRATEGY,
+    (1, -1): HARASSMENT_STRATEGY,
+    (-1, 0): SCAVENGER_STRATEGY,
+    (0, 0): INITRES_STRATEGY,
+    (1, 0): SCAVENGER_STRATEGY,
+    (-1, 1): HARASSMENT_STRATEGY,
+    (0, 1): SCAVENGER_STRATEGY,
+    (1, 1): HARASSMENT_STRATEGY,
+}

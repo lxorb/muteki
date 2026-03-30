@@ -35,13 +35,27 @@ class BuilderAgent(
         # there should be a constant declared somewhere that
         # assigns each of the nine core tiles
         # a builder bot strategy that should be executed then
-        pass
+        current_pos = self.map.current_pos
+        core_center_pos = self.map.core_center_pos
+        relative_tile = (
+            current_pos.x - core_center_pos.x,
+            current_pos.y - core_center_pos.y,
+        )
+        self.strategy_methods = list(
+            BUILDER_STRATEGY_BY_CORE_RELATIVE_TILE.get(
+                relative_tile,
+                SCAVENGER_STRATEGY,
+            )
+        )
 
     def u_handler(self):
+        if not self.strategy_methods:
+            self.u_infer_strategy_by_spawning_tile()
         return self.u_execute_strategy()
 
 
 from .strategies import (
+    BUILDER_STRATEGY_BY_CORE_RELATIVE_TILE,
     DEFENDER_STRATEGY,
     FOUNDRY_STRATEGY,
     HARASSMENT_STRATEGY,
