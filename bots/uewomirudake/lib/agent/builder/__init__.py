@@ -464,20 +464,6 @@ class BuilderAgent(Agent):
 
         return False
 
-    def s_harvester_launcher(self, move_towards: bool = True, hold: bool = True):
-        """
-        The purpose of this method is to build a launcher next to a harvester if there
-        is an adjacent tile next to a harvester that is empty and if there is no launcher already adjacent to that harvester
-        Also, this should only be done if there is already a supply link next to that harvester
-        and the launcher should have the supply link element of that harvester in it's range (should not be on the opposite side of that supply link element adjacent to the harvester)
-        The purpose of this is to prevent enemy bots from destroying the supply link element adjacent to the harvestor\
-        and then building a turret there.
-        This is because this would force us to destroy our own harvestor so that the enemy turret does not have any ammo anymore
-        but this is a very expensive price to pay as a harvester costs 80 titanium.
-        On the other hand, for example destroying just a conveyor to disconnect enemy turrets
-        from ammo is a relatively cheap price to pay in comparison.
-        """
-
     def s_surround_harvester(self, move_towards: bool = True, hold: bool = True):
         """
         Secure visible own harvesters with nearby barriers.
@@ -1032,7 +1018,6 @@ class BuilderAgent(Agent):
 
 INITRES_STRATEGY = [
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
-    (BuilderAgent.s_harvester_launcher, True, True),
     (BuilderAgent.s_surround_harvester, True, True),
     (BuilderAgent.s_build_missing_supply_link, True, True, True),
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
@@ -1042,7 +1027,6 @@ INITRES_STRATEGY = [
 SCAVENGER_STRATEGY = [
     (BuilderAgent.s_destroy_hijacked_supplier, True),
     (BuilderAgent.s_build_harvester_supply_link, True, True),
-    (BuilderAgent.s_harvester_launcher, True, True),
     (BuilderAgent.s_surround_harvester, True, True),
     (BuilderAgent.s_build_missing_supply_link, True, True, True),
     (BuilderAgent.s_sentinel_next_to_enemy_harvester, True, False, False),
