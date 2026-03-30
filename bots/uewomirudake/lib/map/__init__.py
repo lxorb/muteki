@@ -34,25 +34,14 @@ class Map:
         self.enemy_core_center_pos: Position | None = None
         # -> this only saves the enemy core pos if it is known (if there is just one candidate remaining)
         self.enemy_core_center_pos_candidates: list[Position] = []
-        # save the following as attributes for better caching
-        # (should of course be updated on update vision)
-        # buildings in vision (list of Position)
-        # orthogonally adjacent tiles (list of Position)
-        # diagonally adjacent tiles (list of Position)
-        # has enemy bot in vision
-        # titanium tiles in vision (list of Position)
-        # axionite tiles in vision (list of Position)
-        # enemy harvesters in sight (list of Position)
-        # own harvesters in sight (list of Position)
 
-        self.buildings_in_vision: list[Position] = []
         self.orthogonally_adjacent_tiles: list[Position] = []
         self.diagonally_adjacent_tiles: list[Position] = []
         self.has_enemy_bot_in_vision: bool = False
         self.titanium_tiles_in_vision: list[Position] = []
         self.known_accessible_titanium_tiles: list[Position] = []
         # -> should include all titanium tiles (even if not in vision) that
-        #    don't have an own harvestor and that don't have an enemy building on them
+        #    don't have an own harvester and that don't have an enemy building on them
         self.axionite_tiles_in_vision: list[Position] = []
         self.known_accessible_axionite_tiles: list[Position] = []
         # -> analogous to known_accessible_titanium_tiles

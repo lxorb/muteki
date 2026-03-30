@@ -32,6 +32,20 @@ TURRET_TARGET_PRIORITY_RANK = {
     for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
 }
 
+LAUNCHER_THROWABLE_PRIORITY = (
+    "enemy_bot_on_ally_bridge",
+    "enemy_bot_on_ally_conveyor",
+    "enemy_bot_on_ally_armoured_conveyor",
+    "enemy_bot_on_ally_road",
+    "enemy_bot_on_empty_tile",
+    "enemy_bot_elsewhere",
+)
+
+LAUNCHER_THROWABLE_PRIORITY_RANK = {
+    target_type: idx
+    for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
+}
+
 
 class TurretAgent(Agent):
     def __init__(self):
@@ -85,9 +99,149 @@ class TurretAgent(Agent):
         self.ct.fire(candidate_targets[0])
         return True
 
-    # TODO
     def u_launcher_throw(self) -> bool:
-        raise NotImplementedError
+        """
+        Throw the best adjacent enemy builder bot to the best legal target tile.
+
+        The launcher first chooses an adjacent enemy builder bot, preferring
+        bots standing on allied bridges, conveyors, armoured conveyors, and
+        roads before bots on empty or other tiles. It then chooses a legal
+        destination from launcher range that is passable, has no builder bot on
+        it, and lies outside the launcher's pickup radius. If any legal target
+        is covered by an allied attack turret, only those covered tiles are
+        considered. Among the remaining legal targets, it picks the tile
+        farthest from the allied core and launches the chosen bot there.
+        """
+        bot_pos = self.u_get_launcher_throwable()
+        if bot_pos is None:
+            return False
+
+        target_pos = self.u_get_launcher_throw_target(bot_pos)
+        if target_pos is None:
+            return False
+
+        self.ct.launch(bot_pos, target_pos)
+        return True
+
+    def u_get_launcher_throwable(self) -> Position | None:
+        launcher_pos = self.map.current_pos
+        throwable_positions = self.u_filter_tiles(
+            list(self.map.u_iter_adjacent_positions(launcher_pos)),
+            lambda pos: self.map.u_get_pos_tile(pos).builder_bot_id is not None,
+            lambda pos: (
+                self.map.u_get_pos_tile(pos).builder_bot_team != self.map.own_team
+            ),
+        )
+        throwable_positions = self.u_prioritize_tiles(
+            throwable_positions,
+            self.u_get_launcher_throwable_priority_key,
+            lambda pos: pos.x,
+            lambda pos: pos.y,
+        )
+
+        for bot_pos in throwable_positions:
+            if self.u_get_launcher_throw_target(bot_pos) is not None:
+                return bot_pos
+        return None
+
+    def u_get_launcher_throwable_priority_key(
+        self,
+        pos: Position,
+    ) -> tuple[int, int | None]:
+        target_tile = self.map.u_get_pos_tile(pos)
+        if target_tile.building_team == self.map.own_team:
+            if target_tile.building_type == EntityType.BRIDGE:
+                return (
+                    LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_bridge"],
+                    target_tile.builder_bot_hp,
+                )
+            if target_tile.building_type == EntityType.CONVEYOR:
+                return (
+                    LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_conveyor"],
+                    target_tile.builder_bot_hp,
+                )
+            if target_tile.building_type == EntityType.ARMOURED_CONVEYOR:
+                return (
+                    LAUNCHER_THROWABLE_PRIORITY_RANK[
+                        "enemy_bot_on_ally_armoured_conveyor"
+                    ],
+                    target_tile.builder_bot_hp,
+                )
+            if target_tile.building_type == EntityType.ROAD:
+                return (
+                    LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_road"],
+                    target_tile.builder_bot_hp,
+                )
+
+        if target_tile.building_id is None:
+            return (
+                LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_empty_tile"],
+                target_tile.builder_bot_hp,
+            )
+
+        return (
+            LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_elsewhere"],
+            target_tile.builder_bot_hp,
+        )
+
+    def u_get_launcher_throw_target(self, bot_pos: Position) -> Position | None:
+        launcher_pos = self.map.current_pos
+        candidate_targets = self.u_filter_tiles(
+            self.ct.get_attackable_tiles(),
+            lambda pos: self.map.u_get_pos_tile(pos).is_passable,
+            lambda pos: self.map.u_get_pos_tile(pos).builder_bot_id is None,
+            lambda pos: launcher_pos.distance_squared(pos) > 2,
+            lambda pos: self.ct.can_launch(bot_pos, pos),
+        )
+        turret_covered_targets = self.u_filter_tiles(
+            candidate_targets,
+            self.u_is_in_own_turret_attack_range,
+        )
+        if turret_covered_targets:
+            candidate_targets = turret_covered_targets
+        if not candidate_targets:
+            return None
+
+        candidate_targets = self.u_prioritize_tiles(
+            candidate_targets,
+            lambda pos: -self.map.u_get_pos_tile(pos).own_core_dist,
+            lambda pos: pos.x,
+            lambda pos: pos.y,
+        )
+        return candidate_targets[0]
+
+    def u_is_in_own_turret_attack_range(self, target_pos: Position) -> bool:
+        for building_pos in self.map.buildings_in_vision:
+            building_tile = self.map.u_get_pos_tile(building_pos)
+            if building_tile.building_team != self.map.own_team:
+                continue
+            if building_tile.building_type == EntityType.GUNNER:
+                if self.map.u_gunner_covers_target(
+                    building_pos,
+                    building_tile.building_direction,
+                    target_pos,
+                    building_tile.building_vision_radius_sq,
+                ):
+                    return True
+                continue
+            if building_tile.building_type == EntityType.SENTINEL:
+                if self.map.u_sentinel_covers_target(
+                    building_pos,
+                    building_tile.building_direction,
+                    target_pos,
+                    building_tile.building_vision_radius_sq,
+                ):
+                    return True
+                continue
+            if building_tile.building_type == EntityType.BREACH:
+                if self.map.u_breach_covers_target(
+                    building_pos,
+                    building_tile.building_direction,
+                    target_pos,
+                ):
+                    return True
+
+        return False
     
     def u_get_target_priority_key(
         self,
