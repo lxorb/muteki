@@ -412,16 +412,42 @@ class BuilderAgent(Agent):
 
         return False
 
-    # TODO
     def s_block_titanium(self, move_towards: bool = True, hold: bool = True):
         """
-        Build barriers on top of titanium tiles.
-        The idea is that this does not prevent us from building an extractor over it later if we decide to do so
-        but this keeps the opponent from building an own harvester or barrier and also could potentially
-        deny resources for the opponent effectively cutting him off.
-        A list of all known titanium tiles should already be saved in the map object.
-        All of them that are empty should be added to the list and then sorted by distance.
+        Build a barrier on the closest known empty titanium tile.
+
+        Uses cached titanium targets from the map, ranks them by squared
+        distance, and delegates build, movement, and hold handling to
+        `u_build_at`.
         """
+        current_pos = self.map.current_pos
+
+        titanium_targets: list[tuple[int, Position]] = []
+        for target_pos in self.map.known_accessible_titanium_tiles:
+            target_tile = self.map.u_get_pos_tile(target_pos)
+            if target_tile.environment != Environment.ORE_TITANIUM:
+                continue
+            if target_tile.building_id is not None:
+                continue
+            titanium_targets.append(
+                (current_pos.distance_squared(target_pos), target_pos)
+            )
+
+        if not titanium_targets:
+            return False
+
+        titanium_targets.sort(key=lambda candidate: candidate[0])
+        for _, target_pos in titanium_targets:
+            if self.u_build_at(
+                target_pos,
+                EntityType.BARRIER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+            ):
+                return True
+
+        return False
 
     # TODO
     def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
