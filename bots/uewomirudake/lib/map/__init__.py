@@ -3,12 +3,13 @@ from cambc import (
     Direction,
     EntityType,
     Environment,
+    GameConstants,
     Position,
     Team,
 )
 import time
 
-from lib.tile import Tile
+from lib.map.tile import Tile
 
 
 class Map:
@@ -43,6 +44,7 @@ class Map:
         # axionite tiles in vision (list of Position)
         # enemy harvesters in sight (list of Position)
         # own harvesters in sight (list of Position)
+
         self.buildings_in_vision: list[Position] = []
         self.orthogonally_adjacent_tiles: list[Position] = []
         self.diagonally_adjacent_tiles: list[Position] = []
@@ -92,6 +94,95 @@ class Map:
             if not self.u_in_bounds(next_pos):
                 continue
             yield next_pos
+
+    def u_is_on_facing_ray(
+        self,
+        source_pos: Position,
+        direction: Direction,
+        target_pos: Position,
+    ) -> bool:
+        if direction == Direction.CENTRE:
+            return False
+
+        delta_x = target_pos.x - source_pos.x
+        delta_y = target_pos.y - source_pos.y
+        dir_x, dir_y = direction.delta()
+
+        if delta_x == 0 and delta_y == 0:
+            return False
+        if dir_x == 0:
+            return delta_x == 0 and delta_y * dir_y > 0
+        if dir_y == 0:
+            return delta_y == 0 and delta_x * dir_x > 0
+
+        return (
+            delta_x * dir_y == delta_y * dir_x
+            and delta_x * dir_x > 0
+            and delta_y * dir_y > 0
+        )
+
+    def u_gunner_covers_target(
+        self,
+        turret_pos: Position,
+        direction: Direction,
+        target_pos: Position,
+        radius_sq: int,
+    ) -> bool:
+        return (
+            self.u_is_on_facing_ray(turret_pos, direction, target_pos)
+            and turret_pos.distance_squared(target_pos) <= radius_sq
+        )
+
+    def u_sentinel_covers_target(
+        self,
+        turret_pos: Position,
+        direction: Direction,
+        target_pos: Position,
+        radius_sq: int,
+    ) -> bool:
+        if direction == Direction.CENTRE:
+            return False
+
+        delta_x, delta_y = direction.delta()
+        max_steps = max(self.ct.get_map_width(), self.ct.get_map_height())
+
+        for step in range(max_steps + 1):
+            line_pos = Position(
+                turret_pos.x + delta_x * step,
+                turret_pos.y + delta_y * step,
+            )
+            if turret_pos.distance_squared(line_pos) > radius_sq:
+                break
+            if max(
+                abs(target_pos.x - line_pos.x),
+                abs(target_pos.y - line_pos.y),
+            ) <= 1:
+                return True
+
+        return False
+
+    def u_breach_covers_target(
+        self,
+        turret_pos: Position,
+        direction: Direction,
+        target_pos: Position,
+    ) -> bool:
+        if direction == Direction.CENTRE:
+            return False
+
+        delta_x = target_pos.x - turret_pos.x
+        delta_y = target_pos.y - turret_pos.y
+        dir_x, dir_y = direction.delta()
+
+        if delta_x == 0 and delta_y == 0:
+            return False
+        if (
+            turret_pos.distance_squared(target_pos)
+            > GameConstants.BREACH_ATTACK_RADIUS_SQ
+        ):
+            return False
+
+        return (delta_x * dir_x) + (delta_y * dir_y) > 0
 
     def u_get_core_relative_tile(self):
         """

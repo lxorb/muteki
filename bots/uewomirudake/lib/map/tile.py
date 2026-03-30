@@ -16,8 +16,12 @@ class Tile:
         self.builder_bot_dist: int = 10**9
         self.building_id: int | None = None
         self.building_type: EntityType | None = None
+        self.building_hp: int | None = None
+        self.building_direction: Direction | None = None
+        self.building_vision_radius_sq: int | None = None
         self.building_team: Team | None = None
         self.builder_bot_id: int | None = None
+        self.builder_bot_hp: int | None = None
         self.builder_bot_team: Team | None = None
         self.is_passable: bool = False
         # -> can a builder bot walk on this tile?

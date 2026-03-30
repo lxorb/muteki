@@ -31,7 +31,7 @@ class Agent:
             self.first_turn_initialized = True
         self.ct = ct
         self.map.u_update_vision()
-        self.u_handler(ct)
+        self.u_handler()
 
     def u_get_ns_elapsed(self):
         """
