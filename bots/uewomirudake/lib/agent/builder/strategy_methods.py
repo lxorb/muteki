@@ -1,6 +1,7 @@
 from cambc import Direction, EntityType, Environment, Position
 
-from .navigation import BB_ACTION_RADIUS_SQ
+from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ
+
 from .types import BuilderStrategyMethodsSelf
 
 
@@ -394,7 +395,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         )
         for target_pos in candidate_positions:
             if (
-                current_pos.distance_squared(target_pos) <= BB_ACTION_RADIUS_SQ
+                current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
                 and self.ct.can_destroy(target_pos)
             ):
                 self.ct.destroy(target_pos)

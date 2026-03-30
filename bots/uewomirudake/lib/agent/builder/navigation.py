@@ -2,12 +2,13 @@ from collections.abc import Callable
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
+from lib.agent.constants import (
+    BRIDGE_PREFERRED_DIST,
+    BUILDER_ACTION_RADIUS_SQ,
+    CHOKEPOINT_MIN_DIST_INCREASE,
+)
+
 from .types import BuilderNavigationSelf
-
-
-BB_ACTION_RADIUS_SQ = 2
-BRIDGE_PREFERRED_DIST = 5
-CHOKEPOINT_MIN_DIST_INCREASE = 4
 
 
 class BuilderNavigationMixin(BuilderNavigationSelf):
@@ -163,6 +164,7 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         titanium_cost, axionite_cost = getattr(
             self.ct, f"get_{building_type.value}_cost"
         )()
+        
         affordable = (
             self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
         )
@@ -196,7 +198,10 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
             EntityType.LAUNCHER,
         }
 
-        if current_pos.distance_squared(pos) <= BB_ACTION_RADIUS_SQ and pos != current_pos:
+        if (
+            current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ
+            and pos != current_pos
+        ):
             if (
                 target_tile.building.team == self.map.own_team
                 and target_tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}
