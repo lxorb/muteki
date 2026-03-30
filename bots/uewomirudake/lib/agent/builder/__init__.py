@@ -8,6 +8,7 @@ from lib.map import Map
 
 BB_ACTION_RADIUS_SQ = 2
 BRIDGE_PREFERRED_DIST = 5
+CHOKEPOINT_MIN_DIST_INCREASE = 4
 
 
 class BuilderAgent(Agent):
@@ -54,6 +55,13 @@ class BuilderAgent(Agent):
         """
         Infer a similar priority ordering for the gunner based on the sentinel priority list.
         """
+
+    def u_is_chokepoint(
+        self,
+        pos: Position,
+        min_dist_increase: int = CHOKEPOINT_MIN_DIST_INCREASE,
+    ) -> bool:
+        pass
 
     def u_get_supplier_build_plan(
         self,
@@ -470,12 +478,79 @@ class BuilderAgent(Agent):
         from ammo is a relatively cheap price to pay in comparison.
         """
 
-    def s_harvester_barrier(self, move_towards: bool = True, hold: bool = True):
+    def s_surround_harvester(self, move_towards: bool = True, hold: bool = True):
         """
-        The purpose of this method is to build a barrier next to a harvester if there
-        is an adjacent tile next to a harvester that is empty
-        The idea behind this is that enemy bots then can't build turrets next to our harvesters
+        Secure visible own harvesters with nearby barriers.
+
+        Considers empty or own-road tiles adjacent to visible own harvesters,
+        prioritizes them by squared distance to the builder, and builds a
+        barrier unless the tile is a chokepoint, in which case it tries to
+        place a conveyor using the cached supplier-plan helper instead.
         """
+        current_pos = self.map.current_pos
+        own_team = self.map.own_team
+        conveyor_plan_by_pos: dict[Position, Direction | None] = {}
+
+        def can_use_tile(pos: Position) -> bool:
+            target_tile = self.map.u_get_pos_tile(pos)
+            return target_tile.building_id is None or (
+                target_tile.building_team == own_team
+                and target_tile.building_type == EntityType.ROAD
+            )
+
+        def is_reachable_chokepoint_plan(pos: Position) -> bool:
+            if not self.u_is_chokepoint(pos):
+                return True
+            if pos not in conveyor_plan_by_pos:
+                conveyor_direction = self.map.u_best_conveyor_orientation(pos)
+                conveyor_plan_by_pos[pos] = conveyor_direction
+            return conveyor_plan_by_pos[pos] is not None
+
+        candidate_positions: list[Position] = []
+        for harvester_pos in self.map.own_harvesters_in_sight:
+            for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
+                candidate_positions.append(candidate_pos)
+
+        candidate_positions = self.u_filter_tiles(
+            list(dict.fromkeys(candidate_positions)),
+            lambda pos: not self.u_is_enemy_turret_target_tile(pos),
+            can_use_tile,
+            is_reachable_chokepoint_plan,
+        )
+        if not candidate_positions:
+            return False
+
+        candidate_positions = self.u_prioritize_tiles(
+            candidate_positions,
+            lambda pos: current_pos.distance_squared(pos),
+            lambda pos: 0 if self.map.u_get_pos_tile(pos).building_id is None else 1,
+        )
+        for target_pos in candidate_positions:
+            if self.u_is_chokepoint(target_pos):
+                conveyor_direction = conveyor_plan_by_pos[target_pos]
+                if conveyor_direction is None:
+                    continue
+                if self.u_build_at(
+                    target_pos,
+                    EntityType.CONVEYOR,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=False,
+                    facing_direction=conveyor_direction,
+                ):
+                    return True
+                continue
+
+            if self.u_build_at(
+                target_pos,
+                EntityType.BARRIER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+            ):
+                return True
+
+        return False
 
     def s_build_missing_supply_link(
         self,
@@ -958,7 +1033,7 @@ class BuilderAgent(Agent):
 INITRES_STRATEGY = [
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
     (BuilderAgent.s_harvester_launcher, True, True),
-    (BuilderAgent.s_harvester_barrier, True, True),
+    (BuilderAgent.s_surround_harvester, True, True),
     (BuilderAgent.s_build_missing_supply_link, True, True, True),
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
     (BuilderAgent.s_expand,),
@@ -968,7 +1043,7 @@ SCAVENGER_STRATEGY = [
     (BuilderAgent.s_destroy_hijacked_supplier, True),
     (BuilderAgent.s_build_harvester_supply_link, True, True),
     (BuilderAgent.s_harvester_launcher, True, True),
-    (BuilderAgent.s_harvester_barrier, True, True),
+    (BuilderAgent.s_surround_harvester, True, True),
     (BuilderAgent.s_build_missing_supply_link, True, True, True),
     (BuilderAgent.s_sentinel_next_to_enemy_harvester, True, False, False),
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
@@ -988,7 +1063,7 @@ FOUNDRY_STRATEGY = [
     # INSERT SPLITTER
     # BUILD FOUNDRY (next to splitter)
     # BUILD AXIONITE HARVESTER SUPPLY LINK
-    (BuilderAgent.s_harvester_barrier, True, True),
+    (BuilderAgent.s_surround_harvester, True, True),
     # BUILD MISSING AXIONITE SUPPLY LINK
     # BUILD AXIONITE HARVESTER
     # SCOUT (search for axionite)
