@@ -1,3 +1,8 @@
+import time
+from abc import ABC, abstractmethod
+
+from lib.map import Map
+
 from cambc import (
     Controller,
     Direction,
@@ -6,115 +11,80 @@ from cambc import (
     Position,
     Team,
 )
-import time
 
-from lib.map import Map
 
-# every method that starts with u_ was initially creaetd by a user
-# every method that was created by ai should start with c_
-# this excludes some convention names like __init__ obviously
-# methods starting with s_ are strategy submethods (as described later in this file)
+class Agent(ABC):
+    def __init__(self, ct: Controller):
+        # the controller that is used to communicate with the game
+        self.ct: Controller = ct
 
-class Agent:
-    def __init__(self):
-        self.bbs_spawned_by_type = dict()
-        self.core_spawn_tile_usage_counts: dict[tuple[int, int], int] = {}
-        self.core_previous_resources: tuple[int, int] | None = None
-        # -> resources in last turn
-        self.ct: Controller | None = None
-        self.map: Map | None = None
-        self.recource_increase_once = False
-        # -> the first time the core registers an increase in it's resources
-        #    this variable is set to true and then left at that value
-        self.first_turn_initialized = False
+        # the map that is used to store the map data
+        self.map: Map = Map(self.ct)
 
-        self.bb_last_turn_completed = True
-        # this safes whether the last turn was completed or had TLE
-        # basically set this to false at the beginning of each turn
-        # and set it to True at the very end of each turn
-        # use the general run method for that
+        # unit id
+        self.id: int = self.ct.get_id()
 
-        self.last_strategy_subaction = None
-        # -> this is saved after one strategy method in the list of strategy elements
-        #    finishes execution to be able to continue after TLE's
-        self.last_strategy_index = -1
+        # None by constructor; False at the start of run; True at the end of run
+        self.last_turn_completed: bool | None = None
 
-        self.bb_strategy = None
-        # this saves the strategy of the builder bot
-        self.t_start = 0
+        # time of run execution
+        self.time_delta: float | None = None
+        self.time_start: float | None = None
+        self.time_end: float | None = None
 
-    def run(self, ct: Controller) -> None:
-        """Provide the standard bot-facing entrypoint wrapper."""
-        self.u_run(ct)
+        # Attributes that may have to be updated depending on the agent type
 
-    def u_first_turn_init(self):
-        # run the infer_strategy_by_spawning_tile
-        pass
-        """
-        On the first turn, this does all the necessary init stuff. 
-        For example here the map will be actually populated for the first time.
-        But still, everything that can be initialized in the constructor should be initialized in the constructor
-        as that does not count to the calculation time limit. 
-        This is just for everything else that can only be initialized in the first ever turn.
-        For that purpose, you should have an attribute of this class, that
-        is initialized to false in the __init__ but set to true after the first ever turn.
+        # position
+        self.position: Position = self.ct.get_position()
 
-        """
 
-    def u_turn_init(self):
-        ### this does standard init per turn like updating map with new visionn information 
-        # (use the dedicated map method for this)
-        pass
+    def pre_calc_on_view(self):
+        for i, (pos, build_id, unit_id, entity_id) in enumerate(
+                zip(
+                    self.ct.get_nearby_tiles(),
+                    self.ct.get_nearby_buildings(),
+                    self.ct.get_nearby_units(),
+                    self.ct.get_nearby_entities()
+                )
+        ):
 
-    def u_infer_strategy_by_spawning_tile(self):
-        # there should be a constant declared somewhere that
-        # assigns each of the nine core tiles 
-        # a builder bot strategy that should be executed then
-        pass
+            self.cacl_per_view_field()
 
-    def u_run(self, ct: Controller) -> None:
-        # first safe the controller as self.ct
-        # then run turn_init that runs the map initialization and other important init stuff
-        # that needs to run every time like also updating the map with the new controller before
-        # actually initializing it
-        # make a match statement where you check for the type of this units
-        # execute the corresponding handler function depending on the type of the unnit
-        # at the end of this turn, execute the u_turn_post function
-        pass
+    def make_turn(self) -> None:
+        self.last_turn_completed = False
+        self.time_start = time.perf_counter_ns()
 
-    def u_turn_post(self):
-        pass
+        self.pre_calc_on_view()
 
-    def u_get_ns_elapsed(self):
-        """
-        Return the nanoseconds spent so far in the current turn.
+        self.make_turn_on_calc()
 
-        The value is measured from the timestamp captured at the start of
-        `run`, which makes it useful for lightweight runtime instrumentation.
-        """
-        return time.perf_counter_ns() - self.t_start
+        self.time_end = time.perf_counter_ns()
+        self.time_delta = (self.time_end or float('inf')) - (self.time_start or float('-inf'))
+        self.last_turn_completed = True
 
-    def u_get_ns_remaining(self):
+
+    def remaining_time(self) -> float:
         """
         Estimate the remaining local nanosecond budget for the turn.
 
         The estimate is based on a 2 ms target and the same per-turn start time
         used by the elapsed-time helper.
         """
-        return 2_000_000 - time.perf_counter_ns() + self.t_start
-    
-    def u_handler_bb(self):
-        # just execute the corresponding strategy of the builder bot in here
+        return 2_000_000 - time.perf_counter_ns() + self.time_start
+
+
+    @abstractmethod
+    def cacl_per_view_field(self) -> None:
         pass
 
-    def u_handler_core(self):
-        """
-        there should be a constant declared in this file
-        that sets the initial builder bots to spawn (see the framing bot to understand the idea behind it)
-        basically this will be a list of either builder bot types 
-        or of Events that you will then wait for until they complete
-        
-        """
+
+    @abstractmethod
+    def make_turn_on_calc(self) -> None:
+        pass
+
+
+class Temp:
+
 
     def u_handler_gunner(self):
         # look at the prioritizing system implemented in framing

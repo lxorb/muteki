@@ -8,7 +8,7 @@ from cambc import (
 )
 import time
 
-from lib.tile import Tile
+from tile import Tile
 
 
 class Map:
