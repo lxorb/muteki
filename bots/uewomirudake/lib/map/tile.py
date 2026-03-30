@@ -13,6 +13,7 @@ class Tile:
         self.environment: Environment = Environment.EMPTY
         self.own_core_dist: int = 10**9
         self.enemy_core_dist: int = 10**9
+        self.builder_bot_dist: int = 10**9
         self.building_id: int | None = None
         self.building_type: EntityType | None = None
         self.building_team: Team | None = None
