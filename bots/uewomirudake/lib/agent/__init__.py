@@ -51,12 +51,18 @@ class Agent:
         """
         return 2_000_000 - time.perf_counter_ns() + self.t_start
 
-    def c_get_bound_method(self, method):
+    def c_get_bound_method(
+        self,
+        method: Callable[..., object],
+    ) -> Callable[..., object]:
         if getattr(method, "__self__", None) is self:
             return method
         return method.__get__(self, type(self))
 
-    def c_get_bound_method_and_args(self, strategy_entry):
+    def c_get_bound_method_and_args(
+        self,
+        strategy_entry: Callable[..., object] | tuple[object, ...],
+    ) -> tuple[Callable[..., object], tuple[object, ...]]:
         if isinstance(strategy_entry, tuple):
             method, *args = strategy_entry
         else:
