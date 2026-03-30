@@ -33,7 +33,7 @@ class Tile:
         # -> target tile, i.e. which tile bridge or conveyor is pointing at
         self.in_enemy_attack_range: bool = False
         # -> this just considers enemy turrets that can attack, not enemy launchers
-        self.is_in_enemy_bot_actiono_range: bool = False
+        self.is_in_enemy_bot_action_range: bool = False
 
         self.known_missing_supply_links: list[Position] = []
         # this keeps a list of missing supply link tiles

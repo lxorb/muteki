@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from cambc import Direction, EntityType, Environment, Position
+from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent import Agent
 from lib.map import Map
@@ -138,6 +138,39 @@ class BuilderAgent(Agent):
         self.ct.move(candidate_moves[0][2])
         return True
 
+    def u_attack_passable(
+        self,
+        pos: Position,
+        move_towards: bool,
+        destroy_condition: Callable[[Position], bool] | None = None,
+    ) -> bool:
+        current_pos = self.map.current_pos
+        target_tile = self.map.u_get_pos_tile(pos)
+
+        if current_pos == pos:
+            if target_tile.building_id is None:
+                return False
+            if not self.ct.can_fire(current_pos):
+                return False
+
+            would_destroy = (
+                self.ct.get_hp(target_tile.building_id)
+                <= GameConstants.BUILDER_BOT_ATTACK_DAMAGE
+            )
+            if (
+                would_destroy
+                and destroy_condition is not None
+                and not destroy_condition(pos)
+            ):
+                return False
+
+            self.ct.fire(current_pos)
+            return True
+
+        if not move_towards:
+            return False
+        return self.u_move_to(pos)
+
     def u_build_at(
         self,
         pos: Position,
@@ -227,11 +260,12 @@ class BuilderAgent(Agent):
             attack_enemy_passable
             and target_tile.is_passable
             and target_tile.building_team != self.map.own_team
-            and pos == current_pos
-            and self.ct.can_fire(current_pos)
         ):
-            self.ct.fire(current_pos)
-            return True
+            return self.u_attack_passable(
+                pos,
+                move_towards=False,
+                destroy_condition=lambda _: True,
+            )
 
         if not move_towards:
             return False
@@ -516,37 +550,63 @@ class BuilderAgent(Agent):
         )
 
         for target_pos in candidate_positions:
-            if target_pos != current_pos:
-                continue
-            if not self.ct.can_fire(current_pos):
-                continue
-            self.ct.fire(current_pos)
-            return True
-
-        if not move_towards:
-            return False
-
-        for target_pos in candidate_positions:
-            if self.u_move_to(target_pos):
+            if self.u_attack_passable(
+                target_pos,
+                move_towards=move_towards,
+                destroy_condition=lambda _: True,
+            ):
                 return True
 
         return False
 
-    # TODO
     def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
         """
-        This makes the builder bot attack a conveyor or bridge that is pointing
-        to the enemy core.
-        If the bot is already standing on a bridge or conveyor that is pointing to the enemy core, attack it.
-        If this hit would destroy that tile, only attack it if it is not in action radius of an enemy bot.
-        Use a method of the map to get all orthogonally adjacent fields to the enemy core in vision range.
-        Filter out all that are not supplier tiles or that don't target the enemy core.
-        Also filter out all that are in the range of enemy launchers or enemy turrets that have ammo.
-        Then pick the one with the lowest distance.
+        Attack the closest visible enemy supply link that directly feeds the enemy core.
+
+        Uses cached enemy supply targets, filters to enemy conveyor or bridge
+        tiles targeting the known enemy core and outside cached enemy threat
+        zones, then either attacks from the current tile or moves toward the
+        best remaining target.
         """
+        current_pos = self.map.current_pos
+        own_team = self.map.own_team
+        enemy_core_pos = self.map.enemy_core_center_pos
+        if enemy_core_pos is None:
+            return False
+
+        candidate_positions = list(dict.fromkeys(self.map.enemy_supply_targets_in_vision))
+        candidate_positions = self.u_filter_tiles(
+            candidate_positions,
+            lambda pos: self.map.u_get_pos_tile(pos).in_vision_radius,
+            lambda pos: self.map.u_get_pos_tile(pos).building_team != own_team,
+            lambda pos: self.map.u_get_pos_tile(pos).building_type
+            in {EntityType.CONVEYOR, EntityType.BRIDGE},
+            lambda pos: self.map.u_get_pos_tile(pos).resource_target == enemy_core_pos,
+            lambda pos: not self.map.u_get_pos_tile(pos).in_enemy_launcher_pickup_zone,
+            lambda pos: not self.map.u_get_pos_tile(pos).in_enemy_attack_range,
+        )
+        if not candidate_positions:
+            return False
+
+        candidate_positions = self.u_prioritize_tiles(
+            candidate_positions,
+            lambda pos: current_pos.distance_squared(pos),
+        )
+
+        for target_pos in candidate_positions:
+            if self.u_attack_passable(
+                target_pos,
+                move_towards=move_towards,
+                destroy_condition=lambda pos: (
+                    not self.map.u_get_pos_tile(pos).is_in_enemy_bot_action_range
+                ),
+            ):
+                return True
+
+        return False
 
 
-INITIAL_RES_STRATEGY = [
+INITRES_STRATEGY = [
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
     (BuilderAgent.s_harvester_launcher, True, True),
     (BuilderAgent.s_harvester_barrier, True, True),
