@@ -20,6 +20,20 @@ class Map:
         and everything about the map in terms of metadata like width and height should be fetched.
 
         """
+        self.current_pos = ct.get_position()
+        self.titanium: int = 0
+        self.axionite: int = 0
+        self.orthogonally_adjacent_tiles: list[Tile] = []
+        self.diagonally_adjacent_tiles: list[Tile] = []
+        self.has_enemy_bot_in_vision: bool = False
+        self.titanium_tiles_in_vision: list[Tile] = []
+        self.axionite_tiles_in_vision: list[Tile] = []
+        self.enemy_harvesters_in_vision: list[Tile] = []
+        self.enemy_supply_targets_in_vision: list[Tile] = []
+        self.own_harvesters_in_sight: list[Tile] = []
+        self.visible_allied_faundry: bool = False
+        self.visible_enemy: bool = False
+
         self.u_change_controller(ct)
         self.width = ct.get_map_width()
         self.height = ct.get_map_height()
