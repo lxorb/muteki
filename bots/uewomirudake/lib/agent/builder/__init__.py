@@ -559,13 +559,62 @@ class BuilderAgent(Agent):
         # TODO: come up with a nice system for expansion / scouting
         """
 
-    def s_destroy_hijacked_supply_link(self, move_towards: bool = True):
+    def s_destroy_hijacked_supplier(self, move_towards: bool = True):
         """
-        This method should destroy an own conveyor / bridge / splitter that points at an enemy
-        turret (gunner / sentinel / breach).
-        Use the own_supply_links_in_sight attribute of map. 
-        Prioritize by distance to the builder bot first. 
+        Destroy the closest visible own harvester or supply-link tile that
+        feeds an enemy turret.
         """
+        current_pos = self.map.current_pos
+        own_team = self.map.own_team
+
+        def points_at_enemy_turret(pos: Position) -> bool:
+            source_tile = self.map.u_get_pos_tile(pos)
+            target_pos = source_tile.resource_target
+            if target_pos is None:
+                return False
+            target_tile = self.map.u_get_pos_tile(target_pos)
+            return (
+                target_tile.building_id is not None
+                and target_tile.building_team != own_team
+                and target_tile.building_type
+                in {EntityType.GUNNER, EntityType.SENTINEL, EntityType.BREACH}
+            )
+
+        candidate_positions = self.u_filter_tiles(
+            list(
+                dict.fromkeys(
+                    self.map.own_supply_links_in_sight
+                    + self.map.own_harvesters_in_sight
+                )
+            ),
+            lambda pos: self.map.u_get_pos_tile(pos).building_team == own_team,
+            lambda pos: self.map.u_get_pos_tile(pos).building_type
+            in {
+                EntityType.CONVEYOR,
+                EntityType.BRIDGE,
+                EntityType.SPLITTER,
+                EntityType.HARVESTER,
+            },
+            points_at_enemy_turret,
+        )
+        if not candidate_positions:
+            return False
+
+        candidate_positions = self.u_prioritize_tiles(
+            candidate_positions,
+            lambda pos: current_pos.distance_squared(pos),
+        )
+        for target_pos in candidate_positions:
+            if (
+                current_pos.distance_squared(target_pos) <= BB_ACTION_RADIUS_SQ
+                and self.ct.can_destroy(target_pos)
+            ):
+                self.ct.destroy(target_pos)
+                return True
+            if move_towards and self.u_move_to(target_pos):
+                return True
+
+        return False
 
     def s_sentinel_next_to_enemy_harvester(
         self,
@@ -831,7 +880,7 @@ INITRES_STRATEGY = [
 ]
 
 SCAVENGER_STRATEGY = [
-    (BuilderAgent.s_destroy_hijacked_supply_link, True),
+    (BuilderAgent.s_destroy_hijacked_supplier, True),
     (BuilderAgent.s_build_harvester_supply_link, True, True),
     (BuilderAgent.s_harvester_launcher, True, True),
     (BuilderAgent.s_harvester_barrier, True, True),
