@@ -90,7 +90,7 @@ LAUNCHER_THROWABLE_PRIORITY_RANK = {
 BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
     (-1, -1): SCAVENGER_STRATEGY,
     (0, -1): HARASSMENT_STRATEGY,
-    (1, -1): DEFENDER_STRATEGY,  # Debug defender spawning
+    (1, -1): DEFENDER_STRATEGY,  # TODO: Add real defender spawning, this is just for debugging
     (-1, 0): INITRES_STRATEGY,
     (0, 0): HARASSMENT_STRATEGY,
     (1, 0): HARASSMENT_STRATEGY,
@@ -101,8 +101,8 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
 INITIAL_BB_ORDER: list[list[StrategyEntry]] = [
     SCAVENGER_STRATEGY,
     SCAVENGER_STRATEGY,
-    # HARASSMENT_STRATEGY,
-    DEFENDER_STRATEGY,  # Debug defender spawning
+    HARASSMENT_STRATEGY,  # TODO: Add real harassment spawning, this is just for debugging
+    DEFENDER_STRATEGY,  # TODO: Add real defender spawning, this is just for debugging
 ]
 MAX_BOTS: int = 10
 DISABLE_HARASSMENT: bool = False
