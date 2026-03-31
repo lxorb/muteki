@@ -432,6 +432,11 @@ class Tile:
         }
         if len(remaining_positions) == 1:
             self.map.enemy_core_center_pos = next(iter(remaining_positions))
+            self.map.enemy_core_source_indices = self.map.u_cache_core_source_indices(
+                self.map.enemy_core_center_pos,
+                self.map.enemy_core_source_by_index,
+            )
+            self.map.enemy_core_dist_initialized = False
 
     def map_update_buildings_in_vision(self) -> None:
         if self.building.id is not None:

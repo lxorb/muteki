@@ -27,6 +27,17 @@ class Map:
         self.intrinsic_passable_by_index = [True] * self.tile_count
         self.core_distance_dirty_indices: set[int] = set()
         self.core_distance_enqueued_by_index = bytearray(self.tile_count)
+        self.own_core_source_indices: tuple[int, ...] = ()
+        self.enemy_core_source_indices: tuple[int, ...] = ()
+        self.own_core_source_by_index = bytearray(self.tile_count)
+        self.enemy_core_source_by_index = bytearray(self.tile_count)
+        self.own_core_dist_initialized = False
+        self.enemy_core_dist_initialized = False
+        self.distance_queue_buffer_by_index: list[int] = []
+        self.path_queue_buffer_by_index: list[int] = []
+        self.path_seen_epoch_by_index = [0] * self.tile_count
+        self.path_predecessor_by_index = [-1] * self.tile_count
+        self.path_epoch = 0
         self.matrix: list[list[Tile]] = [
             [Tile(Position(x, y), self) for y in range(self.height)]
             for x in range(self.width)
@@ -37,17 +48,23 @@ class Map:
             for y in range(self.height)
         ]
         self.neighbor_indices_by_index: list[tuple[int, ...]] = []
+        self.cardinal_neighbor_indices_by_index: list[tuple[int, ...]] = []
         for idx in range(self.tile_count):
             x = idx // self.height
             y = idx % self.height
             neighbors: list[int] = []
+            cardinal_neighbors: list[int] = []
             for direction in DIRECTIONS:
                 dx, dy = direction.delta()
                 nx = x + dx
                 ny = y + dy
                 if 0 <= nx < self.width and 0 <= ny < self.height:
-                    neighbors.append(nx * self.height + ny)
+                    neighbor_idx = nx * self.height + ny
+                    neighbors.append(neighbor_idx)
+                    if dx == 0 or dy == 0:
+                        cardinal_neighbors.append(neighbor_idx)
             self.neighbor_indices_by_index.append(tuple(neighbors))
+            self.cardinal_neighbor_indices_by_index.append(tuple(cardinal_neighbors))
 
         self.ct = ct
         self.own_team = ct.get_team()
@@ -178,6 +195,22 @@ class Map:
             ]
         )
 
+    def u_cache_core_source_indices(
+        self,
+        center: Position | None,
+        source_mask_by_index: bytearray,
+    ) -> tuple[int, ...]:
+        source_mask_by_index[:] = b"\x00" * self.tile_count
+        if center is None:
+            return ()
+
+        source_indices = tuple(
+            tile.index for tile in self.u_get_core_footprint_positions(center)
+        )
+        for idx in source_indices:
+            source_mask_by_index[idx] = 1
+        return source_indices
+
     def u_calc_core_center_positions(self) -> bool:
         if self.own_core_center_pos is not None:
             return True
@@ -200,6 +233,11 @@ class Map:
                 return False
 
         self.own_core_center_pos = self.ct.get_position(core_tile.building.id)
+        self.own_core_source_indices = self.u_cache_core_source_indices(
+            self.own_core_center_pos,
+            self.own_core_source_by_index,
+        )
+        self.own_core_dist_initialized = False
         if not self.enemy_core_center_pos_candidates:
             center = self.own_core_center_pos
             all_enemy_core_center_pos_candidates = [
@@ -226,6 +264,11 @@ class Map:
             }
             if len(remaining_positions) == 1:
                 self.enemy_core_center_pos = next(iter(remaining_positions))
+                self.enemy_core_source_indices = self.u_cache_core_source_indices(
+                    self.enemy_core_center_pos,
+                    self.enemy_core_source_by_index,
+                )
+                self.enemy_core_dist_initialized = False
         return True
 
     def u_is_enemy_bot_on_ally_tile(self, target_tile: Tile) -> bool:
@@ -465,32 +508,42 @@ class Map:
     ) -> int:
         source_idx = source_pos.x * self.height + source_pos.y
         blocked_idx = blocked_key[0] * self.height + blocked_key[1]
-        own_core_indices = {
-            core_key[0] * self.height + core_key[1] for core_key in own_core_keys
-        }
-        queue: deque[tuple[int, int]] = deque([(source_idx, 0)])
-        seen = {source_idx, blocked_idx}
-        tiles_by_index = self.tiles_by_index
-        neighbor_indices_by_index = self.neighbor_indices_by_index
+        own_core_indices = [False] * self.tile_count
+        for core_key in own_core_keys:
+            own_core_indices[core_key[0] * self.height + core_key[1]] = True
 
-        while queue:
-            current_idx, current_dist = queue.popleft()
-            if current_idx in own_core_indices:
+        queue = self.path_queue_buffer_by_index
+        queue.clear()
+        queue.append(source_idx)
+        queue_head = 0
+        seen = [False] * self.tile_count
+        seen[source_idx] = True
+        seen[blocked_idx] = True
+        dist_by_index = [INF_DIST] * self.tile_count
+        dist_by_index[source_idx] = 0
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+
+        while queue_head < len(queue):
+            current_idx = queue[queue_head]
+            queue_head += 1
+            current_dist = dist_by_index[current_idx]
+            if own_core_indices[current_idx]:
                 return current_dist
 
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if neighbor_idx in seen:
+                if seen[neighbor_idx]:
                     continue
 
-                neighbor_tile = tiles_by_index[neighbor_idx]
                 if (
-                    neighbor_idx not in own_core_indices
-                    and not neighbor_tile._is_intrinsically_passable()
+                    not own_core_indices[neighbor_idx]
+                    and not intrinsic_passable_by_index[neighbor_idx]
                 ):
                     continue
 
-                seen.add(neighbor_idx)
-                queue.append((neighbor_idx, current_dist + 1))
+                seen[neighbor_idx] = True
+                dist_by_index[neighbor_idx] = current_dist + 1
+                queue.append(neighbor_idx)
 
         return INF_DIST
 
@@ -504,20 +557,23 @@ class Map:
         seed_indices: list[int] | tuple[int, ...],
         distance_by_index: list[int],
     ) -> None:
-        queue: deque[int] = deque(seed_indices)
+        queue = self.distance_queue_buffer_by_index
+        queue.clear()
+        queue.extend(seed_indices)
+        queue_head = 0
         for seed_idx in seed_indices:
             distance_by_index[seed_idx] = 0
 
-        tiles_by_index = self.tiles_by_index
         neighbor_indices_by_index = self.neighbor_indices_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
-        while queue:
-            current_idx = queue.popleft()
+        while queue_head < len(queue):
+            current_idx = queue[queue_head]
+            queue_head += 1
             current_dist = distance_by_index[current_idx]
 
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                neighbor_tile = tiles_by_index[neighbor_idx]
-                if not neighbor_tile._is_intrinsically_passable():
+                if not intrinsic_passable_by_index[neighbor_idx]:
                     continue
 
                 next_dist = current_dist + 1
@@ -530,7 +586,7 @@ class Map:
     def u_enqueue_core_distance_index(
         self,
         idx: int,
-        queue: deque[int],
+        queue: list[int],
     ) -> None:
         if self.core_distance_enqueued_by_index[idx]:
             return
@@ -540,14 +596,16 @@ class Map:
     def u_update_core_distance_field_incremental(
         self,
         source_indices: list[int] | tuple[int, ...],
+        source_by_index: bytearray,
         distance_by_index: list[int],
         dirty_indices: list[int] | tuple[int, ...],
     ) -> None:
         if not source_indices:
             return
 
-        queue: deque[int] = deque()
-        source_index_set = set(source_indices)
+        queue = self.distance_queue_buffer_by_index
+        queue.clear()
+        queue_head = 0
         neighbor_indices_by_index = self.neighbor_indices_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
@@ -559,11 +617,12 @@ class Map:
             for neighbor_idx in neighbor_indices_by_index[idx]:
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
-        while queue:
-            idx = queue.popleft()
+        while queue_head < len(queue):
+            idx = queue[queue_head]
+            queue_head += 1
             self.core_distance_enqueued_by_index[idx] = 0
 
-            if idx in source_index_set:
+            if source_by_index[idx]:
                 updated_dist = 0
             elif not intrinsic_passable_by_index[idx]:
                 updated_dist = INF_DIST
@@ -586,34 +645,8 @@ class Map:
 
     def u_refresh_dist_to_self(self) -> None:
         self.u_run_distance_bfs(
-            (self.u_get_pos_tile(self.current_pos).index,),
+            (self.current_pos.x * self.height + self.current_pos.y,),
             self.dist_to_self_by_index,
-        )
-
-    def u_refresh_own_core_dist(self) -> None:
-        if self.own_core_center_pos is None:
-            return
-        self.u_run_distance_bfs(
-            tuple(
-                tile.index
-                for tile in self.u_get_core_footprint_positions(
-                    self.own_core_center_pos
-                )
-            ),
-            self.own_core_dist_by_index,
-        )
-
-    def u_refresh_enemy_core_dist(self) -> None:
-        if self.enemy_core_center_pos is None:
-            return
-        self.u_run_distance_bfs(
-            tuple(
-                tile.index
-                for tile in self.u_get_core_footprint_positions(
-                    self.enemy_core_center_pos
-                )
-            ),
-            self.enemy_core_dist_by_index,
         )
 
     def u_calculate_shortest_path(
@@ -632,21 +665,24 @@ class Map:
         target_idx = target_tile.index
         tiles_by_index = self.tiles_by_index
         neighbor_indices_by_index = self.neighbor_indices_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
+        own_core_dist_by_index = self.own_core_dist_by_index
         if source_pos == target_pos:
             return [source_tile]
 
-        if source_pos == self.current_pos and target_tile.dist_to_self < INF_DIST:
+        if source_pos == self.current_pos and dist_to_self_by_index[target_idx] < INF_DIST:
             current_idx = target_idx
             path = [tiles_by_index[current_idx]]
 
             while current_idx != source_idx:
-                current_tile = tiles_by_index[current_idx]
-                next_dist_to_self = current_tile.dist_to_self - 1
-                candidate_tiles: list[Tile] = []
+                next_dist_to_self = dist_to_self_by_index[current_idx] - 1
+                best_candidate_idx: int | None = None
+                best_candidate_score: tuple[int, int, int] | None = None
 
                 for adjacent_idx in neighbor_indices_by_index[current_idx]:
                     adjacent_tile = tiles_by_index[adjacent_idx]
-                    if adjacent_tile.dist_to_self != next_dist_to_self:
+                    if dist_to_self_by_index[adjacent_idx] != next_dist_to_self:
                         continue
                     if (
                         avoid_enemy_turrets
@@ -661,32 +697,44 @@ class Map:
                         and adjacent_tile.bot.id is not None
                     ):
                         continue
-                    candidate_tiles.append(adjacent_tile)
+                    candidate_score = (
+                        own_core_dist_by_index[adjacent_idx],
+                        adjacent_tile.position.x,
+                        adjacent_tile.position.y,
+                    )
+                    if (
+                        best_candidate_score is None
+                        or candidate_score < best_candidate_score
+                    ):
+                        best_candidate_score = candidate_score
+                        best_candidate_idx = adjacent_idx
 
-                if not candidate_tiles:
+                if best_candidate_idx is None:
                     break
 
-                candidate_tiles.sort(
-                    key=lambda tile: (
-                        tile.own_core_dist,
-                        tile.position.x,
-                        tile.position.y,
-                    )
-                )
-                current_idx = candidate_tiles[0].index
+                current_idx = best_candidate_idx
                 path.append(tiles_by_index[current_idx])
 
             if path[-1].index == source_idx:
                 path.reverse()
                 return path
 
-        predecessor_by_index: dict[int, int | None] = {source_idx: None}
-        queue: deque[int] = deque([source_idx])
+        self.path_epoch += 1
+        path_epoch = self.path_epoch
+        seen_epoch_by_index = self.path_seen_epoch_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        seen_epoch_by_index[source_idx] = path_epoch
+        predecessor_by_index[source_idx] = source_idx
+        queue = self.path_queue_buffer_by_index
+        queue.clear()
+        queue.append(source_idx)
+        queue_head = 0
 
-        while queue:
-            current_idx = queue.popleft()
+        while queue_head < len(queue):
+            current_idx = queue[queue_head]
+            queue_head += 1
             for adjacent_idx in neighbor_indices_by_index[current_idx]:
-                if adjacent_idx in predecessor_by_index:
+                if seen_epoch_by_index[adjacent_idx] == path_epoch:
                     continue
 
                 adjacent_tile = tiles_by_index[adjacent_idx]
@@ -705,18 +753,19 @@ class Map:
                     continue
                 if (
                     adjacent_idx != target_idx
-                    and not adjacent_tile._is_intrinsically_passable()
+                    and not intrinsic_passable_by_index[adjacent_idx]
                 ):
                     continue
 
                 predecessor_by_index[adjacent_idx] = current_idx
+                seen_epoch_by_index[adjacent_idx] = path_epoch
                 if adjacent_idx == target_idx:
                     path = [target_tile]
                     walk_idx = adjacent_idx
 
                     while walk_idx != source_idx:
                         previous_idx = predecessor_by_index[walk_idx]
-                        if previous_idx is None:
+                        if previous_idx == -1:
                             break
                         path.append(tiles_by_index[previous_idx])
                         walk_idx = previous_idx
@@ -734,28 +783,30 @@ class Map:
         self.u_refresh_dist_to_self()
         dirty_indices = tuple(self.core_distance_dirty_indices)
 
-        if self.own_core_center_pos is not None:
+        if self.own_core_source_indices and (
+            dirty_indices or not self.own_core_dist_initialized
+        ):
+            if not self.own_core_dist_initialized:
+                self.own_core_dist_by_index[:] = self.inf_distances_by_index
             self.u_update_core_distance_field_incremental(
-                tuple(
-                    tile.index
-                    for tile in self.u_get_core_footprint_positions(
-                        self.own_core_center_pos
-                    )
-                ),
+                self.own_core_source_indices,
+                self.own_core_source_by_index,
                 self.own_core_dist_by_index,
                 dirty_indices,
             )
+            self.own_core_dist_initialized = True
 
-        if self.enemy_core_center_pos is not None:
+        if self.enemy_core_source_indices and (
+            dirty_indices or not self.enemy_core_dist_initialized
+        ):
+            if not self.enemy_core_dist_initialized:
+                self.enemy_core_dist_by_index[:] = self.inf_distances_by_index
             self.u_update_core_distance_field_incremental(
-                tuple(
-                    tile.index
-                    for tile in self.u_get_core_footprint_positions(
-                        self.enemy_core_center_pos
-                    )
-                ),
+                self.enemy_core_source_indices,
+                self.enemy_core_source_by_index,
                 self.enemy_core_dist_by_index,
                 dirty_indices,
             )
+            self.enemy_core_dist_initialized = True
 
         self.core_distance_dirty_indices.clear()
