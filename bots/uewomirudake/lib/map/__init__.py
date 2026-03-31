@@ -3,9 +3,15 @@ from collections.abc import Iterable
 from enum import Enum
 import time
 
-from cambc import Controller, Direction, EntityType, GameConstants, Position, Team
+from cambc import Controller, Direction, EntityType, Environment, GameConstants, Position, Team
 
-from lib.map.constants import CHOKEPOINT_MIN_DIST_INCREASE, DIRECTIONS, INF_DIST
+from lib.map.constants import (
+    BUILDER_ACTION_OFFSETS,
+    CHOKEPOINT_MIN_DIST_INCREASE,
+    DIRECTIONS,
+    INF_DIST,
+    SUPPLY_LINK_TYPES,
+)
 from lib.map.tile import Tile
 
 
@@ -81,6 +87,49 @@ class Map:
         self.enemy_core_center_pos_candidates: list[tuple[SymmetryMode, Position]] = []
         self.known_accessible_titanium_tiles: list[Tile] = []
         self.known_accessible_axionite_tiles: list[Tile] = []
+        self.known_accessible_titanium_indices: set[int] = set()
+        self.known_accessible_axionite_indices: set[int] = set()
+        self.visible_building_ids_by_index: dict[int, int] = {}
+        self.visible_builder_bot_ids_by_index: dict[int, int] = {}
+        self.neighbor_index_by_direction_by_index: list[dict[Direction, int]] = []
+        self.builder_action_target_indices_by_index: list[tuple[int, ...]] = []
+        self.core_footprint_target_indices_by_index: list[tuple[int, ...]] = []
+        self.attackable_target_indices_cache: dict[
+            tuple[int, EntityType, Direction],
+            tuple[int, ...],
+        ] = {}
+
+        for idx in range(self.tile_count):
+            x = idx // self.height
+            y = idx % self.height
+
+            neighbor_by_direction: dict[Direction, int] = {}
+            for direction in Direction:
+                if direction == Direction.CENTRE:
+                    continue
+                dx, dy = direction.delta()
+                nx = x + dx
+                ny = y + dy
+                if 0 <= nx < self.width and 0 <= ny < self.height:
+                    neighbor_by_direction[direction] = nx * self.height + ny
+            self.neighbor_index_by_direction_by_index.append(neighbor_by_direction)
+
+            builder_targets: list[int] = []
+            for dx, dy in BUILDER_ACTION_OFFSETS:
+                nx = x + dx
+                ny = y + dy
+                if 0 <= nx < self.width and 0 <= ny < self.height:
+                    builder_targets.append(nx * self.height + ny)
+            self.builder_action_target_indices_by_index.append(tuple(builder_targets))
+
+            core_targets: list[int] = []
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    nx = x + dx
+                    ny = y + dy
+                    if 0 <= nx < self.width and 0 <= ny < self.height:
+                        core_targets.append(nx * self.height + ny)
+            self.core_footprint_target_indices_by_index.append(tuple(core_targets))
 
         self._reset_turn_state()
 
@@ -103,6 +152,8 @@ class Map:
         self.enemy_buildings_in_vision: list[Tile] = []
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
+        self.visible_building_ids_by_index = {}
+        self.visible_builder_bot_ids_by_index = {}
 
     def u_update_vision(self):
         t_start = time.perf_counter_ns()
@@ -111,6 +162,7 @@ class Map:
         self.tiles_in_vision = [
             self.u_get_pos_tile(pos) for pos in self.ct.get_nearby_tiles()
         ]
+        self.u_update_visible_entity_indices()
 
         t_update_attributes_start = time.perf_counter_ns()
         for tile in self.tiles_in_vision:
@@ -118,6 +170,8 @@ class Map:
         update_attributes_time_mus = (
             time.perf_counter_ns() - t_update_attributes_start
         ) // 1_000
+
+        self.u_update_visible_map_caches()
 
         if self.own_core_center_pos is None:
             self.u_calc_core_center_positions()
@@ -133,6 +187,177 @@ class Map:
         print(f"Map update attributes time: {update_attributes_time_mus} mus")
         print(f"Map update distances time: {update_distances_time_mus} mus")
         print(f"Map update vision time: {update_vision_time_mus} mus")
+
+    def u_update_visible_entity_indices(self) -> None:
+        ct = self.ct
+        height = self.height
+
+        for building_id in ct.get_nearby_buildings():
+            building_pos = ct.get_position(building_id)
+            self.visible_building_ids_by_index[
+                building_pos.x * height + building_pos.y
+            ] = building_id
+
+        for unit_id in ct.get_nearby_units():
+            if ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
+                continue
+            unit_pos = ct.get_position(unit_id)
+            self.visible_builder_bot_ids_by_index[
+                unit_pos.x * height + unit_pos.y
+            ] = unit_id
+
+    def u_get_attackable_target_indices(
+        self,
+        source_idx: int,
+        turret_type: EntityType,
+        direction: Direction,
+    ) -> tuple[int, ...]:
+        cache_key = (source_idx, turret_type, direction)
+        cached_indices = self.attackable_target_indices_cache.get(cache_key)
+        if cached_indices is not None:
+            return cached_indices
+
+        source_pos = self.tiles_by_index[source_idx].position
+        target_indices = tuple(
+            pos.x * self.height + pos.y
+            for pos in self.ct.get_attackable_tiles_from(
+                source_pos,
+                direction,
+                turret_type,
+            )
+            if self.u_is_in_bounds(pos)
+        )
+        self.attackable_target_indices_cache[cache_key] = target_indices
+        return target_indices
+
+    def u_update_visible_map_caches(self) -> None:
+        self.u_update_symmetry_from_visible_tiles()
+
+        titanium_indices_to_remove: list[int] = []
+        axionite_indices_to_remove: list[int] = []
+
+        for tile in self.tiles_in_vision:
+            idx = tile.index
+            building = tile.building
+
+            if tile.bot.id is not None and tile.bot.team != self.own_team:
+                self.has_enemy_bot_in_vision = True
+
+            if building.id is not None:
+                if building.team == self.own_team:
+                    self.own_buildings_in_vision.append(tile)
+                elif building.team == self.enemy_team:
+                    self.enemy_buildings_in_vision.append(tile)
+
+                if building.entity_type in SUPPLY_LINK_TYPES:
+                    if building.team == self.own_team:
+                        self.own_supply_links_in_vision.append(tile)
+                    elif building.team == self.enemy_team:
+                        self.enemy_supply_links_in_vision.append(tile)
+
+                if building.entity_type == EntityType.HARVESTER:
+                    if building.team == self.own_team:
+                        self.own_harvesters_in_vision.append(tile)
+                    else:
+                        self.enemy_harvesters_in_vision.append(tile)
+
+            if tile.environment == Environment.ORE_TITANIUM:
+                self.titanium_tiles_in_vision.append(tile)
+                if building.id is None or (
+                    building.team == self.own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    self.known_accessible_titanium_indices.add(idx)
+                else:
+                    titanium_indices_to_remove.append(idx)
+            else:
+                titanium_indices_to_remove.append(idx)
+
+            if tile.environment == Environment.ORE_AXIONITE:
+                self.axionite_tiles_in_vision.append(tile)
+                if building.id is None or (
+                    building.team == self.own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    self.known_accessible_axionite_indices.add(idx)
+                else:
+                    axionite_indices_to_remove.append(idx)
+            else:
+                axionite_indices_to_remove.append(idx)
+
+        for idx in titanium_indices_to_remove:
+            self.known_accessible_titanium_indices.discard(idx)
+        for idx in axionite_indices_to_remove:
+            self.known_accessible_axionite_indices.discard(idx)
+
+        self.known_accessible_titanium_tiles = [
+            self.tiles_by_index[idx]
+            for idx in sorted(self.known_accessible_titanium_indices)
+        ]
+        self.known_accessible_axionite_tiles = [
+            self.tiles_by_index[idx]
+            for idx in sorted(self.known_accessible_axionite_indices)
+        ]
+
+    def u_update_symmetry_from_visible_tiles(self) -> None:
+        if self.symmetry_mode is not None:
+            return
+
+        candidate_modes_to_remove = set()
+
+        for tile in self.tiles_in_vision:
+            x = tile.position.x
+            y = tile.position.y
+            symmetric_locations = {
+                SymmetryMode.ROTATION: (self.width - 1 - x, self.height - 1 - y),
+                SymmetryMode.MIRROR_X: (x, self.height - 1 - y),
+                SymmetryMode.MIRROR_Y: (self.width - 1 - x, y),
+            }
+
+            for symmetry_mode, (sx, sy) in symmetric_locations.items():
+                if symmetry_mode not in self.symmetry_mode_candidates:
+                    continue
+
+                symmetric_tile = self.matrix[sx][sy]
+                if symmetric_tile.environment is None:
+                    continue
+
+                tile_is_core = tile.building.entity_type == EntityType.CORE
+                symmetric_is_core = (
+                    symmetric_tile.building.entity_type == EntityType.CORE
+                )
+                if (
+                    tile.environment != symmetric_tile.environment
+                    or tile_is_core != symmetric_is_core
+                ):
+                    candidate_modes_to_remove.add(symmetry_mode)
+
+        if not candidate_modes_to_remove:
+            return
+
+        self.symmetry_mode_candidates = [
+            mode
+            for mode in self.symmetry_mode_candidates
+            if mode not in candidate_modes_to_remove
+        ]
+        if len(self.symmetry_mode_candidates) == 1:
+            self.symmetry_mode = self.symmetry_mode_candidates[0]
+
+        self.enemy_core_center_pos_candidates = [
+            (mode, symmetric_location)
+            for mode, symmetric_location in self.enemy_core_center_pos_candidates
+            if mode in self.symmetry_mode_candidates
+        ]
+        remaining_positions = {
+            pos for _, pos in self.enemy_core_center_pos_candidates
+        }
+        if len(remaining_positions) == 1:
+            self.enemy_core_center_pos = next(iter(remaining_positions))
+            self.enemy_core_source_indices = self.u_cache_core_source_indices(
+                self.enemy_core_center_pos,
+                self.enemy_core_source_by_index,
+            )
+            self.enemy_core_dist_initialized = False
 
     def u_get_pos_tile(self, pos: Position) -> Tile:
         return self.matrix[pos.x][pos.y]
@@ -444,25 +669,22 @@ class Map:
         return (delta_x * dir_x) + (delta_y * dir_y) > 0
 
     def u_get_launcher_targets(self, source_pos: Position) -> list[Tile]:
-        tiles: list[Tile] = []
-
-        for x in range(self.width):
-            for y in range(self.height):
-                pos = Position(x, y)
-                if pos == source_pos:
-                    continue
-                if (
-                    source_pos.distance_squared(pos)
-                    <= GameConstants.LAUNCHER_VISION_RADIUS_SQ
-                ):
-                    tiles.append(self.u_get_pos_tile(pos))
-
-        return tiles
+        source_idx = source_pos.x * self.height + source_pos.y
+        return [
+            self.tiles_by_index[idx]
+            for idx in self.u_get_attackable_target_indices(
+                source_idx,
+                EntityType.LAUNCHER,
+                Direction.NORTH,
+            )
+        ]
 
     def u_get_launcher_pickup_positions(self, source_pos: Position) -> list[Tile]:
-        return self.u_positions_to_tiles(
-            [source_pos.add(direction) for direction in DIRECTIONS]
-        )
+        source_idx = source_pos.x * self.height + source_pos.y
+        return [
+            self.tiles_by_index[idx]
+            for idx in self.neighbor_indices_by_index[source_idx]
+        ]
 
     def u_is_chokepoint(self, pos: Position) -> bool:
         """
