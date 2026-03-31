@@ -28,17 +28,16 @@ class TileBuilding:
 
 
 class Tile:
-    DIRECTIONS = tuple(direction for direction in Direction if direction != Direction.CENTRE)
+    DIRECTIONS = tuple(
+        direction for direction in Direction if direction != Direction.CENTRE
+    )
     CARDINAL_DIRECTIONS = tuple(
         direction
         for direction in DIRECTIONS
         if sum(abs(delta) for delta in direction.delta()) == 1
     )
     BUILDER_ACTION_OFFSETS = tuple(
-        (dx, dy)
-        for dx in range(-1, 2)
-        for dy in range(-1, 2)
-        if dx * dx + dy * dy <= 2
+        (dx, dy) for dx in range(-1, 2) for dy in range(-1, 2) if dx * dx + dy * dy <= 2
     )
     SENTINEL_COVER_OFFSETS = tuple(
         (dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)
@@ -208,6 +207,9 @@ class Tile:
         return self.map._in_bounds_positions(self._adjacent_positions(self.DIRECTIONS))
 
     def _is_intrinsically_passable(self) -> bool:
+        if self.environment == Environment.WALL:
+            return False
+
         building_type = self.building.entity_type
         if building_type is None:
             return True
@@ -285,13 +287,17 @@ class Tile:
         self.building.entity_type = self.map.ct.get_entity_type(self.building.id)
         self.building.team = self.map.ct.get_team(self.building.id)
         self.building.hp = self.map.ct.get_hp(self.building.id)
-        self.building.targets = self.get_targets(self.building.entity_type, self.building.id)
+        self.building.targets = self.get_targets(
+            self.building.entity_type, self.building.id
+        )
         try:
             self.building.direction = self.map.ct.get_direction(self.building.id)
         except Exception:
             self.building.direction = None
         try:
-            self.building.vision_radius_sq = self.map.ct.get_vision_radius_sq(self.building.id)
+            self.building.vision_radius_sq = self.map.ct.get_vision_radius_sq(
+                self.building.id
+            )
         except Exception:
             self.building.vision_radius_sq = None
         try:
@@ -306,9 +312,13 @@ class Tile:
         current_round = self.map.ct.get_current_round()
         for target in self.bot.targets:
             if self.bot.team == self.map.own_team:
-                self.map.matrix[target.x][target.y].in_own_bot_action_range_turn = current_round
+                self.map.matrix[target.x][
+                    target.y
+                ].in_own_bot_action_range_turn = current_round
             else:
-                self.map.matrix[target.x][target.y].in_enemy_bot_action_range_turn = current_round
+                self.map.matrix[target.x][
+                    target.y
+                ].in_enemy_bot_action_range_turn = current_round
 
     def update_target_zones_building_by(
         self,
@@ -324,21 +334,33 @@ class Tile:
             case _ if entity_type in self.TYPES_WITH_RESOURCE_TARGET:
                 for target in targets:
                     if team == self.map.own_team:
-                        self.map.matrix[target.x][target.y].in_own_resource_range += delta
+                        self.map.matrix[target.x][
+                            target.y
+                        ].in_own_resource_range += delta
                     else:
-                        self.map.matrix[target.x][target.y].in_enemy_resource_range += delta
-            case _ if entity_type in self.TYPES_WITH_WEAPON_TARGET - {EntityType.LAUNCHER}:
+                        self.map.matrix[target.x][
+                            target.y
+                        ].in_enemy_resource_range += delta
+            case _ if entity_type in self.TYPES_WITH_WEAPON_TARGET - {
+                EntityType.LAUNCHER
+            }:
                 for target in targets:
                     if team == self.map.own_team:
                         self.map.matrix[target.x][target.y].in_own_attack_range += delta
                     else:
-                        self.map.matrix[target.x][target.y].in_enemy_attack_range += delta
+                        self.map.matrix[target.x][
+                            target.y
+                        ].in_enemy_attack_range += delta
             case EntityType.LAUNCHER:
                 for target in self._get_launcher_pickup_positions():
                     if team == self.map.own_team:
-                        self.map.matrix[target.x][target.y].in_own_launcher_pickup_zone += delta
+                        self.map.matrix[target.x][
+                            target.y
+                        ].in_own_launcher_pickup_zone += delta
                     else:
-                        self.map.matrix[target.x][target.y].in_enemy_launcher_pickup_zone += delta
+                        self.map.matrix[target.x][
+                            target.y
+                        ].in_enemy_launcher_pickup_zone += delta
 
     def update_target_zones_building(
         self,
@@ -452,7 +474,9 @@ class Tile:
                 self.building.team == self.map.own_team
                 and self.building.entity_type != EntityType.HARVESTER
             ):
-                self._append_unique(self.map.known_accessible_titanium_tiles, self.position)
+                self._append_unique(
+                    self.map.known_accessible_titanium_tiles, self.position
+                )
             elif self.position in self.map.known_accessible_titanium_tiles:
                 self.map.known_accessible_titanium_tiles.remove(self.position)
         elif self.position in self.map.known_accessible_titanium_tiles:
@@ -463,7 +487,9 @@ class Tile:
                 self.building.team == self.map.own_team
                 and self.building.entity_type != EntityType.HARVESTER
             ):
-                self._append_unique(self.map.known_accessible_axionite_tiles, self.position)
+                self._append_unique(
+                    self.map.known_accessible_axionite_tiles, self.position
+                )
             elif self.position in self.map.known_accessible_axionite_tiles:
                 self.map.known_accessible_axionite_tiles.remove(self.position)
         elif self.position in self.map.known_accessible_axionite_tiles:
@@ -562,7 +588,9 @@ class Tile:
             self._append_unique(self.map.enemy_missing_supply_links, self.position)
 
     def is_core_of(self, team: Team) -> bool:
-        return self.building.entity_type == EntityType.CORE and self.building.team == team
+        return (
+            self.building.entity_type == EntityType.CORE and self.building.team == team
+        )
 
     def propagates_for_team(self, team: Team) -> bool:
         return (
