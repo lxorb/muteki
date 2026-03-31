@@ -1,3 +1,5 @@
+from heapq import heapify, heappop
+
 from cambc import Direction, EntityType, Environment, Position
 
 from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ
@@ -17,76 +19,98 @@ class BuilderStrategyMethodsMixin:
         builder and the own core. The supplier type and target are chosen by
         `u_get_supplier_build_plan(...)`.
         """
-        current_pos = self.map.current_pos
         own_team = self.map.own_team
         attack_enemy_passable = False
-        supplier_plan_by_pos: dict[
-            Position, tuple[EntityType | None, Direction | Position | None]
+        tiles_by_index = self.map.tiles_by_index
+        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
+        replaceable_building_types = {EntityType.ROAD, EntityType.BARRIER}
+        supplier_plan_by_index: dict[
+            int, tuple[EntityType | None, Direction | Position | None]
         ] = {}
+        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
+        candidate_seen_indices: set[int] = set()
 
-        def is_own_supply_link(target_tile) -> bool:
-            return (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
-            )
-
-        def can_use_tile(target_tile) -> bool:
-            if target_tile.building.entity_type == EntityType.CORE:
-                return False
-            if target_tile.building.id is None:
-                return True
-            return (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type
-                in {EntityType.ROAD, EntityType.BARRIER}
-            )
-
-        def has_supplier_plan(target_tile) -> bool:
-            if target_tile.position not in supplier_plan_by_pos:
-                supplier_plan_by_pos[target_tile.position] = (
-                    self.u_get_supplier_build_plan(target_tile.position)
+        def get_supplier_plan(
+            tile_index: int,
+        ) -> tuple[EntityType | None, Direction | Position | None]:
+            if tile_index not in supplier_plan_by_index:
+                supplier_plan_by_index[tile_index] = self.u_get_supplier_build_plan(
+                    tiles_by_index[tile_index].position
                 )
-            return supplier_plan_by_pos[target_tile.position][0] is not None
+            return supplier_plan_by_index[tile_index]
 
-        candidate_tiles = []
-        for harvester_tile in self.map.own_harvesters_in_vision:
-            harvester_pos = harvester_tile.position
-            adjacent_tiles = [
-                self.map.u_get_pos_tile(pos)
-                for pos in self.map.u_iter_adjacent_positions(
-                    harvester_pos,
-                    consider_diagonal=False,
-                )
-                if not self.map.u_get_pos_tile(pos).is_enemy_turret_target_tile
-            ]
-            if any(is_own_supply_link(tile) for tile in adjacent_tiles):
+        for harvester_order, harvester_tile in enumerate(
+            self.map.own_harvesters_in_vision
+        ):
+            adjacent_tiles = []
+            has_own_supply_link = False
+
+            for safe_order, adjacent_idx in enumerate(
+                cardinal_neighbor_indices_by_index[harvester_tile.index]
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.is_enemy_turret_target_tile:
+                    continue
+                if (
+                    adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
+                ):
+                    has_own_supply_link = True
+                adjacent_tiles.append((safe_order, adjacent_tile))
+
+            if has_own_supply_link or not adjacent_tiles:
                 continue
 
-            adjacent_tiles = self.u_filter_tiles(
-                adjacent_tiles,
-                can_use_tile,
-                has_supplier_plan,
-            )
-            if not adjacent_tiles:
-                continue
+            while adjacent_tiles:
+                best_idx: int | None = None
+                best_priority: tuple[int, int, int] | None = None
 
-            adjacent_tiles = self.u_prioritize_tiles(
-                adjacent_tiles,
-                lambda tile: tile.own_core_dist,
-                lambda tile: tile.dist_to_self,
-            )
-            candidate_tiles.append(adjacent_tiles[0])
+                for idx, (safe_order, target_tile) in enumerate(adjacent_tiles):
+                    if target_tile.building.entity_type == EntityType.CORE:
+                        continue
+                    if target_tile.building.id is not None and not (
+                        target_tile.building.team == own_team
+                        and target_tile.building.entity_type
+                        in replaceable_building_types
+                    ):
+                        continue
 
-        if not candidate_tiles:
+                    priority = (
+                        target_tile.own_core_dist,
+                        target_tile.dist_to_self,
+                        safe_order,
+                    )
+                    if best_priority is None or priority < best_priority:
+                        best_priority = priority
+                        best_idx = idx
+
+                if best_idx is None:
+                    break
+
+                _, target_tile = adjacent_tiles.pop(best_idx)
+                supplier_type, _ = get_supplier_plan(target_tile.index)
+                if supplier_type is None:
+                    continue
+
+                if target_tile.index not in candidate_seen_indices:
+                    candidate_seen_indices.add(target_tile.index)
+                    candidate_entries.append(
+                        (
+                            (target_tile.dist_to_self, target_tile.own_core_dist),
+                            harvester_order,
+                            target_tile.index,
+                        )
+                    )
+                break
+
+        if not candidate_entries:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            list(dict.fromkeys(candidate_tiles)),
-            lambda tile: tile.dist_to_self,
-            lambda tile: tile.own_core_dist,
-        )
-        for target_tile in candidate_tiles:
-            supplier_type, supplier_target = supplier_plan_by_pos[target_tile.position]
+        heapify(candidate_entries)
+        while candidate_entries:
+            _, _, target_idx = heappop(candidate_entries)
+            target_tile = tiles_by_index[target_idx]
+            supplier_type, supplier_target = supplier_plan_by_index[target_idx]
             if supplier_type == EntityType.CONVEYOR:
                 if self.u_build_at(
                     target_tile.position,
@@ -120,53 +144,69 @@ class BuilderStrategyMethodsMixin:
         place a conveyor using the cached supplier-plan helper instead.
         """
         own_team = self.map.own_team
-        conveyor_plan_by_pos: dict[Position, Direction | None] = {}
+        tiles_by_index = self.map.tiles_by_index
+        dist_to_self_by_index = self.map.dist_to_self_by_index
+        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
+        build_plan_by_index: dict[int, tuple[EntityType | None, Direction | None]] = {}
+        seen_candidate_indices: set[int] = set()
+        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
+        encounter_order = 0
 
-        def can_use_tile(target_tile) -> bool:
-            return target_tile.building.id is None or (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type == EntityType.ROAD
-            )
+        def get_build_plan(
+            tile_index: int,
+        ) -> tuple[EntityType | None, Direction | None]:
+            if tile_index not in build_plan_by_index:
+                target_tile = tiles_by_index[tile_index]
+                if not self.map.u_is_chokepoint(target_tile.position):
+                    build_plan_by_index[tile_index] = (EntityType.BARRIER, None)
+                else:
+                    build_plan_by_index[tile_index] = (
+                        EntityType.CONVEYOR,
+                        self.u_best_conveyor_orientation(target_tile.position),
+                    )
+            return build_plan_by_index[tile_index]
 
-        def is_reachable_chokepoint_plan(target_tile) -> bool:
-            if not self.map.u_is_chokepoint(target_tile.position):
-                return True
-            if target_tile.position not in conveyor_plan_by_pos:
-                conveyor_direction = self.u_best_conveyor_orientation(
-                    target_tile.position
-                )
-                conveyor_plan_by_pos[target_tile.position] = conveyor_direction
-            return conveyor_plan_by_pos[target_tile.position] is not None
-
-        candidate_tiles = []
         for harvester_tile in self.map.own_harvesters_in_vision:
-            harvester_pos = harvester_tile.position
-            for candidate_pos in self.map.u_iter_adjacent_positions(
-                harvester_pos,
-                consider_diagonal=False,
-            ):
-                candidate_tile = self.map.u_get_pos_tile(candidate_pos)
-                if candidate_tile.environment == Environment.WALL:
+            for adjacent_idx in cardinal_neighbor_indices_by_index[harvester_tile.index]:
+                if adjacent_idx in seen_candidate_indices:
                     continue
-                candidate_tiles.append(candidate_tile)
+                seen_candidate_indices.add(adjacent_idx)
 
-        candidate_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(candidate_tiles)),
-            lambda tile: not tile.is_enemy_turret_target_tile,
-            can_use_tile,
-            is_reachable_chokepoint_plan,
-        )
-        if not candidate_tiles:
+                target_tile = tiles_by_index[adjacent_idx]
+                if target_tile.environment == Environment.WALL:
+                    continue
+                candidate_order = encounter_order
+                encounter_order += 1
+                if target_tile.is_enemy_turret_target_tile:
+                    continue
+                if target_tile.building.id is not None and not (
+                    target_tile.building.team == own_team
+                    and target_tile.building.entity_type == EntityType.ROAD
+                ):
+                    continue
+
+                candidate_entries.append(
+                    (
+                        (
+                            dist_to_self_by_index[adjacent_idx],
+                            0 if target_tile.building.id is None else 1,
+                        ),
+                        candidate_order,
+                        adjacent_idx,
+                    )
+                )
+
+        if not candidate_entries:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.dist_to_self,
-            lambda tile: 0 if tile.building.id is None else 1,
-        )
-        for target_tile in candidate_tiles:
-            if self.map.u_is_chokepoint(target_tile.position):
-                conveyor_direction = conveyor_plan_by_pos[target_tile.position]
+        heapify(candidate_entries)
+        while candidate_entries:
+            _, _, target_idx = heappop(candidate_entries)
+            target_tile = tiles_by_index[target_idx]
+            # Delay the expensive chokepoint/conveyor planning until this tile
+            # is actually the best remaining cheap candidate.
+            building_type, conveyor_direction = get_build_plan(target_idx)
+            if building_type == EntityType.CONVEYOR:
                 if conveyor_direction is None:
                     continue
                 if self.u_build_at(

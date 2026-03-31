@@ -141,6 +141,8 @@ class Tile:
         if intrinsic_passable == self.map.intrinsic_passable_by_index[self.index]:
             return
         self.map.intrinsic_passable_by_index[self.index] = intrinsic_passable
+        # Any traversability change invalidates cached chokepoint answers.
+        self.map.passability_epoch += 1
         self.map.core_distance_dirty_indices.add(self.index)
 
     def clear_bot(self) -> None:
