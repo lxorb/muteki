@@ -72,8 +72,7 @@ TURRET_TARGET_PRIORITY = (
     EntityType.ARMOURED_CONVEYOR,
 )
 TURRET_TARGET_PRIORITY_RANK = {
-    target_type: idx
-    for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
+    target_type: idx for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
 }
 LAUNCHER_THROWABLE_PRIORITY = (
     "enemy_bot_on_ally_bridge",
@@ -84,8 +83,7 @@ LAUNCHER_THROWABLE_PRIORITY = (
     "enemy_bot_elsewhere",
 )
 LAUNCHER_THROWABLE_PRIORITY_RANK = {
-    target_type: idx
-    for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
+    target_type: idx for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
 }
 
 ### CORE LOGIC ###

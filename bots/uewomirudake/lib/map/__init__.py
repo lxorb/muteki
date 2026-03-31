@@ -150,6 +150,7 @@ class Map:
         # Frontier expansion cache used by `s_frontier_expand_new`.
         self.frontier_expand_cached_unseen_indices: set[int] = set()
         self.frontier_expand_newly_seen_indices: list[int] = []
+        self.known_own_supply_link_indices: set[int] = set()
 
         self.stopwatch = Stopwatch("Map")
 
@@ -223,6 +224,10 @@ class Map:
         self.u_update_supply_information()
 
         self.stopwatch.lap("Supply info")
+
+        self.u_update_supply_patrol_indices()
+
+        self.stopwatch.lap("Patrol indices")
 
         self.u_update_distances()
 
@@ -402,9 +407,7 @@ class Map:
                     mirror_y_possible = False
 
             if (
-                int(rotation_possible)
-                + int(mirror_x_possible)
-                + int(mirror_y_possible)
+                int(rotation_possible) + int(mirror_x_possible) + int(mirror_y_possible)
                 <= 1
             ):
                 break
@@ -789,22 +792,18 @@ class Map:
                 return False
             return intrinsic_passable_by_index[x * self.height + y]
 
-        left_right_blocked = (
-            not is_intrinsically_passable_or_in_bounds(pos.x - 1, pos.y)
-            and not is_intrinsically_passable_or_in_bounds(pos.x + 1, pos.y)
-        )
-        up_down_open = (
-            is_intrinsically_passable_or_in_bounds(pos.x, pos.y - 1)
-            and is_intrinsically_passable_or_in_bounds(pos.x, pos.y + 1)
-        )
-        up_down_blocked = (
-            not is_intrinsically_passable_or_in_bounds(pos.x, pos.y - 1)
-            and not is_intrinsically_passable_or_in_bounds(pos.x, pos.y + 1)
-        )
-        left_right_open = (
-            is_intrinsically_passable_or_in_bounds(pos.x - 1, pos.y)
-            and is_intrinsically_passable_or_in_bounds(pos.x + 1, pos.y)
-        )
+        left_right_blocked = not is_intrinsically_passable_or_in_bounds(
+            pos.x - 1, pos.y
+        ) and not is_intrinsically_passable_or_in_bounds(pos.x + 1, pos.y)
+        up_down_open = is_intrinsically_passable_or_in_bounds(
+            pos.x, pos.y - 1
+        ) and is_intrinsically_passable_or_in_bounds(pos.x, pos.y + 1)
+        up_down_blocked = not is_intrinsically_passable_or_in_bounds(
+            pos.x, pos.y - 1
+        ) and not is_intrinsically_passable_or_in_bounds(pos.x, pos.y + 1)
+        left_right_open = is_intrinsically_passable_or_in_bounds(
+            pos.x - 1, pos.y
+        ) and is_intrinsically_passable_or_in_bounds(pos.x + 1, pos.y)
 
         return (left_right_blocked and up_down_open) or (
             up_down_blocked and left_right_open
@@ -818,7 +817,10 @@ class Map:
             return False
 
         blocked_idx = pos.x * self.height + pos.y
-        if not self.own_core_source_indices or self.own_core_source_by_index[blocked_idx]:
+        if (
+            not self.own_core_source_indices
+            or self.own_core_source_by_index[blocked_idx]
+        ):
             return False
 
         cache_entry = self.chokepoint_cache_by_index.get(blocked_idx)
@@ -953,6 +955,24 @@ class Map:
                 or tile.is_core_of(self.enemy_team)
             ):
                 self.enemy_missing_supply_links.append(tile)
+
+    def u_update_supply_patrol_indices(self) -> None:
+        """
+        Refresh persistent knowledge of allied supply-link tiles.
+
+        Known allied suppliers remain cached after they leave vision. When a
+        previously known tile becomes visible again and is no longer an allied
+        supplier, it is removed from the cache and its patrol marker is reset.
+        """
+        visible_supply_indices = {tile.index for tile in self.own_supply_links_in_vision}
+        known_supply_indices = self.known_own_supply_link_indices
+        known_supply_indices.update(visible_supply_indices)
+
+        for tile in self.tiles_in_vision:
+            if tile.index in visible_supply_indices:
+                continue
+            known_supply_indices.discard(tile.index)
+            tile.last_patrolled_index = -1
 
     def u_run_distance_bfs(
         self,
