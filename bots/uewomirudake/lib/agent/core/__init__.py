@@ -8,6 +8,7 @@ from lib.agent.constants import (
     HARASSMENT_STRATEGY,
     INITIAL_BB_ORDER,
     MAX_BOTS,
+    SURRENDER_AT_TURN,
 )
 
 
@@ -20,6 +21,9 @@ class CoreAgent(Agent):
         self.spawning_order_pos = 0
 
     def u_handler(self):
+        if self.ct.get_current_round() >= SURRENDER_AT_TURN:
+            self.ct.self_destruct()
+            return True
         self.u_convert_axionite()
         self.u_spawn_initial_bb()
 
