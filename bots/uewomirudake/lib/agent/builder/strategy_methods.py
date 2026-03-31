@@ -413,17 +413,22 @@ class BuilderStrategyMethodsMixin:
 
     def s_frontier_expand(self):
         """
-        Move toward the closest unseen frontier tile using the cached frontier set.
+        Move toward a reachable unseen frontier tile using the cached frontier set.
+
+        Prefer routes that stay outside enemy turret coverage. If the builder is
+        already standing in enemy turret range, retry the same frontier targets
+        without the turret-avoidance restriction so the bot does not freeze in
+        place waiting for a fully safe path that may not exist.
         """
         frontier_indices = self.map.frontier_expand_cached_unseen_indices
         if not frontier_indices:
             return False
 
+        current_tile = self.map.u_get_pos_tile(self.map.current_pos)
         tiles_by_index = self.map.tiles_by_index
         dist_to_self_by_index = self.map.dist_to_self_by_index
         own_core_dist_by_index = self.map.own_core_dist_by_index
-        best_target_pos: Position | None = None
-        best_priority: tuple[int, int, int, int] | None = None
+        candidate_entries: list[tuple[tuple[int, int, int, int], int]] = []
 
         for idx in frontier_indices:
             dist_to_self = dist_to_self_by_index[idx]
@@ -435,20 +440,36 @@ class BuilderStrategyMethodsMixin:
                 continue
 
             target_pos = frontier_tile.position
-            priority = (
-                dist_to_self,
-                own_core_dist_by_index[idx],
-                target_pos.x,
-                target_pos.y,
+            candidate_entries.append(
+                (
+                    (
+                        dist_to_self,
+                        own_core_dist_by_index[idx],
+                        target_pos.x,
+                        target_pos.y,
+                    ),
+                    idx,
+                )
             )
-            if best_priority is None or priority < best_priority:
-                best_priority = priority
-                best_target_pos = target_pos
 
-        if best_target_pos is None:
+        if not candidate_entries:
             return False
 
-        return self.u_move_to(best_target_pos)
+        candidate_entries.sort()
+
+        for _, idx in candidate_entries:
+            if self.u_move_to(tiles_by_index[idx].position):
+                return True
+
+        if current_tile.is_enemy_turret_target_tile:
+            for _, idx in candidate_entries:
+                if self.u_move_to(
+                    tiles_by_index[idx].position,
+                    avoid_enemy_turrets=False,
+                ):
+                    return True
+
+        return False
 
     def s_destroy_hijacked_supplier(self, move_towards: bool = True):
         """
