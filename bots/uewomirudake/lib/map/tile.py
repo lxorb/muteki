@@ -488,15 +488,23 @@ class Tile:
             and self.building.entity_type in SUPPLY_LINK_TYPES
         )
 
+    def is_targeted_by_supply_link_for_team(self, team: Team) -> bool:
+        if team == self.map.own_team:
+            supply_links_in_vision = self.map.own_supply_links_in_vision
+        else:
+            supply_links_in_vision = self.map.enemy_supply_links_in_vision
+
+        return any(self in supply_link_tile.building.targets for supply_link_tile in supply_links_in_vision)
+
     def update_missing_links(self) -> None:
-        if self.in_own_resource_range and not (
+        if self.is_targeted_by_supply_link_for_team(self.map.own_team) and not (
             self.propagates_for_team(self.map.own_team)
             or self.is_core_of(self.map.own_team)
         ):
             if self not in self.map.own_missing_supply_links:
                 self.map.own_missing_supply_links.append(self)
 
-        if self.in_enemy_resource_range and not (
+        if self.is_targeted_by_supply_link_for_team(self.map.enemy_team) and not (
             self.propagates_for_team(self.map.enemy_team)
             or self.is_core_of(self.map.enemy_team)
         ):

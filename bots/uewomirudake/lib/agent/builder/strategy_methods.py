@@ -118,7 +118,6 @@ class BuilderStrategyMethodsMixin:
         barrier unless the tile is a chokepoint, in which case it tries to
         place a conveyor using the cached supplier-plan helper instead.
         """
-        current_pos = self.map.current_pos
         own_team = self.map.own_team
         conveyor_plan_by_pos: dict[Position, Direction | None] = {}
 
@@ -141,7 +140,10 @@ class BuilderStrategyMethodsMixin:
         candidate_tiles = []
         for harvester_tile in self.map.own_harvesters_in_vision:
             harvester_pos = harvester_tile.position
-            for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
+            for candidate_pos in self.map.u_iter_adjacent_positions(
+                harvester_pos,
+                consider_diagonal=False,
+            ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
         candidate_tiles = self.u_filter_tiles(
@@ -199,7 +201,6 @@ class BuilderStrategyMethodsMixin:
         relies on the supplier-plan helper to choose whether the tile should
         become a conveyor or a bridge plus its optimal target.
         """
-        current_pos = self.map.current_pos
         own_team = self.map.own_team
 
         def can_use_tile(target_tile) -> bool:

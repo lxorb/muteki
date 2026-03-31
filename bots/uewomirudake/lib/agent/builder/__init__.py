@@ -39,8 +39,27 @@ class BuilderAgent(
         )
         self.strategy = list(BUILDER_STRATEGY_BY_TILE.get(relative_tile, []))
 
+    def u_format_strategy_entry(self, strategy_entry: StrategyEntry) -> str:
+        if isinstance(strategy_entry, tuple):
+            method, *args = strategy_entry
+        else:
+            method = strategy_entry
+            args = []
+
+        method_name = method if isinstance(method, str) else method.__name__
+        if not args:
+            return method_name
+        return f"{method_name}{tuple(args)}"
+
     @override
     def u_handler(self):
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
+        print(
+            "Builder strategy: "
+            + ", ".join(
+                self.u_format_strategy_entry(strategy_entry)
+                for strategy_entry in self.strategy
+            )
+        )
         return self.u_execute_strategy()
