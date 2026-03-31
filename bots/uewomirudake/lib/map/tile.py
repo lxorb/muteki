@@ -118,13 +118,23 @@ class Tile:
             [self.u_offset_position(direction) for direction in directions]
         )
 
-    def _is_intrinsically_passable(self) -> bool:
+    def u_calc_intrinsic_passability(self) -> bool:
         building_type = self.building.entity_type
         if building_type is None:
             return self.environment != Environment.WALL
         if building_type == EntityType.CORE:
             return self.building.team == self.map.own_team
         return building_type in PASSABLE_TYPES
+
+    def _is_intrinsically_passable(self) -> bool:
+        return self.map.intrinsic_passable_by_index[self.index]
+
+    def u_refresh_intrinsic_passability(self) -> None:
+        intrinsic_passable = self.u_calc_intrinsic_passability()
+        if intrinsic_passable == self.map.intrinsic_passable_by_index[self.index]:
+            return
+        self.map.intrinsic_passable_by_index[self.index] = intrinsic_passable
+        self.map.core_distance_dirty_indices.add(self.index)
 
     def clear_bot(self) -> None:
         self.bot = TileBot(None, None, None, [], None)
@@ -149,6 +159,7 @@ class Tile:
             None,
             self.building.last_resource_onit_turn,
         )
+        self.u_refresh_intrinsic_passability()
 
     def update_attributes(self) -> None:
         current_round = self.map.ct.get_current_round()
@@ -174,6 +185,7 @@ class Tile:
             self.building.id = building_id
             self.update_building()
 
+        self.u_refresh_intrinsic_passability()
         self.update_map_values()
 
     def update_bot(self) -> None:

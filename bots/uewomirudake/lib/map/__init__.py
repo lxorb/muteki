@@ -24,6 +24,9 @@ class Map:
         self.own_core_dist_by_index = [INF_DIST] * self.tile_count
         self.enemy_core_dist_by_index = [INF_DIST] * self.tile_count
         self.inf_distances_by_index = [INF_DIST] * self.tile_count
+        self.intrinsic_passable_by_index = [True] * self.tile_count
+        self.core_distance_dirty_indices: set[int] = set()
+        self.core_distance_enqueued_by_index = bytearray(self.tile_count)
         self.matrix: list[list[Tile]] = [
             [Tile(Position(x, y), self) for y in range(self.height)]
             for x in range(self.width)
@@ -524,6 +527,63 @@ class Map:
                 distance_by_index[neighbor_idx] = next_dist
                 queue.append(neighbor_idx)
 
+    def u_enqueue_core_distance_index(
+        self,
+        idx: int,
+        queue: deque[int],
+    ) -> None:
+        if self.core_distance_enqueued_by_index[idx]:
+            return
+        self.core_distance_enqueued_by_index[idx] = 1
+        queue.append(idx)
+
+    def u_update_core_distance_field_incremental(
+        self,
+        source_indices: list[int] | tuple[int, ...],
+        distance_by_index: list[int],
+        dirty_indices: list[int] | tuple[int, ...],
+    ) -> None:
+        if not source_indices:
+            return
+
+        queue: deque[int] = deque()
+        source_index_set = set(source_indices)
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+
+        for idx in source_indices:
+            self.u_enqueue_core_distance_index(idx, queue)
+
+        for idx in dirty_indices:
+            self.u_enqueue_core_distance_index(idx, queue)
+            for neighbor_idx in neighbor_indices_by_index[idx]:
+                self.u_enqueue_core_distance_index(neighbor_idx, queue)
+
+        while queue:
+            idx = queue.popleft()
+            self.core_distance_enqueued_by_index[idx] = 0
+
+            if idx in source_index_set:
+                updated_dist = 0
+            elif not intrinsic_passable_by_index[idx]:
+                updated_dist = INF_DIST
+            else:
+                best_neighbor_dist = INF_DIST
+                for neighbor_idx in neighbor_indices_by_index[idx]:
+                    neighbor_dist = distance_by_index[neighbor_idx]
+                    if neighbor_dist < best_neighbor_dist:
+                        best_neighbor_dist = neighbor_dist
+                updated_dist = (
+                    INF_DIST if best_neighbor_dist >= INF_DIST else best_neighbor_dist + 1
+                )
+
+            if updated_dist == distance_by_index[idx]:
+                continue
+
+            distance_by_index[idx] = updated_dist
+            for neighbor_idx in neighbor_indices_by_index[idx]:
+                self.u_enqueue_core_distance_index(neighbor_idx, queue)
+
     def u_refresh_dist_to_self(self) -> None:
         self.u_run_distance_bfs(
             (self.u_get_pos_tile(self.current_pos).index,),
@@ -670,9 +730,32 @@ class Map:
 
     def u_update_distances(self) -> None:
         self.dist_to_self_by_index[:] = self.inf_distances_by_index
-        self.own_core_dist_by_index[:] = self.inf_distances_by_index
-        self.enemy_core_dist_by_index[:] = self.inf_distances_by_index
 
         self.u_refresh_dist_to_self()
-        self.u_refresh_own_core_dist()
-        self.u_refresh_enemy_core_dist()
+        dirty_indices = tuple(self.core_distance_dirty_indices)
+
+        if self.own_core_center_pos is not None:
+            self.u_update_core_distance_field_incremental(
+                tuple(
+                    tile.index
+                    for tile in self.u_get_core_footprint_positions(
+                        self.own_core_center_pos
+                    )
+                ),
+                self.own_core_dist_by_index,
+                dirty_indices,
+            )
+
+        if self.enemy_core_center_pos is not None:
+            self.u_update_core_distance_field_incremental(
+                tuple(
+                    tile.index
+                    for tile in self.u_get_core_footprint_positions(
+                        self.enemy_core_center_pos
+                    )
+                ),
+                self.enemy_core_dist_by_index,
+                dirty_indices,
+            )
+
+        self.core_distance_dirty_indices.clear()
