@@ -537,6 +537,11 @@ class BuilderNavigationMixin:
             and pos != current_pos
         ):
             destroyed_replaceable_blocker = False
+            should_try_attack_enemy_passable = (
+                attack_enemy_passable
+                and target_tile.is_passable
+                and target_tile.building.team != self.map.own_team
+            )
             if (
                 target_tile.building.team == self.map.own_team
                 and target_tile.building.entity_type
@@ -554,6 +559,13 @@ class BuilderNavigationMixin:
                     if facing_direction is None:
                         return False
                     if not can_build_method(pos, facing_direction):
+                        if should_try_attack_enemy_passable:
+                            return self.u_attack_passable(
+                                pos,
+                                move_towards=move_towards,
+                                destroy_condition=lambda _: True,
+                                avoid_enemy_turrets=avoid_enemy_turrets,
+                            )
                         return False
                     build_method(pos, facing_direction)
                     return True
@@ -562,12 +574,26 @@ class BuilderNavigationMixin:
                     if target_pos is None:
                         return False
                     if not can_build_method(pos, target_pos):
+                        if should_try_attack_enemy_passable:
+                            return self.u_attack_passable(
+                                pos,
+                                move_towards=move_towards,
+                                destroy_condition=lambda _: True,
+                                avoid_enemy_turrets=avoid_enemy_turrets,
+                            )
                         return False
                     build_method(pos, target_pos)
                     return True
 
                 if building_type in NONDIRECTIONAL_BUILDING_TYPES:
                     if not can_build_method(pos):
+                        if should_try_attack_enemy_passable:
+                            return self.u_attack_passable(
+                                pos,
+                                move_towards=move_towards,
+                                destroy_condition=lambda _: True,
+                                avoid_enemy_turrets=avoid_enemy_turrets,
+                            )
                         return False
                     build_method(pos)
                     return True

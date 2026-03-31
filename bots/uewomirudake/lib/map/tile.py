@@ -211,7 +211,9 @@ class Tile:
                 self.update_building(id_changed=False)
 
         self.u_refresh_intrinsic_passability()
-        self.is_passable = self._is_intrinsically_passable() and self.bot.id is None
+        self.is_passable = self._is_intrinsically_passable() and (
+            self.bot.id is None or self.position == self.map.current_pos
+        )
 
     def update_bot(self, id_changed: bool) -> None:
         ct = self.map.ct
