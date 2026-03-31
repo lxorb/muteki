@@ -45,10 +45,7 @@ class Tile:
     def __init__(self, position: Position, map: "Map") -> None:
         self.map: Map = map
         self.position: Position = position
-
-        self.own_core_dist: int = INF_DIST
-        self.enemy_core_dist: int = INF_DIST
-        self.dist_to_self: int = INF_DIST
+        self.index: int = position.x * map.height + position.y
 
         self.environment: Environment | None = None
         self.is_passable: bool = False
@@ -78,6 +75,30 @@ class Tile:
 
         self.last_seen_turn: int = -1
         self.last_titanium_onit_turn: int = -1
+
+    @property
+    def own_core_dist(self) -> int:
+        return self.map.own_core_dist_by_index[self.index]
+
+    @own_core_dist.setter
+    def own_core_dist(self, value: int) -> None:
+        self.map.own_core_dist_by_index[self.index] = value
+
+    @property
+    def enemy_core_dist(self) -> int:
+        return self.map.enemy_core_dist_by_index[self.index]
+
+    @enemy_core_dist.setter
+    def enemy_core_dist(self, value: int) -> None:
+        self.map.enemy_core_dist_by_index[self.index] = value
+
+    @property
+    def dist_to_self(self) -> int:
+        return self.map.dist_to_self_by_index[self.index]
+
+    @dist_to_self.setter
+    def dist_to_self(self, value: int) -> None:
+        self.map.dist_to_self_by_index[self.index] = value
 
     @property
     def is_enemy_turret_target_tile(self) -> int:

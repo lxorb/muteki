@@ -19,6 +19,10 @@ class Map:
     def __init__(self, ct: Controller):
         self.width = ct.get_map_width()
         self.height = ct.get_map_height()
+        self.tile_count = self.width * self.height
+        self.dist_to_self_by_index = [INF_DIST] * self.tile_count
+        self.own_core_dist_by_index = [INF_DIST] * self.tile_count
+        self.enemy_core_dist_by_index = [INF_DIST] * self.tile_count
         self.matrix: list[list[Tile]] = [
             [Tile(Position(x, y), self) for y in range(self.height)]
             for x in range(self.width)
