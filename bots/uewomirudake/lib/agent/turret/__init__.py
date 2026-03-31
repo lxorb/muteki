@@ -1,50 +1,11 @@
 from cambc import EntityType, Position
 
 from lib.agent import Agent
-
-
-ATTACK_TURRET_TYPES = {
-    EntityType.GUNNER,
-    EntityType.SENTINEL,
-    EntityType.BREACH,
-}
-
-TURRET_TARGET_PRIORITY = (
-    EntityType.SENTINEL,
-    EntityType.GUNNER,
-    EntityType.BREACH,
-    EntityType.LAUNCHER,
-    "enemy_bot_on_ally_tile",
-    "enemy_bot_on_non_ally_tile",
-    EntityType.CORE,
-    EntityType.HARVESTER,
-    EntityType.BRIDGE,
-    EntityType.CONVEYOR,
-    EntityType.BARRIER,
-    EntityType.SPLITTER,
-    EntityType.FOUNDRY,
-    EntityType.ROAD,
-    EntityType.ARMOURED_CONVEYOR,
+from lib.agent.constants import (
+    ATTACK_TURRET_TYPES,
+    LAUNCHER_THROWABLE_PRIORITY_RANK,
+    TURRET_TARGET_PRIORITY_RANK,
 )
-
-TURRET_TARGET_PRIORITY_RANK = {
-    target_type: idx
-    for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
-}
-
-LAUNCHER_THROWABLE_PRIORITY = (
-    "enemy_bot_on_ally_bridge",
-    "enemy_bot_on_ally_conveyor",
-    "enemy_bot_on_ally_armoured_conveyor",
-    "enemy_bot_on_ally_road",
-    "enemy_bot_on_empty_tile",
-    "enemy_bot_elsewhere",
-)
-
-LAUNCHER_THROWABLE_PRIORITY_RANK = {
-    target_type: idx
-    for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
-}
 
 
 class TurretAgent(Agent):
@@ -81,24 +42,22 @@ class TurretAgent(Agent):
         buckets also tie-break by lower remaining HP. The first tile after that
         ordering is fired at.
         """
-        candidate_targets = self.u_filter_tiles(
-            self.ct.get_attackable_tiles(),
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).last_seen_turn == self.ct.get_current_round()
-            ),
-            self.ct.can_fire,
-            lambda pos: self.u_get_target_priority_key(pos) is not None,
+        candidate_tiles = self.u_filter_tiles(
+            [self.map.u_get_pos_tile(pos) for pos in self.ct.get_attackable_tiles()],
+            lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
+            lambda tile: self.ct.can_fire(tile.position),
+            lambda tile: self.u_get_target_priority_key(tile) is not None,
         )
-        candidate_targets = self.u_prioritize_tiles(
-            candidate_targets,
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
             self.u_get_target_priority_key,
-            lambda pos: pos.x,
-            lambda pos: pos.y,
+            lambda tile: tile.position.x,
+            lambda tile: tile.position.y,
         )
-        if not candidate_targets:
+        if not candidate_tiles:
             return False
 
-        self.ct.fire(candidate_targets[0])
+        self.ct.fire(candidate_tiles[0].position)
         return True
 
     def u_launcher_throw(self) -> bool:
@@ -127,30 +86,30 @@ class TurretAgent(Agent):
 
     def u_get_launcher_throwable(self) -> Position | None:
         launcher_pos = self.map.current_pos
-        throwable_positions = self.u_filter_tiles(
-            list(self.map.u_iter_adjacent_positions(launcher_pos)),
-            lambda pos: self.map.u_get_pos_tile(pos).bot.id is not None,
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).bot.team != self.map.own_team
-            ),
+        throwable_tiles = self.u_filter_tiles(
+            [
+                self.map.u_get_pos_tile(pos)
+                for pos in self.map.u_iter_adjacent_positions(launcher_pos)
+            ],
+            lambda tile: tile.bot.id is not None,
+            lambda tile: tile.bot.team != self.map.own_team,
         )
-        throwable_positions = self.u_prioritize_tiles(
-            throwable_positions,
+        throwable_tiles = self.u_prioritize_tiles(
+            throwable_tiles,
             self.u_get_launcher_throwable_priority_key,
-            lambda pos: pos.x,
-            lambda pos: pos.y,
+            lambda tile: tile.position.x,
+            lambda tile: tile.position.y,
         )
 
-        for bot_pos in throwable_positions:
-            if self.u_get_launcher_throw_target(bot_pos) is not None:
-                return bot_pos
+        for bot_tile in throwable_tiles:
+            if self.u_get_launcher_throw_target(bot_tile.position) is not None:
+                return bot_tile.position
         return None
 
     def u_get_launcher_throwable_priority_key(
         self,
-        pos: Position,
+        target_tile,
     ) -> tuple[int, int | None]:
-        target_tile = self.map.u_get_pos_tile(pos)
         if target_tile.building.team == self.map.own_team:
             if target_tile.building.entity_type == EntityType.BRIDGE:
                 return (
@@ -188,35 +147,33 @@ class TurretAgent(Agent):
 
     def u_get_launcher_throw_target(self, bot_pos: Position) -> Position | None:
         launcher_pos = self.map.current_pos
-        candidate_targets = self.u_filter_tiles(
-            self.ct.get_attackable_tiles(),
-            lambda pos: self.map.u_get_pos_tile(pos).is_passable,
-            lambda pos: self.map.u_get_pos_tile(pos).bot.id is None,
-            lambda pos: launcher_pos.distance_squared(pos) > 2,
-            lambda pos: self.ct.can_launch(bot_pos, pos),
+        candidate_tiles = self.u_filter_tiles(
+            [self.map.u_get_pos_tile(pos) for pos in self.ct.get_attackable_tiles()],
+            lambda tile: tile.is_passable,
+            lambda tile: tile.bot.id is None,
+            lambda tile: launcher_pos.distance_squared(tile.position) > 2,
+            lambda tile: self.ct.can_launch(bot_pos, tile.position),
         )
-        turret_covered_targets = self.u_filter_tiles(
-            candidate_targets,
-            self.u_is_in_own_turret_attack_range,
+        turret_covered_tiles = self.u_filter_tiles(
+            candidate_tiles,
+            lambda tile: self.u_is_in_own_turret_attack_range(tile.position),
         )
-        if turret_covered_targets:
-            candidate_targets = turret_covered_targets
-        if not candidate_targets:
+        if turret_covered_tiles:
+            candidate_tiles = turret_covered_tiles
+        if not candidate_tiles:
             return None
 
-        candidate_targets = self.u_prioritize_tiles(
-            candidate_targets,
-            lambda pos: -self.map.u_get_pos_tile(pos).own_core_dist,
-            lambda pos: pos.x,
-            lambda pos: pos.y,
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: -tile.own_core_dist,
+            lambda tile: tile.position.x,
+            lambda tile: tile.position.y,
         )
-        return candidate_targets[0]
+        return candidate_tiles[0].position
 
     def u_is_in_own_turret_attack_range(self, target_pos: Position) -> bool:
-        for building_pos in self.map.buildings_in_vision:
-            building_tile = self.map.u_get_pos_tile(building_pos)
-            if building_tile.building.team != self.map.own_team:
-                continue
+        for building_tile in self.map.own_buildings_in_vision:
+            building_pos = building_tile.position
             if building_tile.building.entity_type == EntityType.GUNNER:
                 if self.map.u_gunner_covers_target(
                     building_pos,
@@ -247,9 +204,8 @@ class TurretAgent(Agent):
     
     def u_get_target_priority_key(
         self,
-        pos: Position,
+        target_tile,
     ) -> tuple[int, ...] | None:
-        target_tile = self.map.u_get_pos_tile(pos)
         own_team = self.map.own_team
         building_id = target_tile.building.id
         builder_bot_id = target_tile.bot.id
@@ -275,7 +231,7 @@ class TurretAgent(Agent):
         ):
             return (
                 TURRET_TARGET_PRIORITY_RANK[enemy_building_type],
-                0 if self.u_enemy_turret_targets_self(enemy_building_id) else 1,
+                0 if self.map.u_enemy_turret_targets_self(enemy_building_id) else 1,
                 target_tile.building.hp,
             )
 
@@ -283,7 +239,7 @@ class TurretAgent(Agent):
             return (
                 TURRET_TARGET_PRIORITY_RANK[
                     "enemy_bot_on_ally_tile"
-                    if self.c_is_enemy_bot_on_ally_tile(target_tile)
+                    if self.map.u_is_enemy_bot_on_ally_tile(target_tile)
                     else "enemy_bot_on_non_ally_tile"
                 ],
                 target_tile.bot.hp,
@@ -299,36 +255,3 @@ class TurretAgent(Agent):
             TURRET_TARGET_PRIORITY_RANK[enemy_building_type],
             target_tile.building.hp,
         )
-
-    def c_is_enemy_bot_on_ally_tile(self, target_tile) -> bool:
-        if target_tile.building.id is None:
-            return False
-        return target_tile.building.team == self.map.own_team
-
-    def u_enemy_turret_targets_self(self, enemy_turret_id: int) -> bool:
-        enemy_turret_pos = self.ct.get_position(enemy_turret_id)
-        enemy_turret_tile = self.map.u_get_pos_tile(enemy_turret_pos)
-        turret_type = enemy_turret_tile.building.entity_type
-        target_pos = self.map.current_pos
-
-        if turret_type == EntityType.GUNNER:
-            return self.map.u_gunner_covers_target(
-                enemy_turret_pos,
-                enemy_turret_tile.building.direction,
-                target_pos,
-                enemy_turret_tile.building.vision_radius_sq,
-            )
-        if turret_type == EntityType.SENTINEL:
-            return self.map.u_sentinel_covers_target(
-                enemy_turret_pos,
-                enemy_turret_tile.building.direction,
-                target_pos,
-                enemy_turret_tile.building.vision_radius_sq,
-            )
-        if turret_type == EntityType.BREACH:
-            return self.map.u_breach_covers_target(
-                enemy_turret_pos,
-                enemy_turret_tile.building.direction,
-                target_pos,
-            )
-        return False
