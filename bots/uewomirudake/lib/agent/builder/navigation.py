@@ -314,34 +314,31 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         self,
         pos: Position,
         avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = False,
     ) -> bool:
         current_pos = self.map.current_pos
-        candidate_moves: list[tuple[int, int, Direction]] = []
-        current_distance_sq = current_pos.distance_squared(pos)
-        for direction in Direction:
-            if direction == Direction.CENTRE:
-                continue
-            if not self.ct.can_move(direction):
-                continue
-            next_pos = current_pos.add(direction)
-            if (
-                avoid_enemy_turrets
-                and self.map.u_get_pos_tile(next_pos).is_enemy_turret_target_tile
-            ):
-                continue
-            next_distance_sq = next_pos.distance_squared(pos)
-            if next_distance_sq >= current_distance_sq:
-                continue
-            candidate_moves.append(
-                (next_distance_sq, 0 if next_pos == pos else 1, direction)
-            )
-
-        if not candidate_moves:
+        if current_pos == pos:
             return False
 
-        candidate_moves.sort(key=lambda move: move[:2])
-        self.ct.move(candidate_moves[0][2])
-        return True
+        shortest_path = self.map.u_calculate_shortest_path(
+            current_pos,
+            pos,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+        )
+        if len(shortest_path) >= 2:
+            next_tile = shortest_path[1]
+            next_direction = self.map.u_get_direction_between(
+                current_pos,
+                next_tile.position,
+            )
+            if next_direction is not None and self.ct.can_move(next_direction):
+                self.ct.move(next_direction)
+                return True
+            if build_new_roads and self.ct.can_build_road(next_tile.position):
+                self.ct.build_road(next_tile.position)
+                return True
+
+        return False
 
     def u_attack_passable(
         self,

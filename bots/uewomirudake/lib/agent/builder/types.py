@@ -72,7 +72,12 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
 
     def u_best_conveyor_orientation(self, pos: Position) -> Direction | None: ...
     def u_best_bridge_target(self, pos: Position) -> Position | None: ...
-    def u_move_to(self, pos: Position, avoid_enemy_turrets: bool = True) -> bool: ...
+    def u_move_to(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = False,
+    ) -> bool: ...
 
     def u_attack_passable(
         self,
