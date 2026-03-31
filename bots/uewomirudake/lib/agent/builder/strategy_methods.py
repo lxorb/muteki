@@ -3,6 +3,7 @@ from cambc import Direction, EntityType, Environment, Position
 from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 
+
 class BuilderStrategyMethodsMixin:
     def s_build_harvester_supply_link(
         self, move_towards: bool = True, hold: bool = True
@@ -350,45 +351,44 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    # TODO: implementation here is still very inefficient
-#           i.e. does not use any caching whatsoever
     def s_frontier_expand(self):
         """
-        Move toward the closest unseen frontier tile.
+        Move toward the closest unseen frontier tile using the cached frontier set.
         """
-        frontier_tiles = []
-        seen_positions: set[tuple[int, int]] = set()
-
-        for column in self.map.matrix:
-            for tile in column:
-                if tile.last_seen_turn == -1:
-                    continue
-                for adjacent_pos in self.map.u_iter_adjacent_positions(tile.position):
-                    adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-                    if adjacent_tile.last_seen_turn != -1:
-                        continue
-                    key = (adjacent_pos.x, adjacent_pos.y)
-                    if key in seen_positions:
-                        continue
-                    seen_positions.add(key)
-                    frontier_tiles.append(adjacent_tile)
-
-        frontier_tiles = self.u_filter_tiles(
-            frontier_tiles,
-            lambda tile: tile.dist_to_self < INF_DIST,
-            lambda tile: not tile.is_enemy_turret_target_tile,
-        )
-        if not frontier_tiles:
+        frontier_indices = self.map.frontier_expand_cached_unseen_indices
+        if not frontier_indices:
             return False
 
-        frontier_tiles = self.u_prioritize_tiles(
-            frontier_tiles,
-            lambda tile: tile.dist_to_self,
-            lambda tile: tile.own_core_dist,
-            lambda tile: tile.position.x,
-            lambda tile: tile.position.y,
-        )
-        return self.u_move_to(frontier_tiles[0].position)
+        tiles_by_index = self.map.tiles_by_index
+        dist_to_self_by_index = self.map.dist_to_self_by_index
+        own_core_dist_by_index = self.map.own_core_dist_by_index
+        best_target_pos: Position | None = None
+        best_priority: tuple[int, int, int, int] | None = None
+
+        for idx in frontier_indices:
+            dist_to_self = dist_to_self_by_index[idx]
+            if dist_to_self >= INF_DIST:
+                continue
+
+            frontier_tile = tiles_by_index[idx]
+            if frontier_tile.is_enemy_turret_target_tile:
+                continue
+
+            target_pos = frontier_tile.position
+            priority = (
+                dist_to_self,
+                own_core_dist_by_index[idx],
+                target_pos.x,
+                target_pos.y,
+            )
+            if best_priority is None or priority < best_priority:
+                best_priority = priority
+                best_target_pos = target_pos
+
+        if best_target_pos is None:
+            return False
+
+        return self.u_move_to(best_target_pos)
 
     def s_destroy_hijacked_supplier(self, move_towards: bool = True):
         """

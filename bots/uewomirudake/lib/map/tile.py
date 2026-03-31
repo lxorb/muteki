@@ -173,6 +173,9 @@ class Tile:
         current_round = self.map.current_round
         if self.environment is None:
             self.environment = ct.get_tile_env(self.position)
+        if self.last_seen_turn == -1:
+            # Frontier expansion cache: remember tiles first seen this turn.
+            self.map.frontier_expand_newly_seen_indices.append(self.index)
         self.last_seen_turn = current_round
 
         if self.environment == Environment.ORE_TITANIUM:

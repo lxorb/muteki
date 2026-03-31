@@ -123,6 +123,10 @@ class Map:
         self.known_accessible_titanium_tiles: list[Tile] = []
         self.known_accessible_axionite_tiles: list[Tile] = []
 
+        # Frontier expansion cache used by `s_frontier_expand_new`.
+        self.frontier_expand_cached_unseen_indices: set[int] = set()
+        self.frontier_expand_newly_seen_indices: list[int] = []
+
         self.stopwatch = Stopwatch("Map")
 
         self._reset_turn_state()
@@ -146,6 +150,7 @@ class Map:
         self.enemy_buildings_in_vision: list[Tile] = []
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
+        self.frontier_expand_newly_seen_indices = []
 
     def u_update_vision(self):
         self.stopwatch.start()
@@ -270,6 +275,21 @@ class Map:
             self.tiles_by_index[idx]
             for idx in sorted(known_accessible_axionite_indices)
         ]
+        self.u_update_frontier_expand_cache()
+
+    def u_update_frontier_expand_cache(self) -> None:
+        if not self.frontier_expand_newly_seen_indices:
+            return
+
+        frontier_indices = self.frontier_expand_cached_unseen_indices
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+
+        for idx in self.frontier_expand_newly_seen_indices:
+            frontier_indices.discard(idx)
+            for neighbor_idx in neighbor_indices_by_index[idx]:
+                if tiles_by_index[neighbor_idx].last_seen_turn == -1:
+                    frontier_indices.add(neighbor_idx)
 
     def u_update_symmetry_from_visible_tiles(self) -> None:
         if self.symmetry_mode is not None:
@@ -975,10 +995,15 @@ class Map:
         return []
 
     def u_update_distances(self) -> None:
+        sw = Stopwatch("Map distances")
+        sw.start()
+
         self.dist_to_self_by_index[:] = self.inf_distances_by_index
 
         self.u_refresh_dist_to_self()
         dirty_indices = tuple(self.core_distance_dirty_indices)
+
+        sw.lap("Init")
 
         if self.own_core_source_indices and (
             dirty_indices or not self.own_core_dist_initialized
@@ -993,6 +1018,8 @@ class Map:
             )
             self.own_core_dist_initialized = True
 
+        sw.lap("Own distance field")
+
         if self.enemy_core_source_indices and (
             dirty_indices or not self.enemy_core_dist_initialized
         ):
@@ -1006,4 +1033,8 @@ class Map:
             )
             self.enemy_core_dist_initialized = True
 
+        sw.lap("Enemy distance field")
+
         self.core_distance_dirty_indices.clear()
+
+        sw.log()
