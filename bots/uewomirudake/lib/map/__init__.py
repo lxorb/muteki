@@ -460,29 +460,34 @@ class Map:
         blocked_key: tuple[int, int],
         own_core_keys: set[tuple[int, int]],
     ) -> int:
-        queue: deque[tuple[Position, int]] = deque([(source_pos, 0)])
-        seen = {(source_pos.x, source_pos.y), blocked_key}
+        source_idx = source_pos.x * self.height + source_pos.y
+        blocked_idx = blocked_key[0] * self.height + blocked_key[1]
+        own_core_indices = {
+            core_key[0] * self.height + core_key[1] for core_key in own_core_keys
+        }
+        queue: deque[tuple[int, int]] = deque([(source_idx, 0)])
+        seen = {source_idx, blocked_idx}
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
 
         while queue:
-            current_pos, current_dist = queue.popleft()
-            current_key = (current_pos.x, current_pos.y)
-            if current_key in own_core_keys:
+            current_idx, current_dist = queue.popleft()
+            if current_idx in own_core_indices:
                 return current_dist
 
-            for neighbor_pos in self.u_iter_adjacent_positions(current_pos):
-                neighbor_key = (neighbor_pos.x, neighbor_pos.y)
-                if neighbor_key in seen:
+            for neighbor_idx in neighbor_indices_by_index[current_idx]:
+                if neighbor_idx in seen:
                     continue
 
-                neighbor_tile = self.u_get_pos_tile(neighbor_pos)
+                neighbor_tile = tiles_by_index[neighbor_idx]
                 if (
-                    neighbor_key not in own_core_keys
+                    neighbor_idx not in own_core_indices
                     and not neighbor_tile._is_intrinsically_passable()
                 ):
                     continue
 
-                seen.add(neighbor_key)
-                queue.append((neighbor_pos, current_dist + 1))
+                seen.add(neighbor_idx)
+                queue.append((neighbor_idx, current_dist + 1))
 
         return INF_DIST
 
@@ -563,31 +568,36 @@ class Map:
 
         source_tile = self.u_get_pos_tile(source_pos)
         target_tile = self.u_get_pos_tile(target_pos)
+        source_idx = source_tile.index
+        target_idx = target_tile.index
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
         if source_pos == target_pos:
             return [source_tile]
 
         if source_pos == self.current_pos and target_tile.dist_to_self < INF_DIST:
-            current_tile = target_tile
-            path = [current_tile]
+            current_idx = target_idx
+            path = [tiles_by_index[current_idx]]
 
-            while current_tile.position != source_pos:
+            while current_idx != source_idx:
+                current_tile = tiles_by_index[current_idx]
                 next_dist_to_self = current_tile.dist_to_self - 1
                 candidate_tiles: list[Tile] = []
 
-                for adjacent_pos in self.u_iter_adjacent_positions(current_tile.position):
-                    adjacent_tile = self.u_get_pos_tile(adjacent_pos)
+                for adjacent_idx in neighbor_indices_by_index[current_idx]:
+                    adjacent_tile = tiles_by_index[adjacent_idx]
                     if adjacent_tile.dist_to_self != next_dist_to_self:
                         continue
                     if (
                         avoid_enemy_turrets
-                        and adjacent_pos != source_pos
+                        and adjacent_idx != source_idx
                         and adjacent_tile.is_enemy_turret_target_tile
                     ):
                         continue
                     if (
                         avoid_other_builder_bots
-                        and adjacent_pos != source_pos
-                        and adjacent_pos != target_pos
+                        and adjacent_idx != source_idx
+                        and adjacent_idx != target_idx
                         and adjacent_tile.bot.id is not None
                     ):
                         continue
@@ -603,64 +613,58 @@ class Map:
                         tile.position.y,
                     )
                 )
-                current_tile = candidate_tiles[0]
-                path.append(current_tile)
+                current_idx = candidate_tiles[0].index
+                path.append(tiles_by_index[current_idx])
 
-            if path[-1].position == source_pos:
+            if path[-1].index == source_idx:
                 path.reverse()
                 return path
 
-        source_key = (source_pos.x, source_pos.y)
-        target_key = (target_pos.x, target_pos.y)
-        predecessor_by_key: dict[tuple[int, int], Tile | None] = {source_key: None}
-        queue: deque[Tile] = deque([source_tile])
+        predecessor_by_index: dict[int, int | None] = {source_idx: None}
+        queue: deque[int] = deque([source_idx])
 
         while queue:
-            current_tile = queue.popleft()
-            for adjacent_pos in self.u_iter_adjacent_positions(current_tile.position):
-                adjacent_key = (adjacent_pos.x, adjacent_pos.y)
-                if adjacent_key in predecessor_by_key:
+            current_idx = queue.popleft()
+            for adjacent_idx in neighbor_indices_by_index[current_idx]:
+                if adjacent_idx in predecessor_by_index:
                     continue
 
-                adjacent_tile = self.u_get_pos_tile(adjacent_pos)
+                adjacent_tile = tiles_by_index[adjacent_idx]
                 if (
                     avoid_enemy_turrets
-                    and adjacent_pos != target_pos
+                    and adjacent_idx != target_idx
                     and adjacent_tile.is_enemy_turret_target_tile
                 ):
                     continue
                 if (
                     avoid_other_builder_bots
-                    and adjacent_pos != source_pos
-                    and adjacent_pos != target_pos
+                    and adjacent_idx != source_idx
+                    and adjacent_idx != target_idx
                     and adjacent_tile.bot.id is not None
                 ):
                     continue
                 if (
-                    adjacent_pos != target_pos
+                    adjacent_idx != target_idx
                     and not adjacent_tile._is_intrinsically_passable()
                 ):
                     continue
 
-                predecessor_by_key[adjacent_key] = current_tile
-                if adjacent_key == target_key:
+                predecessor_by_index[adjacent_idx] = current_idx
+                if adjacent_idx == target_idx:
                     path = [target_tile]
-                    walk_key = adjacent_key
+                    walk_idx = adjacent_idx
 
-                    while walk_key != source_key:
-                        previous_tile = predecessor_by_key[walk_key]
-                        if previous_tile is None:
+                    while walk_idx != source_idx:
+                        previous_idx = predecessor_by_index[walk_idx]
+                        if previous_idx is None:
                             break
-                        path.append(previous_tile)
-                        walk_key = (
-                            previous_tile.position.x,
-                            previous_tile.position.y,
-                        )
+                        path.append(tiles_by_index[previous_idx])
+                        walk_idx = previous_idx
 
                     path.reverse()
                     return path
 
-                queue.append(adjacent_tile)
+                queue.append(adjacent_idx)
 
         return []
 
