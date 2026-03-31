@@ -430,7 +430,7 @@ class BuilderNavigationMixin:
         self,
         pos: Position,
         avoid_enemy_turrets: bool = True,
-        build_new_roads: bool = False,
+        build_new_roads: bool = True,
     ) -> bool:
         current_pos = self.map.current_pos
         if current_pos == pos:

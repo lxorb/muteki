@@ -277,7 +277,6 @@ class BuilderStrategyMethodsMixin:
         builder, and delegates the actual build, replacement, movement, hold,
         and optional enemy-passable clearing to `u_build_at`.
         """
-        current_pos = self.map.current_pos
         own_team = self.map.own_team
         core_center_pos = self.map.own_core_center_pos
         if resource == Environment.ORE_TITANIUM:
@@ -395,8 +394,7 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        def points_at_enemy_turret(pos: Position) -> bool:
-            source_tile = self.map.u_get_pos_tile(pos)
+        def points_at_enemy_turret(source_tile) -> bool:
             return any(
                 target_tile.building.id is not None
                 and target_tile.building.team != own_team
