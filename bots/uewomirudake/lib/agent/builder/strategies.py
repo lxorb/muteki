@@ -31,13 +31,15 @@ HARASSMENT_STRATEGY = [
 
 # TODO
 FOUNDRY_STRATEGY = [
-    # INSERT SPLITTER
-    # BUILD FOUNDRY (next to splitter)
-    # BUILD AXIONITE HARVESTER SUPPLY LINK
+    ("s_insert_core_splitter", True, True),
+    ("s_build_foundry_next_to_splitter", True, True),
+    ("s_build_harvester_supply_link", True, True),
+    # TODO: -> for axionite harvester
     ("s_surround_harvester", True, True),
-    # BUILD MISSING AXIONITE SUPPLY LINK
-    # BUILD AXIONITE HARVESTER
-    # SCOUT (search for axionite)
+    ("s_build_missing_supply_link", True, True, True),
+    # TODO: -> for axionite supply chain
+    ("s_build_harvester", True, True, True, Environment.ORE_AXIONITE),
+    ("s_frontier_expand",),
 ]
 
 # TODO

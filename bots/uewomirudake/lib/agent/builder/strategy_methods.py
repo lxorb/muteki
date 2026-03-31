@@ -604,6 +604,24 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
+    def s_insert_core_splitter(self, move_towards: bool = True, hold: bool = True):
+        """
+        TODO: insert a splitter into the core supply chain.
+        The splitter should replace a conveyor that is adjacent to the core. 
+        """
+        return False
+
+    def s_build_foundry_next_to_splitter(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        """
+        TODO: build a foundry adjacent to the core splitter.
+        Prioritize building the foundry on a non-supply-chain tile. 
+        """
+        return False
+
     def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
         """
         Attack the closest enemy supply link next to a visible enemy harvester.
