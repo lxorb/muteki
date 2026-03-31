@@ -11,6 +11,7 @@ from lib.agent.constants import (
     DIRECTIONAL_BUILDING_TYPES,
     NONDIRECTIONAL_BUILDING_TYPES,
 )
+from lib.map.constants import SUPPLY_LINK_TYPES
 
 from .types import BuilderNavigationSelf
 
@@ -254,28 +255,79 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
             return (EntityType.BRIDGE, bridge_target)
         return (EntityType.CONVEYOR, conveyor_direction)
 
-    # TODO
-    def u_best_conveyor_orientation(self, pos: Position):
+    def u_best_conveyor_orientation(self, pos: Position) -> Direction | None:
         """
-        Assuming that on the given position a conveyor should be build,
-        return the best direction for the conveyor to point at or None, if it does not make
-        sense to build a conveyor here.
-        There are four possible tiles where the conveyor can point at. You should prioritze them as follows, ordered by precedence (descending, highest first):
-
-        - if one of the neighbors is a core tile, early exist and return the corresponding orientation
-        - filter out all neigbor tiles that would not decrease distance to the own core
-        - then it should be prioritzed by tiles that already have a supply chain element (bridge /conveyor / splitter) on them
-        -> if there are such tiles, just consider these
-        -> if there are no such tiles, prioritize by tiles that are own barriers, then own roads, then empty tiles, then enemy roads (in this order)
-        -> if there are none of these tiles, then return None
-        - keep only the best of the beforementioned categories
-        - if there are multiple tiles left, sort them by distance and pick the one with the lowest distance to the own core
-        - if there are still multiple left, prioritize the ones that are in action radius of the current builder bot
-        -
-
-        This prioritizing should be written in a modular way so that is easily adjustable.
-
+        Return the best cardinal output direction for a conveyor at this tile.
         """
+        current_pos = self.map.current_pos
+        source_tile = self.map.u_get_pos_tile(pos)
+        own_team = self.map.own_team
+        candidate_tiles: list[tuple[Direction, object]] = []
+
+        for direction in Direction:
+            if direction == Direction.CENTRE:
+                continue
+            dx, dy = direction.delta()
+            if abs(dx) + abs(dy) != 1:
+                continue
+
+            neighbor_pos = pos.add(direction)
+            if not self.map.u_is_in_bounds(neighbor_pos):
+                continue
+
+            neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
+            if neighbor_tile.building.entity_type == EntityType.CORE:
+                return direction
+            if neighbor_tile.own_core_dist >= source_tile.own_core_dist:
+                continue
+
+            category_rank: int | None = None
+            if neighbor_tile.building.entity_type in SUPPLY_LINK_TYPES:
+                category_rank = 0
+            elif (
+                neighbor_tile.building.entity_type == EntityType.BARRIER
+                and neighbor_tile.building.team == own_team
+            ):
+                category_rank = 1
+            elif (
+                neighbor_tile.building.entity_type == EntityType.ROAD
+                and neighbor_tile.building.team == own_team
+            ):
+                category_rank = 2
+            elif neighbor_tile.building.id is None:
+                category_rank = 3
+            elif (
+                neighbor_tile.building.entity_type == EntityType.ROAD
+                and neighbor_tile.building.team != own_team
+            ):
+                category_rank = 4
+
+            if category_rank is None:
+                continue
+
+            candidate_tiles.append((direction, neighbor_tile, category_rank))
+
+        if not candidate_tiles:
+            return None
+
+        best_category_rank = min(category_rank for _, _, category_rank in candidate_tiles)
+        candidate_tiles = [
+            (direction, neighbor_tile)
+            for direction, neighbor_tile, category_rank in candidate_tiles
+            if category_rank == best_category_rank
+        ]
+        candidate_tiles.sort(
+            key=lambda item: (
+                item[1].own_core_dist,
+                0
+                if current_pos.distance_squared(item[1].position)
+                <= BUILDER_ACTION_RADIUS_SQ
+                else 1,
+                item[1].position.x,
+                item[1].position.y,
+            )
+        )
+        return candidate_tiles[0][0]
 
     # TODO
     def u_best_bridge_target(self, pos: Position):
