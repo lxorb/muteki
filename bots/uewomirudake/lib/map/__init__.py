@@ -1,6 +1,7 @@
 from collections import deque
 from collections.abc import Iterable
 from enum import Enum
+import time
 
 from cambc import Controller, Direction, EntityType, GameConstants, Position, Team
 
@@ -61,6 +62,7 @@ class Map:
         self.enemy_missing_supply_links: list[Tile] = []
 
     def u_update_vision(self):
+        t_start = time.perf_counter_ns()
         self._reset_turn_state()
 
         self.tiles_in_vision = [
@@ -74,6 +76,8 @@ class Map:
 
         self.u_update_supply_information()
         self.u_update_distances()
+        update_vision_time_mus = (time.perf_counter_ns() - t_start) // 1_000
+        print(f"Map update vision time: {update_vision_time_mus} mus")
 
     def u_get_pos_tile(self, pos: Position) -> Tile:
         return self.matrix[pos.x][pos.y]

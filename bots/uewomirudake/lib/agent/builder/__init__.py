@@ -6,6 +6,13 @@ from lib.map import Map
 
 from .execution import BuilderExecutionMixin
 from .navigation import BuilderNavigationMixin
+from .strategies import (
+    DEFENDER_STRATEGY,
+    FOUNDRY_STRATEGY,
+    HARASSMENT_STRATEGY,
+    INITRES_STRATEGY,
+    SCAVENGER_STRATEGY,
+)
 from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
@@ -39,27 +46,22 @@ class BuilderAgent(
         )
         self.strategy = list(BUILDER_STRATEGY_BY_TILE.get(relative_tile, []))
 
-    def u_format_strategy_entry(self, strategy_entry: StrategyEntry) -> str:
-        if isinstance(strategy_entry, tuple):
-            method, *args = strategy_entry
-        else:
-            method = strategy_entry
-            args = []
-
-        method_name = method if isinstance(method, str) else method.__name__
-        if not args:
-            return method_name
-        return f"{method_name}{tuple(args)}"
+    def u_get_strategy_name(self) -> str:
+        strategy_by_name = {
+            "INITRES_STRATEGY": INITRES_STRATEGY,
+            "SCAVENGER_STRATEGY": SCAVENGER_STRATEGY,
+            "HARASSMENT_STRATEGY": HARASSMENT_STRATEGY,
+            "FOUNDRY_STRATEGY": FOUNDRY_STRATEGY,
+            "DEFENDER_STRATEGY": DEFENDER_STRATEGY,
+        }
+        for strategy_name, strategy_entries in strategy_by_name.items():
+            if self.strategy == strategy_entries:
+                return strategy_name
+        return "CUSTOM_STRATEGY"
 
     @override
     def u_handler(self):
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
-        print(
-            "Builder strategy: "
-            + ", ".join(
-                self.u_format_strategy_entry(strategy_entry)
-                for strategy_entry in self.strategy
-            )
-        )
+        print(f"Builder strategy: {self.u_get_strategy_name()}")
         return self.u_execute_strategy()
