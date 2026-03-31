@@ -28,6 +28,23 @@ class Map:
             [Tile(Position(x, y), self) for y in range(self.height)]
             for x in range(self.width)
         ]
+        self.tiles_by_index: list[Tile] = [
+            self.matrix[x][y]
+            for x in range(self.width)
+            for y in range(self.height)
+        ]
+        self.neighbor_indices_by_index: list[tuple[int, ...]] = []
+        for idx in range(self.tile_count):
+            x = idx // self.height
+            y = idx % self.height
+            neighbors: list[int] = []
+            for direction in DIRECTIONS:
+                dx, dy = direction.delta()
+                nx = x + dx
+                ny = y + dy
+                if 0 <= nx < self.width and 0 <= ny < self.height:
+                    neighbors.append(nx * self.height + ny)
+            self.neighbor_indices_by_index.append(tuple(neighbors))
 
         self.ct = ct
         self.own_team = ct.get_team()
@@ -483,28 +500,18 @@ class Map:
         for seed_idx in seed_indices:
             distance_by_index[seed_idx] = 0
 
-        width = self.width
-        height = self.height
-        matrix = self.matrix
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
 
         while queue:
             current_idx = queue.popleft()
-            current_x = current_idx // height
-            current_y = current_idx % height
             current_dist = distance_by_index[current_idx]
 
-            for direction in DIRECTIONS:
-                dx, dy = direction.delta()
-                neighbor_x = current_x + dx
-                neighbor_y = current_y + dy
-                if not (0 <= neighbor_x < width and 0 <= neighbor_y < height):
-                    continue
-
-                neighbor_tile = matrix[neighbor_x][neighbor_y]
+            for neighbor_idx in neighbor_indices_by_index[current_idx]:
+                neighbor_tile = tiles_by_index[neighbor_idx]
                 if not neighbor_tile._is_intrinsically_passable():
                     continue
 
-                neighbor_idx = neighbor_tile.index
                 next_dist = current_dist + 1
                 if next_dist >= distance_by_index[neighbor_idx]:
                     continue
