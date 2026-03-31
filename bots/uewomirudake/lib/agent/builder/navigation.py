@@ -452,6 +452,8 @@ class BuilderNavigationMixin:
                 return True
             if build_new_roads and self.ct.can_build_road(next_tile.position):
                 self.ct.build_road(next_tile.position)
+                if next_direction is not None and self.ct.can_move(next_direction):
+                    self.ct.move(next_direction)
                 return True
 
         return False
