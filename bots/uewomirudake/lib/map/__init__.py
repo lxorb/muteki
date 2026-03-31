@@ -134,6 +134,7 @@ class Map:
 
         self.has_enemy_bot_in_vision = False
         self.tiles_in_vision: list[Tile] = []
+        self.newly_seen_tiles_in_vision: list[Tile] = []
         self.titanium_tiles_in_vision: list[Tile] = []
         self.axionite_tiles_in_vision: list[Tile] = []
         self.own_harvesters_in_vision: list[Tile] = []
@@ -275,43 +276,66 @@ class Map:
         if self.symmetry_mode is not None:
             return
 
-        candidate_modes_to_remove = set()
-
-        for tile in self.tiles_in_vision:
-            x = tile.position.x
-            y = tile.position.y
-            symmetric_locations = {
-                SymmetryMode.ROTATION: (self.width - 1 - x, self.height - 1 - y),
-                SymmetryMode.MIRROR_X: (x, self.height - 1 - y),
-                SymmetryMode.MIRROR_Y: (self.width - 1 - x, y),
-            }
-
-            for symmetry_mode, (sx, sy) in symmetric_locations.items():
-                if symmetry_mode not in self.symmetry_mode_candidates:
-                    continue
-
-                symmetric_tile = self.matrix[sx][sy]
-                if symmetric_tile.environment is None:
-                    continue
-
-                tile_is_core = tile.building.entity_type == EntityType.CORE
-                symmetric_is_core = (
-                    symmetric_tile.building.entity_type == EntityType.CORE
-                )
-                if (
-                    tile.environment != symmetric_tile.environment
-                    or tile_is_core != symmetric_is_core
-                ):
-                    candidate_modes_to_remove.add(symmetry_mode)
-
-        if not candidate_modes_to_remove:
+        if not self.newly_seen_tiles_in_vision:
             return
 
-        self.symmetry_mode_candidates = [
-            mode
-            for mode in self.symmetry_mode_candidates
-            if mode not in candidate_modes_to_remove
-        ]
+        rotation_possible = SymmetryMode.ROTATION in self.symmetry_mode_candidates
+        mirror_x_possible = SymmetryMode.MIRROR_X in self.symmetry_mode_candidates
+        mirror_y_possible = SymmetryMode.MIRROR_Y in self.symmetry_mode_candidates
+
+        for tile in self.newly_seen_tiles_in_vision:
+            x = tile.position.x
+            y = tile.position.y
+            tile_environment = tile.environment
+            tile_is_core = tile.building.entity_type == EntityType.CORE
+
+            if rotation_possible:
+                symmetric_tile = self.matrix[self.width - 1 - x][self.height - 1 - y]
+                if symmetric_tile.environment is not None and (
+                    tile_environment != symmetric_tile.environment
+                    or tile_is_core
+                    != (symmetric_tile.building.entity_type == EntityType.CORE)
+                ):
+                    rotation_possible = False
+
+            if mirror_x_possible:
+                symmetric_tile = self.matrix[x][self.height - 1 - y]
+                if symmetric_tile.environment is not None and (
+                    tile_environment != symmetric_tile.environment
+                    or tile_is_core
+                    != (symmetric_tile.building.entity_type == EntityType.CORE)
+                ):
+                    mirror_x_possible = False
+
+            if mirror_y_possible:
+                symmetric_tile = self.matrix[self.width - 1 - x][y]
+                if symmetric_tile.environment is not None and (
+                    tile_environment != symmetric_tile.environment
+                    or tile_is_core
+                    != (symmetric_tile.building.entity_type == EntityType.CORE)
+                ):
+                    mirror_y_possible = False
+
+            if (
+                int(rotation_possible)
+                + int(mirror_x_possible)
+                + int(mirror_y_possible)
+                <= 1
+            ):
+                break
+
+        new_symmetry_mode_candidates = []
+        if rotation_possible:
+            new_symmetry_mode_candidates.append(SymmetryMode.ROTATION)
+        if mirror_x_possible:
+            new_symmetry_mode_candidates.append(SymmetryMode.MIRROR_X)
+        if mirror_y_possible:
+            new_symmetry_mode_candidates.append(SymmetryMode.MIRROR_Y)
+
+        if new_symmetry_mode_candidates == self.symmetry_mode_candidates:
+            return
+
+        self.symmetry_mode_candidates = new_symmetry_mode_candidates
         if len(self.symmetry_mode_candidates) == 1:
             self.symmetry_mode = self.symmetry_mode_candidates[0]
 

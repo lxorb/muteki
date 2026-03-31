@@ -171,6 +171,8 @@ class Tile:
     def update_attributes(self) -> None:
         ct = self.map.ct
         current_round = self.map.current_round
+        if self.last_seen_turn == -1:
+            self.map.newly_seen_tiles_in_vision.append(self)
         if self.environment is None:
             self.environment = ct.get_tile_env(self.position)
         self.last_seen_turn = current_round
