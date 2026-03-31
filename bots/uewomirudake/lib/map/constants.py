@@ -3,6 +3,7 @@ from cambc import Direction, EntityType
 
 INF_DIST = 10**9
 CHOKEPOINT_MIN_DIST_INCREASE = 4
+DEEP_CHOKEPOINT_CHECKING = False
 
 
 DIRECTIONS = tuple(direction for direction in Direction if direction != Direction.CENTRE)

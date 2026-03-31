@@ -16,6 +16,7 @@ from cambc import (
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
     CHOKEPOINT_MIN_DIST_INCREASE,
+    DEEP_CHOKEPOINT_CHECKING,
     DIRECTIONS,
     INF_DIST,
     SUPPLY_LINK_TYPES,
@@ -713,6 +714,50 @@ class Map:
         ]
 
     def u_is_chokepoint(self, pos: Position) -> bool:
+        if DEEP_CHOKEPOINT_CHECKING:
+            return self.u_is_chokepoint_deep(pos)
+        return self.u_is_chokepoint_light(pos)
+
+    def u_is_chokepoint_light(self, pos: Position) -> bool:
+        """
+        Return whether this tile matches the simple orthogonal chokepoint pattern.
+        """
+        if not self.u_is_in_bounds(pos):
+            return False
+
+        center_idx = pos.x * self.height + pos.y
+        if not self.intrinsic_passable_by_index[center_idx]:
+            return False
+
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+
+        def is_intrinsically_passable_or_in_bounds(x: int, y: int) -> bool:
+            if x < 0 or x >= self.width or y < 0 or y >= self.height:
+                return False
+            return intrinsic_passable_by_index[x * self.height + y]
+
+        left_right_blocked = (
+            not is_intrinsically_passable_or_in_bounds(pos.x - 1, pos.y)
+            and not is_intrinsically_passable_or_in_bounds(pos.x + 1, pos.y)
+        )
+        up_down_open = (
+            is_intrinsically_passable_or_in_bounds(pos.x, pos.y - 1)
+            and is_intrinsically_passable_or_in_bounds(pos.x, pos.y + 1)
+        )
+        up_down_blocked = (
+            not is_intrinsically_passable_or_in_bounds(pos.x, pos.y - 1)
+            and not is_intrinsically_passable_or_in_bounds(pos.x, pos.y + 1)
+        )
+        left_right_open = (
+            is_intrinsically_passable_or_in_bounds(pos.x - 1, pos.y)
+            and is_intrinsically_passable_or_in_bounds(pos.x + 1, pos.y)
+        )
+
+        return (left_right_blocked and up_down_open) or (
+            up_down_blocked and left_right_open
+        )
+
+    def u_is_chokepoint_deep(self, pos: Position) -> bool:
         """
         Return whether blocking this tile would significantly lengthen a nearby route to the own core.
         """
