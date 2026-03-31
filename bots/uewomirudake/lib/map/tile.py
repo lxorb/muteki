@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from cambc import Direction, EntityType, Environment, Position, Team
 from lib.map.constants import (
+    CORE_DIST_INF,
     INF_DIST,
     PASSABLE_TYPES,
     RESOURCE_TARGET_TYPES,
@@ -94,19 +95,25 @@ class Tile:
 
     @property
     def own_core_dist(self) -> int:
-        return self.map.own_core_dist_by_index[self.index]
+        value = self.map.own_core_dist_by_index[self.index]
+        return INF_DIST if value >= CORE_DIST_INF else value
 
     @own_core_dist.setter
     def own_core_dist(self, value: int) -> None:
-        self.map.own_core_dist_by_index[self.index] = value
+        self.map.own_core_dist_by_index[self.index] = (
+            CORE_DIST_INF if value >= INF_DIST else value
+        )
 
     @property
     def enemy_core_dist(self) -> int:
-        return self.map.enemy_core_dist_by_index[self.index]
+        value = self.map.enemy_core_dist_by_index[self.index]
+        return INF_DIST if value >= CORE_DIST_INF else value
 
     @enemy_core_dist.setter
     def enemy_core_dist(self, value: int) -> None:
-        self.map.enemy_core_dist_by_index[self.index] = value
+        self.map.enemy_core_dist_by_index[self.index] = (
+            CORE_DIST_INF if value >= INF_DIST else value
+        )
 
     @property
     def dist_to_self(self) -> int:

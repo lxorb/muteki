@@ -17,6 +17,7 @@ from cambc import (
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
     CHOKEPOINT_MIN_DIST_INCREASE,
+    CORE_DIST_INF,
     DEEP_CHOKEPOINT_CHECKING,
     DIRECTIONS,
     INF_DIST,
@@ -42,8 +43,9 @@ class Map:
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.tile_count
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
-        self.own_core_dist_by_index = array("I", [INF_DIST]) * self.tile_count
-        self.enemy_core_dist_by_index = array("I", [INF_DIST]) * self.tile_count
+        self.own_core_dist_by_index = array("H", [CORE_DIST_INF]) * self.tile_count
+        self.enemy_core_dist_by_index = array("H", [CORE_DIST_INF]) * self.tile_count
+        self.core_inf_distances_by_index = array("H", [CORE_DIST_INF]) * self.tile_count
         self.inf_distances_by_index = array("I", [INF_DIST]) * self.tile_count
         self.intrinsic_passable_by_index = [True] * self.tile_count
         self.bot_present_by_index = bytearray(self.tile_count)
@@ -794,7 +796,7 @@ class Map:
 
         for adjacent_idx in self.neighbor_indices_by_index[blocked_idx]:
             if (
-                own_core_dist_by_index[adjacent_idx] >= INF_DIST
+                own_core_dist_by_index[adjacent_idx] >= CORE_DIST_INF
                 or not intrinsic_passable_by_index[adjacent_idx]
             ):
                 continue
@@ -950,16 +952,16 @@ class Map:
             if source_by_index[idx]:
                 updated_dist = 0
             elif not intrinsic_passable_by_index[idx]:
-                updated_dist = INF_DIST
+                updated_dist = CORE_DIST_INF
             else:
-                best_neighbor_dist = INF_DIST
+                best_neighbor_dist = CORE_DIST_INF
                 for neighbor_idx in neighbor_indices_by_index[idx]:
                     neighbor_dist = distance_by_index[neighbor_idx]
                     if neighbor_dist < best_neighbor_dist:
                         best_neighbor_dist = neighbor_dist
                 updated_dist = (
-                    INF_DIST
-                    if best_neighbor_dist >= INF_DIST
+                    CORE_DIST_INF
+                    if best_neighbor_dist >= CORE_DIST_INF
                     else best_neighbor_dist + 1
                 )
 
@@ -969,6 +971,40 @@ class Map:
             distance_by_index[idx] = updated_dist
             for neighbor_idx in neighbor_indices_by_index[idx]:
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
+
+    def u_initialize_core_distance_field(
+        self,
+        source_indices: list[int] | tuple[int, ...],
+        distance_by_index,
+    ) -> None:
+        if not source_indices:
+            return
+
+        distance_by_index[:] = self.core_inf_distances_by_index
+        queue = self.distance_queue_buffer_by_index
+        queue.clear()
+        queue.extend(source_indices)
+        queue_head = 0
+        for source_idx in source_indices:
+            distance_by_index[source_idx] = 0
+
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+
+        while queue_head < len(queue):
+            current_idx = queue[queue_head]
+            queue_head += 1
+            current_dist = distance_by_index[current_idx]
+
+            for neighbor_idx in neighbor_indices_by_index[current_idx]:
+                if (
+                    not intrinsic_passable_by_index[neighbor_idx]
+                    or distance_by_index[neighbor_idx] != CORE_DIST_INF
+                ):
+                    continue
+
+                distance_by_index[neighbor_idx] = current_dist + 1
+                queue.append(neighbor_idx)
 
     def u_refresh_dist_to_self(self) -> None:
         source_idx = self.current_pos.x * self.height + self.current_pos.y
@@ -1156,13 +1192,17 @@ class Map:
             dirty_indices or not self.own_core_dist_initialized
         ):
             if not self.own_core_dist_initialized:
-                self.own_core_dist_by_index[:] = self.inf_distances_by_index
-            self.u_update_core_distance_field_incremental(
-                self.own_core_source_indices,
-                self.own_core_source_by_index,
-                self.own_core_dist_by_index,
-                dirty_indices,
-            )
+                self.u_initialize_core_distance_field(
+                    self.own_core_source_indices,
+                    self.own_core_dist_by_index,
+                )
+            else:
+                self.u_update_core_distance_field_incremental(
+                    self.own_core_source_indices,
+                    self.own_core_source_by_index,
+                    self.own_core_dist_by_index,
+                    dirty_indices,
+                )
             self.own_core_dist_initialized = True
 
         sw.lap("Own distance field")
@@ -1171,13 +1211,17 @@ class Map:
             dirty_indices or not self.enemy_core_dist_initialized
         ):
             if not self.enemy_core_dist_initialized:
-                self.enemy_core_dist_by_index[:] = self.inf_distances_by_index
-            self.u_update_core_distance_field_incremental(
-                self.enemy_core_source_indices,
-                self.enemy_core_source_by_index,
-                self.enemy_core_dist_by_index,
-                dirty_indices,
-            )
+                self.u_initialize_core_distance_field(
+                    self.enemy_core_source_indices,
+                    self.enemy_core_dist_by_index,
+                )
+            else:
+                self.u_update_core_distance_field_incremental(
+                    self.enemy_core_source_indices,
+                    self.enemy_core_source_by_index,
+                    self.enemy_core_dist_by_index,
+                    dirty_indices,
+                )
             self.enemy_core_dist_initialized = True
 
         sw.lap("Enemy distance field")

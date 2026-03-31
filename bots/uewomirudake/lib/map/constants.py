@@ -2,6 +2,7 @@ from cambc import Direction, EntityType
 
 
 INF_DIST = 10**9
+CORE_DIST_INF = 0xFFFF
 CHOKEPOINT_MIN_DIST_INCREASE = 4
 DEEP_CHOKEPOINT_CHECKING = False
 
