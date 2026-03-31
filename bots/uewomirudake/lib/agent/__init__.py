@@ -19,8 +19,11 @@ class Agent:
         self.map: Map | None = None
         self.first_turn_initialized = False
         self.t_start = 0
+        self.t_end = 0
 
     def u_run(self, ct: Controller) -> None:
+        self.t_start = time.perf_counter_ns()
+        self.t_end = 0
         self.ct = ct
         if not self.first_turn_initialized:
             self.map = Map(ct)
@@ -29,13 +32,18 @@ class Agent:
             self.map.ct = ct
         self.map.u_update_vision()
         self.u_handler()
+        self.t_end = time.perf_counter_ns()
+        total_processing_time_mus = (self.t_end - self.t_start) // 1_000
+        print(f"Turn processing time: {total_processing_time_mus} mus")
 
     def u_get_ns_elapsed(self):
-        return time.perf_counter_ns() - self.t_start
+        if not self.t_start:
+            return 0
+        return (self.t_end or time.perf_counter_ns()) - self.t_start
 
     def u_get_ns_remaining(self):
         from .constants import NS_PER_TURN
-        return NS_PER_TURN - time.perf_counter_ns() + self.t_start
+        return NS_PER_TURN - self.u_get_ns_elapsed()
 
     def u_get_bound_method(
         self,

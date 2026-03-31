@@ -30,6 +30,7 @@ class BuilderExecutionMixin:
             self.last_strategy_index = idx
             if acted:
                 self.last_turn_completed = True
+                print(f"Executed strategy: {strategy_method.__name__}")
                 return True
 
         self.last_turn_completed = True
