@@ -68,15 +68,27 @@ class Map:
         self.tiles_in_vision = [
             self.u_get_pos_tile(pos) for pos in self.ct.get_nearby_tiles()
         ]
+
+        t_update_attributes_start = time.perf_counter_ns()
         for tile in self.tiles_in_vision:
             tile.update_attributes()
+        update_attributes_time_mus = (
+            time.perf_counter_ns() - t_update_attributes_start
+        ) // 1_000
 
         if self.own_core_center_pos is None:
             self.u_calc_core_center_positions()
 
         self.u_update_supply_information()
+
+        t_update_distances_start = time.perf_counter_ns()
         self.u_update_distances()
+        update_distances_time_mus = (
+            time.perf_counter_ns() - t_update_distances_start
+        ) // 1_000
         update_vision_time_mus = (time.perf_counter_ns() - t_start) // 1_000
+        print(f"Map update attributes time: {update_attributes_time_mus} mus")
+        print(f"Map update distances time: {update_distances_time_mus} mus")
         print(f"Map update vision time: {update_vision_time_mus} mus")
 
     def u_get_pos_tile(self, pos: Position) -> Tile:

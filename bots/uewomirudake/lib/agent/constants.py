@@ -107,4 +107,4 @@ INITIAL_BB_ORDER: list[list[StrategyEntry]] = [
 ]
 MAX_BOTS: int = 10
 DISABLE_HARASSMENT: bool = False
-SURRENDER_AT_TURN: int = 300
+SURRENDER_AT_TURN: int = 100
