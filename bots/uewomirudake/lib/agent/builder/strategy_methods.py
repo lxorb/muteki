@@ -317,12 +317,11 @@ class BuilderStrategyMethodsMixin:
 
         Uses the cached accessible ore list for the requested resource, skips
         tiles in enemy attack range or next to orthogonally adjacent enemy
-        buildings, prioritizes by squared distance to the own core and then the
+        buildings, prioritizes by cached distance to the own core and then the
         builder, and delegates the actual build, replacement, movement, hold,
         and optional enemy-passable clearing to `u_build_at`.
         """
         own_team = self.map.own_team
-        core_center_pos = self.map.own_core_center_pos
         if resource == Environment.ORE_TITANIUM:
             ore_positions = self.map.known_accessible_titanium_tiles
         elif resource == Environment.ORE_AXIONITE:
@@ -371,11 +370,7 @@ class BuilderStrategyMethodsMixin:
 
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
-            lambda tile: (
-                core_center_pos.distance_squared(tile.position)
-                if core_center_pos is not None
-                else 10**9
-            ),
+            lambda tile: tile.own_core_dist,
             lambda tile: tile.dist_to_self,
         )
         for target_tile in candidate_tiles:
