@@ -92,6 +92,8 @@ class Tile:
         self.last_seen_turn: int = -1
         self.last_titanium_onit_turn: int = -1
 
+        self.last_patrolled_index: int = -1
+
     @property
     def own_core_dist(self) -> int:
         return self.map.own_core_dist_by_index[self.index]
@@ -326,9 +328,9 @@ class Tile:
             case EntityType.SPLITTER:
                 if direction is None:
                     return []
-                neighbor_idx_by_direction = self.map.neighbor_index_by_direction_by_index[
-                    self.index
-                ]
+                neighbor_idx_by_direction = (
+                    self.map.neighbor_index_by_direction_by_index[self.index]
+                )
                 return [
                     tiles_by_index[target_idx]
                     for output_direction in (
@@ -336,9 +338,7 @@ class Tile:
                         direction.rotate_left().rotate_left(),
                         direction.rotate_right().rotate_right(),
                     )
-                    if (
-                        target_idx := neighbor_idx_by_direction.get(output_direction)
-                    )
+                    if (target_idx := neighbor_idx_by_direction.get(output_direction))
                     is not None
                 ]
             case EntityType.BRIDGE:
@@ -485,7 +485,10 @@ class Tile:
         else:
             supply_links_in_vision = self.map.enemy_supply_links_in_vision
 
-        return any(self in supply_link_tile.building.targets for supply_link_tile in supply_links_in_vision)
+        return any(
+            self in supply_link_tile.building.targets
+            for supply_link_tile in supply_links_in_vision
+        )
 
     def update_missing_links(self) -> None:
         if self.is_targeted_by_supply_link_for_team(self.map.own_team) and not (

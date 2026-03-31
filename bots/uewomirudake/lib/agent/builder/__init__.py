@@ -38,6 +38,8 @@ class BuilderAgent(
         self.last_strategy_index = -1
         self.last_turn_completed = True
 
+        self.supply_patrol_index = 0
+
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos
         core_center_pos = self.map.own_core_center_pos

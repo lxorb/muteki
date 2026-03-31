@@ -72,8 +72,7 @@ TURRET_TARGET_PRIORITY = (
     EntityType.ARMOURED_CONVEYOR,
 )
 TURRET_TARGET_PRIORITY_RANK = {
-    target_type: idx
-    for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
+    target_type: idx for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
 }
 LAUNCHER_THROWABLE_PRIORITY = (
     "enemy_bot_on_ally_bridge",
@@ -84,15 +83,14 @@ LAUNCHER_THROWABLE_PRIORITY = (
     "enemy_bot_elsewhere",
 )
 LAUNCHER_THROWABLE_PRIORITY_RANK = {
-    target_type: idx
-    for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
+    target_type: idx for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
 }
 
 ### CORE LOGIC ###
 BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
     (-1, -1): SCAVENGER_STRATEGY,
     (0, -1): HARASSMENT_STRATEGY,
-    (1, -1): HARASSMENT_STRATEGY,
+    (1, -1): DEFENDER_STRATEGY,  # Debug defender spawning
     (-1, 0): INITRES_STRATEGY,
     (0, 0): HARASSMENT_STRATEGY,
     (1, 0): HARASSMENT_STRATEGY,
@@ -104,7 +102,8 @@ INITIAL_BB_ORDER: list[list[StrategyEntry]] = [
     SCAVENGER_STRATEGY,
     SCAVENGER_STRATEGY,
     # HARASSMENT_STRATEGY,
+    DEFENDER_STRATEGY,  # Debug defender spawning
 ]
 MAX_BOTS: int = 10
 DISABLE_HARASSMENT: bool = False
-SURRENDER_AT_TURN: int = 130
+SURRENDER_AT_TURN: int = 201

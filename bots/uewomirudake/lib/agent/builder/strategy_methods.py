@@ -171,7 +171,9 @@ class BuilderStrategyMethodsMixin:
             return build_plan_by_index[plan_key]
 
         for harvester_tile in self.map.own_harvesters_in_vision:
-            for adjacent_idx in cardinal_neighbor_indices_by_index[harvester_tile.index]:
+            for adjacent_idx in cardinal_neighbor_indices_by_index[
+                harvester_tile.index
+            ]:
                 if adjacent_idx in seen_candidate_indices:
                     continue
                 seen_candidate_indices.add(adjacent_idx)
@@ -254,6 +256,9 @@ class BuilderStrategyMethodsMixin:
         become a conveyor or a bridge plus its optimal target.
         """
         own_team = self.map.own_team
+        tiles_by_index = self.map.tiles_by_index
+        own_core_dist_by_index = self.map.own_core_dist_by_index
+        dist_to_self_by_index = self.map.dist_to_self_by_index
 
         def can_use_tile(target_tile) -> bool:
             if target_tile.building.entity_type == EntityType.CORE:
@@ -272,20 +277,30 @@ class BuilderStrategyMethodsMixin:
                 and target_tile.is_passable
             )
 
-        candidate_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(self.map.own_missing_supply_links)),
-            can_use_tile,
-        )
-        if not candidate_tiles:
+        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
+        for encounter_order, target_tile in enumerate(self.map.own_missing_supply_links):
+            if not can_use_tile(target_tile):
+                continue
+
+            target_idx = target_tile.index
+            candidate_entries.append(
+                (
+                    (
+                        own_core_dist_by_index[target_idx],
+                        dist_to_self_by_index[target_idx],
+                    ),
+                    encounter_order,
+                    target_idx,
+                )
+            )
+
+        if not candidate_entries:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.own_core_dist,
-            lambda tile: tile.dist_to_self,
-        )
-
-        for target_tile in candidate_tiles:
+        heapify(candidate_entries)
+        while candidate_entries:
+            _, _, target_idx = heappop(candidate_entries)
+            target_tile = tiles_by_index[target_idx]
             supplier_type, supplier_target = self.u_get_supplier_build_plan(
                 target_tile.position
             )
@@ -650,7 +665,7 @@ class BuilderStrategyMethodsMixin:
     def s_insert_core_splitter(self, move_towards: bool = True, hold: bool = True):
         """
         TODO: insert a splitter into the core supply chain.
-        The splitter should replace a conveyor that is adjacent to the core. 
+        The splitter should replace a conveyor that is adjacent to the core.
         """
         return False
 
@@ -661,22 +676,92 @@ class BuilderStrategyMethodsMixin:
     ):
         """
         TODO: build a foundry adjacent to the core splitter.
-        Prioritize building the foundry on a non-supply-chain tile. 
+        Prioritize building the foundry on a non-supply-chain tile.
         """
         return False
 
     def s_patrol_supply_chains(self):
         """
-        TODO: patrol own supply chains and rebuild damaged sections.
-        Should save a patrolling index. For every supply chain tile,
-        save a last patrolled at value indicating which value the patrolling index had
-        when last patrolled. That means, at the start of each turn set the last patrolled at 
-        value to the current patrolling index for all tiles that are at least diagonally adjacent to the
-        builder bot. Keep track of supplier tiles that have a lower patrolling index than the current value.
-        Always go to the nearest one of these to the builder bot. 
-        If there are no tiles left to patrol, just increment the patrolling index by one 
-        beforehand. 
+        Patrol known allied supply links and rebuild visible damaged gaps.
+
+        The builder stamps its current tile plus all adjacent tiles with its
+        current patrol index whenever those tiles hold allied supply-link
+        structures. If a visible supply gap can be rebuilt, this delegates to
+        `s_build_missing_supply_link(...)`. Otherwise it moves toward the
+        closest known allied supply-link tile whose stored patrol index is
+        still lower than the builder's current patrol index. When the current
+        patrol cycle is complete, the builder increments its patrol index and
+        starts the next pass immediately.
         """
+        own_team = self.map.own_team
+        current_pos = self.map.current_pos
+        current_idx = current_pos.x * self.map.height + current_pos.y
+        tiles_by_index = self.map.tiles_by_index
+        neighbor_indices_by_index = self.map.neighbor_indices_by_index
+        known_own_supply_link_indices = self.map.known_own_supply_link_indices
+        dist_to_self_by_index = self.map.dist_to_self_by_index
+        own_core_dist_by_index = self.map.own_core_dist_by_index
+
+        def stamp_local_patrol_coverage() -> None:
+            current_tile = tiles_by_index[current_idx]
+            if (
+                current_tile.building.team == own_team
+                and current_tile.building.entity_type in SUPPLY_LINK_TYPES
+            ):
+                current_tile.last_patrolled_index = self.supply_patrol_index
+
+            for adjacent_idx in neighbor_indices_by_index[current_idx]:
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
+                ):
+                    adjacent_tile.last_patrolled_index = self.supply_patrol_index
+
+        def get_unpatrolled_target_indices() -> list[int]:
+            supply_patrol_index = self.supply_patrol_index
+            candidate_entries: list[tuple[int, int, int, int]] = []
+
+            for idx in known_own_supply_link_indices:
+                if dist_to_self_by_index[idx] >= INF_DIST:
+                    continue
+
+                target_tile = tiles_by_index[idx]
+                last_patrolled_index = target_tile.last_patrolled_index
+                if last_patrolled_index >= supply_patrol_index:
+                    continue
+
+                candidate_entries.append(
+                    (
+                        dist_to_self_by_index[idx],
+                        last_patrolled_index,
+                        own_core_dist_by_index[idx],
+                        idx,
+                    )
+                )
+
+            candidate_entries.sort()
+            return [idx for _, _, _, idx in candidate_entries]
+
+        stamp_local_patrol_coverage()
+
+        if self.s_build_missing_supply_link(
+            move_towards=True,
+            hold=True,
+            attack_enemy_passable=True,
+        ):
+            return True
+
+        patrol_target_indices = get_unpatrolled_target_indices()
+        if not patrol_target_indices:
+            self.supply_patrol_index += 1
+            stamp_local_patrol_coverage()
+            patrol_target_indices = get_unpatrolled_target_indices()
+
+        for target_idx in patrol_target_indices:
+            if self.u_move_to(tiles_by_index[target_idx].position):
+                return True
+
         return False
 
     def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
