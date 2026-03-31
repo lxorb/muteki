@@ -1,4 +1,5 @@
 from cambc import Controller
+import time
 
 from lib.agent import Agent
 from lib.agent.constants import BUILDER_STRATEGY_BY_TILE
@@ -64,4 +65,10 @@ class BuilderAgent(
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
         print(f"Builder strategy: {self.u_get_strategy_name()}")
-        return self.u_execute_strategy()
+        t_strategy_handler_start = time.perf_counter_ns()
+        handled = self.u_execute_strategy()
+        strategy_handler_time_mus = (
+            time.perf_counter_ns() - t_strategy_handler_start
+        ) // 1_000
+        print(f"Builder strategy handler time: {strategy_handler_time_mus} mus")
+        return handled
