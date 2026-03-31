@@ -33,6 +33,12 @@ STORED_RESOURCE_TRACKED_ENTITY_TYPES = {
     EntityType.ARMOURED_CONVEYOR,
     EntityType.BRIDGE,
 }
+LAZY_WEAPON_TARGET_TYPES = {
+    EntityType.GUNNER,
+    EntityType.SENTINEL,
+    EntityType.BREACH,
+    EntityType.LAUNCHER,
+}
 
 
 @dataclass
@@ -196,8 +202,8 @@ class Tile:
         if self.environment == Environment.ORE_TITANIUM:
             self.last_titanium_onit_turn = current_round
 
-        bot_id = ct.get_tile_builder_bot_id(self.position)
-        building_id = ct.get_tile_building_id(self.position)
+        bot_id = self.map.visible_builder_bot_ids_by_index.get(self.index)
+        building_id = self.map.visible_building_ids_by_index.get(self.index)
 
         if bot_id != self.bot.id:
             if bot_id is None:
@@ -246,23 +252,28 @@ class Tile:
             self.building.prev_targets = self.building.targets.copy()
             self.building.entity_type = ct.get_entity_type(self.building.id)
             self.building.team = ct.get_team(self.building.id)
+            tracks_targets = self.u_tracks_building_targets()
 
-            if self.building.entity_type in DIRECTIONAL_ENTITY_TYPES:
+            if tracks_targets and self.building.entity_type in DIRECTIONAL_ENTITY_TYPES:
                 self.building.direction = ct.get_direction(self.building.id)
             else:
                 self.building.direction = None
 
-            if self.building.entity_type in VISION_RADIUS_ENTITY_TYPES:
+            if tracks_targets and self.building.entity_type in VISION_RADIUS_ENTITY_TYPES:
                 self.building.vision_radius_sq = ct.get_vision_radius_sq(
                     self.building.id
                 )
             else:
                 self.building.vision_radius_sq = None
 
-            self.building.targets = self.get_targets(
-                self.building.entity_type,
-                self.building.id,
-                direction=self.building.direction,
+            self.building.targets = (
+                self.get_targets(
+                    self.building.entity_type,
+                    self.building.id,
+                    direction=self.building.direction,
+                )
+                if tracks_targets
+                else []
             )
             self.update_target_zones_building(
                 prev_entity_type,
@@ -270,7 +281,10 @@ class Tile:
                 prev_team,
             )
         else:
-            if self.building.entity_type == EntityType.GUNNER:
+            if (
+                self.u_tracks_building_targets()
+                and self.building.entity_type == EntityType.GUNNER
+            ):
                 new_direction = ct.get_direction(self.building.id)
                 if new_direction != self.building.direction:
                     prev_entity_type = self.building.entity_type
@@ -296,6 +310,14 @@ class Tile:
             stored_resource = ct.get_stored_resource(self.building.id)
             if stored_resource is not None:
                 self.building.last_resource_onit_turn = self.map.current_round
+
+    def u_tracks_building_targets(self) -> bool:
+        if self.building.entity_type in RESOURCE_TARGET_TYPES:
+            return True
+        return (
+            self.building.team != self.map.own_team
+            and self.building.entity_type in LAZY_WEAPON_TARGET_TYPES
+        )
 
     def get_targets(
         self,
@@ -501,11 +523,8 @@ class Tile:
 
     def is_targeted_by_supply_link_for_team(self, team: Team) -> bool:
         if team == self.map.own_team:
-            supply_links_in_vision = self.map.own_supply_links_in_vision
-        else:
-            supply_links_in_vision = self.map.enemy_supply_links_in_vision
-
-        return any(self in supply_link_tile.building.targets for supply_link_tile in supply_links_in_vision)
+            return self.index in self.map.own_supply_link_target_indices_in_vision
+        return self.index in self.map.enemy_supply_link_target_indices_in_vision
 
     def update_missing_links(self) -> None:
         if self.is_targeted_by_supply_link_for_team(self.map.own_team) and not (

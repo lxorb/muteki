@@ -65,6 +65,10 @@ class Map:
         self.enemy_core_dist_initialized = False
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
+        self.visible_builder_bot_ids_by_index: dict[int, int] = {}
+        self.visible_building_ids_by_index: dict[int, int] = {}
+        self.own_supply_link_target_indices_in_vision: set[int] = set()
+        self.enemy_supply_link_target_indices_in_vision: set[int] = set()
         # Dedicated chokepoint BFS buffers avoid per-call queue/list allocation.
         self.chokepoint_queue_buffer_by_index: list[int] = []
         self.path_seen_epoch_by_index = [0] * self.tile_count
@@ -171,6 +175,10 @@ class Map:
         self.enemy_buildings_in_vision: list[Tile] = []
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
+        self.visible_builder_bot_ids_by_index = {}
+        self.visible_building_ids_by_index = {}
+        self.own_supply_link_target_indices_in_vision = set()
+        self.enemy_supply_link_target_indices_in_vision = set()
         self.frontier_expand_newly_seen_indices = []
 
     def u_update_vision(self):
@@ -181,6 +189,22 @@ class Map:
         self.tiles_in_vision = [
             self.u_get_pos_tile(pos) for pos in self.ct.get_nearby_tiles()
         ]
+
+        for unit_id in self.ct.get_nearby_units():
+            if self.ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
+                continue
+            pos = self.ct.get_position(unit_id)
+            if self.u_is_in_bounds(pos):
+                self.visible_builder_bot_ids_by_index[pos.x * self.height + pos.y] = (
+                    unit_id
+                )
+
+        for building_id in self.ct.get_nearby_buildings():
+            pos = self.ct.get_position(building_id)
+            if self.u_is_in_bounds(pos):
+                self.visible_building_ids_by_index[pos.x * self.height + pos.y] = (
+                    building_id
+                )
 
         for tile in self.tiles_in_vision:
             tile.update_attributes()
@@ -329,30 +353,51 @@ class Map:
             tile_environment = tile.environment
             tile_is_core = tile.building.entity_type == EntityType.CORE
 
+            rotation_tile = None
+            mirror_x_tile = None
+            mirror_y_tile = None
+            has_known_symmetric_tile = False
+
             if rotation_possible:
-                symmetric_tile = self.matrix[self.width - 1 - x][self.height - 1 - y]
-                if symmetric_tile.environment is not None and (
-                    tile_environment != symmetric_tile.environment
+                rotation_tile = self.matrix[self.width - 1 - x][self.height - 1 - y]
+                has_known_symmetric_tile = rotation_tile.environment is not None
+
+            if mirror_x_possible:
+                mirror_x_tile = self.matrix[x][self.height - 1 - y]
+                has_known_symmetric_tile = (
+                    has_known_symmetric_tile or mirror_x_tile.environment is not None
+                )
+
+            if mirror_y_possible:
+                mirror_y_tile = self.matrix[self.width - 1 - x][y]
+                has_known_symmetric_tile = (
+                    has_known_symmetric_tile or mirror_y_tile.environment is not None
+                )
+
+            if not has_known_symmetric_tile:
+                continue
+
+            if rotation_possible:
+                if rotation_tile.environment is not None and (
+                    tile_environment != rotation_tile.environment
                     or tile_is_core
-                    != (symmetric_tile.building.entity_type == EntityType.CORE)
+                    != (rotation_tile.building.entity_type == EntityType.CORE)
                 ):
                     rotation_possible = False
 
             if mirror_x_possible:
-                symmetric_tile = self.matrix[x][self.height - 1 - y]
-                if symmetric_tile.environment is not None and (
-                    tile_environment != symmetric_tile.environment
+                if mirror_x_tile.environment is not None and (
+                    tile_environment != mirror_x_tile.environment
                     or tile_is_core
-                    != (symmetric_tile.building.entity_type == EntityType.CORE)
+                    != (mirror_x_tile.building.entity_type == EntityType.CORE)
                 ):
                     mirror_x_possible = False
 
             if mirror_y_possible:
-                symmetric_tile = self.matrix[self.width - 1 - x][y]
-                if symmetric_tile.environment is not None and (
-                    tile_environment != symmetric_tile.environment
+                if mirror_y_tile.environment is not None and (
+                    tile_environment != mirror_y_tile.environment
                     or tile_is_core
-                    != (symmetric_tile.building.entity_type == EntityType.CORE)
+                    != (mirror_y_tile.building.entity_type == EntityType.CORE)
                 ):
                     mirror_y_possible = False
 
@@ -875,9 +920,39 @@ class Map:
         return chokepoint_epoch
 
     def u_update_supply_information(self) -> None:
+        self.own_supply_targets_in_vision = []
+        self.enemy_supply_targets_in_vision = []
+        self.own_missing_supply_links = []
+        self.enemy_missing_supply_links = []
+        self.own_supply_link_target_indices_in_vision = set()
+        self.enemy_supply_link_target_indices_in_vision = set()
+
+        for supply_link_tile in self.own_supply_links_in_vision:
+            self.own_supply_link_target_indices_in_vision.update(
+                target.index for target in supply_link_tile.building.targets
+            )
+
+        for supply_link_tile in self.enemy_supply_links_in_vision:
+            self.enemy_supply_link_target_indices_in_vision.update(
+                target.index for target in supply_link_tile.building.targets
+            )
+
         for tile in self.tiles_in_vision:
-            tile.update_supply_targets_in_vision()
-            tile.update_missing_links()
+            if tile.in_own_resource_range > 0:
+                self.own_supply_targets_in_vision.append(tile)
+            if tile.in_enemy_resource_range > 0:
+                self.enemy_supply_targets_in_vision.append(tile)
+
+            if tile.index in self.own_supply_link_target_indices_in_vision and not (
+                tile.propagates_for_team(self.own_team) or tile.is_core_of(self.own_team)
+            ):
+                self.own_missing_supply_links.append(tile)
+
+            if tile.index in self.enemy_supply_link_target_indices_in_vision and not (
+                tile.propagates_for_team(self.enemy_team)
+                or tile.is_core_of(self.enemy_team)
+            ):
+                self.enemy_missing_supply_links.append(tile)
 
     def u_run_distance_bfs(
         self,
