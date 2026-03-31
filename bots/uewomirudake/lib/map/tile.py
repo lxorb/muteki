@@ -110,11 +110,14 @@ class Tile:
 
     @property
     def dist_to_self(self) -> int:
+        if self.map.dist_to_self_epoch_by_index[self.index] != self.map.dist_to_self_epoch:
+            return INF_DIST
         return self.map.dist_to_self_by_index[self.index]
 
     @dist_to_self.setter
     def dist_to_self(self, value: int) -> None:
         self.map.dist_to_self_by_index[self.index] = value
+        self.map.dist_to_self_epoch_by_index[self.index] = self.map.dist_to_self_epoch
 
     @property
     def is_enemy_turret_target_tile(self) -> int:

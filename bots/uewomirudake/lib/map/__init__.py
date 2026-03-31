@@ -38,7 +38,10 @@ class Map:
         self.width = ct.get_map_width()
         self.height = ct.get_map_height()
         self.tile_count = self.width * self.height
-        self.dist_to_self_by_index = array("I", [INF_DIST]) * self.tile_count
+        self.dist_to_self_by_index = array("H", [0]) * self.tile_count
+        self.dist_to_self_epoch_by_index = array("I", [0]) * self.tile_count
+        self.dist_to_self_epoch = 0
+        self.last_dist_to_self_source_idx: int | None = None
         self.own_core_dist_by_index = array("I", [INF_DIST]) * self.tile_count
         self.enemy_core_dist_by_index = array("I", [INF_DIST]) * self.tile_count
         self.inf_distances_by_index = array("I", [INF_DIST]) * self.tile_count
@@ -968,10 +971,42 @@ class Map:
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
     def u_refresh_dist_to_self(self) -> None:
-        self.u_run_distance_bfs(
-            (self.current_pos.x * self.height + self.current_pos.y,),
-            self.dist_to_self_by_index,
-        )
+        source_idx = self.current_pos.x * self.height + self.current_pos.y
+        if (
+            self.last_dist_to_self_source_idx == source_idx
+            and self.dist_to_self_epoch != 0
+        ):
+            return
+
+        self.dist_to_self_epoch += 1
+        dist_to_self_epoch = self.dist_to_self_epoch
+        self.last_dist_to_self_source_idx = source_idx
+        queue = self.distance_queue_buffer_by_index
+        queue.clear()
+        queue.append(source_idx)
+        queue_head = 0
+        self.dist_to_self_epoch_by_index[source_idx] = dist_to_self_epoch
+        self.dist_to_self_by_index[source_idx] = 0
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
+        dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
+
+        while queue_head < len(queue):
+            current_idx = queue[queue_head]
+            queue_head += 1
+            current_dist = dist_to_self_by_index[current_idx]
+
+            for neighbor_idx in neighbor_indices_by_index[current_idx]:
+                if (
+                    not intrinsic_passable_by_index[neighbor_idx]
+                    or dist_to_self_epoch_by_index[neighbor_idx] == dist_to_self_epoch
+                ):
+                    continue
+
+                dist_to_self_epoch_by_index[neighbor_idx] = dist_to_self_epoch
+                dist_to_self_by_index[neighbor_idx] = current_dist + 1
+                queue.append(neighbor_idx)
 
     def u_calculate_shortest_path(
         self,
@@ -991,6 +1026,7 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
+        dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
         own_core_dist_by_index = self.own_core_dist_by_index
         enemy_turret_target_by_index = self.enemy_turret_target_by_index
         bot_present_by_index = self.bot_present_by_index
@@ -999,7 +1035,7 @@ class Map:
 
         if (
             source_pos == self.current_pos
-            and dist_to_self_by_index[target_idx] < INF_DIST
+            and dist_to_self_epoch_by_index[target_idx] == self.dist_to_self_epoch
         ):
             current_idx = target_idx
             path = [tiles_by_index[current_idx]]
@@ -1010,7 +1046,10 @@ class Map:
                 best_candidate_score: tuple[int, int, int] | None = None
 
                 for adjacent_idx in neighbor_indices_by_index[current_idx]:
-                    if dist_to_self_by_index[adjacent_idx] != next_dist_to_self:
+                    if (
+                        dist_to_self_epoch_by_index[adjacent_idx] != self.dist_to_self_epoch
+                        or dist_to_self_by_index[adjacent_idx] != next_dist_to_self
+                    ):
                         continue
                     if (
                         avoid_enemy_turrets
@@ -1107,8 +1146,6 @@ class Map:
     def u_update_distances(self) -> None:
         sw = Stopwatch("Map distances")
         sw.start()
-
-        self.dist_to_self_by_index[:] = self.inf_distances_by_index
 
         self.u_refresh_dist_to_self()
         dirty_indices = tuple(self.core_distance_dirty_indices)
