@@ -3,10 +3,7 @@ from cambc import Direction, EntityType, Environment, Position
 from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 
-from .types import BuilderStrategyMethodsSelf
-
-
-class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
+class BuilderStrategyMethodsMixin:
     def s_build_harvester_supply_link(
         self, move_towards: bool = True, hold: bool = True
     ):
@@ -304,8 +301,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                     return True
             return False
 
-        def can_use_tile(pos: Position) -> bool:
-            target_tile = self.map.u_get_pos_tile(pos)
+        def can_use_tile(target_tile) -> bool:
             if target_tile.building.id is None:
                 return True
             if (

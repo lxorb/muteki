@@ -25,7 +25,7 @@ class BuilderAgent(
     last_turn_completed: bool
 
     def __init__(self, strategy: list[StrategyEntry] | None):
-        super().__init__()
+        Agent.__init__(self)
         self.strategy = list(strategy or [])
         self.last_strategy_index = -1
         self.last_turn_completed = True

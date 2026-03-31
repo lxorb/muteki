@@ -13,10 +13,7 @@ from lib.agent.constants import (
 )
 from lib.map.constants import SUPPLY_LINK_TYPES
 
-from .types import BuilderNavigationSelf
-
-
-class BuilderNavigationMixin(BuilderNavigationSelf):
+class BuilderNavigationMixin:
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
         """
         Choose the sentinel facing that best covers high-value targets.

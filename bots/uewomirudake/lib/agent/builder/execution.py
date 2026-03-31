@@ -1,7 +1,4 @@
-from .types import BuilderExecutionSelf
-
-
-class BuilderExecutionMixin(BuilderExecutionSelf):
+class BuilderExecutionMixin:
     def u_execute_strategy(self) -> bool:
         """
         Execute this builder's ordered strategy methods.
