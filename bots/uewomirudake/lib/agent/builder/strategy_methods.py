@@ -278,7 +278,9 @@ class BuilderStrategyMethodsMixin:
             )
 
         candidate_entries: list[tuple[tuple[int, int], int, int]] = []
-        for encounter_order, target_tile in enumerate(self.map.own_missing_supply_links):
+        for encounter_order, target_tile in enumerate(
+            self.map.own_missing_supply_links
+        ):
             if not can_use_tile(target_tile):
                 continue
 
@@ -760,6 +762,13 @@ class BuilderStrategyMethodsMixin:
 
         for target_idx in patrol_target_indices:
             if self.u_move_to(tiles_by_index[target_idx].position):
+                return True
+
+        # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
+        for target_idx in patrol_target_indices:
+            if self.u_move_to(
+                tiles_by_index[target_idx].position, avoid_enemy_turrets=False
+            ):
                 return True
 
         return False
