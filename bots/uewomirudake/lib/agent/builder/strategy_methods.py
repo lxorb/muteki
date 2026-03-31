@@ -144,7 +144,10 @@ class BuilderStrategyMethodsMixin:
                 harvester_pos,
                 consider_diagonal=False,
             ):
-                candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
+                candidate_tile = self.map.u_get_pos_tile(candidate_pos)
+                if candidate_tile.environment == Environment.WALL:
+                    continue
+                candidate_tiles.append(candidate_tile)
 
         candidate_tiles = self.u_filter_tiles(
             list(dict.fromkeys(candidate_tiles)),
@@ -486,7 +489,10 @@ class BuilderStrategyMethodsMixin:
         candidate_tiles = []
         for harvester_tile in enemy_harvesters:
             harvester_pos = harvester_tile.position
-            for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
+            for candidate_pos in self.map.u_iter_adjacent_positions(
+                harvester_pos,
+                consider_diagonal=False,
+            ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
