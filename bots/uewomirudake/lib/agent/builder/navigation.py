@@ -534,6 +534,7 @@ class BuilderNavigationMixin:
             current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ
             and pos != current_pos
         ):
+            destroyed_replaceable_blocker = False
             if (
                 target_tile.building.team == self.map.own_team
                 and target_tile.building.entity_type
@@ -542,7 +543,7 @@ class BuilderNavigationMixin:
                 and self.ct.can_destroy(pos)
             ):
                 self.ct.destroy(pos)
-                return True
+                destroyed_replaceable_blocker = True
 
             if affordable:
                 can_build_method = getattr(self.ct, f"can_build_{building_type.value}")
@@ -570,6 +571,9 @@ class BuilderNavigationMixin:
                     return True
 
                 raise ValueError(f"Unsupported builder target type: {building_type}")
+
+            if destroyed_replaceable_blocker:
+                return True
 
         if (
             attack_enemy_passable
