@@ -1,3 +1,4 @@
+from array import array
 from collections import deque
 from collections.abc import Iterable
 from enum import Enum
@@ -37,11 +38,13 @@ class Map:
         self.width = ct.get_map_width()
         self.height = ct.get_map_height()
         self.tile_count = self.width * self.height
-        self.dist_to_self_by_index = [INF_DIST] * self.tile_count
-        self.own_core_dist_by_index = [INF_DIST] * self.tile_count
-        self.enemy_core_dist_by_index = [INF_DIST] * self.tile_count
-        self.inf_distances_by_index = [INF_DIST] * self.tile_count
+        self.dist_to_self_by_index = array("I", [INF_DIST]) * self.tile_count
+        self.own_core_dist_by_index = array("I", [INF_DIST]) * self.tile_count
+        self.enemy_core_dist_by_index = array("I", [INF_DIST]) * self.tile_count
+        self.inf_distances_by_index = array("I", [INF_DIST]) * self.tile_count
         self.intrinsic_passable_by_index = [True] * self.tile_count
+        self.bot_present_by_index = bytearray(self.tile_count)
+        self.enemy_turret_target_by_index = bytearray(self.tile_count)
         # Bump whenever intrinsic traversability changes so chokepoint answers
         # can be reused safely until the passability graph changes again.
         self.passability_epoch = 0
@@ -874,7 +877,7 @@ class Map:
     def u_run_distance_bfs(
         self,
         seed_indices: list[int] | tuple[int, ...],
-        distance_by_index: list[int],
+        distance_by_index,
     ) -> None:
         queue = self.distance_queue_buffer_by_index
         queue.clear()
@@ -916,7 +919,7 @@ class Map:
         self,
         source_indices: list[int] | tuple[int, ...],
         source_by_index: bytearray,
-        distance_by_index: list[int],
+        distance_by_index,
         dirty_indices: list[int] | tuple[int, ...],
     ) -> None:
         if not source_indices:
@@ -989,6 +992,8 @@ class Map:
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
         own_core_dist_by_index = self.own_core_dist_by_index
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
         if source_pos == target_pos:
             return [source_tile]
 
@@ -1005,26 +1010,25 @@ class Map:
                 best_candidate_score: tuple[int, int, int] | None = None
 
                 for adjacent_idx in neighbor_indices_by_index[current_idx]:
-                    adjacent_tile = tiles_by_index[adjacent_idx]
                     if dist_to_self_by_index[adjacent_idx] != next_dist_to_self:
                         continue
                     if (
                         avoid_enemy_turrets
                         and adjacent_idx != source_idx
-                        and adjacent_tile.is_enemy_turret_target_tile
+                        and enemy_turret_target_by_index[adjacent_idx]
                     ):
                         continue
                     if (
                         avoid_other_builder_bots
                         and adjacent_idx != source_idx
                         and adjacent_idx != target_idx
-                        and adjacent_tile.bot.id is not None
+                        and bot_present_by_index[adjacent_idx]
                     ):
                         continue
                     candidate_score = (
                         own_core_dist_by_index[adjacent_idx],
-                        adjacent_tile.position.x,
-                        adjacent_tile.position.y,
+                        adjacent_idx // self.height,
+                        adjacent_idx % self.height,
                     )
                     if (
                         best_candidate_score is None
@@ -1061,18 +1065,17 @@ class Map:
                 if seen_epoch_by_index[adjacent_idx] == path_epoch:
                     continue
 
-                adjacent_tile = tiles_by_index[adjacent_idx]
                 if (
                     avoid_enemy_turrets
                     and adjacent_idx != target_idx
-                    and adjacent_tile.is_enemy_turret_target_tile
+                    and enemy_turret_target_by_index[adjacent_idx]
                 ):
                     continue
                 if (
                     avoid_other_builder_bots
                     and adjacent_idx != source_idx
                     and adjacent_idx != target_idx
-                    and adjacent_tile.bot.id is not None
+                    and bot_present_by_index[adjacent_idx]
                 ):
                     continue
                 if (

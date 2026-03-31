@@ -147,6 +147,7 @@ class Tile:
 
     def clear_bot(self) -> None:
         self.bot = TileBot(None, None, None, [], None)
+        self.map.bot_present_by_index[self.index] = 0
 
     def clear_building(self) -> None:
         if self.building.entity_type is not None:
@@ -197,6 +198,7 @@ class Tile:
         else:
             if bot_id is not None:
                 self.update_bot(id_changed=False)
+        self.map.bot_present_by_index[self.index] = 0 if bot_id is None else 1
 
         if building_id != self.building.id:
             if building_id is None:
@@ -422,12 +424,20 @@ class Tile:
                         target.in_own_attack_range += delta
                     else:
                         target.in_enemy_attack_range += delta
+                        target.map.enemy_turret_target_by_index[target.index] = int(
+                            target.in_enemy_attack_range > 0
+                            or target.in_enemy_launcher_pickup_zone > 0
+                        )
             case EntityType.LAUNCHER:
                 for target in self.map.u_get_launcher_pickup_positions(self.position):
                     if team == self.map.own_team:
                         target.in_own_launcher_pickup_zone += delta
                     else:
                         target.in_enemy_launcher_pickup_zone += delta
+                        target.map.enemy_turret_target_by_index[target.index] = int(
+                            target.in_enemy_attack_range > 0
+                            or target.in_enemy_launcher_pickup_zone > 0
+                        )
 
     def update_target_zones_building(
         self,
