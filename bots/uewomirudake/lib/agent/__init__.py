@@ -12,29 +12,35 @@ import time
 from lib.map import Map
 from lib.map.tile import Tile
 
+from lib.debug import Stopwatch
+
 
 class Agent:
     def __init__(self):
         self.ct: Controller | None = None
         self.map: Map | None = None
         self.first_turn_initialized = False
-        self.t_start = 0
-        self.t_end = 0
+
+        # Debugging
+        self.stopwatch = Stopwatch("Agent")
 
     def u_run(self, ct: Controller) -> None:
-        self.t_start = time.perf_counter_ns()
-        self.t_end = 0
+        self.stopwatch.start()
+
         self.ct = ct
         if not self.first_turn_initialized:
             self.map = Map(ct)
             self.first_turn_initialized = True
         else:
             self.map.ct = ct
+
         self.map.u_update_vision()
+        self.stopwatch.lap("Map vision")
+
         self.u_handler()
-        self.t_end = time.perf_counter_ns()
-        total_processing_time_mus = (self.t_end - self.t_start) // 1_000
-        print(f"Turn processing time: {total_processing_time_mus} mus")
+        self.stopwatch.lap("Handle agent")
+
+        self.stopwatch.log()
 
     def u_get_ns_elapsed(self):
         if not self.t_start:
@@ -43,6 +49,7 @@ class Agent:
 
     def u_get_ns_remaining(self):
         from .constants import NS_PER_TURN
+
         return NS_PER_TURN - self.u_get_ns_elapsed()
 
     def u_get_bound_method(
@@ -91,6 +98,6 @@ class Agent:
     def u_handler(self):
         """
         Execute this agent's per-turn behavior.
-        Should be overridden by each child. 
+        Should be overridden by each child.
         """
         raise NotImplementedError

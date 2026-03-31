@@ -3,7 +3,15 @@ from collections.abc import Iterable
 from enum import Enum
 import time
 
-from cambc import Controller, Direction, EntityType, Environment, GameConstants, Position, Team
+from cambc import (
+    Controller,
+    Direction,
+    EntityType,
+    Environment,
+    GameConstants,
+    Position,
+    Team,
+)
 
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
@@ -13,6 +21,8 @@ from lib.map.constants import (
     SUPPLY_LINK_TYPES,
 )
 from lib.map.tile import Tile
+
+from lib.debug import Stopwatch
 
 
 class SymmetryMode(Enum):
@@ -49,9 +59,7 @@ class Map:
             for x in range(self.width)
         ]
         self.tiles_by_index: list[Tile] = [
-            self.matrix[x][y]
-            for x in range(self.width)
-            for y in range(self.height)
+            self.matrix[x][y] for x in range(self.width) for y in range(self.height)
         ]
         self.neighbor_indices_by_index: list[tuple[int, ...]] = []
         self.cardinal_neighbor_indices_by_index: list[tuple[int, ...]] = []
@@ -115,6 +123,8 @@ class Map:
         self.known_accessible_titanium_tiles: list[Tile] = []
         self.known_accessible_axionite_tiles: list[Tile] = []
 
+        self.stopwatch = Stopwatch("Map")
+
         self._reset_turn_state()
 
     def _reset_turn_state(self) -> None:
@@ -138,36 +148,37 @@ class Map:
         self.enemy_missing_supply_links: list[Tile] = []
 
     def u_update_vision(self):
-        t_start = time.perf_counter_ns()
+        self.stopwatch.start()
+
         self._reset_turn_state()
 
         self.tiles_in_vision = [
             self.u_get_pos_tile(pos) for pos in self.ct.get_nearby_tiles()
         ]
 
-        t_update_attributes_start = time.perf_counter_ns()
         for tile in self.tiles_in_vision:
             tile.update_attributes()
-        update_attributes_time_mus = (
-            time.perf_counter_ns() - t_update_attributes_start
-        ) // 1_000
+
+        self.stopwatch.lap("Attributes")
 
         self.u_update_visible_map_caches()
+
+        self.stopwatch.lap("Caches")
 
         if self.own_core_center_pos is None:
             self.u_calc_core_center_positions()
 
+        self.stopwatch.lap("Core positions")
+
         self.u_update_supply_information()
 
-        t_update_distances_start = time.perf_counter_ns()
+        self.stopwatch.lap("Supply info")
+
         self.u_update_distances()
-        update_distances_time_mus = (
-            time.perf_counter_ns() - t_update_distances_start
-        ) // 1_000
-        update_vision_time_mus = (time.perf_counter_ns() - t_start) // 1_000
-        print(f"Map update attributes time: {update_attributes_time_mus} mus")
-        print(f"Map update distances time: {update_distances_time_mus} mus")
-        print(f"Map update vision time: {update_vision_time_mus} mus")
+
+        self.stopwatch.lap("Distances")
+
+        self.stopwatch.log()
 
     def u_get_attackable_target_indices(
         self,
@@ -309,9 +320,7 @@ class Map:
             for mode, symmetric_location in self.enemy_core_center_pos_candidates
             if mode in self.symmetry_mode_candidates
         ]
-        remaining_positions = {
-            pos for _, pos in self.enemy_core_center_pos_candidates
-        }
+        remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
         if len(remaining_positions) == 1:
             self.enemy_core_center_pos = next(iter(remaining_positions))
             self.enemy_core_source_indices = self.u_cache_core_source_indices(
@@ -657,8 +666,7 @@ class Map:
         blocked_key = (pos.x, pos.y)
         own_core_tiles = self.u_get_core_footprint_positions(self.own_core_center_pos)
         own_core_keys = {
-            (core_tile.position.x, core_tile.position.y)
-            for core_tile in own_core_tiles
+            (core_tile.position.x, core_tile.position.y) for core_tile in own_core_tiles
         }
         if blocked_key in own_core_keys:
             return False
@@ -817,7 +825,9 @@ class Map:
                     if neighbor_dist < best_neighbor_dist:
                         best_neighbor_dist = neighbor_dist
                 updated_dist = (
-                    INF_DIST if best_neighbor_dist >= INF_DIST else best_neighbor_dist + 1
+                    INF_DIST
+                    if best_neighbor_dist >= INF_DIST
+                    else best_neighbor_dist + 1
                 )
 
             if updated_dist == distance_by_index[idx]:
@@ -855,7 +865,10 @@ class Map:
         if source_pos == target_pos:
             return [source_tile]
 
-        if source_pos == self.current_pos and dist_to_self_by_index[target_idx] < INF_DIST:
+        if (
+            source_pos == self.current_pos
+            and dist_to_self_by_index[target_idx] < INF_DIST
+        ):
             current_idx = target_idx
             path = [tiles_by_index[current_idx]]
 

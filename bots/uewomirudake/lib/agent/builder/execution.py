@@ -1,3 +1,6 @@
+from lib.debug import Stopwatch
+
+
 class BuilderExecutionMixin:
     def u_execute_strategy(self) -> bool:
         """
@@ -13,6 +16,10 @@ class BuilderExecutionMixin:
         the next turn. Execution stops at the first truthy result and returns
         whether any strategy method acted.
         """
+
+        stopwatch = Stopwatch("Builder strats")
+        stopwatch.start()
+
         if self.last_turn_completed:
             self.last_strategy_index = -1
             start_index = 0
@@ -21,6 +28,8 @@ class BuilderExecutionMixin:
             if start_index >= len(self.strategy):
                 start_index = 0
 
+        stopwatch.lap("Init logic")
+
         self.last_turn_completed = False
         for idx in range(start_index, len(self.strategy)):
             strategy_method, strategy_args = self.u_get_bound_method_and_args(
@@ -28,10 +37,18 @@ class BuilderExecutionMixin:
             )
             acted = bool(strategy_method(*strategy_args))
             self.last_strategy_index = idx
+
+            stopwatch.lap(
+                strategy_method.__name__[:16]
+            )  # Truncate name so that we get nice lines in replay viewer
+
             if acted:
                 self.last_turn_completed = True
                 print(f"Executed strategy: {strategy_method.__name__}")
+                stopwatch.log()
                 return True
 
         self.last_turn_completed = True
+        stopwatch.lap("Complete turn")
+        stopwatch.log()
         return False
