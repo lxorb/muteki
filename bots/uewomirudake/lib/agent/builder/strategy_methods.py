@@ -1,6 +1,5 @@
-from cambc import Direction, EntityType, Environment, Position
+from cambc import Direction, EntityType, Environment, GameConstants, Position
 
-from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 
 class BuilderStrategyMethodsMixin:
@@ -431,7 +430,7 @@ class BuilderStrategyMethodsMixin:
             target_pos = target_tile.position
             if current_pos.distance_squared(
                 target_pos
-            ) <= BUILDER_ACTION_RADIUS_SQ and self.ct.can_destroy(target_pos):
+            ) <= GameConstants.ACTION_RADIUS_SQ and self.ct.can_destroy(target_pos):
                 self.ct.destroy(target_pos)
                 return True
             if move_towards and self.u_move_to(target_pos):

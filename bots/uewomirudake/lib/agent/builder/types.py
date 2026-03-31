@@ -100,6 +100,18 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
+    def s_insert_core_splitter(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_build_foundry_next_to_splitter(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_build_harvester_supply_link(
         self,
         move_towards: bool = True,
