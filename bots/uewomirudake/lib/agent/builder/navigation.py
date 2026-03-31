@@ -261,8 +261,7 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         """
         current_pos = self.map.current_pos
         source_tile = self.map.u_get_pos_tile(pos)
-        own_team = self.map.own_team
-        candidate_tiles: list[tuple[Direction, object]] = []
+        candidate_tiles: list[tuple[Direction, object, int]] = []
 
         for direction in Direction:
             if direction == Direction.CENTRE:
@@ -281,27 +280,7 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
             if neighbor_tile.own_core_dist >= source_tile.own_core_dist:
                 continue
 
-            category_rank: int | None = None
-            if neighbor_tile.building.entity_type in SUPPLY_LINK_TYPES:
-                category_rank = 0
-            elif (
-                neighbor_tile.building.entity_type == EntityType.BARRIER
-                and neighbor_tile.building.team == own_team
-            ):
-                category_rank = 1
-            elif (
-                neighbor_tile.building.entity_type == EntityType.ROAD
-                and neighbor_tile.building.team == own_team
-            ):
-                category_rank = 2
-            elif neighbor_tile.building.id is None:
-                category_rank = 3
-            elif (
-                neighbor_tile.building.entity_type == EntityType.ROAD
-                and neighbor_tile.building.team != own_team
-            ):
-                category_rank = 4
-
+            category_rank = self.u_get_supplier_tile_category_rank(neighbor_tile)
             if category_rank is None:
                 continue
 
@@ -329,29 +308,114 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         )
         return candidate_tiles[0][0]
 
-    # TODO
-    def u_best_bridge_target(self, pos: Position):
+    def u_get_supplier_tile_category_rank(self, target_tile) -> int | None:
+        own_team = self.map.own_team
+        if target_tile.building.entity_type in SUPPLY_LINK_TYPES:
+            return 0
+        if (
+            target_tile.building.entity_type == EntityType.BARRIER
+            and target_tile.building.team == own_team
+        ):
+            return 1
+        if (
+            target_tile.building.entity_type == EntityType.ROAD
+            and target_tile.building.team == own_team
+        ):
+            return 2
+        if target_tile.building.id is None:
+            return 3
+        if (
+            target_tile.building.entity_type == EntityType.ROAD
+            and target_tile.building.team != own_team
+        ):
+            return 4
+        return None
+
+    def u_best_bridge_target(self, pos: Position) -> Position | None:
         """
-        Assuming that on the given position a bridge should be build,
-        return the best direction for the bridge to point at or None, if it does not make
-        sense to build a bridge here.
-        Consider all tiles that the bridge can point at (see the docs for information on which these are).
-
-        - filter out all tiles that are orthogonally adjacent to the source pos
-        - filter out all tiles that would not decrease distance to the own core
-        - then if one of the remaining possible target tiles is a core tile, then simply return the core tile with the smallest distance to the current tile
-        - if that was not the case it should be prioritzed by tiles that already have a supply chain element (bridge /conveyor / splitter) on them
-        -> if there are such tiles, just consider these
-        -> if there are no such tiles, prioritize by tiles that are of the own team and either barriers / roads or empty >> then enemy roads
-        -> if there are none of these tiles, then return None
-        - keep only the best of the beforementioned categories
-        - if there are multiple tiles left, sort them by distance and pick the one with the lowest distance to the own core
-        - if there are still multiple left, prioritize the ones that are in action radius of the current builder bot
-
-
-        This prioritizing should be written in a modular way so that is easily adjustable.
-
+        Return the best bridge target tile reachable from this source tile.
         """
+        current_pos = self.map.current_pos
+        source_tile = self.map.u_get_pos_tile(pos)
+        candidate_tiles = []
+
+        for column in self.map.matrix:
+            for target_tile in column:
+                target_pos = target_tile.position
+                if target_pos == pos:
+                    continue
+                if pos.distance_squared(target_pos) > GameConstants.BRIDGE_TARGET_RADIUS_SQ:
+                    continue
+                if (
+                    abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1
+                ):
+                    continue
+                if target_tile.own_core_dist >= source_tile.own_core_dist:
+                    continue
+                candidate_tiles.append(target_tile)
+
+        if not candidate_tiles:
+            return None
+
+        core_tiles = [
+            tile
+            for tile in candidate_tiles
+            if tile.building.entity_type == EntityType.CORE
+        ]
+        if core_tiles:
+            core_tiles.sort(
+                key=lambda tile: (
+                    pos.distance_squared(tile.position),
+                    tile.position.x,
+                    tile.position.y,
+                )
+            )
+            return core_tiles[0].position
+
+        categorized_tiles: list[tuple[int, object]] = []
+        for target_tile in candidate_tiles:
+            category_rank = self.u_get_bridge_target_category_rank(target_tile)
+            if category_rank is None:
+                continue
+            categorized_tiles.append((category_rank, target_tile))
+
+        if not categorized_tiles:
+            return None
+
+        best_category_rank = min(category_rank for category_rank, _ in categorized_tiles)
+        candidate_tiles = [
+            target_tile
+            for category_rank, target_tile in categorized_tiles
+            if category_rank == best_category_rank
+        ]
+        candidate_tiles.sort(
+            key=lambda tile: (
+                tile.own_core_dist,
+                0
+                if current_pos.distance_squared(tile.position)
+                <= BUILDER_ACTION_RADIUS_SQ
+                else 1,
+                tile.position.x,
+                tile.position.y,
+            )
+        )
+        return candidate_tiles[0].position
+
+    def u_get_bridge_target_category_rank(self, target_tile) -> int | None:
+        own_team = self.map.own_team
+        if target_tile.building.entity_type in SUPPLY_LINK_TYPES:
+            return 0
+        if target_tile.building.id is None or (
+            target_tile.building.team == own_team
+            and target_tile.building.entity_type in {EntityType.BARRIER, EntityType.ROAD}
+        ):
+            return 1
+        if (
+            target_tile.building.entity_type == EntityType.ROAD
+            and target_tile.building.team != own_team
+        ):
+            return 2
+        return None
 
     def u_move_to(
         self,
