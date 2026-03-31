@@ -665,7 +665,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             return False
 
         candidate_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(self.map.enemy_supply_targets_in_vision)),
+            list(dict.fromkeys(self.map.enemy_supply_links_in_vision)),
             lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
             lambda tile: tile.building.team != own_team,
             lambda tile: tile.building.entity_type in SUPPLY_LINK_TYPES,
