@@ -25,68 +25,70 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             Position, tuple[EntityType | None, Direction | Position | None]
         ] = {}
 
-        def is_own_supply_link(pos: Position) -> bool:
-            target_tile = self.map.u_get_pos_tile(pos)
+        def is_own_supply_link(target_tile) -> bool:
             return (
                 target_tile.building.team == own_team
                 and target_tile.building.entity_type
                 in {EntityType.CONVEYOR, EntityType.BRIDGE, EntityType.SPLITTER}
             )
 
-        def can_use_tile(pos: Position) -> bool:
-            target_tile = self.map.u_get_pos_tile(pos)
+        def can_use_tile(target_tile) -> bool:
             if target_tile.building.entity_type == EntityType.CORE:
                 return False
             if target_tile.building.id is None:
                 return True
             return (
                 target_tile.building.team == own_team
-                and target_tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}
+                and target_tile.building.entity_type
+                in {EntityType.ROAD, EntityType.BARRIER}
             )
 
-        def has_supplier_plan(pos: Position) -> bool:
-            if pos not in supplier_plan_by_pos:
-                supplier_plan_by_pos[pos] = self.u_get_supplier_build_plan(pos)
-            return supplier_plan_by_pos[pos][0] is not None
+        def has_supplier_plan(target_tile) -> bool:
+            if target_tile.position not in supplier_plan_by_pos:
+                supplier_plan_by_pos[target_tile.position] = (
+                    self.u_get_supplier_build_plan(target_tile.position)
+                )
+            return supplier_plan_by_pos[target_tile.position][0] is not None
 
-        candidate_positions: list[Position] = []
-        for harvester_pos in self.map.own_harvesters_in_sight:
-            adjacent_positions = [
-                pos
+        candidate_tiles = []
+        for harvester_tile in self.map.own_harvesters_in_vision:
+            harvester_pos = harvester_tile.position
+            adjacent_tiles = [
+                self.map.u_get_pos_tile(pos)
                 for pos in self.map.u_iter_adjacent_positions(harvester_pos)
-                if not self.u_is_enemy_turret_target_tile(pos)
+                if not self.map.u_get_pos_tile(pos).is_enemy_turret_target_tile
             ]
-            if any(is_own_supply_link(pos) for pos in adjacent_positions):
+            if any(is_own_supply_link(tile) for tile in adjacent_tiles):
                 continue
 
-            adjacent_positions = self.u_filter_tiles(
-                adjacent_positions,
+            adjacent_tiles = self.u_filter_tiles(
+                adjacent_tiles,
                 can_use_tile,
                 has_supplier_plan,
             )
-            if not adjacent_positions:
+            if not adjacent_tiles:
                 continue
 
-            adjacent_positions = self.u_prioritize_tiles(
-                adjacent_positions,
-                lambda pos: self.map.u_get_pos_tile(pos).own_core_dist,
-                lambda pos: current_pos.distance_squared(pos),
+            adjacent_tiles = self.u_prioritize_tiles(
+                adjacent_tiles,
+                lambda tile: tile.own_core_dist,
+                lambda tile: current_pos.distance_squared(tile.position),
             )
-            candidate_positions.append(adjacent_positions[0])
+            candidate_tiles.append(adjacent_tiles[0])
 
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            list(dict.fromkeys(candidate_positions)),
-            lambda pos: current_pos.distance_squared(pos),
-            lambda pos: self.map.u_get_pos_tile(pos).own_core_dist,
+        candidate_tiles = self.u_prioritize_tiles(
+            list(dict.fromkeys(candidate_tiles)),
+            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.own_core_dist,
         )
-        for target_pos in candidate_positions:
-            supplier_type, supplier_target = supplier_plan_by_pos[target_pos]
+        for target_tile in candidate_tiles:
+            supplier_type, supplier_target = supplier_plan_by_pos[target_tile.position]
             if supplier_type == EntityType.CONVEYOR:
                 if self.u_build_at(
-                    target_pos,
+                    target_tile.position,
                     supplier_type,
                     hold=hold,
                     move_towards=move_towards,
@@ -96,7 +98,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                     return True
             elif supplier_type == EntityType.BRIDGE:
                 if self.u_build_at(
-                    target_pos,
+                    target_tile.position,
                     supplier_type,
                     hold=hold,
                     move_towards=move_towards,
@@ -120,47 +122,49 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         own_team = self.map.own_team
         conveyor_plan_by_pos: dict[Position, Direction | None] = {}
 
-        def can_use_tile(pos: Position) -> bool:
-            target_tile = self.map.u_get_pos_tile(pos)
+        def can_use_tile(target_tile) -> bool:
             return target_tile.building.id is None or (
                 target_tile.building.team == own_team
                 and target_tile.building.entity_type == EntityType.ROAD
             )
 
-        def is_reachable_chokepoint_plan(pos: Position) -> bool:
-            if not self.u_is_chokepoint(pos):
+        def is_reachable_chokepoint_plan(target_tile) -> bool:
+            if not self.u_is_chokepoint(target_tile.position):
                 return True
-            if pos not in conveyor_plan_by_pos:
-                conveyor_direction = self.map.u_best_conveyor_orientation(pos)
-                conveyor_plan_by_pos[pos] = conveyor_direction
-            return conveyor_plan_by_pos[pos] is not None
+            if target_tile.position not in conveyor_plan_by_pos:
+                conveyor_direction = self.u_best_conveyor_orientation(
+                    target_tile.position
+                )
+                conveyor_plan_by_pos[target_tile.position] = conveyor_direction
+            return conveyor_plan_by_pos[target_tile.position] is not None
 
-        candidate_positions: list[Position] = []
-        for harvester_pos in self.map.own_harvesters_in_sight:
+        candidate_tiles = []
+        for harvester_tile in self.map.own_harvesters_in_vision:
+            harvester_pos = harvester_tile.position
             for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
-                candidate_positions.append(candidate_pos)
+                candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
-        candidate_positions = self.u_filter_tiles(
-            list(dict.fromkeys(candidate_positions)),
-            lambda pos: not self.u_is_enemy_turret_target_tile(pos),
+        candidate_tiles = self.u_filter_tiles(
+            list(dict.fromkeys(candidate_tiles)),
+            lambda tile: not tile.is_enemy_turret_target_tile,
             can_use_tile,
             is_reachable_chokepoint_plan,
         )
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            candidate_positions,
-            lambda pos: current_pos.distance_squared(pos),
-            lambda pos: 0 if self.map.u_get_pos_tile(pos).building.id is None else 1,
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: 0 if tile.building.id is None else 1,
         )
-        for target_pos in candidate_positions:
-            if self.u_is_chokepoint(target_pos):
-                conveyor_direction = conveyor_plan_by_pos[target_pos]
+        for target_tile in candidate_tiles:
+            if self.u_is_chokepoint(target_tile.position):
+                conveyor_direction = conveyor_plan_by_pos[target_tile.position]
                 if conveyor_direction is None:
                     continue
                 if self.u_build_at(
-                    target_pos,
+                    target_tile.position,
                     EntityType.CONVEYOR,
                     hold=hold,
                     move_towards=move_towards,
@@ -171,7 +175,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                 continue
 
             if self.u_build_at(
-                target_pos,
+                target_tile.position,
                 EntityType.BARRIER,
                 hold=hold,
                 move_towards=move_towards,
@@ -198,15 +202,15 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        def can_use_tile(pos: Position) -> bool:
-            target_tile = self.map.u_get_pos_tile(pos)
+        def can_use_tile(target_tile) -> bool:
             if target_tile.building.entity_type == EntityType.CORE:
                 return False
             if target_tile.building.id is None:
                 return True
             if (
                 target_tile.building.team == own_team
-                and target_tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}
+                and target_tile.building.entity_type
+                in {EntityType.ROAD, EntityType.BARRIER}
             ):
                 return True
             return (
@@ -215,26 +219,28 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                 and target_tile.is_passable
             )
 
-        candidate_positions = self.u_filter_tiles(
-            list(dict.fromkeys(self.map.known_missing_supply_links)),
+        candidate_tiles = self.u_filter_tiles(
+            list(dict.fromkeys(self.map.own_missing_supply_links)),
             can_use_tile,
         )
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            candidate_positions,
-            lambda pos: self.map.u_get_pos_tile(pos).own_core_dist,
-            lambda pos: current_pos.distance_squared(pos),
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: tile.own_core_dist,
+            lambda tile: current_pos.distance_squared(tile.position),
         )
 
-        for target_pos in candidate_positions:
-            supplier_type, supplier_target = self.u_get_supplier_build_plan(target_pos)
+        for target_tile in candidate_tiles:
+            supplier_type, supplier_target = self.u_get_supplier_build_plan(
+                target_tile.position
+            )
             if supplier_type is None:
                 continue
             if supplier_type == EntityType.CONVEYOR:
                 if self.u_build_at(
-                    target_pos,
+                    target_tile.position,
                     supplier_type,
                     hold=hold,
                     move_towards=move_towards,
@@ -244,7 +250,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                     return True
             elif supplier_type == EntityType.BRIDGE:
                 if self.u_build_at(
-                    target_pos,
+                    target_tile.position,
                     supplier_type,
                     hold=hold,
                     move_towards=move_towards,
@@ -273,7 +279,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
-        core_center_pos = self.map.core_center_pos
+        core_center_pos = self.map.own_core_center_pos
         if resource == Environment.ORE_TITANIUM:
             ore_positions = self.map.known_accessible_titanium_tiles
         elif resource == Environment.ORE_AXIONITE:
@@ -301,7 +307,8 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                 return True
             if (
                 target_tile.building.team == own_team
-                and target_tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}
+                and target_tile.building.entity_type
+                in {EntityType.ROAD, EntityType.BARRIER}
             ):
                 return True
             return (
@@ -310,28 +317,28 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                 and target_tile.is_passable
             )
 
-        candidate_positions = self.u_filter_tiles(
+        candidate_tiles = self.u_filter_tiles(
             list(dict.fromkeys(ore_positions)),
-            lambda pos: self.map.u_get_pos_tile(pos).environment == resource,
+            lambda tile: tile.environment == resource,
             can_use_tile,
-            lambda pos: not self.map.u_get_pos_tile(pos).in_enemy_attack_range,
-            lambda pos: not has_orthogonally_adjacent_enemy_building(pos),
+            lambda tile: not tile.in_enemy_attack_range,
+            lambda tile: not has_orthogonally_adjacent_enemy_building(tile.position),
         )
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            candidate_positions,
-            lambda pos: (
-                core_center_pos.distance_squared(pos)
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: (
+                core_center_pos.distance_squared(tile.position)
                 if core_center_pos is not None
                 else 10**9
             ),
-            lambda pos: current_pos.distance_squared(pos),
+            lambda tile: current_pos.distance_squared(tile.position),
         )
-        for target_pos in candidate_positions:
+        for target_tile in candidate_tiles:
             if self.u_build_at(
-                target_pos,
+                target_tile.position,
                 EntityType.HARVESTER,
                 hold=hold,
                 move_towards=move_towards,
@@ -343,9 +350,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
     def s_expand(self):
         """
-        This will be the lowest priority method for scavenger builder bots.
-        The purpose of this method is that they explore new area to potentially find new resources.
-        # TODO: come up with a nice system for expansion / scouting
+        
         """
 
     def s_destroy_hijacked_supplier(self, move_towards: bool = True):
@@ -358,10 +363,13 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         def points_at_enemy_turret(pos: Position) -> bool:
             source_tile = self.map.u_get_pos_tile(pos)
-            target_pos = source_tile.building.targets[0] if source_tile.building.targets else None
-            if target_pos is None:
+            target_tile = (
+                source_tile.building.targets[0]
+                if source_tile.building.targets
+                else None
+            )
+            if target_tile is None:
                 return False
-            target_tile = self.map.u_get_pos_tile(target_pos)
             return (
                 target_tile.building.id is not None
                 and target_tile.building.team != own_team
@@ -369,15 +377,16 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                 in {EntityType.GUNNER, EntityType.SENTINEL, EntityType.BREACH}
             )
 
-        candidate_positions = self.u_filter_tiles(
-            list(
-                dict.fromkeys(
-                    self.map.own_supply_links_in_sight
-                    + self.map.own_harvesters_in_sight
+        candidate_tiles = self.u_filter_tiles(
+            [
+                tile
+                for tile in dict.fromkeys(
+                    self.map.own_supply_links_in_vision
+                    + self.map.own_harvesters_in_vision
                 )
-            ),
-            lambda pos: self.map.u_get_pos_tile(pos).building.team == own_team,
-            lambda pos: self.map.u_get_pos_tile(pos).building.entity_type
+            ],
+            lambda tile: tile.building.team == own_team,
+            lambda tile: tile.building.entity_type
             in {
                 EntityType.CONVEYOR,
                 EntityType.BRIDGE,
@@ -386,18 +395,18 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             },
             points_at_enemy_turret,
         )
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            candidate_positions,
-            lambda pos: current_pos.distance_squared(pos),
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: current_pos.distance_squared(tile.position),
         )
-        for target_pos in candidate_positions:
-            if (
-                current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
-                and self.ct.can_destroy(target_pos)
-            ):
+        for target_tile in candidate_tiles:
+            target_pos = target_tile.position
+            if current_pos.distance_squared(
+                target_pos
+            ) <= BUILDER_ACTION_RADIUS_SQ and self.ct.can_destroy(target_pos):
                 self.ct.destroy(target_pos)
                 return True
             if move_towards and self.u_move_to(target_pos):
@@ -422,7 +431,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        enemy_harvesters = self.map.enemy_harvesters_in_sight
+        enemy_harvesters = self.map.enemy_harvesters_in_vision
         if not enemy_harvesters:
             return False
 
@@ -452,39 +461,37 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                     tile_kind_by_pos[pos] = None
             return tile_kind_by_pos[pos]
 
-        candidate_positions: list[Position] = []
-        for harvester_pos in enemy_harvesters:
+        candidate_tiles = []
+        for harvester_tile in enemy_harvesters:
+            harvester_pos = harvester_tile.position
             for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
-                candidate_positions.append(candidate_pos)
+                candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
-        candidate_positions = list(dict.fromkeys(candidate_positions))
-        candidate_positions = self.u_filter_tiles(
-            candidate_positions,
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).last_seen_turn == self.ct.get_current_round()
-            ),
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).bot.id is None
-                or pos == current_pos
-            ),
-            lambda pos: get_tile_kind(pos) is not None,
+        candidate_tiles = list(dict.fromkeys(candidate_tiles))
+        candidate_tiles = self.u_filter_tiles(
+            candidate_tiles,
+            lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
+            lambda tile: (tile.bot.id is None or tile.position == current_pos),
+            lambda tile: get_tile_kind(tile.position) is not None,
         )
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            candidate_positions,
-            lambda pos: current_pos.distance_squared(pos),
-            lambda pos: (
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: (
                 0
-                if get_tile_kind(pos) == "empty"
-                else 1 if get_tile_kind(pos) == "own_road" else 2
+                if get_tile_kind(tile.position) == "empty"
+                else 1 if get_tile_kind(tile.position) == "own_road" else 2
             ),
         )
-        for candidate_pos in candidate_positions:
-            sentinel_direction = self.u_get_sentinel_orientation(candidate_pos)
+        for candidate_tile in candidate_tiles:
+            sentinel_direction = self.u_get_sentinel_orientation(
+                candidate_tile.position
+            )
             if self.u_build_at(
-                candidate_pos,
+                candidate_tile.position,
                 EntityType.SENTINEL,
                 hold=hold,
                 move_towards=move_towards,
@@ -505,27 +512,27 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        enemy_supply_targets = self.u_filter_tiles(
+        enemy_supply_tiles = self.u_filter_tiles(
             list(dict.fromkeys(self.map.enemy_supply_targets_in_vision)),
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).building.id is None
+            lambda tile: (
+                tile.building.id is None
                 or (
-                    self.map.u_get_pos_tile(pos).building.entity_type == EntityType.ROAD
-                    and self.map.u_get_pos_tile(pos).building.team == own_team
+                    tile.building.entity_type == EntityType.ROAD
+                    and tile.building.team == own_team
                 )
             ),
         )
-        if not enemy_supply_targets:
+        if not enemy_supply_tiles:
             return False
 
-        enemy_supply_targets = self.u_prioritize_tiles(
-            enemy_supply_targets,
-            lambda pos: current_pos.distance_squared(pos),
-            lambda pos: 0 if self.map.u_get_pos_tile(pos).building.id is None else 1,
+        enemy_supply_tiles = self.u_prioritize_tiles(
+            enemy_supply_tiles,
+            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: 0 if tile.building.id is None else 1,
         )
-        for target_pos in enemy_supply_targets:
+        for target_tile in enemy_supply_tiles:
             if self.u_build_at(
-                target_pos,
+                target_tile.position,
                 EntityType.BARRIER,
                 hold=hold,
                 move_towards=move_towards,
@@ -545,23 +552,21 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         """
         current_pos = self.map.current_pos
 
-        titanium_targets = self.u_filter_tiles(
+        titanium_tiles = self.u_filter_tiles(
             list(dict.fromkeys(self.map.known_accessible_titanium_tiles)),
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).environment == Environment.ORE_TITANIUM
-            ),
-            lambda pos: self.map.u_get_pos_tile(pos).building.id is None,
+            lambda tile: tile.environment == Environment.ORE_TITANIUM,
+            lambda tile: tile.building.id is None,
         )
-        if not titanium_targets:
+        if not titanium_tiles:
             return False
 
-        titanium_targets = self.u_prioritize_tiles(
-            titanium_targets,
-            lambda pos: current_pos.distance_squared(pos),
+        titanium_tiles = self.u_prioritize_tiles(
+            titanium_tiles,
+            lambda tile: current_pos.distance_squared(tile.position),
         )
-        for target_pos in titanium_targets:
+        for target_tile in titanium_tiles:
             if self.u_build_at(
-                target_pos,
+                target_tile.position,
                 EntityType.BARRIER,
                 hold=hold,
                 move_towards=move_towards,
@@ -582,33 +587,32 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        candidate_positions: list[Position] = []
-        for harvester_pos in self.map.enemy_harvesters_in_sight:
+        candidate_tiles = []
+        for harvester_tile in self.map.enemy_harvesters_in_vision:
+            harvester_pos = harvester_tile.position
             for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
-                candidate_positions.append(candidate_pos)
+                candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
-        candidate_positions = list(dict.fromkeys(candidate_positions))
-        candidate_positions = self.u_filter_tiles(
-            candidate_positions,
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).last_seen_turn == self.ct.get_current_round()
-            ),
-            lambda pos: self.map.u_get_pos_tile(pos).building.team != own_team,
-            lambda pos: self.map.u_get_pos_tile(pos).building.entity_type
+        candidate_tiles = list(dict.fromkeys(candidate_tiles))
+        candidate_tiles = self.u_filter_tiles(
+            candidate_tiles,
+            lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
+            lambda tile: tile.building.team != own_team,
+            lambda tile: tile.building.entity_type
             in {EntityType.CONVEYOR, EntityType.BRIDGE},
-            lambda pos: self.map.u_get_pos_tile(pos).is_passable,
+            lambda tile: tile.is_passable,
         )
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            candidate_positions,
-            lambda pos: current_pos.distance_squared(pos),
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: current_pos.distance_squared(tile.position),
         )
 
-        for target_pos in candidate_positions:
+        for target_tile in candidate_tiles:
             if self.u_attack_passable(
-                target_pos,
+                target_tile.position,
                 move_towards=move_towards,
                 destroy_condition=lambda _: True,
             ):
@@ -631,34 +635,30 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         if enemy_core_pos is None:
             return False
 
-        candidate_positions = list(dict.fromkeys(self.map.enemy_supply_targets_in_vision))
-        candidate_positions = self.u_filter_tiles(
-            candidate_positions,
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).last_seen_turn == self.ct.get_current_round()
-            ),
-            lambda pos: self.map.u_get_pos_tile(pos).building.team != own_team,
-            lambda pos: self.map.u_get_pos_tile(pos).building.entity_type
+        candidate_tiles = self.u_filter_tiles(
+            list(dict.fromkeys(self.map.enemy_supply_targets_in_vision)),
+            lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
+            lambda tile: tile.building.team != own_team,
+            lambda tile: tile.building.entity_type
             in {EntityType.CONVEYOR, EntityType.BRIDGE},
-            lambda pos: (
-                self.map.u_get_pos_tile(pos).building.targets[0]
-                if self.map.u_get_pos_tile(pos).building.targets
-                else None
-            ) == enemy_core_pos,
-            lambda pos: not self.map.u_get_pos_tile(pos).in_enemy_launcher_pickup_zone,
-            lambda pos: not self.map.u_get_pos_tile(pos).in_enemy_attack_range,
+            lambda tile: (
+                tile.building.targets[0].position if tile.building.targets else None
+            )
+            == enemy_core_pos,
+            lambda tile: not tile.in_enemy_launcher_pickup_zone,
+            lambda tile: not tile.in_enemy_attack_range,
         )
-        if not candidate_positions:
+        if not candidate_tiles:
             return False
 
-        candidate_positions = self.u_prioritize_tiles(
-            candidate_positions,
-            lambda pos: current_pos.distance_squared(pos),
+        candidate_tiles = self.u_prioritize_tiles(
+            candidate_tiles,
+            lambda tile: current_pos.distance_squared(tile.position),
         )
 
-        for target_pos in candidate_positions:
+        for target_tile in candidate_tiles:
             if self.u_attack_passable(
-                target_pos,
+                target_tile.position,
                 move_towards=move_towards,
                 destroy_condition=lambda pos: (
                     self.map.u_get_pos_tile(pos).in_enemy_bot_action_range_turn
