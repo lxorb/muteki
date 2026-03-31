@@ -946,13 +946,26 @@ class Map:
                 self.enemy_supply_targets_in_vision.append(tile)
 
             if tile.index in self.own_supply_link_target_indices_in_vision and not (
-                tile.propagates_for_team(self.own_team) or tile.is_core_of(self.own_team)
+                tile.propagates_for_team(self.own_team)
+                or tile.is_core_of(self.own_team)
+                or (
+                    tile.building.id is not None
+                    and tile.building.team == self.own_team
+                    and tile.building.entity_type
+                    in {EntityType.HARVESTER, EntityType.FOUNDRY}
+                )
             ):
                 self.own_missing_supply_links.append(tile)
 
             if tile.index in self.enemy_supply_link_target_indices_in_vision and not (
                 tile.propagates_for_team(self.enemy_team)
                 or tile.is_core_of(self.enemy_team)
+                or (
+                    tile.building.id is not None
+                    and tile.building.team == self.enemy_team
+                    and tile.building.entity_type
+                    in {EntityType.HARVESTER, EntityType.FOUNDRY}
+                )
             ):
                 self.enemy_missing_supply_links.append(tile)
 

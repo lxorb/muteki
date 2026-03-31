@@ -139,9 +139,11 @@ class BuilderStrategyMethodsMixin:
 
         Considers empty or own-road tiles adjacent to visible own harvesters,
         prioritizes them by squared distance to the builder, and builds a
-        barrier unless the tile is a chokepoint, in which case it tries to
-        place a conveyor using the cached supplier-plan helper instead.
+        barrier unless the tile is a chokepoint, in which case it either places
+        a conveyor toward the harvester or a road depending on configuration.
         """
+        from lib.agent.constants import BUILD_CONVEYOR_FOR_CHOKEPOINT
+
         own_team = self.map.own_team
         tiles_by_index = self.map.tiles_by_index
         dist_to_self_by_index = self.map.dist_to_self_by_index
@@ -163,11 +165,13 @@ class BuilderStrategyMethodsMixin:
                 harvester_tile = tiles_by_index[harvester_index]
                 if not self.map.u_is_chokepoint(target_tile.position):
                     build_plan_by_index[plan_key] = (EntityType.BARRIER, None)
-                else:
+                elif BUILD_CONVEYOR_FOR_CHOKEPOINT:
                     build_plan_by_index[plan_key] = (
                         EntityType.CONVEYOR,
                         target_tile.position.direction_to(harvester_tile.position),
                     )
+                else:
+                    build_plan_by_index[plan_key] = (EntityType.ROAD, None)
             return build_plan_by_index[plan_key]
 
         for harvester_tile in self.map.own_harvesters_in_vision:
@@ -226,6 +230,21 @@ class BuilderStrategyMethodsMixin:
                     move_towards=move_towards,
                     attack_enemy_passable=False,
                     facing_direction=conveyor_direction,
+                ):
+                    return True
+                continue
+            if building_type == EntityType.ROAD:
+                if (
+                    target_tile.building.team == own_team
+                    and target_tile.building.entity_type == EntityType.ROAD
+                ):
+                    continue
+                if self.u_build_at(
+                    target_tile.position,
+                    EntityType.ROAD,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=False,
                 ):
                     return True
                 continue

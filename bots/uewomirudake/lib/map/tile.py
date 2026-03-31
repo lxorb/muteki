@@ -510,9 +510,13 @@ class Tile:
             self.map.own_supply_targets_in_vision.remove(self)
 
     def is_core_of(self, team: Team) -> bool:
-        return (
-            self.building.entity_type == EntityType.CORE and self.building.team == team
-        )
+        if self.building.entity_type == EntityType.CORE and self.building.team == team:
+            return True
+        if team == self.map.own_team:
+            return bool(self.map.own_core_source_by_index[self.index])
+        if team == self.map.enemy_team:
+            return bool(self.map.enemy_core_source_by_index[self.index])
+        return False
 
     def propagates_for_team(self, team: Team) -> bool:
         return (
