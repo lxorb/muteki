@@ -85,6 +85,7 @@ class Map:
         self._reset_turn_state()
 
     def _reset_turn_state(self) -> None:
+        self.current_round = self.ct.get_current_round()
         self.current_pos = self.ct.get_position()
         self.titanium, self.axionite = self.ct.get_global_resources()
 

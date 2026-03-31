@@ -18,6 +18,25 @@ if TYPE_CHECKING:
     from lib.map import Map
 
 
+DIRECTIONAL_ENTITY_TYPES = {
+    EntityType.CONVEYOR,
+    EntityType.SPLITTER,
+    EntityType.ARMOURED_CONVEYOR,
+    EntityType.GUNNER,
+    EntityType.SENTINEL,
+    EntityType.BREACH,
+}
+VISION_RADIUS_ENTITY_TYPES = {
+    EntityType.GUNNER,
+    EntityType.SENTINEL,
+}
+STORED_RESOURCE_TRACKED_ENTITY_TYPES = {
+    EntityType.CONVEYOR,
+    EntityType.ARMOURED_CONVEYOR,
+    EntityType.BRIDGE,
+}
+
+
 @dataclass
 class TileBot:
     id: int | None
@@ -162,75 +181,122 @@ class Tile:
         self.u_refresh_intrinsic_passability()
 
     def update_attributes(self) -> None:
-        current_round = self.map.ct.get_current_round()
-        self.environment = self.map.ct.get_tile_env(self.position)
-        self.is_passable = self.map.ct.is_tile_passable(self.position)
+        ct = self.map.ct
+        current_round = self.map.current_round
+        if self.environment is None:
+            self.environment = ct.get_tile_env(self.position)
         self.last_seen_turn = current_round
 
         if self.environment == Environment.ORE_TITANIUM:
             self.last_titanium_onit_turn = current_round
 
-        bot_id = self.map.ct.get_tile_builder_bot_id(self.position)
-        building_id = self.map.ct.get_tile_building_id(self.position)
+        bot_id = ct.get_tile_builder_bot_id(self.position)
+        building_id = ct.get_tile_building_id(self.position)
 
-        if bot_id is None:
-            self.clear_bot()
+        if bot_id != self.bot.id:
+            if bot_id is None:
+                self.clear_bot()
+            else:
+                self.bot.id = bot_id
+                self.update_bot(id_changed=True)
         else:
-            self.bot.id = bot_id
-            self.update_bot()
+            if bot_id is not None:
+                self.update_bot(id_changed=False)
 
-        if building_id is None:
-            self.clear_building()
+        if building_id != self.building.id:
+            if building_id is None:
+                self.clear_building()
+            else:
+                if self.building.id is not None:
+                    self.clear_building()
+                self.building.id = building_id
+                self.update_building(id_changed=True)
         else:
-            self.building.id = building_id
-            self.update_building()
+            if building_id is not None:
+                self.update_building(id_changed=False)
 
         self.u_refresh_intrinsic_passability()
+        self.is_passable = self._is_intrinsically_passable() and self.bot.id is None
         self.update_map_values()
 
-    def update_bot(self) -> None:
-        self.bot.entity_type = self.map.ct.get_entity_type(self.bot.id)
-        self.bot.team = self.map.ct.get_team(self.bot.id)
-        self.bot.hp = self.map.ct.get_hp(self.bot.id)
-        self.bot.targets = self.get_targets(self.bot.entity_type, self.bot.id)
+    def update_bot(self, id_changed: bool) -> None:
+        ct = self.map.ct
+        if id_changed:
+            self.bot.entity_type = ct.get_entity_type(self.bot.id)
+            self.bot.team = ct.get_team(self.bot.id)
+            self.bot.targets = self.get_targets(self.bot.entity_type, self.bot.id)
+        self.bot.hp = ct.get_hp(self.bot.id)
         self.update_target_zones_bot()
 
-    def update_building(self) -> None:
-        prev_entity_type = self.building.entity_type
-        prev_targets = self.building.targets.copy()
-        prev_team = self.building.team
-        self.building.prev_entity_type = self.building.entity_type
-        self.building.prev_targets = self.building.targets.copy()
-        self.building.entity_type = self.map.ct.get_entity_type(self.building.id)
-        self.building.team = self.map.ct.get_team(self.building.id)
-        self.building.hp = self.map.ct.get_hp(self.building.id)
-        try:
-            self.building.direction = self.map.ct.get_direction(self.building.id)
-        except Exception:
-            self.building.direction = None
-        try:
-            self.building.vision_radius_sq = self.map.ct.get_vision_radius_sq(
-                self.building.id
-            )
-        except Exception:
-            self.building.vision_radius_sq = None
-        try:
-            stored_resource = self.map.ct.get_stored_resource(self.building.id)
-        except Exception:
-            stored_resource = None
-        if stored_resource is not None:
-            self.building.last_resource_onit_turn = self.map.ct.get_current_round()
-        self.building.targets = self.get_targets(
-            self.building.entity_type, self.building.id
-        )
-        self.update_target_zones_building(prev_entity_type, prev_targets, prev_team)
+    def update_building(self, id_changed: bool) -> None:
+        ct = self.map.ct
+        if id_changed:
+            prev_entity_type = self.building.entity_type
+            prev_targets = self.building.targets.copy()
+            prev_team = self.building.team
+            self.building.prev_entity_type = self.building.entity_type
+            self.building.prev_targets = self.building.targets.copy()
+            self.building.entity_type = ct.get_entity_type(self.building.id)
+            self.building.team = ct.get_team(self.building.id)
 
-    def get_targets(self, entity_type: EntityType, entity_id: int) -> list["Tile"]:
-        direction: Direction | None = None
-        try:
-            direction = self.map.ct.get_direction(entity_id)
-        except Exception:
-            direction = None
+            if self.building.entity_type in DIRECTIONAL_ENTITY_TYPES:
+                self.building.direction = ct.get_direction(self.building.id)
+            else:
+                self.building.direction = None
+
+            if self.building.entity_type in VISION_RADIUS_ENTITY_TYPES:
+                self.building.vision_radius_sq = ct.get_vision_radius_sq(
+                    self.building.id
+                )
+            else:
+                self.building.vision_radius_sq = None
+
+            self.building.targets = self.get_targets(
+                self.building.entity_type,
+                self.building.id,
+                direction=self.building.direction,
+            )
+            self.update_target_zones_building(
+                prev_entity_type,
+                prev_targets,
+                prev_team,
+            )
+        else:
+            if self.building.entity_type == EntityType.GUNNER:
+                new_direction = ct.get_direction(self.building.id)
+                if new_direction != self.building.direction:
+                    prev_entity_type = self.building.entity_type
+                    prev_targets = self.building.targets.copy()
+                    prev_team = self.building.team
+                    self.building.prev_entity_type = self.building.entity_type
+                    self.building.prev_targets = self.building.targets.copy()
+                    self.building.direction = new_direction
+                    self.building.targets = self.get_targets(
+                        self.building.entity_type,
+                        self.building.id,
+                        direction=self.building.direction,
+                    )
+                    self.update_target_zones_building(
+                        prev_entity_type,
+                        prev_targets,
+                        prev_team,
+                    )
+
+        self.building.hp = ct.get_hp(self.building.id)
+        if self.building.entity_type in STORED_RESOURCE_TRACKED_ENTITY_TYPES:
+            stored_resource = ct.get_stored_resource(self.building.id)
+            if stored_resource is not None:
+                self.building.last_resource_onit_turn = self.map.current_round
+
+    def get_targets(
+        self,
+        entity_type: EntityType,
+        entity_id: int,
+        direction: Direction | None = None,
+    ) -> list["Tile"]:
+        ct = self.map.ct
+        if direction is None and entity_type in DIRECTIONAL_ENTITY_TYPES:
+            direction = ct.get_direction(entity_id)
 
         match entity_type:
             case EntityType.BUILDER_BOT:
@@ -262,7 +328,7 @@ class Tile:
                     )
                 ]
             case EntityType.BRIDGE:
-                positions = [self.map.ct.get_bridge_target(entity_id)]
+                positions = [ct.get_bridge_target(entity_id)]
             case EntityType.GUNNER:
                 if direction is None:
                     return []
@@ -304,7 +370,7 @@ class Tile:
         return self.map.u_positions_to_tiles(positions)
 
     def update_target_zones_bot(self):
-        current_round = self.map.ct.get_current_round()
+        current_round = self.map.current_round
         for target in self.bot.targets:
             if self.bot.team == self.map.own_team:
                 target.in_own_bot_action_range_turn = current_round
