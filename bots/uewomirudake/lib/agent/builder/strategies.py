@@ -9,7 +9,7 @@ INITRES_STRATEGY = [
     (BuilderAgent.s_surround_harvester, True, True),
     (BuilderAgent.s_build_missing_supply_link, True, True, True),
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
-    (BuilderAgent.s_expand,),
+    (BuilderAgent.s_frontier_expand,),
 ]
 
 SCAVENGER_STRATEGY = [
@@ -19,7 +19,7 @@ SCAVENGER_STRATEGY = [
     (BuilderAgent.s_build_missing_supply_link, True, True, True),
     (BuilderAgent.s_sentinel_next_to_enemy_harvester, True, False, False),
     (BuilderAgent.s_build_harvester, True, True, True, Environment.ORE_TITANIUM),
-    (BuilderAgent.s_expand,),
+    (BuilderAgent.s_frontier_expand,),
 ]
 
 HARASSMENT_STRATEGY = [
