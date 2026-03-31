@@ -99,7 +99,6 @@ class Tile:
         self.in_own_resource_range: int = 0
 
         self.last_seen_turn: int = -1
-        self.last_titanium_onit_turn: int = -1
 
     @property
     def own_core_dist(self) -> int:
@@ -200,9 +199,6 @@ class Tile:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)
         self.last_seen_turn = current_round
-
-        if self.environment == Environment.ORE_TITANIUM:
-            self.last_titanium_onit_turn = current_round
 
         bot_id = self.map.visible_builder_bot_ids_by_index.get(self.index)
         building_id = self.map.visible_building_ids_by_index.get(self.index)
