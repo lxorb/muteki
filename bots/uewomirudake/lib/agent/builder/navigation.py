@@ -507,6 +507,12 @@ class BuilderNavigationMixin:
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
+        can_build_on_own_tile = building_type in {
+            EntityType.ARMOURED_CONVEYOR,
+            EntityType.BRIDGE,
+            EntityType.CONVEYOR,
+            EntityType.ROAD,
+        }
 
         if avoid_enemy_turrets and target_tile.is_enemy_turret_target_tile:
             return False
@@ -534,7 +540,7 @@ class BuilderNavigationMixin:
 
         if (
             current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ
-            and pos != current_pos
+            and (pos != current_pos or can_build_on_own_tile)
         ):
             destroyed_replaceable_blocker = False
             should_try_attack_enemy_passable = (
