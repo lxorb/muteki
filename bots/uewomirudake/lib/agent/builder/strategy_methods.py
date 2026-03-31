@@ -130,7 +130,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             )
 
         def is_reachable_chokepoint_plan(target_tile) -> bool:
-            if not self.u_is_chokepoint(target_tile.position):
+            if not self.map.u_is_chokepoint(target_tile.position):
                 return True
             if target_tile.position not in conveyor_plan_by_pos:
                 conveyor_direction = self.u_best_conveyor_orientation(
@@ -160,7 +160,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             lambda tile: 0 if tile.building.id is None else 1,
         )
         for target_tile in candidate_tiles:
-            if self.u_is_chokepoint(target_tile.position):
+            if self.map.u_is_chokepoint(target_tile.position):
                 conveyor_direction = conveyor_plan_by_pos[target_tile.position]
                 if conveyor_direction is None:
                     continue

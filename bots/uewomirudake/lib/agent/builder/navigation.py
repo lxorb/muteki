@@ -5,7 +5,6 @@ from cambc import Direction, EntityType, Environment, GameConstants, Position
 from lib.agent.constants import (
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
-    CHOKEPOINT_MIN_DIST_INCREASE,
     ENEMY_TURRET_TYPES,
     ATTACK_TURRET_FEEDER_TYPES,
     OWN_SUPPLIER_TYPES,
@@ -224,14 +223,6 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
 
         direction_scores.sort(key=lambda item: item[0])
         return direction_scores[0][1]
-
-    # TODO
-    def u_is_chokepoint(
-        self,
-        pos: Position,
-        min_dist_increase: int = CHOKEPOINT_MIN_DIST_INCREASE,
-    ) -> bool:
-        pass
 
     def u_get_supplier_build_plan(
         self,

@@ -4,7 +4,7 @@ from enum import Enum
 
 from cambc import Controller, Direction, EntityType, GameConstants, Position, Team
 
-from lib.map.constants import DIRECTIONS, INF_DIST
+from lib.map.constants import CHOKEPOINT_MIN_DIST_INCREASE, DIRECTIONS, INF_DIST
 from lib.map.tile import Tile
 
 
@@ -378,6 +378,75 @@ class Map:
         return self.u_positions_to_tiles(
             [source_pos.add(direction) for direction in DIRECTIONS]
         )
+
+    def u_is_chokepoint(self, pos: Position) -> bool:
+        """
+        Return whether blocking this tile would significantly lengthen a nearby route to the own core.
+        """
+        if self.own_core_center_pos is None or not self.u_is_in_bounds(pos):
+            return False
+
+        blocked_key = (pos.x, pos.y)
+        own_core_tiles = self.u_get_core_footprint_positions(self.own_core_center_pos)
+        own_core_keys = {
+            (core_tile.position.x, core_tile.position.y)
+            for core_tile in own_core_tiles
+        }
+        if blocked_key in own_core_keys:
+            return False
+
+        for adjacent_pos in self.u_iter_adjacent_positions(pos):
+            adjacent_tile = self.u_get_pos_tile(adjacent_pos)
+            if (
+                adjacent_tile.own_core_dist >= INF_DIST
+                or not adjacent_tile._is_intrinsically_passable()
+            ):
+                continue
+
+            alternative_dist = self.u_get_own_core_dist_avoiding_tile(
+                adjacent_pos,
+                blocked_key,
+                own_core_keys,
+            )
+            if (
+                alternative_dist - adjacent_tile.own_core_dist
+                >= CHOKEPOINT_MIN_DIST_INCREASE
+            ):
+                return True
+
+        return False
+
+    def u_get_own_core_dist_avoiding_tile(
+        self,
+        source_pos: Position,
+        blocked_key: tuple[int, int],
+        own_core_keys: set[tuple[int, int]],
+    ) -> int:
+        queue: deque[tuple[Position, int]] = deque([(source_pos, 0)])
+        seen = {(source_pos.x, source_pos.y), blocked_key}
+
+        while queue:
+            current_pos, current_dist = queue.popleft()
+            current_key = (current_pos.x, current_pos.y)
+            if current_key in own_core_keys:
+                return current_dist
+
+            for neighbor_pos in self.u_iter_adjacent_positions(current_pos):
+                neighbor_key = (neighbor_pos.x, neighbor_pos.y)
+                if neighbor_key in seen:
+                    continue
+
+                neighbor_tile = self.u_get_pos_tile(neighbor_pos)
+                if (
+                    neighbor_key not in own_core_keys
+                    and not neighbor_tile._is_intrinsically_passable()
+                ):
+                    continue
+
+                seen.add(neighbor_key)
+                queue.append((neighbor_pos, current_dist + 1))
+
+        return INF_DIST
 
     def u_update_supply_information(self) -> None:
         for tile in self.tiles_in_vision:
