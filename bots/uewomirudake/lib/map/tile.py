@@ -2,11 +2,8 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from cambc import Direction, EntityType, Environment, GameConstants, Position, Team
+from cambc import Direction, EntityType, Environment, Position, Team
 from lib.map.constants import (
-    BUILDER_ACTION_OFFSETS,
-    CARDINAL_DIRECTIONS,
-    DIRECTIONS,
     INF_DIST,
     PASSABLE_TYPES,
     RESOURCE_TARGET_TYPES,
@@ -127,15 +124,6 @@ class Tile:
         if self.building.entity_type in RESOURCE_TARGET_TYPES:
             return list(self.building.targets)
         return []
-
-    def u_offset_position(self, direction: Direction) -> Position:
-        dx, dy = direction.delta()
-        return Position(self.position.x + dx, self.position.y + dy)
-
-    def u_get_adjacent_positions(self, directions: tuple[Direction, ...]) -> list["Tile"]:
-        return self.map.u_positions_to_tiles(
-            [self.u_offset_position(direction) for direction in directions]
-        )
 
     def u_calc_intrinsic_passability(self) -> bool:
         building_type = self.building.entity_type
@@ -295,79 +283,104 @@ class Tile:
         direction: Direction | None = None,
     ) -> list["Tile"]:
         ct = self.map.ct
+        tiles_by_index = self.map.tiles_by_index
         if direction is None and entity_type in DIRECTIONAL_ENTITY_TYPES:
             direction = ct.get_direction(entity_id)
 
         match entity_type:
             case EntityType.BUILDER_BOT:
-                positions = [
-                    Position(self.position.x + dx, self.position.y + dy)
-                    for dx, dy in BUILDER_ACTION_OFFSETS
+                return [
+                    tiles_by_index[idx]
+                    for idx in self.map.builder_action_target_indices_by_index[
+                        self.index
+                    ]
                 ]
             case EntityType.CORE:
-                positions = [
-                    Position(self.position.x + dx, self.position.y + dy)
-                    for dx in range(-1, 2)
-                    for dy in range(-1, 2)
+                return [
+                    tiles_by_index[idx]
+                    for idx in self.map.core_footprint_target_indices_by_index[
+                        self.index
+                    ]
                 ]
             case EntityType.HARVESTER | EntityType.FOUNDRY:
-                positions = self.u_get_adjacent_positions(CARDINAL_DIRECTIONS)
+                return [
+                    tiles_by_index[idx]
+                    for idx in self.map.cardinal_neighbor_indices_by_index[self.index]
+                ]
             case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR:
                 if direction is None:
                     return []
-                positions = [self.u_offset_position(direction)]
+                target_idx = self.map.neighbor_index_by_direction_by_index[
+                    self.index
+                ].get(direction)
+                return [] if target_idx is None else [tiles_by_index[target_idx]]
             case EntityType.SPLITTER:
                 if direction is None:
                     return []
-                positions = [
-                    self.u_offset_position(output_direction)
+                neighbor_idx_by_direction = self.map.neighbor_index_by_direction_by_index[
+                    self.index
+                ]
+                return [
+                    tiles_by_index[target_idx]
                     for output_direction in (
                         direction,
                         direction.rotate_left().rotate_left(),
                         direction.rotate_right().rotate_right(),
                     )
+                    if (
+                        target_idx := neighbor_idx_by_direction.get(output_direction)
+                    )
+                    is not None
                 ]
             case EntityType.BRIDGE:
-                positions = [ct.get_bridge_target(entity_id)]
+                target_pos = ct.get_bridge_target(entity_id)
+                if not self.map.u_is_in_bounds(target_pos):
+                    return []
+                return [self.map.u_get_pos_tile(target_pos)]
             case EntityType.GUNNER:
                 if direction is None:
                     return []
-                positions = self.map.u_get_gunner_ray_tiles(self.position, direction)
+                return [
+                    tiles_by_index[idx]
+                    for idx in self.map.u_get_attackable_target_indices(
+                        self.index,
+                        EntityType.GUNNER,
+                        direction,
+                    )
+                ]
             case EntityType.SENTINEL:
                 if direction is None:
                     return []
-                positions = [
-                    tile
-                    for column in self.map.matrix
-                    for tile in column
-                    if self.map.u_sentinel_covers_target(
-                        self.position,
+                return [
+                    tiles_by_index[idx]
+                    for idx in self.map.u_get_attackable_target_indices(
+                        self.index,
+                        EntityType.SENTINEL,
                         direction,
-                        tile.position,
-                        self.building.vision_radius_sq or 0,
                     )
                 ]
             case EntityType.BREACH:
                 if direction is None:
                     return []
-                positions = [
-                    tile
-                    for column in self.map.matrix
-                    for tile in column
-                    if self.map.u_breach_covers_target(
-                        self.position,
+                return [
+                    tiles_by_index[idx]
+                    for idx in self.map.u_get_attackable_target_indices(
+                        self.index,
+                        EntityType.BREACH,
                         direction,
-                        tile.position,
                     )
                 ]
             case EntityType.LAUNCHER:
-                positions = self.map.u_get_launcher_targets(self.position)
+                return [
+                    tiles_by_index[idx]
+                    for idx in self.map.u_get_attackable_target_indices(
+                        self.index,
+                        EntityType.LAUNCHER,
+                        Direction.NORTH,
+                    )
+                ]
             case _:
-                positions = []
-
-        if positions and isinstance(positions[0], Tile):
-            return list(positions)
-        return self.map.u_positions_to_tiles(positions)
+                return []
 
     def update_target_zones_bot(self):
         current_round = self.map.current_round

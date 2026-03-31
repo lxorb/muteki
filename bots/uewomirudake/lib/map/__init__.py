@@ -6,6 +6,7 @@ import time
 from cambc import Controller, Direction, EntityType, Environment, GameConstants, Position, Team
 
 from lib.map.constants import (
+    BUILDER_ACTION_OFFSETS,
     CHOKEPOINT_MIN_DIST_INCREASE,
     DIRECTIONS,
     INF_DIST,
@@ -54,11 +55,19 @@ class Map:
         ]
         self.neighbor_indices_by_index: list[tuple[int, ...]] = []
         self.cardinal_neighbor_indices_by_index: list[tuple[int, ...]] = []
+        self.neighbor_index_by_direction_by_index: list[dict[Direction, int]] = []
+        self.builder_action_target_indices_by_index: list[tuple[int, ...]] = []
+        self.core_footprint_target_indices_by_index: list[tuple[int, ...]] = []
+        self.attackable_target_indices_cache: dict[
+            tuple[int, EntityType, Direction],
+            tuple[int, ...],
+        ] = {}
         for idx in range(self.tile_count):
             x = idx // self.height
             y = idx % self.height
             neighbors: list[int] = []
             cardinal_neighbors: list[int] = []
+            neighbor_by_direction: dict[Direction, int] = {}
             for direction in DIRECTIONS:
                 dx, dy = direction.delta()
                 nx = x + dx
@@ -66,10 +75,29 @@ class Map:
                 if 0 <= nx < self.width and 0 <= ny < self.height:
                     neighbor_idx = nx * self.height + ny
                     neighbors.append(neighbor_idx)
+                    neighbor_by_direction[direction] = neighbor_idx
                     if dx == 0 or dy == 0:
                         cardinal_neighbors.append(neighbor_idx)
             self.neighbor_indices_by_index.append(tuple(neighbors))
             self.cardinal_neighbor_indices_by_index.append(tuple(cardinal_neighbors))
+            self.neighbor_index_by_direction_by_index.append(neighbor_by_direction)
+
+            builder_targets: list[int] = []
+            for dx, dy in BUILDER_ACTION_OFFSETS:
+                nx = x + dx
+                ny = y + dy
+                if 0 <= nx < self.width and 0 <= ny < self.height:
+                    builder_targets.append(nx * self.height + ny)
+            self.builder_action_target_indices_by_index.append(tuple(builder_targets))
+
+            core_targets: list[int] = []
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    nx = x + dx
+                    ny = y + dy
+                    if 0 <= nx < self.width and 0 <= ny < self.height:
+                        core_targets.append(nx * self.height + ny)
+            self.core_footprint_target_indices_by_index.append(tuple(core_targets))
 
         self.ct = ct
         self.own_team = ct.get_team()
@@ -140,6 +168,30 @@ class Map:
         print(f"Map update attributes time: {update_attributes_time_mus} mus")
         print(f"Map update distances time: {update_distances_time_mus} mus")
         print(f"Map update vision time: {update_vision_time_mus} mus")
+
+    def u_get_attackable_target_indices(
+        self,
+        source_idx: int,
+        turret_type: EntityType,
+        direction: Direction,
+    ) -> tuple[int, ...]:
+        cache_key = (source_idx, turret_type, direction)
+        cached_indices = self.attackable_target_indices_cache.get(cache_key)
+        if cached_indices is not None:
+            return cached_indices
+
+        source_pos = self.tiles_by_index[source_idx].position
+        target_indices = tuple(
+            pos.x * self.height + pos.y
+            for pos in self.ct.get_attackable_tiles_from(
+                source_pos,
+                direction,
+                turret_type,
+            )
+            if self.u_is_in_bounds(pos)
+        )
+        self.attackable_target_indices_cache[cache_key] = target_indices
+        return target_indices
 
     def u_update_visible_map_caches(self) -> None:
         self.u_update_symmetry_from_visible_tiles()
@@ -578,25 +630,22 @@ class Map:
         return (delta_x * dir_x) + (delta_y * dir_y) > 0
 
     def u_get_launcher_targets(self, source_pos: Position) -> list[Tile]:
-        tiles: list[Tile] = []
-
-        for x in range(self.width):
-            for y in range(self.height):
-                pos = Position(x, y)
-                if pos == source_pos:
-                    continue
-                if (
-                    source_pos.distance_squared(pos)
-                    <= GameConstants.LAUNCHER_VISION_RADIUS_SQ
-                ):
-                    tiles.append(self.u_get_pos_tile(pos))
-
-        return tiles
+        source_idx = source_pos.x * self.height + source_pos.y
+        return [
+            self.tiles_by_index[idx]
+            for idx in self.u_get_attackable_target_indices(
+                source_idx,
+                EntityType.LAUNCHER,
+                Direction.NORTH,
+            )
+        ]
 
     def u_get_launcher_pickup_positions(self, source_pos: Position) -> list[Tile]:
-        return self.u_positions_to_tiles(
-            [source_pos.add(direction) for direction in DIRECTIONS]
-        )
+        source_idx = source_pos.x * self.height + source_pos.y
+        return [
+            self.tiles_by_index[idx]
+            for idx in self.neighbor_indices_by_index[source_idx]
+        ]
 
     def u_is_chokepoint(self, pos: Position) -> bool:
         """
