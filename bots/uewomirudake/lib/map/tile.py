@@ -100,7 +100,7 @@ class Tile:
     def _is_intrinsically_passable(self) -> bool:
         building_type = self.building.entity_type
         if building_type is None:
-            return True
+            return self.environment != Environment.WALL
         if building_type == EntityType.CORE:
             return self.building.team == self.map.own_team
         return building_type in PASSABLE_TYPES

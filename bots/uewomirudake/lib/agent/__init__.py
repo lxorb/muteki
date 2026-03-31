@@ -11,7 +11,6 @@ from cambc import (
 import time
 from lib.map import Map
 from lib.map.tile import Tile
-from .constants import NS_PER_TURN
 
 
 class Agent:
@@ -35,19 +34,22 @@ class Agent:
         return time.perf_counter_ns() - self.t_start
 
     def u_get_ns_remaining(self):
+        from .constants import NS_PER_TURN
         return NS_PER_TURN - time.perf_counter_ns() + self.t_start
 
     def u_get_bound_method(
         self,
-        method: Callable[..., object],
+        method: Callable[..., object] | str,
     ) -> Callable[..., object]:
+        if isinstance(method, str):
+            return getattr(self, method)
         if getattr(method, "__self__", None) is self:
             return method
         return method.__get__(self, type(self))
 
     def u_get_bound_method_and_args(
         self,
-        strategy_entry: Callable[..., object] | tuple[object, ...],
+        strategy_entry: Callable[..., object] | str | tuple[object, ...],
     ) -> tuple[Callable[..., object], tuple[object, ...]]:
         if isinstance(strategy_entry, tuple):
             method, *args = strategy_entry

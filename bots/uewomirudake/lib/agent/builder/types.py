@@ -8,7 +8,7 @@ from lib.map.tile import Tile
 
 
 BuilderActionResult: TypeAlias = bool | None
-BuilderStrategyMethod: TypeAlias = Callable[..., BuilderActionResult]
+BuilderStrategyMethod: TypeAlias = Callable[..., BuilderActionResult] | str
 StrategyEntry: TypeAlias = (
     BuilderStrategyMethod | tuple[BuilderStrategyMethod, *tuple[object, ...]]
 )

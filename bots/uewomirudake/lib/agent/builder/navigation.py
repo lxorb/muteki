@@ -275,7 +275,10 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
                 continue
 
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
-            if neighbor_tile.building.entity_type == EntityType.CORE:
+            if (
+                neighbor_tile.building.entity_type == EntityType.CORE
+                and neighbor_tile.building.team == self.map.own_team
+            ):
                 return direction
             if neighbor_tile.own_core_dist >= source_tile.own_core_dist:
                 continue

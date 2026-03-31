@@ -56,7 +56,10 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             harvester_pos = harvester_tile.position
             adjacent_tiles = [
                 self.map.u_get_pos_tile(pos)
-                for pos in self.map.u_iter_adjacent_positions(harvester_pos)
+                for pos in self.map.u_iter_adjacent_positions(
+                    harvester_pos,
+                    consider_diagonal=False,
+                )
                 if not self.map.u_get_pos_tile(pos).is_enemy_turret_target_tile
             ]
             if any(is_own_supply_link(tile) for tile in adjacent_tiles):
@@ -626,7 +629,10 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         candidate_tiles = []
         for harvester_tile in self.map.enemy_harvesters_in_vision:
             harvester_pos = harvester_tile.position
-            for candidate_pos in self.map.u_iter_adjacent_positions(harvester_pos):
+            for candidate_pos in self.map.u_iter_adjacent_positions(
+                harvester_pos,
+                consider_diagonal=False,
+            ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
