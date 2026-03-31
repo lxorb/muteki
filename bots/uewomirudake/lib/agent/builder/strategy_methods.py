@@ -73,7 +73,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             adjacent_tiles = self.u_prioritize_tiles(
                 adjacent_tiles,
                 lambda tile: tile.own_core_dist,
-                lambda tile: current_pos.distance_squared(tile.position),
+                lambda tile: tile.dist_to_self,
             )
             candidate_tiles.append(adjacent_tiles[0])
 
@@ -82,7 +82,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         candidate_tiles = self.u_prioritize_tiles(
             list(dict.fromkeys(candidate_tiles)),
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
             lambda tile: tile.own_core_dist,
         )
         for target_tile in candidate_tiles:
@@ -156,7 +156,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
             lambda tile: 0 if tile.building.id is None else 1,
         )
         for target_tile in candidate_tiles:
@@ -230,7 +230,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
             lambda tile: tile.own_core_dist,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
         )
 
         for target_tile in candidate_tiles:
@@ -335,7 +335,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
                 if core_center_pos is not None
                 else 10**9
             ),
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
         )
         for target_tile in candidate_tiles:
             if self.u_build_at(
@@ -436,7 +436,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
         )
         for target_tile in candidate_tiles:
             target_pos = target_tile.position
@@ -515,7 +515,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
             lambda tile: (
                 0
                 if get_tile_kind(tile.position) == "empty"
@@ -563,7 +563,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         enemy_supply_tiles = self.u_prioritize_tiles(
             enemy_supply_tiles,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
             lambda tile: 0 if tile.building.id is None else 1,
         )
         for target_tile in enemy_supply_tiles:
@@ -598,7 +598,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         titanium_tiles = self.u_prioritize_tiles(
             titanium_tiles,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
         )
         for target_tile in titanium_tiles:
             if self.u_build_at(
@@ -643,7 +643,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
         )
 
         for target_tile in candidate_tiles:
@@ -689,7 +689,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
-            lambda tile: current_pos.distance_squared(tile.position),
+            lambda tile: tile.dist_to_self,
         )
 
         for target_tile in candidate_tiles:
