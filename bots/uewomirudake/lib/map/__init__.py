@@ -41,9 +41,14 @@ class Map:
         self.enemy_core_dist_by_index = [INF_DIST] * self.tile_count
         self.inf_distances_by_index = [INF_DIST] * self.tile_count
         self.intrinsic_passable_by_index = [True] * self.tile_count
+        # Bump whenever intrinsic traversability changes so chokepoint answers
+        # can be reused safely until the passability graph changes again.
+        self.passability_epoch = 0
         self.core_distance_dirty_indices: set[int] = set()
         self.core_distance_enqueued_by_index = bytearray(self.tile_count)
         self.own_core_source_indices: tuple[int, ...] = ()
+        # Track own-core source changes separately from passability changes.
+        self.own_core_source_epoch = 0
         self.enemy_core_source_indices: tuple[int, ...] = ()
         self.own_core_source_by_index = bytearray(self.tile_count)
         self.enemy_core_source_by_index = bytearray(self.tile_count)
@@ -51,9 +56,15 @@ class Map:
         self.enemy_core_dist_initialized = False
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
+        # Dedicated chokepoint BFS buffers avoid per-call queue/list allocation.
+        self.chokepoint_queue_buffer_by_index: list[int] = []
         self.path_seen_epoch_by_index = [0] * self.tile_count
         self.path_predecessor_by_index = [-1] * self.tile_count
         self.path_epoch = 0
+        self.chokepoint_seen_epoch_by_index = [0] * self.tile_count
+        self.chokepoint_dist_by_index = [0] * self.tile_count
+        self.chokepoint_epoch = 0
+        self.chokepoint_cache_by_index: dict[int, tuple[int, int, bool]] = {}
         self.matrix: list[list[Tile]] = [
             [Tile(Position(x, y), self) for y in range(self.height)]
             for x in range(self.width)
@@ -453,6 +464,7 @@ class Map:
             self.own_core_center_pos,
             self.own_core_source_by_index,
         )
+        self.own_core_source_epoch += 1
         self.own_core_dist_initialized = False
         if not self.enemy_core_center_pos_candidates:
             center = self.own_core_center_pos
@@ -680,84 +692,110 @@ class Map:
         """
         Return whether blocking this tile would significantly lengthen a nearby route to the own core.
         """
-        if self.own_core_center_pos is None or not self.u_is_in_bounds(pos):
+        if not self.u_is_in_bounds(pos):
             return False
 
-        blocked_key = (pos.x, pos.y)
-        own_core_tiles = self.u_get_core_footprint_positions(self.own_core_center_pos)
-        own_core_keys = {
-            (core_tile.position.x, core_tile.position.y) for core_tile in own_core_tiles
-        }
-        if blocked_key in own_core_keys:
+        blocked_idx = pos.x * self.height + pos.y
+        if not self.own_core_source_indices or self.own_core_source_by_index[blocked_idx]:
             return False
 
-        for adjacent_pos in self.u_iter_adjacent_positions(pos):
-            adjacent_tile = self.u_get_pos_tile(adjacent_pos)
+        cache_entry = self.chokepoint_cache_by_index.get(blocked_idx)
+        if cache_entry is not None:
+            cached_passability_epoch, cached_core_epoch, cached_result = cache_entry
             if (
-                adjacent_tile.own_core_dist >= INF_DIST
-                or not adjacent_tile._is_intrinsically_passable()
+                cached_passability_epoch == self.passability_epoch
+                and cached_core_epoch == self.own_core_source_epoch
+            ):
+                return cached_result
+
+        # One BFS from the core with this tile blocked gives the alternative
+        # path length for every adjacent tile, which is much cheaper than
+        # rerunning BFS once per neighbor.
+        bfs_epoch = self.u_run_own_core_distance_bfs_avoiding_tile(blocked_idx)
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        own_core_dist_by_index = self.own_core_dist_by_index
+        chokepoint_seen_epoch_by_index = self.chokepoint_seen_epoch_by_index
+        chokepoint_dist_by_index = self.chokepoint_dist_by_index
+
+        for adjacent_idx in self.neighbor_indices_by_index[blocked_idx]:
+            if (
+                own_core_dist_by_index[adjacent_idx] >= INF_DIST
+                or not intrinsic_passable_by_index[adjacent_idx]
             ):
                 continue
 
-            alternative_dist = self.u_get_own_core_dist_avoiding_tile(
-                adjacent_pos,
-                blocked_key,
-                own_core_keys,
+            alternative_dist = (
+                chokepoint_dist_by_index[adjacent_idx]
+                if chokepoint_seen_epoch_by_index[adjacent_idx] == bfs_epoch
+                else INF_DIST
             )
             if (
-                alternative_dist - adjacent_tile.own_core_dist
+                alternative_dist - own_core_dist_by_index[adjacent_idx]
                 >= CHOKEPOINT_MIN_DIST_INCREASE
             ):
+                self.chokepoint_cache_by_index[blocked_idx] = (
+                    self.passability_epoch,
+                    self.own_core_source_epoch,
+                    True,
+                )
                 return True
 
+        self.chokepoint_cache_by_index[blocked_idx] = (
+            self.passability_epoch,
+            self.own_core_source_epoch,
+            False,
+        )
         return False
 
-    def u_get_own_core_dist_avoiding_tile(
+    def u_run_own_core_distance_bfs_avoiding_tile(
         self,
-        source_pos: Position,
-        blocked_key: tuple[int, int],
-        own_core_keys: set[tuple[int, int]],
+        blocked_idx: int,
     ) -> int:
-        source_idx = source_pos.x * self.height + source_pos.y
-        blocked_idx = blocked_key[0] * self.height + blocked_key[1]
-        own_core_indices = [False] * self.tile_count
-        for core_key in own_core_keys:
-            own_core_indices[core_key[0] * self.height + core_key[1]] = True
-
-        queue = self.path_queue_buffer_by_index
+        # Epoch-stamped seen/dist arrays let us reuse the same storage without
+        # clearing full-size lists on every chokepoint query.
+        self.chokepoint_epoch += 1
+        chokepoint_epoch = self.chokepoint_epoch
+        queue = self.chokepoint_queue_buffer_by_index
         queue.clear()
-        queue.append(source_idx)
-        queue_head = 0
-        seen = [False] * self.tile_count
-        seen[source_idx] = True
-        seen[blocked_idx] = True
-        dist_by_index = [INF_DIST] * self.tile_count
-        dist_by_index[source_idx] = 0
-        neighbor_indices_by_index = self.neighbor_indices_by_index
+        seen_epoch_by_index = self.chokepoint_seen_epoch_by_index
+        dist_by_index = self.chokepoint_dist_by_index
+        own_core_source_indices = self.own_core_source_indices
+        own_core_source_by_index = self.own_core_source_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+
+        for source_idx in own_core_source_indices:
+            if source_idx == blocked_idx:
+                continue
+            seen_epoch_by_index[source_idx] = chokepoint_epoch
+            dist_by_index[source_idx] = 0
+            queue.append(source_idx)
+
+        queue_head = 0
 
         while queue_head < len(queue):
             current_idx = queue[queue_head]
             queue_head += 1
             current_dist = dist_by_index[current_idx]
-            if own_core_indices[current_idx]:
-                return current_dist
 
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if seen[neighbor_idx]:
+                if (
+                    neighbor_idx == blocked_idx
+                    or seen_epoch_by_index[neighbor_idx] == chokepoint_epoch
+                ):
                     continue
 
                 if (
-                    not own_core_indices[neighbor_idx]
+                    not own_core_source_by_index[neighbor_idx]
                     and not intrinsic_passable_by_index[neighbor_idx]
                 ):
                     continue
 
-                seen[neighbor_idx] = True
+                seen_epoch_by_index[neighbor_idx] = chokepoint_epoch
                 dist_by_index[neighbor_idx] = current_dist + 1
                 queue.append(neighbor_idx)
 
-        return INF_DIST
+        return chokepoint_epoch
 
     def u_update_supply_information(self) -> None:
         for tile in self.tiles_in_vision:

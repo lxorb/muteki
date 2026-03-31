@@ -144,53 +144,69 @@ class BuilderStrategyMethodsMixin:
         place a conveyor using the cached supplier-plan helper instead.
         """
         own_team = self.map.own_team
-        conveyor_plan_by_pos: dict[Position, Direction | None] = {}
+        tiles_by_index = self.map.tiles_by_index
+        dist_to_self_by_index = self.map.dist_to_self_by_index
+        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
+        build_plan_by_index: dict[int, tuple[EntityType | None, Direction | None]] = {}
+        seen_candidate_indices: set[int] = set()
+        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
+        encounter_order = 0
 
-        def can_use_tile(target_tile) -> bool:
-            return target_tile.building.id is None or (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type == EntityType.ROAD
-            )
+        def get_build_plan(
+            tile_index: int,
+        ) -> tuple[EntityType | None, Direction | None]:
+            if tile_index not in build_plan_by_index:
+                target_tile = tiles_by_index[tile_index]
+                if not self.map.u_is_chokepoint(target_tile.position):
+                    build_plan_by_index[tile_index] = (EntityType.BARRIER, None)
+                else:
+                    build_plan_by_index[tile_index] = (
+                        EntityType.CONVEYOR,
+                        self.u_best_conveyor_orientation(target_tile.position),
+                    )
+            return build_plan_by_index[tile_index]
 
-        def is_reachable_chokepoint_plan(target_tile) -> bool:
-            if not self.map.u_is_chokepoint(target_tile.position):
-                return True
-            if target_tile.position not in conveyor_plan_by_pos:
-                conveyor_direction = self.u_best_conveyor_orientation(
-                    target_tile.position
-                )
-                conveyor_plan_by_pos[target_tile.position] = conveyor_direction
-            return conveyor_plan_by_pos[target_tile.position] is not None
-
-        candidate_tiles = []
         for harvester_tile in self.map.own_harvesters_in_vision:
-            harvester_pos = harvester_tile.position
-            for candidate_pos in self.map.u_iter_adjacent_positions(
-                harvester_pos,
-                consider_diagonal=False,
-            ):
-                candidate_tile = self.map.u_get_pos_tile(candidate_pos)
-                if candidate_tile.environment == Environment.WALL:
+            for adjacent_idx in cardinal_neighbor_indices_by_index[harvester_tile.index]:
+                if adjacent_idx in seen_candidate_indices:
                     continue
-                candidate_tiles.append(candidate_tile)
+                seen_candidate_indices.add(adjacent_idx)
 
-        candidate_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(candidate_tiles)),
-            lambda tile: not tile.is_enemy_turret_target_tile,
-            can_use_tile,
-            is_reachable_chokepoint_plan,
-        )
-        if not candidate_tiles:
+                target_tile = tiles_by_index[adjacent_idx]
+                if target_tile.environment == Environment.WALL:
+                    continue
+                candidate_order = encounter_order
+                encounter_order += 1
+                if target_tile.is_enemy_turret_target_tile:
+                    continue
+                if target_tile.building.id is not None and not (
+                    target_tile.building.team == own_team
+                    and target_tile.building.entity_type == EntityType.ROAD
+                ):
+                    continue
+
+                candidate_entries.append(
+                    (
+                        (
+                            dist_to_self_by_index[adjacent_idx],
+                            0 if target_tile.building.id is None else 1,
+                        ),
+                        candidate_order,
+                        adjacent_idx,
+                    )
+                )
+
+        if not candidate_entries:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.dist_to_self,
-            lambda tile: 0 if tile.building.id is None else 1,
-        )
-        for target_tile in candidate_tiles:
-            if self.map.u_is_chokepoint(target_tile.position):
-                conveyor_direction = conveyor_plan_by_pos[target_tile.position]
+        heapify(candidate_entries)
+        while candidate_entries:
+            _, _, target_idx = heappop(candidate_entries)
+            target_tile = tiles_by_index[target_idx]
+            # Delay the expensive chokepoint/conveyor planning until this tile
+            # is actually the best remaining cheap candidate.
+            building_type, conveyor_direction = get_build_plan(target_idx)
+            if building_type == EntityType.CONVEYOR:
                 if conveyor_direction is None:
                     continue
                 if self.u_build_at(
