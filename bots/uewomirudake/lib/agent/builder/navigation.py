@@ -313,7 +313,10 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
 
     def u_get_supplier_tile_category_rank(self, target_tile) -> int | None:
         own_team = self.map.own_team
-        if target_tile.building.entity_type in SUPPLY_LINK_TYPES:
+        if (
+            target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and target_tile.building.team == own_team
+        ):
             return 0
         if (
             target_tile.building.entity_type == EntityType.BARRIER
@@ -363,7 +366,10 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         core_tiles = [
             tile
             for tile in candidate_tiles
-            if tile.building.entity_type == EntityType.CORE
+            if (
+                tile.building.entity_type == EntityType.CORE
+                and tile.building.team == self.map.own_team
+            )
         ]
         if core_tiles:
             core_tiles.sort(
@@ -406,7 +412,10 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
 
     def u_get_bridge_target_category_rank(self, target_tile) -> int | None:
         own_team = self.map.own_team
-        if target_tile.building.entity_type in SUPPLY_LINK_TYPES:
+        if (
+            target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and target_tile.building.team == own_team
+        ):
             return 0
         if target_tile.building.id is None or (
             target_tile.building.team == own_team

@@ -1,7 +1,7 @@
 from cambc import Direction, EntityType, Environment, Position
 
 from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ
-from lib.map.constants import INF_DIST
+from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 
 from .types import BuilderStrategyMethodsSelf
 
@@ -29,8 +29,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
         def is_own_supply_link(target_tile) -> bool:
             return (
                 target_tile.building.team == own_team
-                and target_tile.building.entity_type
-                in {EntityType.CONVEYOR, EntityType.BRIDGE, EntityType.SPLITTER}
+                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
             )
 
         def can_use_tile(target_tile) -> bool:
@@ -402,18 +401,12 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
 
         def points_at_enemy_turret(pos: Position) -> bool:
             source_tile = self.map.u_get_pos_tile(pos)
-            target_tile = (
-                source_tile.building.targets[0]
-                if source_tile.building.targets
-                else None
-            )
-            if target_tile is None:
-                return False
-            return (
+            return any(
                 target_tile.building.id is not None
                 and target_tile.building.team != own_team
                 and target_tile.building.entity_type
                 in {EntityType.GUNNER, EntityType.SENTINEL, EntityType.BREACH}
+                for target_tile in source_tile.building.targets
             )
 
         candidate_tiles = self.u_filter_tiles(
@@ -426,12 +419,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             ],
             lambda tile: tile.building.team == own_team,
             lambda tile: tile.building.entity_type
-            in {
-                EntityType.CONVEYOR,
-                EntityType.BRIDGE,
-                EntityType.SPLITTER,
-                EntityType.HARVESTER,
-            },
+            in SUPPLY_LINK_TYPES | {EntityType.HARVESTER},
             points_at_enemy_turret,
         )
         if not candidate_tiles:
@@ -640,8 +628,7 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             candidate_tiles,
             lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
             lambda tile: tile.building.team != own_team,
-            lambda tile: tile.building.entity_type
-            in {EntityType.CONVEYOR, EntityType.BRIDGE},
+            lambda tile: tile.building.entity_type in SUPPLY_LINK_TYPES,
             lambda tile: tile.is_passable,
         )
         if not candidate_tiles:
@@ -681,12 +668,10 @@ class BuilderStrategyMethodsMixin(BuilderStrategyMethodsSelf):
             list(dict.fromkeys(self.map.enemy_supply_targets_in_vision)),
             lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
             lambda tile: tile.building.team != own_team,
-            lambda tile: tile.building.entity_type
-            in {EntityType.CONVEYOR, EntityType.BRIDGE},
-            lambda tile: (
-                tile.building.targets[0].position if tile.building.targets else None
-            )
-            == enemy_core_pos,
+            lambda tile: tile.building.entity_type in SUPPLY_LINK_TYPES,
+            lambda tile: any(
+                target.position == enemy_core_pos for target in tile.building.targets
+            ),
             lambda tile: not tile.in_enemy_launcher_pickup_zone,
             lambda tile: not tile.in_enemy_attack_range,
         )
