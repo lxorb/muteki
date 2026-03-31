@@ -13,9 +13,11 @@ class BuilderStrategyMethodsMixin:
         """
         Build the best missing supplier next to a visible own harvester.
 
-        Keeps the same per-harvester and global priority order as
-        `s_build_harvester_supply_link`, but reduces repeated list passes and
-        computes supplier plans lazily for adjacent tiles only as needed.
+        Skips harvesters that already have an adjacent own supplier, keeps one
+        valid adjacent placement tile per remaining harvester by cached core
+        distance, then prioritizes those tiles by squared distance to the
+        builder and the own core. The supplier type and target are chosen by
+        `u_get_supplier_build_plan(...)`.
         """
         own_team = self.map.own_team
         attack_enemy_passable = False
