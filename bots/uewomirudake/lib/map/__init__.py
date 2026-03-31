@@ -476,38 +476,45 @@ class Map:
 
     def u_run_distance_bfs(
         self,
-        seed_tiles: list[Tile] | tuple[Tile, ...],
+        seed_indices: list[int] | tuple[int, ...],
         distance_by_index: list[int],
     ) -> None:
-        queue: deque[Tile] = deque(seed_tiles)
-        for seed_tile in seed_tiles:
-            distance_by_index[seed_tile.index] = 0
+        queue: deque[int] = deque(seed_indices)
+        for seed_idx in seed_indices:
+            distance_by_index[seed_idx] = 0
+
+        width = self.width
+        height = self.height
+        matrix = self.matrix
 
         while queue:
-            current_tile = queue.popleft()
-            current_pos = current_tile.position
-            current_dist = distance_by_index[current_tile.index]
+            current_idx = queue.popleft()
+            current_x = current_idx // height
+            current_y = current_idx % height
+            current_dist = distance_by_index[current_idx]
 
             for direction in DIRECTIONS:
                 dx, dy = direction.delta()
-                neighbor_pos = Position(current_pos.x + dx, current_pos.y + dy)
-                if not self.u_is_in_bounds(neighbor_pos):
+                neighbor_x = current_x + dx
+                neighbor_y = current_y + dy
+                if not (0 <= neighbor_x < width and 0 <= neighbor_y < height):
                     continue
 
-                neighbor_tile = self.matrix[neighbor_pos.x][neighbor_pos.y]
+                neighbor_tile = matrix[neighbor_x][neighbor_y]
                 if not neighbor_tile._is_intrinsically_passable():
                     continue
 
+                neighbor_idx = neighbor_tile.index
                 next_dist = current_dist + 1
-                if next_dist >= distance_by_index[neighbor_tile.index]:
+                if next_dist >= distance_by_index[neighbor_idx]:
                     continue
 
-                distance_by_index[neighbor_tile.index] = next_dist
-                queue.append(neighbor_tile)
+                distance_by_index[neighbor_idx] = next_dist
+                queue.append(neighbor_idx)
 
     def u_refresh_dist_to_self(self) -> None:
         self.u_run_distance_bfs(
-            (self.u_get_pos_tile(self.current_pos),),
+            (self.u_get_pos_tile(self.current_pos).index,),
             self.dist_to_self_by_index,
         )
 
@@ -515,7 +522,12 @@ class Map:
         if self.own_core_center_pos is None:
             return
         self.u_run_distance_bfs(
-            self.u_get_core_footprint_positions(self.own_core_center_pos),
+            tuple(
+                tile.index
+                for tile in self.u_get_core_footprint_positions(
+                    self.own_core_center_pos
+                )
+            ),
             self.own_core_dist_by_index,
         )
 
@@ -523,7 +535,12 @@ class Map:
         if self.enemy_core_center_pos is None:
             return
         self.u_run_distance_bfs(
-            self.u_get_core_footprint_positions(self.enemy_core_center_pos),
+            tuple(
+                tile.index
+                for tile in self.u_get_core_footprint_positions(
+                    self.enemy_core_center_pos
+                )
+            ),
             self.enemy_core_dist_by_index,
         )
 
