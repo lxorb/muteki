@@ -581,7 +581,7 @@ class BuilderNavigationMixin(BuilderNavigationSelf):
         ):
             return self.u_attack_passable(
                 pos,
-                move_towards=False,
+                move_towards=move_towards,
                 destroy_condition=lambda _: True,
                 avoid_enemy_turrets=avoid_enemy_turrets,
             )
