@@ -73,6 +73,14 @@ FOUNDRY_STRATEGY = [
 ]
 
 # TODO
-# SHOULD PATROL SUPPLY CHAINS AND REBUILD
-# THINGS DESTROYED BY THE ENEMY
-DEFENDER_STRATEGY = []
+DEFENDER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
+    (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
+    (
+        BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester,
+        True,
+        False,
+        False,
+    ),
+    (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
+]

@@ -661,6 +661,20 @@ class BuilderStrategyMethodsMixin:
         """
         return False
 
+    def s_patrol_supply_chains(self):
+        """
+        TODO: patrol own supply chains and rebuild damaged sections.
+        Should save a patrolling index. For every supply chain tile,
+        save a last patrolled at value indicating which value the patrolling index had
+        when last patrolled. That means, at the start of each turn set the last patrolled at 
+        value to the current patrolling index for all tiles that are at least diagonally adjacent to the
+        builder bot. Keep track of supplier tiles that have a lower patrolling index than the current value.
+        Always go to the nearest one of these to the builder bot. 
+        If there are no tiles left to patrol, just increment the patrolling index by one 
+        beforehand. 
+        """
+        return False
+
     def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
         """
         Attack the closest enemy supply link next to a visible enemy harvester.
