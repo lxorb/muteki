@@ -23,6 +23,7 @@ class Map:
         self.dist_to_self_by_index = [INF_DIST] * self.tile_count
         self.own_core_dist_by_index = [INF_DIST] * self.tile_count
         self.enemy_core_dist_by_index = [INF_DIST] * self.tile_count
+        self.inf_distances_by_index = [INF_DIST] * self.tile_count
         self.matrix: list[list[Tile]] = [
             [Tile(Position(x, y), self) for y in range(self.height)]
             for x in range(self.width)
@@ -473,21 +474,19 @@ class Map:
             tile.update_supply_targets_in_vision()
             tile.update_missing_links()
 
-    def c_refresh_distance_field(
+    def u_run_distance_bfs(
         self,
         seed_tiles: list[Tile] | tuple[Tile, ...],
-        attribute_name: str,
+        distance_by_index: list[int],
     ) -> None:
-        queue: deque[Tile] = deque()
-
+        queue: deque[Tile] = deque(seed_tiles)
         for seed_tile in seed_tiles:
-            setattr(seed_tile, attribute_name, 0)
-            queue.append(seed_tile)
+            distance_by_index[seed_tile.index] = 0
 
         while queue:
             current_tile = queue.popleft()
             current_pos = current_tile.position
-            current_dist = getattr(current_tile, attribute_name)
+            current_dist = distance_by_index[current_tile.index]
 
             for direction in DIRECTIONS:
                 dx, dy = direction.delta()
@@ -500,11 +499,33 @@ class Map:
                     continue
 
                 next_dist = current_dist + 1
-                if next_dist >= getattr(neighbor_tile, attribute_name):
+                if next_dist >= distance_by_index[neighbor_tile.index]:
                     continue
 
-                setattr(neighbor_tile, attribute_name, next_dist)
+                distance_by_index[neighbor_tile.index] = next_dist
                 queue.append(neighbor_tile)
+
+    def u_refresh_dist_to_self(self) -> None:
+        self.u_run_distance_bfs(
+            (self.u_get_pos_tile(self.current_pos),),
+            self.dist_to_self_by_index,
+        )
+
+    def u_refresh_own_core_dist(self) -> None:
+        if self.own_core_center_pos is None:
+            return
+        self.u_run_distance_bfs(
+            self.u_get_core_footprint_positions(self.own_core_center_pos),
+            self.own_core_dist_by_index,
+        )
+
+    def u_refresh_enemy_core_dist(self) -> None:
+        if self.enemy_core_center_pos is None:
+            return
+        self.u_run_distance_bfs(
+            self.u_get_core_footprint_positions(self.enemy_core_center_pos),
+            self.enemy_core_dist_by_index,
+        )
 
     def u_calculate_shortest_path(
         self,
@@ -620,25 +641,10 @@ class Map:
         return []
 
     def u_update_distances(self) -> None:
-        for column in self.matrix:
-            for tile in column:
-                tile.own_core_dist = INF_DIST
-                tile.enemy_core_dist = INF_DIST
-                tile.dist_to_self = INF_DIST
+        self.dist_to_self_by_index[:] = self.inf_distances_by_index
+        self.own_core_dist_by_index[:] = self.inf_distances_by_index
+        self.enemy_core_dist_by_index[:] = self.inf_distances_by_index
 
-        self.c_refresh_distance_field(
-            (self.u_get_pos_tile(self.current_pos),),
-            "dist_to_self",
-        )
-
-        if self.own_core_center_pos is not None:
-            self.c_refresh_distance_field(
-                self.u_get_core_footprint_positions(self.own_core_center_pos),
-                "own_core_dist",
-            )
-
-        if self.enemy_core_center_pos is not None:
-            self.c_refresh_distance_field(
-                self.u_get_core_footprint_positions(self.enemy_core_center_pos),
-                "enemy_core_dist",
-            )
+        self.u_refresh_dist_to_self()
+        self.u_refresh_own_core_dist()
+        self.u_refresh_enemy_core_dist()
