@@ -1,43 +1,75 @@
 from cambc import Environment
 
+from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
 
 INITRES_STRATEGY = [
-    ("s_build_harvester", True, True, True, Environment.ORE_TITANIUM),
-    ("s_surround_harvester", True, True),
-    ("s_build_missing_supply_link", True, True, True),
-    ("s_build_harvester", True, True, True, Environment.ORE_TITANIUM),
-    ("s_frontier_expand",),
+    (
+        BuilderStrategyMethodsMixin.s_build_harvester,
+        True,
+        True,
+        True,
+        Environment.ORE_TITANIUM,
+    ),
+    (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
+    (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
+    (
+        BuilderStrategyMethodsMixin.s_build_harvester,
+        True,
+        True,
+        True,
+        Environment.ORE_TITANIUM,
+    ),
+    (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]
 
 SCAVENGER_STRATEGY = [
-    ("s_destroy_hijacked_supplier", True),
-    ("s_build_harvester_supply_link", True, True),
-    ("s_surround_harvester", True, True),
-    ("s_build_missing_supply_link", True, True, True),
-    ("s_sentinel_next_to_enemy_harvester", True, False, False),
-    ("s_build_harvester", True, True, True, Environment.ORE_TITANIUM),
-    ("s_frontier_expand",),
+    (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
+    (BuilderStrategyMethodsMixin.s_build_harvester_supply_link, True, True),
+    (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
+    (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
+    (
+        BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester,
+        True,
+        False,
+        False,
+    ),
+    (
+        BuilderStrategyMethodsMixin.s_build_harvester,
+        True,
+        True,
+        True,
+        Environment.ORE_TITANIUM,
+    ),
+    (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]
 
 HARASSMENT_STRATEGY = [
-    ("s_sentinel_next_to_enemy_harvester", True, True, True),
-    ("s_block_enemy_supply_chain", True, True),
-    ("s_block_titanium", True),
-    ("s_attack_enemy_harvester_supply_link", True),
-    ("s_attack_enemy_core_supply_link", True),
+    (BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester, True, True, True),
+    (BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
+    (BuilderStrategyMethodsMixin.s_block_titanium, True),
+    (BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
+    (BuilderStrategyMethodsMixin.s_attack_enemy_core_supply_link, True),
 ]
 
 # TODO
 FOUNDRY_STRATEGY = [
-    # INSERT SPLITTER
-    # BUILD FOUNDRY (next to splitter)
-    # BUILD AXIONITE HARVESTER SUPPLY LINK
-    ("s_surround_harvester", True, True),
-    # BUILD MISSING AXIONITE SUPPLY LINK
-    # BUILD AXIONITE HARVESTER
-    # SCOUT (search for axionite)
+    (BuilderStrategyMethodsMixin.s_insert_core_splitter, True, True),
+    (BuilderStrategyMethodsMixin.s_build_foundry_next_to_splitter, True, True),
+    (BuilderStrategyMethodsMixin.s_build_harvester_supply_link, True, True),
+    # TODO: -> for axionite harvester
+    (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
+    (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
+    # TODO: -> for axionite supply chain
+    (
+        BuilderStrategyMethodsMixin.s_build_harvester,
+        True,
+        True,
+        True,
+        Environment.ORE_AXIONITE,
+    ),
+    (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]
 
 # TODO
