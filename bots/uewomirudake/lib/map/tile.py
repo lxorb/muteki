@@ -217,7 +217,6 @@ class Tile:
 
         self.u_refresh_intrinsic_passability()
         self.is_passable = self._is_intrinsically_passable() and self.bot.id is None
-        self.update_map_values()
 
     def update_bot(self, id_changed: bool) -> None:
         ct = self.map.ct
@@ -282,7 +281,8 @@ class Tile:
                         prev_team,
                     )
 
-        self.building.hp = ct.get_hp(self.building.id)
+        if id_changed or self.building.team != self.map.own_team:
+            self.building.hp = ct.get_hp(self.building.id)
         if self.building.entity_type in STORED_RESOURCE_TRACKED_ENTITY_TYPES:
             stored_resource = ct.get_stored_resource(self.building.id)
             if stored_resource is not None:
@@ -431,141 +431,6 @@ class Tile:
             self.building.team,
             1,
         )
-
-    def update_map_values(self) -> None:
-        self.map_update_symmetry_mode()
-
-        if self.bot.id is not None and self.bot.team != self.map.own_team:
-            self.map.has_enemy_bot_in_vision = True
-
-        self.map_update_buildings_in_vision()
-        self.map_update_supply_links()
-        self.map_update_in_vision_ores()
-        self.map_update_harvesters()
-        self.map_update_accessible_ores()
-
-    def map_update_symmetry_mode(self) -> None:
-        from lib.map import SymmetryMode
-
-        if self.map.symmetry_mode is not None:
-            return
-
-        candidate_modes_to_remove = set()
-        symmetric_locations = {
-            SymmetryMode.ROTATION: Position(
-                self.map.width - 1 - self.position.x,
-                self.map.height - 1 - self.position.y,
-            ),
-            SymmetryMode.MIRROR_X: Position(
-                self.position.x,
-                self.map.height - 1 - self.position.y,
-            ),
-            SymmetryMode.MIRROR_Y: Position(
-                self.map.width - 1 - self.position.x,
-                self.position.y,
-            ),
-        }
-
-        for symmetry_mode, symmetric_location in symmetric_locations.items():
-            if symmetry_mode not in self.map.symmetry_mode_candidates:
-                continue
-
-            symmetric_tile = self.map.matrix[symmetric_location.x][symmetric_location.y]
-            self_is_core = self.building.entity_type == EntityType.CORE
-            symmetric_is_core = symmetric_tile.building.entity_type == EntityType.CORE
-
-            if symmetric_tile.environment is not None and (
-                self.environment != symmetric_tile.environment
-                or self_is_core != symmetric_is_core
-            ):
-                candidate_modes_to_remove.add(symmetry_mode)
-
-        self.map.symmetry_mode_candidates = [
-            mode
-            for mode in self.map.symmetry_mode_candidates
-            if mode not in candidate_modes_to_remove
-        ]
-        if len(self.map.symmetry_mode_candidates) == 1:
-            self.map.symmetry_mode = self.map.symmetry_mode_candidates[0]
-
-        self.map.enemy_core_center_pos_candidates = [
-            (mode, symmetric_location)
-            for mode, symmetric_location in self.map.enemy_core_center_pos_candidates
-            if mode in self.map.symmetry_mode_candidates
-        ]
-        remaining_positions = {
-            pos for _, pos in self.map.enemy_core_center_pos_candidates
-        }
-        if len(remaining_positions) == 1:
-            self.map.enemy_core_center_pos = next(iter(remaining_positions))
-            self.map.enemy_core_source_indices = self.map.u_cache_core_source_indices(
-                self.map.enemy_core_center_pos,
-                self.map.enemy_core_source_by_index,
-            )
-            self.map.enemy_core_dist_initialized = False
-
-    def map_update_buildings_in_vision(self) -> None:
-        if self.building.id is not None:
-            if self.building.team == self.map.own_team:
-                if self not in self.map.own_buildings_in_vision:
-                    self.map.own_buildings_in_vision.append(self)
-            elif self.building.team == self.map.enemy_team:
-                if self not in self.map.enemy_buildings_in_vision:
-                    self.map.enemy_buildings_in_vision.append(self)
-
-    def map_update_supply_links(self) -> None:
-        if (
-            self.building.id is not None
-            and self.building.entity_type in SUPPLY_LINK_TYPES
-        ):
-            if self.building.team == self.map.own_team:
-                if self not in self.map.own_supply_links_in_vision:
-                    self.map.own_supply_links_in_vision.append(self)
-            elif self.building.team == self.map.enemy_team:
-                if self not in self.map.enemy_supply_links_in_vision:
-                    self.map.enemy_supply_links_in_vision.append(self)
-
-    def map_update_in_vision_ores(self) -> None:
-        if self.environment == Environment.ORE_TITANIUM:
-            if self not in self.map.titanium_tiles_in_vision:
-                self.map.titanium_tiles_in_vision.append(self)
-        elif self.environment == Environment.ORE_AXIONITE:
-            if self not in self.map.axionite_tiles_in_vision:
-                self.map.axionite_tiles_in_vision.append(self)
-
-    def map_update_accessible_ores(self) -> None:
-        if self.environment == Environment.ORE_TITANIUM:
-            if self.building.id is None or (
-                self.building.team == self.map.own_team
-                and self.building.entity_type != EntityType.HARVESTER
-            ):
-                if self not in self.map.known_accessible_titanium_tiles:
-                    self.map.known_accessible_titanium_tiles.append(self)
-            elif self in self.map.known_accessible_titanium_tiles:
-                self.map.known_accessible_titanium_tiles.remove(self)
-        elif self in self.map.known_accessible_titanium_tiles:
-            self.map.known_accessible_titanium_tiles.remove(self)
-
-        if self.environment == Environment.ORE_AXIONITE:
-            if self.building.id is None or (
-                self.building.team == self.map.own_team
-                and self.building.entity_type != EntityType.HARVESTER
-            ):
-                if self not in self.map.known_accessible_axionite_tiles:
-                    self.map.known_accessible_axionite_tiles.append(self)
-            elif self in self.map.known_accessible_axionite_tiles:
-                self.map.known_accessible_axionite_tiles.remove(self)
-        elif self in self.map.known_accessible_axionite_tiles:
-            self.map.known_accessible_axionite_tiles.remove(self)
-
-    def map_update_harvesters(self) -> None:
-        if self.building.entity_type == EntityType.HARVESTER:
-            if self.building.team == self.map.own_team:
-                if self not in self.map.own_harvesters_in_vision:
-                    self.map.own_harvesters_in_vision.append(self)
-            else:
-                if self not in self.map.enemy_harvesters_in_vision:
-                    self.map.enemy_harvesters_in_vision.append(self)
 
     def update_supply_targets_in_vision(self) -> None:
         if self.in_enemy_resource_range > 0:
