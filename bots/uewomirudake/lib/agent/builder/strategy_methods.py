@@ -146,24 +146,29 @@ class BuilderStrategyMethodsMixin:
         tiles_by_index = self.map.tiles_by_index
         dist_to_self_by_index = self.map.dist_to_self_by_index
         cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
-        build_plan_by_index: dict[int, tuple[EntityType | None, Direction | None]] = {}
+        build_plan_by_index: dict[
+            tuple[int, int], tuple[EntityType | None, Direction | None]
+        ] = {}
         seen_candidate_indices: set[int] = set()
-        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
+        candidate_entries: list[tuple[tuple[int, int], int, int, int]] = []
         encounter_order = 0
 
         def get_build_plan(
             tile_index: int,
+            harvester_index: int,
         ) -> tuple[EntityType | None, Direction | None]:
-            if tile_index not in build_plan_by_index:
+            plan_key = (tile_index, harvester_index)
+            if plan_key not in build_plan_by_index:
                 target_tile = tiles_by_index[tile_index]
+                harvester_tile = tiles_by_index[harvester_index]
                 if not self.map.u_is_chokepoint(target_tile.position):
-                    build_plan_by_index[tile_index] = (EntityType.BARRIER, None)
+                    build_plan_by_index[plan_key] = (EntityType.BARRIER, None)
                 else:
-                    build_plan_by_index[tile_index] = (
+                    build_plan_by_index[plan_key] = (
                         EntityType.CONVEYOR,
-                        self.u_best_conveyor_orientation(target_tile.position),
+                        target_tile.position.direction_to(harvester_tile.position),
                     )
-            return build_plan_by_index[tile_index]
+            return build_plan_by_index[plan_key]
 
         for harvester_tile in self.map.own_harvesters_in_vision:
             for adjacent_idx in cardinal_neighbor_indices_by_index[harvester_tile.index]:
@@ -192,6 +197,7 @@ class BuilderStrategyMethodsMixin:
                         ),
                         candidate_order,
                         adjacent_idx,
+                        harvester_tile.index,
                     )
                 )
 
@@ -200,11 +206,14 @@ class BuilderStrategyMethodsMixin:
 
         heapify(candidate_entries)
         while candidate_entries:
-            _, _, target_idx = heappop(candidate_entries)
+            _, _, target_idx, harvester_idx = heappop(candidate_entries)
             target_tile = tiles_by_index[target_idx]
             # Delay the expensive chokepoint/conveyor planning until this tile
             # is actually the best remaining cheap candidate.
-            building_type, conveyor_direction = get_build_plan(target_idx)
+            building_type, conveyor_direction = get_build_plan(
+                target_idx,
+                harvester_idx,
+            )
             if building_type == EntityType.CONVEYOR:
                 if conveyor_direction is None:
                     continue
