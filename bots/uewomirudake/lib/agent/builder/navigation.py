@@ -324,10 +324,7 @@ class BuilderNavigationMixin:
             return True
         if target_tile.building.id is None:
             return True
-        return (
-            target_tile.building.entity_type == EntityType.ROAD
-            and target_tile.building.team != self.map.own_team
-        )
+        return False
 
     def u_can_route_supply_chain_to_target(
         self,
