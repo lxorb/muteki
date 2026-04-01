@@ -52,6 +52,10 @@ class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
+    def u_get_core_splitter_foundry_plan(
+        self,
+    ) -> tuple[Position, Direction, Position] | None: ...
+
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
 
     def u_get_sentinel_direction_score(

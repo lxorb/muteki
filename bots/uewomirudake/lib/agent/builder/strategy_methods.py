@@ -426,7 +426,6 @@ class BuilderStrategyMethodsMixin:
         builder, and delegates the actual build, replacement, movement, hold,
         and optional enemy-passable clearing to `u_build_at`.
         """
-        print(self.pending_missing_supply_link_index)
         if (
             self.pending_missing_supply_link_index is not None
             and self.pending_missing_supply_link_resource == resource
@@ -781,6 +780,42 @@ class BuilderStrategyMethodsMixin:
         if self.map.has_built_splitter:
             return False
 
+        core_plan = self.u_get_core_splitter_foundry_plan()
+        if core_plan is None:
+            return False
+
+        splitter_pos, splitter_direction, _ = core_plan
+        splitter_tile = self.map.u_get_pos_tile(splitter_pos)
+        if (
+            splitter_tile.building.entity_type == EntityType.SPLITTER
+            and splitter_tile.building.team == self.map.own_team
+            and splitter_tile.building.direction == splitter_direction
+        ):
+            self.map.has_built_splitter = True
+            self.map.built_splitter_index = splitter_tile.index
+            return False
+
+        titanium_cost, axionite_cost = self.ct.get_splitter_cost()
+        can_build_now = (
+            self.map.current_pos.distance_squared(splitter_pos)
+            <= GameConstants.ACTION_RADIUS_SQ
+            and self.map.titanium >= titanium_cost
+            and self.map.axionite >= axionite_cost
+            and self.ct.can_build_splitter(splitter_pos, splitter_direction)
+        )
+        if self.u_build_at(
+            splitter_pos,
+            EntityType.SPLITTER,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=False,
+            facing_direction=splitter_direction,
+        ):
+            if can_build_now:
+                self.map.has_built_splitter = True
+                self.map.built_splitter_index = splitter_tile.index
+            return True
+
         return False
 
     def s_build_foundry_next_to_splitter(
@@ -789,10 +824,37 @@ class BuilderStrategyMethodsMixin:
         hold: bool = True,
     ):
         """
-        TODO: build a foundry adjacent to the core splitter.
-        Prioritize building the foundry on a non-supply-chain tile.
+        Build a foundry on the currently valid core-side foundry tile.
+
+        Only commits if there is a matching titanium-fed splitter adjacent to
+        the target tile and one of the core footprint tiles.
         """
-        return False
+        core_plan = self.u_get_core_splitter_foundry_plan()
+        if core_plan is None:
+            return False
+
+        splitter_pos, splitter_direction, foundry_pos = core_plan
+        splitter_tile = self.map.u_get_pos_tile(splitter_pos)
+        foundry_tile = self.map.u_get_pos_tile(foundry_pos)
+        if not (
+            splitter_tile.building.entity_type == EntityType.SPLITTER
+            and splitter_tile.building.team == self.map.own_team
+            and splitter_tile.building.direction == splitter_direction
+        ):
+            return False
+        if (
+            foundry_tile.building.entity_type == EntityType.FOUNDRY
+            and foundry_tile.building.team == self.map.own_team
+        ):
+            return False
+
+        return self.u_build_at(
+            foundry_pos,
+            EntityType.FOUNDRY,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=False,
+        )
 
     def s_patrol_supply_chains(self):
         """
