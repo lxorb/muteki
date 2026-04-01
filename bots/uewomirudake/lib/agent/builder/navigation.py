@@ -659,8 +659,7 @@ class BuilderNavigationMixin:
 
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
             if (
-                neighbor_tile.building.entity_type == EntityType.CORE
-                and neighbor_tile.building.team == self.map.own_team
+                neighbor_tile.is_core_of(self.map.own_team)
             ):
                 if self.u_supply_chain_targets_core(resource):
                     return direction
@@ -766,8 +765,7 @@ class BuilderNavigationMixin:
                 if abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1:
                     continue
                 if (
-                    target_tile.building.entity_type == EntityType.CORE
-                    and target_tile.building.team == self.map.own_team
+                    target_tile.is_core_of(self.map.own_team)
                     and not self.u_supply_chain_targets_core(resource)
                 ):
                     continue
@@ -786,8 +784,7 @@ class BuilderNavigationMixin:
                 tile
                 for tile in candidate_tiles
                 if (
-                    tile.building.entity_type == EntityType.CORE
-                    and tile.building.team == self.map.own_team
+                    tile.is_core_of(self.map.own_team)
                 )
             ]
             if core_tiles:
