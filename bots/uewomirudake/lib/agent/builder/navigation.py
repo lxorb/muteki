@@ -15,6 +15,13 @@ from lib.map.constants import SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
 class BuilderNavigationMixin:
+    def u_is_axionite_supply_tile_forbidden(self, pos: Position) -> bool:
+        target_tile = self.map.u_get_pos_tile(pos)
+        return bool(
+            target_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM
+            or self.map.u_is_adjacent_to_ore(pos, Environment.ORE_TITANIUM)
+        )
+
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
         """
         Choose the sentinel facing that best covers high-value targets.
@@ -264,6 +271,9 @@ class BuilderNavigationMixin:
         own core and refuses downstream tiles that are explicitly labeled as part
         of the visible titanium supply chain.
         """
+        if self.u_is_axionite_supply_tile_forbidden(pos):
+            return (None, None)
+
         conveyor_direction = self.u_best_axionite_conveyor_orientation(pos)
         bridge_target = self.u_best_axionite_bridge_target(pos)
 
@@ -427,8 +437,7 @@ class BuilderNavigationMixin:
 
     def u_get_axionite_supplier_tile_category_rank(self, target_tile) -> int | None:
         own_team = self.map.own_team
-        target_label = target_tile.own_supply_chain_label
-        if target_label & SupplyChainLabel.TITANIUM:
+        if self.u_is_axionite_supply_tile_forbidden(target_tile.position):
             return None
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
@@ -551,8 +560,6 @@ class BuilderNavigationMixin:
                     continue
                 if target_tile.own_core_dist >= source_tile.own_core_dist:
                     continue
-                if target_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM:
-                    continue
                 candidate_tiles.append(target_tile)
 
         if not candidate_tiles:
@@ -610,7 +617,7 @@ class BuilderNavigationMixin:
 
     def u_get_axionite_bridge_target_category_rank(self, target_tile) -> int | None:
         own_team = self.map.own_team
-        if target_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM:
+        if self.u_is_axionite_supply_tile_forbidden(target_tile.position):
             return None
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES

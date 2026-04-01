@@ -21,6 +21,7 @@ from lib.map.constants import (
     DEEP_CHOKEPOINT_CHECKING,
     DIRECTIONS,
     INF_DIST,
+    OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
 )
@@ -483,6 +484,20 @@ class Map:
             if not self.u_is_in_bounds(next_pos):
                 continue
             yield next_pos
+
+    def u_is_adjacent_to_ore(
+        self,
+        pos: Position,
+        ore_type: Environment,
+        consider_diagonal: bool = OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
+    ) -> bool:
+        for adjacent_pos in self.u_iter_adjacent_positions(
+            pos,
+            consider_diagonal=consider_diagonal,
+        ):
+            if self.u_get_pos_tile(adjacent_pos).environment == ore_type:
+                return True
+        return False
 
     def u_get_direction_between(
         self,

@@ -161,10 +161,10 @@ class BuilderStrategyMethodsMixin:
             tile_index: int,
         ) -> tuple[EntityType | None, Direction | Position | None]:
             if tile_index not in supplier_plan_by_index:
-                supplier_plan_by_index[
-                    tile_index
-                ] = self.u_get_axionite_supplier_build_plan(
-                    tiles_by_index[tile_index].position,
+                supplier_plan_by_index[tile_index] = (
+                    self.u_get_axionite_supplier_build_plan(
+                        tiles_by_index[tile_index].position,
+                    )
                 )
             return supplier_plan_by_index[tile_index]
 
@@ -188,7 +188,9 @@ class BuilderStrategyMethodsMixin:
                     adjacent_tile.building.team == own_team
                     and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
                     and adjacent_label & SupplyChainLabel.AXIONITE
-                    and not (adjacent_label & SupplyChainLabel.TITANIUM)
+                    and not self.u_is_axionite_supply_tile_forbidden(
+                        adjacent_tile.position
+                    )
                 ):
                     has_own_supply_link = True
                 adjacent_tiles.append((safe_order, adjacent_tile))
@@ -202,8 +204,6 @@ class BuilderStrategyMethodsMixin:
 
                 for idx, (safe_order, target_tile) in enumerate(adjacent_tiles):
                     if target_tile.building.entity_type == EntityType.CORE:
-                        continue
-                    if target_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM:
                         continue
                     if target_tile.building.id is not None and not (
                         target_tile.building.team == own_team
@@ -532,8 +532,6 @@ class BuilderStrategyMethodsMixin:
             target_label = target_tile.own_supply_chain_label
             if not (target_label & SupplyChainLabel.AXIONITE):
                 continue
-            if target_label & SupplyChainLabel.TITANIUM:
-                continue
             if not can_use_tile(target_tile):
                 continue
 
@@ -607,6 +605,8 @@ class BuilderStrategyMethodsMixin:
             ore_positions = self.map.known_accessible_axionite_tiles
         else:
             return False
+
+        print([tile.position for tile in ore_positions])
 
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_positions(
@@ -947,8 +947,6 @@ class BuilderStrategyMethodsMixin:
 
         if self.map.has_built_splitter:
             return False
-
-        
 
         return False
 
