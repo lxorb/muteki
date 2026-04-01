@@ -21,9 +21,11 @@ from lib.map.constants import (
     DEEP_CHOKEPOINT_CHECKING,
     DIRECTIONS,
     INF_DIST,
+    RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
 )
 from lib.map.tile import Tile
+from lib.map.types import SupplyChainLabel
 
 from lib.debug import Stopwatch
 
@@ -69,6 +71,8 @@ class Map:
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.own_supply_link_target_indices_in_vision: set[int] = set()
         self.enemy_supply_link_target_indices_in_vision: set[int] = set()
+        self.own_supply_chain_labels_by_index = bytearray(self.tile_count)
+        self.enemy_supply_chain_labels_by_index = bytearray(self.tile_count)
         # Dedicated chokepoint BFS buffers avoid per-call queue/list allocation.
         self.chokepoint_queue_buffer_by_index: list[int] = []
         self.path_seen_epoch_by_index = [0] * self.tile_count
@@ -146,6 +150,9 @@ class Map:
         self.enemy_core_center_pos_candidates: list[tuple[SymmetryMode, Position]] = []
         self.known_accessible_titanium_tiles: list[Tile] = []
         self.known_accessible_axionite_tiles: list[Tile] = []
+
+        self.has_built_splitter: bool = False
+        self.built_splitter_index: int = -1
 
         # Frontier expansion cache used by `s_frontier_expand_new`.
         self.frontier_expand_cached_unseen_indices: set[int] = set()
@@ -921,6 +928,77 @@ class Map:
 
         return chokepoint_epoch
 
+    def u_get_supply_chain_source_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> SupplyChainLabel:
+        if tile.building.id is None or tile.building.team != team:
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type == EntityType.HARVESTER:
+            if tile.environment == Environment.ORE_TITANIUM:
+                return SupplyChainLabel.TITANIUM
+            if tile.environment == Environment.ORE_AXIONITE:
+                return SupplyChainLabel.AXIONITE
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type == EntityType.FOUNDRY:
+            return SupplyChainLabel.AXIONITE
+
+        return SupplyChainLabel.NONE
+
+    def u_get_supply_chain_output_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> SupplyChainLabel:
+        if tile.building.id is None or tile.building.team != team:
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type not in RESOURCE_TARGET_TYPES:
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type == EntityType.FOUNDRY:
+            return SupplyChainLabel.AXIONITE
+
+        return tile.get_supply_chain_label(team)
+
+    def u_update_supply_chain_labels_for_team(self, team: Team) -> None:
+        queue: deque[Tile] = deque()
+
+        for tile in self.tiles_in_vision:
+            source_label = self.u_get_supply_chain_source_label(tile, team)
+            if source_label == SupplyChainLabel.NONE:
+                continue
+            if tile.add_supply_chain_label(team, source_label):
+                queue.append(tile)
+
+        while queue:
+            source_tile = queue.popleft()
+            output_label = self.u_get_supply_chain_output_label(source_tile, team)
+            if output_label == SupplyChainLabel.NONE:
+                continue
+
+            for target_tile in source_tile.u_get_resource_targets():
+                if not target_tile.add_supply_chain_label(team, output_label):
+                    continue
+                if (
+                    target_tile.last_seen_turn == self.current_round
+                    and target_tile.building.id is not None
+                    and target_tile.building.team == team
+                    and target_tile.building.entity_type in RESOURCE_TARGET_TYPES
+                ):
+                    queue.append(target_tile)
+
+    def u_update_supply_chain_labels(self) -> None:
+        for tile in self.tiles_in_vision:
+            tile.own_supply_chain_label = SupplyChainLabel.NONE
+            tile.enemy_supply_chain_label = SupplyChainLabel.NONE
+
+        self.u_update_supply_chain_labels_for_team(self.own_team)
+        self.u_update_supply_chain_labels_for_team(self.enemy_team)
+
     def u_update_supply_information(self) -> None:
         self.own_supply_targets_in_vision = []
         self.enemy_supply_targets_in_vision = []
@@ -928,6 +1006,8 @@ class Map:
         self.enemy_missing_supply_links = []
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
+
+        self.u_update_supply_chain_labels()
 
         for supply_link_tile in self.own_supply_links_in_vision:
             self.own_supply_link_target_indices_in_vision.update(
@@ -977,7 +1057,9 @@ class Map:
         previously known tile becomes visible again and is no longer an allied
         supplier, it is removed from the cache and its patrol marker is reset.
         """
-        visible_supply_indices = {tile.index for tile in self.own_supply_links_in_vision}
+        visible_supply_indices = {
+            tile.index for tile in self.own_supply_links_in_vision
+        }
         known_supply_indices = self.known_own_supply_link_indices
         known_supply_indices.update(visible_supply_indices)
 
@@ -1191,7 +1273,8 @@ class Map:
 
                 for adjacent_idx in neighbor_indices_by_index[current_idx]:
                     if (
-                        dist_to_self_epoch_by_index[adjacent_idx] != self.dist_to_self_epoch
+                        dist_to_self_epoch_by_index[adjacent_idx]
+                        != self.dist_to_self_epoch
                         or dist_to_self_by_index[adjacent_idx] != next_dist_to_self
                     ):
                         continue

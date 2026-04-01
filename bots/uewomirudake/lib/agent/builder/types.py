@@ -69,6 +69,11 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         pos: Position,
     ) -> SupplierBuildPlan: ...
 
+    def u_get_axionite_supplier_build_plan(
+        self,
+        pos: Position,
+    ) -> SupplierBuildPlan: ...
+
     def u_best_conveyor_orientation(self, pos: Position) -> Direction | None: ...
     def u_best_bridge_target(self, pos: Position) -> Position | None: ...
     def u_move_to(
@@ -118,6 +123,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = True,
     ) -> BuilderActionResult: ...
 
+    def s_build_axionite_harvester_supply_link(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_surround_harvester(
         self,
         move_towards: bool = True,
@@ -125,6 +136,13 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     ) -> BuilderActionResult: ...
 
     def s_build_missing_supply_link(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        attack_enemy_passable: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_build_missing_axionite_supply_link(
         self,
         move_towards: bool = True,
         hold: bool = True,
