@@ -772,13 +772,25 @@ class BuilderStrategyMethodsMixin:
 
     def s_insert_core_splitter(self, move_towards: bool = True, hold: bool = True):
         """
-        Inserts a splitter into the core supply chain.
-        The splitter replaces a conveyor that is adjacent to the core.
-        TODO: Defender should patrol the splitter and rebuild if destroyed
-        """
+        Insert the planned core-facing splitter after the foundry exists.
 
-        if self.map.has_built_splitter:
-            return False
+        This still uses the current core-adjacent splitter slot planner; later
+        strategy steps can continue with axionite work if no valid slot is
+        currently available.
+        """
+        if not self.map.has_built_foundry:
+            foundry_pos = self.u_get_core_foundry_plan()
+            if foundry_pos is None:
+                return False
+            foundry_tile = self.map.u_get_pos_tile(foundry_pos)
+            if (
+                foundry_tile.building.entity_type == EntityType.FOUNDRY
+                and foundry_tile.building.team == self.map.own_team
+            ):
+                self.map.has_built_foundry = True
+                self.map.built_foundry_index = foundry_tile.index
+            else:
+                return False
 
         core_plan = self.u_get_core_splitter_foundry_plan()
         if core_plan is None:
@@ -791,70 +803,60 @@ class BuilderStrategyMethodsMixin:
             and splitter_tile.building.team == self.map.own_team
             and splitter_tile.building.direction == splitter_direction
         ):
-            self.map.has_built_splitter = True
-            self.map.built_splitter_index = splitter_tile.index
             return False
 
-        titanium_cost, axionite_cost = self.ct.get_splitter_cost()
-        can_build_now = (
-            self.map.current_pos.distance_squared(splitter_pos)
-            <= GameConstants.ACTION_RADIUS_SQ
-            and self.map.titanium >= titanium_cost
-            and self.map.axionite >= axionite_cost
-            and self.ct.can_build_splitter(splitter_pos, splitter_direction)
-        )
-        if self.u_build_at(
+        return self.u_build_at(
             splitter_pos,
             EntityType.SPLITTER,
             hold=hold,
             move_towards=move_towards,
             attack_enemy_passable=False,
             facing_direction=splitter_direction,
-        ):
-            if can_build_now:
-                self.map.has_built_splitter = True
-                self.map.built_splitter_index = splitter_tile.index
-            return True
+        )
 
-        return False
-
-    def s_build_foundry_next_to_splitter(
+    def s_build_core_foundry(
         self,
         move_towards: bool = True,
         hold: bool = True,
     ):
         """
-        Build a foundry on the currently valid core-side foundry tile.
-
-        Only commits if there is a matching titanium-fed splitter adjacent to
-        the target tile and one of the core footprint tiles.
+        Build or confirm the planned core-side foundry before splitter work.
         """
-        core_plan = self.u_get_core_splitter_foundry_plan()
-        if core_plan is None:
+        foundry_pos = self.u_get_core_foundry_plan()
+        if foundry_pos is None:
             return False
 
-        splitter_pos, splitter_direction, foundry_pos = core_plan
-        splitter_tile = self.map.u_get_pos_tile(splitter_pos)
         foundry_tile = self.map.u_get_pos_tile(foundry_pos)
-        if not (
-            splitter_tile.building.entity_type == EntityType.SPLITTER
-            and splitter_tile.building.team == self.map.own_team
-            and splitter_tile.building.direction == splitter_direction
-        ):
-            return False
         if (
             foundry_tile.building.entity_type == EntityType.FOUNDRY
             and foundry_tile.building.team == self.map.own_team
         ):
+            self.map.has_built_foundry = True
+            self.map.built_foundry_index = foundry_tile.index
             return False
 
-        return self.u_build_at(
+        titanium_cost, axionite_cost = self.ct.get_foundry_cost()
+        can_build_now = (
+            self.map.current_pos.distance_squared(foundry_pos)
+            <= GameConstants.ACTION_RADIUS_SQ
+            and self.map.titanium >= titanium_cost
+            and self.map.axionite >= axionite_cost
+            and self.ct.can_build_foundry(foundry_pos)
+        )
+
+        if self.u_build_at(
             foundry_pos,
             EntityType.FOUNDRY,
             hold=hold,
             move_towards=move_towards,
             attack_enemy_passable=False,
-        )
+        ):
+            if can_build_now:
+                self.map.has_built_foundry = True
+                self.map.built_foundry_index = foundry_tile.index
+            return True
+
+        return False
 
     def s_patrol_supply_chains(self):
         """

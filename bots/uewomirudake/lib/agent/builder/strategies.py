@@ -55,8 +55,8 @@ HARASSMENT_STRATEGY = [
 
 # TODO
 FOUNDRY_STRATEGY = [
-    (BuilderStrategyMethodsMixin.s_build_foundry_next_to_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_insert_core_splitter, True, True),
+    (BuilderStrategyMethodsMixin.s_build_core_foundry, True, True),
     (
         BuilderStrategyMethodsMixin.s_build_harvester_supply_link,
         True,

@@ -46,6 +46,88 @@ class BuilderNavigationMixin:
             in {EntityType.ROAD, EntityType.BARRIER}
         )
 
+    def u_get_core_foundry_plan(self) -> Position | None:
+        if (
+            self.map.own_core_center_pos is None
+            and not self.map.u_calc_core_center_positions()
+        ):
+            return None
+
+        own_core_center_pos = self.map.own_core_center_pos
+        if own_core_center_pos is None:
+            return None
+
+        own_team = self.map.own_team
+        built_foundry_index = (
+            self.map.built_foundry_index if self.map.has_built_foundry else -1
+        )
+        core_tiles = self.map.u_get_core_footprint_positions(own_core_center_pos)
+        core_tile_indices = {tile.index for tile in core_tiles}
+        candidate_plans: list[tuple[tuple[int, ...], Position]] = []
+        seen_foundry_indices: set[int] = set()
+
+        for core_tile in core_tiles:
+            for foundry_pos in self.map.u_iter_adjacent_positions(
+                core_tile.position,
+                consider_diagonal=False,
+            ):
+                foundry_tile = self.map.u_get_pos_tile(foundry_pos)
+                if (
+                    foundry_tile.index in core_tile_indices
+                    or foundry_tile.index in seen_foundry_indices
+                ):
+                    continue
+                seen_foundry_indices.add(foundry_tile.index)
+
+                if not self.u_can_host_foundry_site(foundry_pos):
+                    continue
+                if (
+                    foundry_tile.building.entity_type != EntityType.FOUNDRY
+                    and foundry_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM
+                ):
+                    continue
+                if (
+                    foundry_tile.building.entity_type != EntityType.FOUNDRY
+                    and self.map.u_is_chokepoint(foundry_pos)
+                ):
+                    continue
+
+                planned_rank = 0 if foundry_tile.index == built_foundry_index else 1
+                foundry_rank = 0
+                if (
+                    foundry_tile.building.entity_type != EntityType.FOUNDRY
+                    or foundry_tile.building.team != own_team
+                ):
+                    if foundry_tile.building.id is None:
+                        foundry_rank = 1
+                    elif foundry_tile.building.entity_type == EntityType.ROAD:
+                        foundry_rank = 2
+                    else:
+                        foundry_rank = 3
+                label_rank = (
+                    0
+                    if foundry_tile.own_supply_chain_label & SupplyChainLabel.AXIONITE
+                    else 1
+                )
+                candidate_plans.append(
+                    (
+                        (
+                            planned_rank,
+                            foundry_rank,
+                            label_rank,
+                            foundry_tile.position.x,
+                            foundry_tile.position.y,
+                        ),
+                        foundry_pos,
+                    )
+                )
+
+        if not candidate_plans:
+            return None
+
+        candidate_plans.sort(key=lambda item: item[0])
+        return candidate_plans[0][1]
+
     def u_get_core_splitter_foundry_plan(
         self,
     ) -> tuple[Position, Direction, Position] | None:
@@ -63,9 +145,11 @@ class BuilderNavigationMixin:
             return None
 
         own_team = self.map.own_team
-        built_splitter_index = (
-            self.map.built_splitter_index if self.map.has_built_splitter else -1
-        )
+        planned_foundry_pos = self.u_get_core_foundry_plan()
+        if planned_foundry_pos is None:
+            return None
+
+        planned_foundry_idx = self.map.u_get_pos_tile(planned_foundry_pos).index
         core_tiles = self.map.u_get_core_footprint_positions(own_core_center_pos)
         core_tile_indices = {tile.index for tile in core_tiles}
         candidate_plans: list[tuple[tuple[int, ...], Position, Direction, Position]] = []
@@ -140,6 +224,8 @@ class BuilderNavigationMixin:
                         continue
 
                     foundry_tile = self.map.u_get_pos_tile(foundry_pos)
+                    if foundry_tile.index != planned_foundry_idx:
+                        continue
                     if (
                         foundry_tile.index in core_tile_indices
                         or not any(
@@ -179,13 +265,9 @@ class BuilderNavigationMixin:
                     if not self.u_is_harmless_core_splitter_side_tile(spill_pos):
                         continue
 
-                    splitter_rank = 0
-                    if splitter_tile.index != built_splitter_index:
-                        splitter_rank = (
-                            1
-                            if splitter_building.entity_type == EntityType.SPLITTER
-                            else 2
-                        )
+                    splitter_rank = (
+                        0 if splitter_building.entity_type == EntityType.SPLITTER else 1
+                    )
                     foundry_rank = 0
                     if (
                         foundry_tile.building.entity_type != EntityType.FOUNDRY
@@ -237,9 +319,8 @@ class BuilderNavigationMixin:
         """
         target_tile = self.map.u_get_pos_tile(pos)
         if resource == Environment.ORE_AXIONITE:
-            core_plan = self.u_get_core_splitter_foundry_plan()
-            if core_plan is not None:
-                foundry_pos = core_plan[2]
+            foundry_pos = self.u_get_core_foundry_plan()
+            if foundry_pos is not None:
                 return (
                     pos.distance_squared(foundry_pos),
                     target_tile.own_core_dist,
@@ -524,11 +605,11 @@ class BuilderNavigationMixin:
         helpers. If both plans exist, prefer the bridge only when it skips at
         least `BRIDGE_PREFERRED_DIST` cached core-distance steps.
         """
-        core_plan = self.u_get_core_splitter_foundry_plan()
+        foundry_pos = self.u_get_core_foundry_plan()
         if (
             resource == Environment.ORE_AXIONITE
-            and core_plan is not None
-            and pos == core_plan[2]
+            and foundry_pos is not None
+            and pos == foundry_pos
         ):
             return (None, None)
         if self.u_is_supply_tile_forbidden(pos, resource):

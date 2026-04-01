@@ -52,6 +52,10 @@ class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
+    def u_get_core_foundry_plan(
+        self,
+    ) -> Position | None: ...
+
     def u_get_core_splitter_foundry_plan(
         self,
     ) -> tuple[Position, Direction, Position] | None: ...
@@ -134,7 +138,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_build_foundry_next_to_splitter(
+    def s_build_core_foundry(
         self,
         move_towards: bool = True,
         hold: bool = True,

@@ -152,8 +152,8 @@ class Map:
         self.known_accessible_titanium_tiles: list[Tile] = []
         self.known_accessible_axionite_tiles: list[Tile] = []
 
-        self.has_built_splitter: bool = False
-        self.built_splitter_index: int = -1
+        self.has_built_foundry: bool = False
+        self.built_foundry_index: int = -1
 
         # Frontier expansion cache used by `s_frontier_expand_new`.
         self.frontier_expand_cached_unseen_indices: set[int] = set()
