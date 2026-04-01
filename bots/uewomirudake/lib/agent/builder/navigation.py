@@ -128,179 +128,148 @@ class BuilderNavigationMixin:
         candidate_plans.sort(key=lambda item: item[0])
         return candidate_plans[0][1]
 
+    def u_get_visible_titanium_core_chain_candidates(
+        self,
+    ) -> list[tuple[Position, Direction]]:
+        own_team = self.map.own_team
+        visible_titanium_tiles_by_index = {
+            tile.index: tile
+            for tile in self.map.own_supply_links_in_vision
+            if tile.own_supply_chain_label & SupplyChainLabel.TITANIUM
+        }
+        if not visible_titanium_tiles_by_index:
+            return []
+
+        reverse_edges_by_index: dict[int, list[tuple[int, Direction]]] = {}
+        coreward_directions_by_index: dict[int, set[Direction]] = {}
+
+        for tile in visible_titanium_tiles_by_index.values():
+            for target_tile in tile.building.targets:
+                target_direction = self.map.u_get_direction_between(
+                    tile.position,
+                    target_tile.position,
+                )
+                if target_direction is None:
+                    continue
+
+                if target_tile.is_core_of(own_team):
+                    coreward_directions_by_index.setdefault(tile.index, set()).add(
+                        target_direction
+                    )
+                    continue
+
+                if target_tile.index not in visible_titanium_tiles_by_index:
+                    continue
+
+                reverse_edges_by_index.setdefault(target_tile.index, []).append(
+                    (tile.index, target_direction)
+                )
+
+        queue = list(coreward_directions_by_index)
+        queue_idx = 0
+        while queue_idx < len(queue):
+            target_idx = queue[queue_idx]
+            queue_idx += 1
+
+            for source_idx, source_direction in reverse_edges_by_index.get(
+                target_idx,
+                [],
+            ):
+                source_directions = coreward_directions_by_index.setdefault(
+                    source_idx,
+                    set(),
+                )
+                if source_direction in source_directions:
+                    continue
+                source_directions.add(source_direction)
+                queue.append(source_idx)
+
+        candidate_plans: list[tuple[Position, Direction]] = []
+        for tile_idx, directions in coreward_directions_by_index.items():
+            tile = visible_titanium_tiles_by_index[tile_idx]
+            for direction in directions:
+                candidate_plans.append((tile.position, direction))
+
+        return candidate_plans
+
     def u_get_core_splitter_foundry_plan(
         self,
     ) -> tuple[Position, Direction, Position] | None:
-        """
-        TODO: AI code, NOT REVIEWED (needs review)
-        """
-        if (
-            self.map.own_core_center_pos is None
-            and not self.map.u_calc_core_center_positions()
-        ):
-            return None
-
-        own_core_center_pos = self.map.own_core_center_pos
-        if own_core_center_pos is None:
-            return None
-
         own_team = self.map.own_team
         planned_foundry_pos = self.u_get_core_foundry_plan()
         if planned_foundry_pos is None:
             return None
 
-        planned_foundry_idx = self.map.u_get_pos_tile(planned_foundry_pos).index
-        core_tiles = self.map.u_get_core_footprint_positions(own_core_center_pos)
-        core_tile_indices = {tile.index for tile in core_tiles}
-        candidate_plans: list[tuple[tuple[int, ...], Position, Direction, Position]] = []
+        current_pos = self.map.current_pos
+        visible_titanium_chain_indices = {
+            tile.index
+            for tile in self.map.own_supply_links_in_vision
+            if tile.own_supply_chain_label & SupplyChainLabel.TITANIUM
+        }
+        candidate_plans: list[tuple[tuple[int, ...], Position, Direction, Position]] = (
+            []
+        )
 
-        for core_tile in core_tiles:
-            for splitter_pos in self.map.u_iter_adjacent_positions(
-                core_tile.position,
-                consider_diagonal=False,
+        for (
+            splitter_pos,
+            splitter_direction,
+        ) in self.u_get_visible_titanium_core_chain_candidates():
+            splitter_tile = self.map.u_get_pos_tile(splitter_pos)
+            splitter_building = splitter_tile.building
+            if (
+                splitter_building.team != own_team
+                or splitter_building.entity_type not in SUPPLY_LINK_TYPES
             ):
-                splitter_tile = self.map.u_get_pos_tile(splitter_pos)
-                splitter_building = splitter_tile.building
-                if (
-                    splitter_tile.index in core_tile_indices
-                    or splitter_building.team != own_team
-                ):
-                    continue
+                continue
 
-                splitter_direction = self.map.u_get_direction_between(
-                    splitter_pos,
-                    core_tile.position,
-                )
-                if splitter_direction is None:
-                    continue
-
-                if splitter_building.entity_type == EntityType.SPLITTER:
-                    if splitter_building.direction != splitter_direction:
-                        continue
-                elif splitter_building.entity_type in SUPPLY_LINK_TYPES:
-                    if not (
-                        splitter_tile.own_supply_chain_label
-                        & SupplyChainLabel.TITANIUM
-                    ):
-                        continue
-                    if not any(
-                        target.position == core_tile.position
-                        for target in splitter_building.targets
-                    ):
-                        continue
-                else:
-                    continue
-
-                dir_x, dir_y = splitter_direction.delta()
-                back_pos = Position(
-                    splitter_pos.x - dir_x,
-                    splitter_pos.y - dir_y,
-                )
-                if not self.map.u_is_in_bounds(back_pos):
-                    continue
-
-                back_tile = self.map.u_get_pos_tile(back_pos)
-                if not (
-                    back_tile.building.team == own_team
-                    and back_tile.building.entity_type in SUPPLY_LINK_TYPES
-                    and back_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM
-                    and any(
-                        target.position == splitter_pos
-                        for target in back_tile.building.targets
-                    )
-                ):
-                    continue
-
-                side_directions = (
+            side_positions = [
+                splitter_pos.add(direction)
+                for direction in (
                     splitter_direction.rotate_left().rotate_left(),
                     splitter_direction.rotate_right().rotate_right(),
                 )
-                for foundry_direction, spill_direction in (
-                    (side_directions[0], side_directions[1]),
-                    (side_directions[1], side_directions[0]),
-                ):
-                    foundry_pos = splitter_pos.add(foundry_direction)
-                    if not self.map.u_is_in_bounds(foundry_pos):
-                        continue
+            ]
+            if not all(
+                self.map.u_is_in_bounds(side_pos)
+                and (
+                    side_pos == planned_foundry_pos
+                    or self.u_is_harmless_core_splitter_side_tile(side_pos)
+                )
+                for side_pos in side_positions
+            ):
+                continue
+            if not any(
+                self.u_can_route_supply_chain_to_target(
+                    side_pos,
+                    planned_foundry_pos,
+                    Environment.ORE_TITANIUM,
+                    visible_titanium_chain_indices,
+                )
+                for side_pos in side_positions
+            ):
+                continue
 
-                    foundry_tile = self.map.u_get_pos_tile(foundry_pos)
-                    if foundry_tile.index != planned_foundry_idx:
-                        continue
-                    if (
-                        foundry_tile.index in core_tile_indices
-                        or not any(
-                            (
-                                (
-                                    neighbor_tile := self.map.u_get_pos_tile(
-                                        neighbor_pos
-                                    )
-                                ).building.entity_type
-                                == EntityType.CORE
-                                and neighbor_tile.building.team == own_team
-                            )
-                            for neighbor_pos in self.map.u_iter_adjacent_positions(
-                                foundry_pos,
-                                consider_diagonal=False,
-                            )
-                        )
-                    ):
-                        continue
-                    if not self.u_can_host_foundry_site(foundry_pos):
-                        continue
-                    if (
-                        foundry_tile.building.entity_type != EntityType.FOUNDRY
-                        and foundry_tile.own_supply_chain_label
-                        & SupplyChainLabel.TITANIUM
-                    ):
-                        continue
-                    if (
-                        foundry_tile.building.entity_type != EntityType.FOUNDRY
-                        and self.map.u_is_chokepoint(foundry_pos)
-                    ):
-                        continue
+            splitter_rank = 1
+            if (
+                splitter_building.entity_type == EntityType.SPLITTER
+                and splitter_building.direction == splitter_direction
+            ):
+                splitter_rank = 0
 
-                    spill_pos = splitter_pos.add(spill_direction)
-                    if not self.map.u_is_in_bounds(spill_pos):
-                        continue
-                    if not self.u_is_harmless_core_splitter_side_tile(spill_pos):
-                        continue
-
-                    splitter_rank = (
-                        0 if splitter_building.entity_type == EntityType.SPLITTER else 1
-                    )
-                    foundry_rank = 0
-                    if (
-                        foundry_tile.building.entity_type != EntityType.FOUNDRY
-                        or foundry_tile.building.team != own_team
-                    ):
-                        if foundry_tile.building.id is None:
-                            foundry_rank = 1
-                        elif foundry_tile.building.entity_type == EntityType.ROAD:
-                            foundry_rank = 2
-                        else:
-                            foundry_rank = 3
-                    label_rank = (
-                        0
-                        if foundry_tile.own_supply_chain_label
-                        & SupplyChainLabel.AXIONITE
-                        else 1
-                    )
-                    candidate_plans.append(
-                        (
-                            (
-                                splitter_rank,
-                                foundry_rank,
-                                label_rank,
-                                foundry_tile.position.x,
-                                foundry_tile.position.y,
-                                splitter_tile.position.x,
-                                splitter_tile.position.y,
-                            ),
-                            splitter_pos,
-                            splitter_direction,
-                            foundry_pos,
-                        )
-                    )
+            candidate_plans.append(
+                (
+                    (
+                        current_pos.distance_squared(splitter_pos),
+                        splitter_tile.own_core_dist,
+                        splitter_rank,
+                        splitter_tile.position.x,
+                        splitter_tile.position.y,
+                    ),
+                    splitter_pos,
+                    splitter_direction,
+                    planned_foundry_pos,
+                )
+            )
 
         if not candidate_plans:
             return None
@@ -308,6 +277,167 @@ class BuilderNavigationMixin:
         candidate_plans.sort(key=lambda item: item[0])
         _, splitter_pos, splitter_direction, foundry_pos = candidate_plans[0]
         return (splitter_pos, splitter_direction, foundry_pos)
+
+    def u_get_supply_chain_progress_key_to_target(
+        self,
+        pos: Position,
+        target_pos: Position,
+    ) -> tuple[int, int]:
+        target_tile = self.map.u_get_pos_tile(pos)
+        return (
+            pos.distance_squared(target_pos),
+            target_tile.own_core_dist,
+        )
+
+    def u_is_supply_branch_target_usable(
+        self,
+        pos: Position,
+        target_pos: Position,
+        resource: Environment,
+        blocked_indices: set[int],
+        via_bridge: bool,
+    ) -> bool:
+        if pos == target_pos:
+            return True
+
+        target_tile = self.map.u_get_pos_tile(pos)
+        if target_tile.index in blocked_indices:
+            return False
+        if self.u_is_supply_tile_forbidden(pos, resource):
+            return False
+        if (
+            target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and target_tile.building.team == self.map.own_team
+        ):
+            return False
+        if via_bridge and self.u_is_empty_ore_tile(pos):
+            return False
+        if (
+            target_tile.building.entity_type == EntityType.BARRIER
+            and target_tile.building.team == self.map.own_team
+        ):
+            return True
+        if (
+            target_tile.building.entity_type == EntityType.ROAD
+            and target_tile.building.team == self.map.own_team
+        ):
+            return True
+        if target_tile.building.id is None:
+            return True
+        return (
+            target_tile.building.entity_type == EntityType.ROAD
+            and target_tile.building.team != self.map.own_team
+        )
+
+    def u_can_route_supply_chain_to_target(
+        self,
+        start_pos: Position,
+        target_pos: Position,
+        resource: Environment,
+        blocked_indices: set[int],
+    ) -> bool:
+        if start_pos == target_pos:
+            return True
+        if not self.map.u_is_in_bounds(start_pos):
+            return False
+        if not self.u_is_supply_branch_target_usable(
+            start_pos,
+            target_pos,
+            resource,
+            blocked_indices,
+            via_bridge=False,
+        ):
+            return False
+
+        tiles_by_index = self.map.tiles_by_index
+        queue = [start_pos]
+        seen_indices = {self.map.u_get_pos_tile(start_pos).index}
+        queue_idx = 0
+
+        while queue_idx < len(queue):
+            current_pos = queue[queue_idx]
+            queue_idx += 1
+            current_progress_key = self.u_get_supply_chain_progress_key_to_target(
+                current_pos,
+                target_pos,
+            )
+
+            for direction in Direction:
+                if direction == Direction.CENTRE:
+                    continue
+                dx, dy = direction.delta()
+                if abs(dx) + abs(dy) != 1:
+                    continue
+
+                next_pos = current_pos.add(direction)
+                if not self.map.u_is_in_bounds(next_pos):
+                    continue
+                if (
+                    self.u_get_supply_chain_progress_key_to_target(
+                        next_pos,
+                        target_pos,
+                    )
+                    >= current_progress_key
+                ):
+                    continue
+                if next_pos == target_pos:
+                    return True
+                if not self.u_is_supply_branch_target_usable(
+                    next_pos,
+                    target_pos,
+                    resource,
+                    blocked_indices,
+                    via_bridge=False,
+                ):
+                    continue
+
+                next_idx = self.map.u_get_pos_tile(next_pos).index
+                if next_idx in seen_indices:
+                    continue
+                seen_indices.add(next_idx)
+                queue.append(next_pos)
+
+            for target_tile in tiles_by_index:
+                target_pos_candidate = target_tile.position
+                if target_pos_candidate == current_pos:
+                    continue
+                if (
+                    current_pos.distance_squared(target_pos_candidate)
+                    > GameConstants.BRIDGE_TARGET_RADIUS_SQ
+                ):
+                    continue
+                if (
+                    abs(target_pos_candidate.x - current_pos.x)
+                    + abs(target_pos_candidate.y - current_pos.y)
+                    == 1
+                ):
+                    continue
+                if (
+                    self.u_get_supply_chain_progress_key_to_target(
+                        target_pos_candidate,
+                        target_pos,
+                    )
+                    >= current_progress_key
+                ):
+                    continue
+                if target_pos_candidate == target_pos:
+                    return True
+                if not self.u_is_supply_branch_target_usable(
+                    target_pos_candidate,
+                    target_pos,
+                    resource,
+                    blocked_indices,
+                    via_bridge=True,
+                ):
+                    continue
+
+                target_idx = target_tile.index
+                if target_idx in seen_indices:
+                    continue
+                seen_indices.add(target_idx)
+                queue.append(target_pos_candidate)
+
+        return False
 
     def u_get_supply_chain_progress_key(
         self,
@@ -658,9 +788,7 @@ class BuilderNavigationMixin:
                 continue
 
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
-            if (
-                neighbor_tile.is_core_of(self.map.own_team)
-            ):
+            if neighbor_tile.is_core_of(self.map.own_team):
                 if self.u_supply_chain_targets_core(resource):
                     return direction
                 continue
@@ -720,6 +848,8 @@ class BuilderNavigationMixin:
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
         ):
+            if target_tile.own_supply_chain_label == SupplyChainLabel.NONE:
+                return None
             return 0
         if (
             target_tile.building.entity_type == EntityType.BARRIER
@@ -764,10 +894,9 @@ class BuilderNavigationMixin:
                     continue
                 if abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1:
                     continue
-                if (
-                    target_tile.is_core_of(self.map.own_team)
-                    and not self.u_supply_chain_targets_core(resource)
-                ):
+                if target_tile.is_core_of(
+                    self.map.own_team
+                ) and not self.u_supply_chain_targets_core(resource):
                     continue
                 if (
                     self.u_get_supply_chain_progress_key(target_pos, resource)
@@ -781,11 +910,7 @@ class BuilderNavigationMixin:
 
         if self.u_supply_chain_targets_core(resource):
             core_tiles = [
-                tile
-                for tile in candidate_tiles
-                if (
-                    tile.is_core_of(self.map.own_team)
-                )
+                tile for tile in candidate_tiles if (tile.is_core_of(self.map.own_team))
             ]
             if core_tiles:
                 core_tiles.sort(
@@ -850,6 +975,8 @@ class BuilderNavigationMixin:
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
         ):
+            if target_tile.own_supply_chain_label == SupplyChainLabel.NONE:
+                return None
             return 0
         if target_tile.building.id is None or (
             target_tile.building.team == own_team
