@@ -8,19 +8,26 @@ from lib.map.types import SupplyChainLabel
 
 class BuilderStrategyMethodsMixin:
     def s_build_harvester_supply_link(
-        self, move_towards: bool = True, hold: bool = True
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        resource: Environment = Environment.ORE_TITANIUM,
     ):
         """
-        Build the best missing supplier next to a visible own harvester.
+        Build the best missing supplier next to a visible own harvester for
+        `resource`.
 
-        Skips harvesters that already have an adjacent own supplier, keeps one
-        valid adjacent placement tile per remaining harvester by cached core
-        distance, then prioritizes those tiles by squared distance to the
-        builder and the own core. The supplier type and target are chosen by
-        `u_get_supplier_build_plan(...)`.
+        Skips harvesters that already have an adjacent compatible own supplier,
+        keeps one valid adjacent placement tile per remaining harvester by
+        cached core distance, then prioritizes those tiles by squared distance
+        to the builder and the own core. The supplier type and target are
+        chosen by `u_get_supplier_build_plan(...)`.
         """
         own_team = self.map.own_team
         attack_enemy_passable = False
+        supply_chain_label = self.u_get_supply_chain_label_for_resource(resource)
+        if supply_chain_label == SupplyChainLabel.NONE:
+            return False
         tiles_by_index = self.map.tiles_by_index
         cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
         replaceable_building_types = {EntityType.ROAD, EntityType.BARRIER}
@@ -35,143 +42,15 @@ class BuilderStrategyMethodsMixin:
         ) -> tuple[EntityType | None, Direction | Position | None]:
             if tile_index not in supplier_plan_by_index:
                 supplier_plan_by_index[tile_index] = self.u_get_supplier_build_plan(
-                    tiles_by_index[tile_index].position
+                    tiles_by_index[tile_index].position,
+                    resource,
                 )
             return supplier_plan_by_index[tile_index]
 
         for harvester_order, harvester_tile in enumerate(
             self.map.own_harvesters_in_vision
         ):
-            adjacent_tiles = []
-            has_own_supply_link = False
-
-            for safe_order, adjacent_idx in enumerate(
-                cardinal_neighbor_indices_by_index[harvester_tile.index]
-            ):
-                adjacent_tile = tiles_by_index[adjacent_idx]
-                if adjacent_tile.is_enemy_turret_target_tile:
-                    continue
-                if (
-                    adjacent_tile.building.team == own_team
-                    and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
-                ):
-                    has_own_supply_link = True
-                adjacent_tiles.append((safe_order, adjacent_tile))
-
-            if has_own_supply_link or not adjacent_tiles:
-                continue
-
-            while adjacent_tiles:
-                best_idx: int | None = None
-                best_priority: tuple[int, int, int] | None = None
-
-                for idx, (safe_order, target_tile) in enumerate(adjacent_tiles):
-                    if target_tile.building.entity_type == EntityType.CORE:
-                        continue
-                    if target_tile.building.id is not None and not (
-                        target_tile.building.team == own_team
-                        and target_tile.building.entity_type
-                        in replaceable_building_types
-                    ):
-                        continue
-
-                    priority = (
-                        target_tile.own_core_dist,
-                        target_tile.dist_to_self,
-                        safe_order,
-                    )
-                    if best_priority is None or priority < best_priority:
-                        best_priority = priority
-                        best_idx = idx
-
-                if best_idx is None:
-                    break
-
-                _, target_tile = adjacent_tiles.pop(best_idx)
-                supplier_type, _ = get_supplier_plan(target_tile.index)
-                if supplier_type is None:
-                    continue
-
-                if target_tile.index not in candidate_seen_indices:
-                    candidate_seen_indices.add(target_tile.index)
-                    candidate_entries.append(
-                        (
-                            (target_tile.dist_to_self, target_tile.own_core_dist),
-                            harvester_order,
-                            target_tile.index,
-                        )
-                    )
-                break
-
-        if not candidate_entries:
-            return False
-
-        heapify(candidate_entries)
-        while candidate_entries:
-            _, _, target_idx = heappop(candidate_entries)
-            target_tile = tiles_by_index[target_idx]
-            supplier_type, supplier_target = supplier_plan_by_index[target_idx]
-            if supplier_type == EntityType.CONVEYOR:
-                if self.u_build_at(
-                    target_tile.position,
-                    supplier_type,
-                    hold=hold,
-                    move_towards=move_towards,
-                    attack_enemy_passable=attack_enemy_passable,
-                    facing_direction=supplier_target,
-                ):
-                    return True
-            elif supplier_type == EntityType.BRIDGE:
-                if self.u_build_at(
-                    target_tile.position,
-                    supplier_type,
-                    hold=hold,
-                    move_towards=move_towards,
-                    attack_enemy_passable=attack_enemy_passable,
-                    target_pos=supplier_target,
-                ):
-                    return True
-
-        return False
-
-    def s_build_axionite_harvester_supply_link(
-        self, move_towards: bool = True, hold: bool = True
-    ):
-        """
-        Build the best missing supplier next to a visible own axionite harvester.
-
-        Skips harvesters that already have an adjacent own axionite-safe
-        supplier, keeps one valid adjacent placement tile per remaining
-        harvester by cached core distance, then prioritizes those tiles by
-        squared distance to the builder and the own core. The supplier type and
-        target are chosen by `u_get_axionite_supplier_build_plan(...)`.
-        """
-        own_team = self.map.own_team
-        attack_enemy_passable = False
-        tiles_by_index = self.map.tiles_by_index
-        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
-        replaceable_building_types = {EntityType.ROAD, EntityType.BARRIER}
-        supplier_plan_by_index: dict[
-            int, tuple[EntityType | None, Direction | Position | None]
-        ] = {}
-        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
-        candidate_seen_indices: set[int] = set()
-
-        def get_supplier_plan(
-            tile_index: int,
-        ) -> tuple[EntityType | None, Direction | Position | None]:
-            if tile_index not in supplier_plan_by_index:
-                supplier_plan_by_index[tile_index] = (
-                    self.u_get_axionite_supplier_build_plan(
-                        tiles_by_index[tile_index].position,
-                    )
-                )
-            return supplier_plan_by_index[tile_index]
-
-        for harvester_order, harvester_tile in enumerate(
-            self.map.own_harvesters_in_vision
-        ):
-            if harvester_tile.environment != Environment.ORE_AXIONITE:
+            if harvester_tile.environment != resource:
                 continue
 
             adjacent_tiles = []
@@ -187,9 +66,10 @@ class BuilderStrategyMethodsMixin:
                 if (
                     adjacent_tile.building.team == own_team
                     and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
-                    and adjacent_label & SupplyChainLabel.AXIONITE
-                    and not self.u_is_axionite_supply_tile_forbidden(
-                        adjacent_tile.position
+                    and adjacent_label & supply_chain_label
+                    and not self.u_is_supply_tile_forbidden(
+                        adjacent_tile.position,
+                        resource,
                     )
                 ):
                     has_own_supply_link = True
@@ -403,19 +283,25 @@ class BuilderStrategyMethodsMixin:
         move_towards: bool = True,
         hold: bool = True,
         attack_enemy_passable: bool = True,
+        resource: Environment = Environment.ORE_TITANIUM,
     ):
         """
-        Fill the highest-priority cached supply-link gap.
+        Fill the highest-priority cached supply-link gap for `resource`.
 
-        Uses cached missing-link positions, keeps tiles that can host a new
-        supplier, prioritizes gaps closer to the core and then the builder, and
-        relies on the supplier-plan helper to choose whether the tile should
-        become a conveyor or a bridge plus its optimal target.
+        Uses cached missing-link positions plus any builder-local pending gap
+        target, keeps tiles that can host a new supplier, filters to the
+        requested resource chain, prioritizes gaps closer to the core and then
+        the builder, and relies on the supplier-plan helper to choose whether
+        the tile should become a conveyor or a bridge plus its optimal target.
         """
         own_team = self.map.own_team
+        supply_chain_label = self.u_get_supply_chain_label_for_resource(resource)
+        if supply_chain_label == SupplyChainLabel.NONE:
+            return False
         tiles_by_index = self.map.tiles_by_index
         own_core_dist_by_index = self.map.own_core_dist_by_index
         dist_to_self_by_index = self.map.dist_to_self_by_index
+        current_round = self.map.current_round
 
         def can_use_tile(target_tile) -> bool:
             if target_tile.building.entity_type == EntityType.CORE:
@@ -434,14 +320,45 @@ class BuilderStrategyMethodsMixin:
                 and target_tile.is_passable
             )
 
+        def clear_pending_target() -> None:
+            if self.pending_missing_supply_link_resource == resource:
+                self.pending_missing_supply_link_index = None
+                self.pending_missing_supply_link_resource = None
+
         candidate_entries: list[tuple[tuple[int, int], int, int]] = []
+        candidate_seen_indices: set[int] = set()
+        pending_target_idx: int | None = None
+        if self.pending_missing_supply_link_resource == resource:
+            pending_target_idx = self.pending_missing_supply_link_index
+
+        if pending_target_idx is not None:
+            pending_target_tile = tiles_by_index[pending_target_idx]
+            if (
+                pending_target_tile.last_seen_turn == current_round
+                and not can_use_tile(pending_target_tile)
+            ):
+                clear_pending_target()
+                pending_target_idx = None
+
+        if pending_target_idx is not None:
+            pending_target_tile = tiles_by_index[pending_target_idx]
+            if can_use_tile(pending_target_tile):
+                candidate_seen_indices.add(pending_target_idx)
+                candidate_entries.append(((-1, -1), -1, pending_target_idx))
+
         for encounter_order, target_tile in enumerate(
             self.map.own_missing_supply_links
         ):
+            target_label = target_tile.own_supply_chain_label
+            if not (target_label & supply_chain_label):
+                continue
             if not can_use_tile(target_tile):
                 continue
 
             target_idx = target_tile.index
+            if target_idx in candidate_seen_indices:
+                continue
+            candidate_seen_indices.add(target_idx)
             candidate_entries.append(
                 (
                     (
@@ -461,7 +378,8 @@ class BuilderStrategyMethodsMixin:
             _, _, target_idx = heappop(candidate_entries)
             target_tile = tiles_by_index[target_idx]
             supplier_type, supplier_target = self.u_get_supplier_build_plan(
-                target_tile.position
+                target_tile.position,
+                resource,
             )
             if supplier_type is None:
                 continue
@@ -474,6 +392,8 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=attack_enemy_passable,
                     facing_direction=supplier_target,
                 ):
+                    self.pending_missing_supply_link_index = target_idx
+                    self.pending_missing_supply_link_resource = resource
                     return True
             elif supplier_type == EntityType.BRIDGE:
                 if self.u_build_at(
@@ -484,100 +404,8 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=attack_enemy_passable,
                     target_pos=supplier_target,
                 ):
-                    return True
-
-        return False
-
-    def s_build_missing_axionite_supply_link(
-        self,
-        move_towards: bool = True,
-        hold: bool = True,
-        attack_enemy_passable: bool = True,
-    ):
-        """
-        Fill the highest-priority visible axionite-only supply-link gap.
-
-        Filters the generic missing-link cache down to tiles labeled as
-        axionite-only, keeps tiles that can host a new supplier, prioritizes
-        gaps closer to the core and then the builder, and relies on the
-        axionite-specific supplier-plan helper to choose whether the tile should
-        become a conveyor or a bridge plus its optimal target.
-        """
-        own_team = self.map.own_team
-        tiles_by_index = self.map.tiles_by_index
-        own_core_dist_by_index = self.map.own_core_dist_by_index
-        dist_to_self_by_index = self.map.dist_to_self_by_index
-
-        def can_use_tile(target_tile) -> bool:
-            if target_tile.building.entity_type == EntityType.CORE:
-                return False
-            if target_tile.building.id is None:
-                return True
-            if (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type
-                in {EntityType.ROAD, EntityType.BARRIER}
-            ):
-                return True
-            return (
-                attack_enemy_passable
-                and target_tile.building.team != own_team
-                and target_tile.is_passable
-            )
-
-        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
-        for encounter_order, target_tile in enumerate(
-            self.map.own_missing_supply_links
-        ):
-            target_label = target_tile.own_supply_chain_label
-            if not (target_label & SupplyChainLabel.AXIONITE):
-                continue
-            if not can_use_tile(target_tile):
-                continue
-
-            target_idx = target_tile.index
-            candidate_entries.append(
-                (
-                    (
-                        own_core_dist_by_index[target_idx],
-                        dist_to_self_by_index[target_idx],
-                    ),
-                    encounter_order,
-                    target_idx,
-                )
-            )
-
-        if not candidate_entries:
-            return False
-
-        heapify(candidate_entries)
-        while candidate_entries:
-            _, _, target_idx = heappop(candidate_entries)
-            target_tile = tiles_by_index[target_idx]
-            supplier_type, supplier_target = self.u_get_axionite_supplier_build_plan(
-                target_tile.position
-            )
-            if supplier_type is None:
-                continue
-            if supplier_type == EntityType.CONVEYOR:
-                if self.u_build_at(
-                    target_tile.position,
-                    supplier_type,
-                    hold=hold,
-                    move_towards=move_towards,
-                    attack_enemy_passable=attack_enemy_passable,
-                    facing_direction=supplier_target,
-                ):
-                    return True
-            elif supplier_type == EntityType.BRIDGE:
-                if self.u_build_at(
-                    target_tile.position,
-                    supplier_type,
-                    hold=hold,
-                    move_towards=move_towards,
-                    attack_enemy_passable=attack_enemy_passable,
-                    target_pos=supplier_target,
-                ):
+                    self.pending_missing_supply_link_index = target_idx
+                    self.pending_missing_supply_link_resource = resource
                     return True
 
         return False
@@ -598,6 +426,13 @@ class BuilderStrategyMethodsMixin:
         builder, and delegates the actual build, replacement, movement, hold,
         and optional enemy-passable clearing to `u_build_at`.
         """
+        print(self.pending_missing_supply_link_index)
+        if (
+            self.pending_missing_supply_link_index is not None
+            and self.pending_missing_supply_link_resource == resource
+        ):
+            return False
+
         own_team = self.map.own_team
         if resource == Environment.ORE_TITANIUM:
             ore_positions = self.map.known_accessible_titanium_tiles
@@ -605,8 +440,6 @@ class BuilderStrategyMethodsMixin:
             ore_positions = self.map.known_accessible_axionite_tiles
         else:
             return False
-
-        print([tile.position for tile in ore_positions])
 
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_positions(
