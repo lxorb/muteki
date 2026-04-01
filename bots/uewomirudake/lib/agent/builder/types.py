@@ -60,6 +60,11 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         self,
     ) -> tuple[Position, Direction, Position] | None: ...
 
+    def u_get_foundry_wait_position(
+        self,
+        foundry_pos: Position,
+    ) -> Position | None: ...
+
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
 
     def u_get_sentinel_direction_score(

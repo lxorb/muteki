@@ -1,0 +1,1 @@
+FOUNDRY_WAIT_RADIUS_SQ: int = 8

@@ -2,6 +2,8 @@ from heapq import heapify, heappop
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
+from lib.agent.builder.constants import FOUNDRY_WAIT_RADIUS_SQ
+
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -772,16 +774,15 @@ class BuilderStrategyMethodsMixin:
 
     def s_insert_core_splitter(self, move_towards: bool = True, hold: bool = True):
         """
-        Insert the planned core-facing splitter after the foundry exists.
-
-        This still uses the current core-adjacent splitter slot planner; later
-        strategy steps can continue with axionite work if no valid slot is
-        currently available.
+        Insert the planned core-facing splitter after the foundry exists, or
+        wait near the foundry until a valid routed splitter slot becomes
+        available.
         """
+        foundry_pos = self.u_get_core_foundry_plan()
+        if foundry_pos is None:
+            return False
+
         if not self.map.has_built_foundry:
-            foundry_pos = self.u_get_core_foundry_plan()
-            if foundry_pos is None:
-                return False
             foundry_tile = self.map.u_get_pos_tile(foundry_pos)
             if (
                 foundry_tile.building.entity_type == EntityType.FOUNDRY
@@ -794,7 +795,20 @@ class BuilderStrategyMethodsMixin:
 
         core_plan = self.u_get_core_splitter_foundry_plan()
         if core_plan is None:
-            return False
+            wait_pos = self.u_get_foundry_wait_position(foundry_pos)
+            if wait_pos is None:
+                return (
+                    self.map.current_pos.distance_squared(foundry_pos)
+                    <= FOUNDRY_WAIT_RADIUS_SQ
+                )
+            if self.map.current_pos == wait_pos:
+                return True
+            if move_towards and self.u_move_to(wait_pos):
+                return True
+            return (
+                self.map.current_pos.distance_squared(foundry_pos)
+                <= FOUNDRY_WAIT_RADIUS_SQ
+            )
 
         splitter_pos, splitter_direction, _ = core_plan
         splitter_tile = self.map.u_get_pos_tile(splitter_pos)

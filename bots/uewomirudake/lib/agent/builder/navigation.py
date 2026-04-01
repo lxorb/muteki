@@ -11,7 +11,8 @@ from lib.agent.constants import (
     DIRECTIONAL_BUILDING_TYPES,
     NONDIRECTIONAL_BUILDING_TYPES,
 )
-from lib.map.constants import SUPPLY_LINK_TYPES
+from lib.agent.builder.constants import FOUNDRY_WAIT_RADIUS_SQ
+from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
 
@@ -277,6 +278,84 @@ class BuilderNavigationMixin:
         candidate_plans.sort(key=lambda item: item[0])
         _, splitter_pos, splitter_direction, foundry_pos = candidate_plans[0]
         return (splitter_pos, splitter_direction, foundry_pos)
+
+    def u_get_foundry_wait_position(self, foundry_pos: Position) -> Position | None:
+        own_team = self.map.own_team
+        current_pos = self.map.current_pos
+        candidate_tiles: list[tuple[tuple[int, ...], Position]] = []
+
+        for tile in self.map.tiles_by_index:
+            tile_pos = tile.position
+            if (
+                tile_pos == foundry_pos
+                or tile_pos.distance_squared(foundry_pos) > FOUNDRY_WAIT_RADIUS_SQ
+            ):
+                continue
+            if tile.dist_to_self >= INF_DIST:
+                continue
+            if tile.is_core_of(own_team):
+                continue
+            if tile.bot.id is not None and tile_pos != current_pos:
+                continue
+            if tile.environment in {
+                Environment.ORE_TITANIUM,
+                Environment.ORE_AXIONITE,
+            }:
+                continue
+            if (
+                tile.own_supply_chain_label != SupplyChainLabel.NONE
+                or tile.enemy_supply_chain_label != SupplyChainLabel.NONE
+            ):
+                continue
+            if (
+                tile.index in self.map.own_supply_link_target_indices_in_vision
+                or tile.index in self.map.enemy_supply_link_target_indices_in_vision
+            ):
+                continue
+            if self.map.u_is_chokepoint(tile_pos):
+                continue
+            if tile.building.id is None:
+                tile_kind_rank = 0 if tile.environment == Environment.EMPTY else 1
+            elif (
+                tile.building.entity_type == EntityType.ROAD
+                and tile.building.team == own_team
+            ):
+                tile_kind_rank = 2
+            else:
+                continue
+            if tile_pos != current_pos and not tile.is_passable:
+                continue
+
+            is_foundry_cardinal = (
+                abs(tile_pos.x - foundry_pos.x) + abs(tile_pos.y - foundry_pos.y) == 1
+            )
+            is_core_adjacent = any(
+                self.map.u_get_pos_tile(neighbor_pos).is_core_of(own_team)
+                for neighbor_pos in self.map.u_iter_adjacent_positions(
+                    tile_pos,
+                    consider_diagonal=False,
+                )
+            )
+            candidate_tiles.append(
+                (
+                    (
+                        1 if is_foundry_cardinal else 0,
+                        1 if is_core_adjacent else 0,
+                        tile_kind_rank,
+                        tile_pos.distance_squared(foundry_pos),
+                        tile.dist_to_self,
+                        tile_pos.x,
+                        tile_pos.y,
+                    ),
+                    tile_pos,
+                )
+            )
+
+        if not candidate_tiles:
+            return None
+
+        candidate_tiles.sort(key=lambda item: item[0])
+        return candidate_tiles[0][1]
 
     def u_get_supply_chain_progress_key_to_target(
         self,
