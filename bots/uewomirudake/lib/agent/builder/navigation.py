@@ -1348,6 +1348,15 @@ class BuilderNavigationMixin:
                             )
                         return False
                     build_method(pos, facing_direction)
+                    if building_type == EntityType.CONVEYOR:
+                        next_direction = self.map.u_get_direction_between(
+                            current_pos,
+                            pos,
+                        )
+                        if next_direction is not None and self.ct.can_move(
+                            next_direction
+                        ):
+                            self.ct.move(next_direction)
                     return True
 
                 if building_type == EntityType.BRIDGE:
