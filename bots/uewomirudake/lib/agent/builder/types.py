@@ -7,7 +7,6 @@ from lib.map import Map
 from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel
 
-
 BuilderActionResult: TypeAlias = bool | None
 BuilderStrategyMethod: TypeAlias = Callable[..., BuilderActionResult] | str
 StrategyEntry: TypeAlias = (
@@ -220,7 +219,4 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         move_towards: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_move_toward_enemy_core(
-        self,
-        move_towards: bool = True,
-    ) -> BuilderActionResult: ...
+    def s_move_toward_enemy_core(self) -> BuilderActionResult: ...

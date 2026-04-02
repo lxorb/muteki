@@ -3,7 +3,6 @@ from cambc import Environment
 from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
-
 INITRES_STRATEGY = [
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
@@ -61,7 +60,8 @@ HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_block_titanium, True),
     (BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
     (BuilderStrategyMethodsMixin.s_attack_enemy_core_supply_link, True),
-    (BuilderStrategyMethodsMixin.s_move_toward_enemy_core, True),
+    (BuilderStrategyMethodsMixin.s_move_toward_enemy_core,),
+    (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]
 
 # TODO

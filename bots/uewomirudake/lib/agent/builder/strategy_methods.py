@@ -583,9 +583,8 @@ class BuilderStrategyMethodsMixin:
                             current_pos,
                             target_tile.position,
                         )
-                        if (
-                            next_direction is not None
-                            and self.ct.can_move(next_direction)
+                        if next_direction is not None and self.ct.can_move(
+                            next_direction
                         ):
                             self.ct.move(next_direction)
                         return True
@@ -1259,12 +1258,16 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_move_toward_enemy_core(self, move_towards: bool = True):
+    def s_move_toward_enemy_core(self):
         """
-        Placeholder harassment step for advancing toward the enemy core.
+        Harassment step for advancing toward the enemy core.
+        """
+        enemy_core_center_pos = self.map.enemy_core_center_pos
 
-        This is intentionally a no-op for now so the strategy entry can be
-        added and invoked safely without changing builder behavior yet.
-        """
-        _ = move_towards
+        if not enemy_core_center_pos:
+            return False
+
+        if self.u_move_to(self.map.enemy_core_center_pos):
+            return True
+
         return False
