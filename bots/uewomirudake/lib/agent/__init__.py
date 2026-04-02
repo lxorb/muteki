@@ -1,14 +1,6 @@
 from collections.abc import Callable
 
-from cambc import (
-    Controller,
-    Direction,
-    EntityType,
-    Environment,
-    Position,
-    Team,
-)
-import time
+from cambc import Controller
 from lib.map import Map
 from lib.map.tile import Tile
 
@@ -43,16 +35,6 @@ class Agent:
         self.stopwatch.lap("Handle agent")
 
         self.stopwatch.log()
-
-    def u_get_ns_elapsed(self):
-        if not self.t_start:
-            return 0
-        return (self.t_end or time.perf_counter_ns()) - self.t_start
-
-    def u_get_ns_remaining(self):
-        from .constants import NS_PER_TURN
-
-        return NS_PER_TURN - self.u_get_ns_elapsed()
 
     def u_get_bound_method(
         self,

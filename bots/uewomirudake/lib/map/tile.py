@@ -115,19 +115,13 @@ class Tile:
         )
 
     @property
-    def enemy_core_dist(self) -> int:
-        value = self.map.enemy_core_dist_by_index[self.index]
-        return INF_DIST if value >= CORE_DIST_INF else value
-
-    @enemy_core_dist.setter
-    def enemy_core_dist(self, value: int) -> None:
-        self.map.enemy_core_dist_by_index[self.index] = (
-            CORE_DIST_INF if value >= INF_DIST else value
-        )
-
-    @property
     def dist_to_self(self) -> int:
-        if self.map.dist_to_self_epoch_by_index[self.index] != self.map.dist_to_self_epoch:
+        if (
+            not self.map.compute_dist_to_self
+            or self.map.dist_to_self_epoch == 0
+            or self.map.dist_to_self_epoch_by_index[self.index]
+            != self.map.dist_to_self_epoch
+        ):
             return INF_DIST
         return self.map.dist_to_self_by_index[self.index]
 
@@ -198,6 +192,20 @@ class Tile:
             return self.building.team == self.map.own_team
         return building_type in PASSABLE_TYPES
 
+    def u_calc_core_distance_passability(self) -> bool:
+        return self.environment != Environment.WALL
+
+    def u_refresh_core_distance_passability(self) -> None:
+        core_distance_passable = self.u_calc_core_distance_passability()
+        if core_distance_passable == bool(
+            self.map.core_distance_passable_by_index[self.index]
+        ):
+            return
+        self.map.core_distance_passable_by_index[self.index] = (
+            1 if core_distance_passable else 0
+        )
+        self.map.core_distance_dirty_indices.add(self.index)
+
     def _is_intrinsically_passable(self) -> bool:
         return self.map.intrinsic_passable_by_index[self.index]
 
@@ -206,9 +214,6 @@ class Tile:
         if intrinsic_passable == self.map.intrinsic_passable_by_index[self.index]:
             return
         self.map.intrinsic_passable_by_index[self.index] = intrinsic_passable
-        # Any traversability change invalidates cached chokepoint answers.
-        self.map.passability_epoch += 1
-        self.map.core_distance_dirty_indices.add(self.index)
 
     def clear_bot(self) -> None:
         self.bot = TileBot(None, None, None, [], None)
@@ -244,6 +249,7 @@ class Tile:
             self.map.newly_seen_tiles_in_vision.append(self)
         if self.environment is None:
             self.environment = ct.get_tile_env(self.position)
+        self.u_refresh_core_distance_passability()
         if self.last_seen_turn == -1:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)
@@ -523,19 +529,6 @@ class Tile:
             1,
         )
 
-    def update_supply_targets_in_vision(self) -> None:
-        if self.in_enemy_resource_range > 0:
-            if self not in self.map.enemy_supply_targets_in_vision:
-                self.map.enemy_supply_targets_in_vision.append(self)
-        elif self in self.map.enemy_supply_targets_in_vision:
-            self.map.enemy_supply_targets_in_vision.remove(self)
-
-        if self.in_own_resource_range > 0:
-            if self not in self.map.own_supply_targets_in_vision:
-                self.map.own_supply_targets_in_vision.append(self)
-        elif self in self.map.own_supply_targets_in_vision:
-            self.map.own_supply_targets_in_vision.remove(self)
-
     def is_core_of(self, team: Team) -> bool:
         if self.building.entity_type == EntityType.CORE and self.building.team == team:
             return True
@@ -557,17 +550,3 @@ class Tile:
             return self.index in self.map.own_supply_link_target_indices_in_vision
         return self.index in self.map.enemy_supply_link_target_indices_in_vision
 
-    def update_missing_links(self) -> None:
-        if self.is_targeted_by_supply_link_for_team(self.map.own_team) and not (
-            self.propagates_for_team(self.map.own_team)
-            or self.is_core_of(self.map.own_team)
-        ):
-            if self not in self.map.own_missing_supply_links:
-                self.map.own_missing_supply_links.append(self)
-
-        if self.is_targeted_by_supply_link_for_team(self.map.enemy_team) and not (
-            self.propagates_for_team(self.map.enemy_team)
-            or self.is_core_of(self.map.enemy_team)
-        ):
-            if self not in self.map.enemy_missing_supply_links:
-                self.map.enemy_missing_supply_links.append(self)

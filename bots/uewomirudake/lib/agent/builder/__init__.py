@@ -1,5 +1,4 @@
 from cambc import Controller, EntityType, Environment
-import time
 
 from lib.agent import Agent
 from lib.agent.constants import BUILDER_STRATEGY_BY_TILE
@@ -38,6 +37,7 @@ class BuilderAgent(
 
     def __init__(self, strategy: list[StrategyEntry] | None = None):
         Agent.__init__(self)
+        self.map.compute_dist_to_self = True
         self.strategy = list(strategy or [])
         self.last_strategy_index = -1
         self.last_turn_completed = True
@@ -51,6 +51,12 @@ class BuilderAgent(
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos
         core_center_pos = self.map.own_core_center_pos
+        if core_center_pos is None:
+            self.map.u_calc_core_center_positions()
+            core_center_pos = self.map.own_core_center_pos
+            if core_center_pos is None:
+                self.strategy = []
+                return
         relative_tile = (
             current_pos.x - core_center_pos.x,
             current_pos.y - core_center_pos.y,
