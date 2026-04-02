@@ -1118,6 +1118,8 @@ class Map:
         self.enemy_supply_link_target_indices_in_vision = set()
 
         for supply_link_tile in self.own_supply_links_in_vision:
+            if self.u_is_own_supply_link_occupied_by_other_builder(supply_link_tile):
+                continue
             self.own_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
@@ -1158,6 +1160,17 @@ class Map:
                 )
             ):
                 self.enemy_missing_supply_links.append(tile)
+
+    def u_is_own_supply_link_occupied_by_other_builder(self, tile: Tile) -> bool:
+        return bool(
+            tile.building.team == self.own_team
+            and tile.building.entity_type
+            in {EntityType.CONVEYOR, EntityType.BRIDGE}
+            and tile.bot.id is not None
+            and tile.bot.team == self.own_team
+            and tile.bot.entity_type == EntityType.BUILDER_BOT
+            and tile.position != self.current_pos
+        )
 
     def u_update_supply_patrol_indices(self) -> None:
         """

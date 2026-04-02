@@ -146,6 +146,8 @@ class BuilderNavigationMixin:
         coreward_directions_by_index: dict[int, set[Direction]] = {}
 
         for tile in visible_titanium_tiles_by_index.values():
+            if self.map.u_is_own_supply_link_occupied_by_other_builder(tile):
+                continue
             for target_tile in tile.building.targets:
                 target_direction = self.map.u_get_direction_between(
                     tile.position,
@@ -378,6 +380,9 @@ class BuilderNavigationMixin:
             if not (
                 neighbor_tile.building.team == self.map.own_team
                 and neighbor_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and not self.map.u_is_own_supply_link_occupied_by_other_builder(
+                    neighbor_tile
+                )
                 and neighbor_tile.own_supply_chain_label & SupplyChainLabel.AXIONITE
                 and any(
                     target.index == foundry_tile.index
