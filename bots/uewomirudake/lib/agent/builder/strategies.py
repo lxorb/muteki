@@ -56,12 +56,22 @@ HARASSMENT_STRATEGY = [
 # TODO
 FOUNDRY_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_insert_core_splitter, True, True),
-    (BuilderStrategyMethodsMixin.s_build_foundry_next_to_splitter, True, True),
-    (BuilderStrategyMethodsMixin.s_build_harvester_supply_link, True, True),
+    (BuilderStrategyMethodsMixin.s_build_core_foundry, True, True),
+    (
+        BuilderStrategyMethodsMixin.s_build_harvester_supply_link,
+        True,
+        True,
+        Environment.ORE_AXIONITE,
+    ),
     # TODO: -> for axionite harvester
-    (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
-    (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
-    # TODO: -> for axionite supply chain
+    # (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
+    (
+        BuilderStrategyMethodsMixin.s_build_missing_supply_link,
+        True,
+        True,
+        True,
+        Environment.ORE_AXIONITE,
+    ),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,

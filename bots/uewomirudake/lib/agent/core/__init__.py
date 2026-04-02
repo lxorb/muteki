@@ -5,12 +5,14 @@ from lib.agent.builder.types import StrategyEntry
 from lib.agent.constants import (
     BUILDER_STRATEGY_BY_TILE,
     DISABLE_HARASSMENT,
+    FOUNDRY_STRATEGY,
     FURTHER_BB_MIN_TITANIUM,
     FURTHER_BB_ROTATION,
     FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN,
     HARASSMENT_STRATEGY,
     INITIAL_BB_ORDER,
     MAX_BOTS,
+    START_FOUNDRY_TURN,
     SURRENDER_AT_TURN,
 )
 
@@ -54,6 +56,11 @@ class CoreAgent(Agent):
             rotation_idx = (self.further_spawn_rotation_pos + offset) % rotation_length
             builder_bot_strategy = FURTHER_BB_ROTATION[rotation_idx]
             if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY:
+                continue
+            if (
+                self.map.current_round < START_FOUNDRY_TURN
+                and builder_bot_strategy == FOUNDRY_STRATEGY
+            ):
                 continue
             if not self.u_spawn_builder(builder_bot_strategy):
                 continue

@@ -5,6 +5,7 @@ from cambc import Controller, Direction, EntityType, Environment, Position
 
 from lib.map import Map
 from lib.map.tile import Tile
+from lib.map.types import SupplyChainLabel
 
 
 BuilderActionResult: TypeAlias = bool | None
@@ -21,6 +22,8 @@ SupplierBuildPlan: TypeAlias = tuple[EntityType | None, Direction | Position | N
 class BuilderCommonSelf(Protocol):
     ct: Controller
     map: Map
+    pending_missing_supply_link_index: int | None
+    pending_missing_supply_link_resource: Environment | None
 
     def u_filter_tiles(
         self,
@@ -49,6 +52,24 @@ class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
+    def u_get_core_foundry_plan(
+        self,
+    ) -> Position | None: ...
+
+    def u_get_core_splitter_foundry_plan(
+        self,
+    ) -> tuple[Position, Direction, Position] | None: ...
+
+    def u_get_foundry_wait_position(
+        self,
+        foundry_pos: Position,
+    ) -> Position | None: ...
+
+    def u_foundry_site_has_visible_axionite_supply(
+        self,
+        foundry_pos: Position,
+    ) -> bool: ...
+
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
 
     def u_get_sentinel_direction_score(
@@ -67,10 +88,31 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
     def u_get_supplier_build_plan(
         self,
         pos: Position,
+        resource: Environment = Environment.ORE_TITANIUM,
     ) -> SupplierBuildPlan: ...
 
-    def u_best_conveyor_orientation(self, pos: Position) -> Direction | None: ...
-    def u_best_bridge_target(self, pos: Position) -> Position | None: ...
+    def u_get_supply_chain_label_for_resource(
+        self,
+        resource: Environment,
+    ) -> SupplyChainLabel: ...
+
+    def u_is_supply_tile_forbidden(
+        self,
+        pos: Position,
+        resource: Environment,
+    ) -> bool: ...
+
+    def u_best_conveyor_orientation(
+        self,
+        pos: Position,
+        resource: Environment = Environment.ORE_TITANIUM,
+    ) -> Direction | None: ...
+
+    def u_best_bridge_target(
+        self,
+        pos: Position,
+        resource: Environment = Environment.ORE_TITANIUM,
+    ) -> Position | None: ...
     def u_move_to(
         self,
         pos: Position,
@@ -106,7 +148,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_build_foundry_next_to_splitter(
+    def s_build_core_foundry(
         self,
         move_towards: bool = True,
         hold: bool = True,
@@ -116,6 +158,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         hold: bool = True,
+        resource: Environment = Environment.ORE_TITANIUM,
     ) -> BuilderActionResult: ...
 
     def s_surround_harvester(
@@ -129,6 +172,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         move_towards: bool = True,
         hold: bool = True,
         attack_enemy_passable: bool = True,
+        resource: Environment = Environment.ORE_TITANIUM,
     ) -> BuilderActionResult: ...
 
     def s_build_harvester(

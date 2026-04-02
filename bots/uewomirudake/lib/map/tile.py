@@ -11,6 +11,7 @@ from lib.map.constants import (
     SUPPLY_LINK_TYPES,
     WEAPON_TARGET_TYPES,
 )
+from lib.map.types import SupplyChainLabel
 
 if TYPE_CHECKING:
     from lib.map import Map
@@ -133,6 +134,51 @@ class Tile:
     def dist_to_self(self, value: int) -> None:
         self.map.dist_to_self_by_index[self.index] = value
         self.map.dist_to_self_epoch_by_index[self.index] = self.map.dist_to_self_epoch
+
+    @property
+    def own_supply_chain_label(self) -> SupplyChainLabel:
+        return SupplyChainLabel(self.map.own_supply_chain_labels_by_index[self.index])
+
+    @own_supply_chain_label.setter
+    def own_supply_chain_label(self, value: SupplyChainLabel | int) -> None:
+        self.map.own_supply_chain_labels_by_index[self.index] = int(value)
+
+    @property
+    def enemy_supply_chain_label(self) -> SupplyChainLabel:
+        return SupplyChainLabel(self.map.enemy_supply_chain_labels_by_index[self.index])
+
+    @enemy_supply_chain_label.setter
+    def enemy_supply_chain_label(self, value: SupplyChainLabel | int) -> None:
+        self.map.enemy_supply_chain_labels_by_index[self.index] = int(value)
+
+    def get_supply_chain_label(self, team: Team) -> SupplyChainLabel:
+        if team == self.map.own_team:
+            return self.own_supply_chain_label
+        if team == self.map.enemy_team:
+            return self.enemy_supply_chain_label
+        return SupplyChainLabel.NONE
+
+    def set_supply_chain_label(
+        self,
+        team: Team,
+        value: SupplyChainLabel | int,
+    ) -> None:
+        if team == self.map.own_team:
+            self.own_supply_chain_label = value
+        elif team == self.map.enemy_team:
+            self.enemy_supply_chain_label = value
+
+    def add_supply_chain_label(
+        self,
+        team: Team,
+        value: SupplyChainLabel | int,
+    ) -> bool:
+        current_label = self.get_supply_chain_label(team)
+        updated_label = current_label | SupplyChainLabel(value)
+        if updated_label == current_label:
+            return False
+        self.set_supply_chain_label(team, updated_label)
+        return True
 
     @property
     def is_enemy_turret_target_tile(self) -> int:

@@ -2,6 +2,7 @@ from array import array
 from collections import deque
 from collections.abc import Iterable
 from enum import Enum
+from heapq import heappop, heappush
 import time
 
 from cambc import (
@@ -21,9 +22,12 @@ from lib.map.constants import (
     DEEP_CHOKEPOINT_CHECKING,
     DIRECTIONS,
     INF_DIST,
+    OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
+    RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
 )
 from lib.map.tile import Tile
+from lib.map.types import SupplyChainLabel
 
 from lib.debug import Stopwatch
 
@@ -69,6 +73,8 @@ class Map:
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.own_supply_link_target_indices_in_vision: set[int] = set()
         self.enemy_supply_link_target_indices_in_vision: set[int] = set()
+        self.own_supply_chain_labels_by_index = bytearray(self.tile_count)
+        self.enemy_supply_chain_labels_by_index = bytearray(self.tile_count)
         # Dedicated chokepoint BFS buffers avoid per-call queue/list allocation.
         self.chokepoint_queue_buffer_by_index: list[int] = []
         self.path_seen_epoch_by_index = [0] * self.tile_count
@@ -146,6 +152,9 @@ class Map:
         self.enemy_core_center_pos_candidates: list[tuple[SymmetryMode, Position]] = []
         self.known_accessible_titanium_tiles: list[Tile] = []
         self.known_accessible_axionite_tiles: list[Tile] = []
+
+        self.has_built_foundry: bool = False
+        self.built_foundry_index: int = -1
 
         # Frontier expansion cache used by `s_frontier_expand_new`.
         self.frontier_expand_cached_unseen_indices: set[int] = set()
@@ -476,6 +485,20 @@ class Map:
             if not self.u_is_in_bounds(next_pos):
                 continue
             yield next_pos
+
+    def u_is_adjacent_to_ore(
+        self,
+        pos: Position,
+        ore_type: Environment,
+        consider_diagonal: bool = OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
+    ) -> bool:
+        for adjacent_pos in self.u_iter_adjacent_positions(
+            pos,
+            consider_diagonal=consider_diagonal,
+        ):
+            if self.u_get_pos_tile(adjacent_pos).environment == ore_type:
+                return True
+        return False
 
     def u_get_direction_between(
         self,
@@ -832,9 +855,9 @@ class Map:
             ):
                 return cached_result
 
-        # One BFS from the core with this tile blocked gives the alternative
-        # path length for every adjacent tile, which is much cheaper than
-        # rerunning BFS once per neighbor.
+        # One weighted shortest-path search from the core with this tile
+        # blocked gives the alternative path length for every adjacent tile,
+        # which is much cheaper than rerunning the search once per neighbor.
         bfs_epoch = self.u_run_own_core_distance_bfs_avoiding_tile(blocked_idx)
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         own_core_dist_by_index = self.own_core_dist_by_index
@@ -879,8 +902,7 @@ class Map:
         # clearing full-size lists on every chokepoint query.
         self.chokepoint_epoch += 1
         chokepoint_epoch = self.chokepoint_epoch
-        queue = self.chokepoint_queue_buffer_by_index
-        queue.clear()
+        heap: list[tuple[int, int]] = []
         seen_epoch_by_index = self.chokepoint_seen_epoch_by_index
         dist_by_index = self.chokepoint_dist_by_index
         own_core_source_indices = self.own_core_source_indices
@@ -893,20 +915,18 @@ class Map:
                 continue
             seen_epoch_by_index[source_idx] = chokepoint_epoch
             dist_by_index[source_idx] = 0
-            queue.append(source_idx)
+            heappush(heap, (0, source_idx))
 
-        queue_head = 0
-
-        while queue_head < len(queue):
-            current_idx = queue[queue_head]
-            queue_head += 1
-            current_dist = dist_by_index[current_idx]
+        while heap:
+            current_dist, current_idx = heappop(heap)
+            if (
+                seen_epoch_by_index[current_idx] != chokepoint_epoch
+                or current_dist != dist_by_index[current_idx]
+            ):
+                continue
 
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if (
-                    neighbor_idx == blocked_idx
-                    or seen_epoch_by_index[neighbor_idx] == chokepoint_epoch
-                ):
+                if neighbor_idx == blocked_idx:
                     continue
 
                 if (
@@ -915,11 +935,179 @@ class Map:
                 ):
                     continue
 
+                next_dist = current_dist + self.u_get_core_distance_step_cost(
+                    current_idx,
+                    neighbor_idx,
+                )
+                if (
+                    seen_epoch_by_index[neighbor_idx] == chokepoint_epoch
+                    and next_dist >= dist_by_index[neighbor_idx]
+                ):
+                    continue
+
                 seen_epoch_by_index[neighbor_idx] = chokepoint_epoch
-                dist_by_index[neighbor_idx] = current_dist + 1
-                queue.append(neighbor_idx)
+                dist_by_index[neighbor_idx] = next_dist
+                heappush(heap, (next_dist, neighbor_idx))
 
         return chokepoint_epoch
+
+    def u_get_supply_chain_source_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> SupplyChainLabel:
+        if tile.building.id is None or tile.building.team != team:
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type == EntityType.HARVESTER:
+            if tile.environment == Environment.ORE_TITANIUM:
+                return SupplyChainLabel.TITANIUM
+            if tile.environment == Environment.ORE_AXIONITE:
+                return SupplyChainLabel.AXIONITE
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type == EntityType.FOUNDRY:
+            return SupplyChainLabel.AXIONITE
+
+        return SupplyChainLabel.NONE
+
+    def u_get_supply_chain_output_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> SupplyChainLabel:
+        if tile.building.id is None or tile.building.team != team:
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type not in RESOURCE_TARGET_TYPES:
+            return SupplyChainLabel.NONE
+
+        if tile.building.entity_type == EntityType.FOUNDRY:
+            return SupplyChainLabel.AXIONITE
+
+        return tile.get_supply_chain_label(team)
+
+    def u_can_preserve_visible_supply_chain_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> bool:
+        supply_link_target_indices_in_vision = (
+            self.own_supply_link_target_indices_in_vision
+            if team == self.own_team
+            else self.enemy_supply_link_target_indices_in_vision
+        )
+        if tile.environment == Environment.WALL:
+            return False
+        if tile.is_core_of(team):
+            return True
+        if tile.building.id is None:
+            return tile.index in supply_link_target_indices_in_vision
+        if tile.building.team == team and (
+            tile.building.entity_type in RESOURCE_TARGET_TYPES
+        ):
+            return True
+        if tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}:
+            return tile.index in supply_link_target_indices_in_vision
+        return False
+
+    def u_can_propagate_visible_supply_chain_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> bool:
+        return (
+            tile.last_seen_turn == self.current_round
+            and tile.building.id is not None
+            and tile.building.team == team
+            and tile.building.entity_type in RESOURCE_TARGET_TYPES
+        )
+
+    def u_propagate_supply_chain_labels_for_team(
+        self,
+        queue: deque[Tile],
+        team: Team,
+        *,
+        fill_only_unlabeled: bool,
+    ) -> None:
+        while queue:
+            source_tile = queue.popleft()
+            output_label = self.u_get_supply_chain_output_label(source_tile, team)
+            if output_label == SupplyChainLabel.NONE:
+                continue
+
+            for target_tile in source_tile.u_get_resource_targets():
+                if (
+                    target_tile.last_seen_turn == self.current_round
+                    and not self.u_can_preserve_visible_supply_chain_label(
+                        target_tile,
+                        team,
+                    )
+                ):
+                    continue
+
+                if fill_only_unlabeled:
+                    if (
+                        target_tile.get_supply_chain_label(team)
+                        != SupplyChainLabel.NONE
+                    ):
+                        continue
+                    target_tile.set_supply_chain_label(team, output_label)
+                    label_changed = True
+                else:
+                    label_changed = target_tile.add_supply_chain_label(
+                        team,
+                        output_label,
+                    )
+
+                if not label_changed:
+                    continue
+                if self.u_can_propagate_visible_supply_chain_label(target_tile, team):
+                    queue.append(target_tile)
+
+    def u_update_supply_chain_labels_for_team(self, team: Team) -> None:
+        fresh_queue: deque[Tile] = deque()
+        remembered_queue: deque[Tile] = deque()
+        remembered_labels: list[tuple[Tile, SupplyChainLabel]] = []
+
+        for tile in self.tiles_in_vision:
+            remembered_labels.append((tile, tile.get_supply_chain_label(team)))
+            tile.set_supply_chain_label(team, SupplyChainLabel.NONE)
+
+        for tile, _ in remembered_labels:
+            source_label = self.u_get_supply_chain_source_label(tile, team)
+            if source_label == SupplyChainLabel.NONE:
+                continue
+            tile.set_supply_chain_label(team, source_label)
+            fresh_queue.append(tile)
+
+        self.u_propagate_supply_chain_labels_for_team(
+            fresh_queue,
+            team,
+            fill_only_unlabeled=False,
+        )
+
+        for tile, remembered_label in remembered_labels:
+            if remembered_label == SupplyChainLabel.NONE:
+                continue
+            if tile.get_supply_chain_label(team) != SupplyChainLabel.NONE:
+                continue
+            if not self.u_can_preserve_visible_supply_chain_label(tile, team):
+                continue
+
+            tile.set_supply_chain_label(team, remembered_label)
+            if self.u_can_propagate_visible_supply_chain_label(tile, team):
+                remembered_queue.append(tile)
+
+        self.u_propagate_supply_chain_labels_for_team(
+            remembered_queue,
+            team,
+            fill_only_unlabeled=True,
+        )
+
+    def u_update_supply_chain_labels(self) -> None:
+        self.u_update_supply_chain_labels_for_team(self.own_team)
+        self.u_update_supply_chain_labels_for_team(self.enemy_team)
 
     def u_update_supply_information(self) -> None:
         self.own_supply_targets_in_vision = []
@@ -938,6 +1126,8 @@ class Map:
             self.enemy_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
+
+        self.u_update_supply_chain_labels()
 
         for tile in self.tiles_in_vision:
             if tile.in_own_resource_range > 0:
@@ -977,7 +1167,9 @@ class Map:
         previously known tile becomes visible again and is no longer an allied
         supplier, it is removed from the cache and its patrol marker is reset.
         """
-        visible_supply_indices = {tile.index for tile in self.own_supply_links_in_vision}
+        visible_supply_indices = {
+            tile.index for tile in self.own_supply_links_in_vision
+        }
         known_supply_indices = self.known_own_supply_link_indices
         known_supply_indices.update(visible_supply_indices)
 
@@ -1017,6 +1209,19 @@ class Map:
 
                 distance_by_index[neighbor_idx] = next_dist
                 queue.append(neighbor_idx)
+
+    def u_get_core_distance_step_cost(
+        self,
+        source_idx: int,
+        target_idx: int,
+    ) -> int:
+        source_x = source_idx // self.height
+        source_y = source_idx % self.height
+        target_x = target_idx // self.height
+        target_y = target_idx % self.height
+        if abs(source_x - target_x) + abs(source_y - target_y) == 1:
+            return 1
+        return 2
 
     def u_enqueue_core_distance_index(
         self,
@@ -1065,13 +1270,15 @@ class Map:
                 best_neighbor_dist = CORE_DIST_INF
                 for neighbor_idx in neighbor_indices_by_index[idx]:
                     neighbor_dist = distance_by_index[neighbor_idx]
+                    if neighbor_dist >= CORE_DIST_INF:
+                        continue
+                    neighbor_dist += self.u_get_core_distance_step_cost(
+                        idx,
+                        neighbor_idx,
+                    )
                     if neighbor_dist < best_neighbor_dist:
                         best_neighbor_dist = neighbor_dist
-                updated_dist = (
-                    CORE_DIST_INF
-                    if best_neighbor_dist >= CORE_DIST_INF
-                    else best_neighbor_dist + 1
-                )
+                updated_dist = best_neighbor_dist
 
             if updated_dist == distance_by_index[idx]:
                 continue
@@ -1089,30 +1296,32 @@ class Map:
             return
 
         distance_by_index[:] = self.core_inf_distances_by_index
-        queue = self.distance_queue_buffer_by_index
-        queue.clear()
-        queue.extend(source_indices)
-        queue_head = 0
+        heap: list[tuple[int, int]] = []
         for source_idx in source_indices:
             distance_by_index[source_idx] = 0
+            heappush(heap, (0, source_idx))
 
         neighbor_indices_by_index = self.neighbor_indices_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
-        while queue_head < len(queue):
-            current_idx = queue[queue_head]
-            queue_head += 1
-            current_dist = distance_by_index[current_idx]
+        while heap:
+            current_dist, current_idx = heappop(heap)
+            if current_dist != distance_by_index[current_idx]:
+                continue
 
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if (
-                    not intrinsic_passable_by_index[neighbor_idx]
-                    or distance_by_index[neighbor_idx] != CORE_DIST_INF
-                ):
+                if not intrinsic_passable_by_index[neighbor_idx]:
                     continue
 
-                distance_by_index[neighbor_idx] = current_dist + 1
-                queue.append(neighbor_idx)
+                next_dist = current_dist + self.u_get_core_distance_step_cost(
+                    current_idx,
+                    neighbor_idx,
+                )
+                if next_dist >= distance_by_index[neighbor_idx]:
+                    continue
+
+                distance_by_index[neighbor_idx] = next_dist
+                heappush(heap, (next_dist, neighbor_idx))
 
     def u_refresh_dist_to_self(self) -> None:
         source_idx = self.current_pos.x * self.height + self.current_pos.y
@@ -1191,7 +1400,8 @@ class Map:
 
                 for adjacent_idx in neighbor_indices_by_index[current_idx]:
                     if (
-                        dist_to_self_epoch_by_index[adjacent_idx] != self.dist_to_self_epoch
+                        dist_to_self_epoch_by_index[adjacent_idx]
+                        != self.dist_to_self_epoch
                         or dist_to_self_by_index[adjacent_idx] != next_dist_to_self
                     ):
                         continue
