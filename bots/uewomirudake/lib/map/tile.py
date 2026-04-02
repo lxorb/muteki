@@ -69,7 +69,7 @@ class Tile:
     def __init__(self, position: Position, map: "Map") -> None:
         self.map: Map = map
         self.position: Position = position
-        self.index: int = position.x * map.height + position.y
+        self.index: int = map.u_to_index(position)
 
         self.environment: Environment | None = None
         self.is_passable: bool = False
@@ -382,35 +382,29 @@ class Tile:
             case EntityType.BUILDER_BOT:
                 return [
                     tiles_by_index[idx]
-                    for idx in self.map.builder_action_target_indices_by_index[
-                        self.index
-                    ]
+                    for idx in self.map.u_iter_builder_action_target_indices(self.index)
                 ]
             case EntityType.CORE:
                 return [
                     tiles_by_index[idx]
-                    for idx in self.map.core_footprint_target_indices_by_index[
-                        self.index
-                    ]
+                    for idx in self.map.u_iter_core_footprint_target_indices(self.index)
                 ]
             case EntityType.HARVESTER | EntityType.FOUNDRY:
                 return [
                     tiles_by_index[idx]
-                    for idx in self.map.cardinal_neighbor_indices_by_index[self.index]
+                    for idx in self.map.u_iter_cardinal_neighbor_indices(self.index)
                 ]
             case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR:
                 if direction is None:
                     return []
-                target_idx = self.map.neighbor_index_by_direction_by_index[
-                    self.index
-                ].get(direction)
+                target_idx = self.map.u_get_neighbor_index_by_direction(
+                    self.index,
+                    direction,
+                )
                 return [] if target_idx is None else [tiles_by_index[target_idx]]
             case EntityType.SPLITTER:
                 if direction is None:
                     return []
-                neighbor_idx_by_direction = (
-                    self.map.neighbor_index_by_direction_by_index[self.index]
-                )
                 return [
                     tiles_by_index[target_idx]
                     for output_direction in (
@@ -418,7 +412,12 @@ class Tile:
                         direction.rotate_left().rotate_left(),
                         direction.rotate_right().rotate_right(),
                     )
-                    if (target_idx := neighbor_idx_by_direction.get(output_direction))
+                    if (
+                        target_idx := self.map.u_get_neighbor_index_by_direction(
+                            self.index,
+                            output_direction,
+                        )
+                    )
                     is not None
                 ]
             case EntityType.BRIDGE:

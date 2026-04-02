@@ -18,7 +18,7 @@ from lib.debug import Stopwatch
 class Agent:
     def __init__(self):
         self.ct: Controller | None = None
-        self.map: Map | None = None
+        self.map = Map()
         self.first_turn_initialized = False
 
         # Debugging
@@ -29,7 +29,7 @@ class Agent:
 
         self.ct = ct
         if not self.first_turn_initialized:
-            self.map = Map(ct)
+            self.map._first_round_init(ct)
             self.first_turn_initialized = True
         else:
             self.map.ct = ct
