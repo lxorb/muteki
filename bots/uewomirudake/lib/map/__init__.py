@@ -979,16 +979,49 @@ class Map:
 
         return tile.get_supply_chain_label(team)
 
-    def u_update_supply_chain_labels_for_team(self, team: Team) -> None:
-        queue: deque[Tile] = deque()
+    def u_can_preserve_visible_supply_chain_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> bool:
+        supply_link_target_indices_in_vision = (
+            self.own_supply_link_target_indices_in_vision
+            if team == self.own_team
+            else self.enemy_supply_link_target_indices_in_vision
+        )
+        if tile.environment == Environment.WALL:
+            return False
+        if tile.is_core_of(team):
+            return True
+        if tile.building.id is None:
+            return tile.index in supply_link_target_indices_in_vision
+        if tile.building.team == team and (
+            tile.building.entity_type in RESOURCE_TARGET_TYPES
+        ):
+            return True
+        if tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}:
+            return tile.index in supply_link_target_indices_in_vision
+        return False
 
-        for tile in self.tiles_in_vision:
-            source_label = self.u_get_supply_chain_source_label(tile, team)
-            if source_label == SupplyChainLabel.NONE:
-                continue
-            if tile.add_supply_chain_label(team, source_label):
-                queue.append(tile)
+    def u_can_propagate_visible_supply_chain_label(
+        self,
+        tile: Tile,
+        team: Team,
+    ) -> bool:
+        return (
+            tile.last_seen_turn == self.current_round
+            and tile.building.id is not None
+            and tile.building.team == team
+            and tile.building.entity_type in RESOURCE_TARGET_TYPES
+        )
 
+    def u_propagate_supply_chain_labels_for_team(
+        self,
+        queue: deque[Tile],
+        team: Team,
+        *,
+        fill_only_unlabeled: bool,
+    ) -> None:
         while queue:
             source_tile = queue.popleft()
             output_label = self.u_get_supply_chain_output_label(source_tile, team)
@@ -996,21 +1029,75 @@ class Map:
                 continue
 
             for target_tile in source_tile.u_get_resource_targets():
-                if not target_tile.add_supply_chain_label(team, output_label):
-                    continue
                 if (
                     target_tile.last_seen_turn == self.current_round
-                    and target_tile.building.id is not None
-                    and target_tile.building.team == team
-                    and target_tile.building.entity_type in RESOURCE_TARGET_TYPES
+                    and not self.u_can_preserve_visible_supply_chain_label(
+                        target_tile,
+                        team,
+                    )
                 ):
+                    continue
+
+                if fill_only_unlabeled:
+                    if (
+                        target_tile.get_supply_chain_label(team)
+                        != SupplyChainLabel.NONE
+                    ):
+                        continue
+                    target_tile.set_supply_chain_label(team, output_label)
+                    label_changed = True
+                else:
+                    label_changed = target_tile.add_supply_chain_label(
+                        team,
+                        output_label,
+                    )
+
+                if not label_changed:
+                    continue
+                if self.u_can_propagate_visible_supply_chain_label(target_tile, team):
                     queue.append(target_tile)
 
-    def u_update_supply_chain_labels(self) -> None:
-        for tile in self.tiles_in_vision:
-            tile.own_supply_chain_label = SupplyChainLabel.NONE
-            tile.enemy_supply_chain_label = SupplyChainLabel.NONE
+    def u_update_supply_chain_labels_for_team(self, team: Team) -> None:
+        fresh_queue: deque[Tile] = deque()
+        remembered_queue: deque[Tile] = deque()
+        remembered_labels: list[tuple[Tile, SupplyChainLabel]] = []
 
+        for tile in self.tiles_in_vision:
+            remembered_labels.append((tile, tile.get_supply_chain_label(team)))
+            tile.set_supply_chain_label(team, SupplyChainLabel.NONE)
+
+        for tile, _ in remembered_labels:
+            source_label = self.u_get_supply_chain_source_label(tile, team)
+            if source_label == SupplyChainLabel.NONE:
+                continue
+            tile.set_supply_chain_label(team, source_label)
+            fresh_queue.append(tile)
+
+        self.u_propagate_supply_chain_labels_for_team(
+            fresh_queue,
+            team,
+            fill_only_unlabeled=False,
+        )
+
+        for tile, remembered_label in remembered_labels:
+            if remembered_label == SupplyChainLabel.NONE:
+                continue
+            if tile.get_supply_chain_label(team) != SupplyChainLabel.NONE:
+                continue
+            if not self.u_can_preserve_visible_supply_chain_label(tile, team):
+                continue
+
+            tile.set_supply_chain_label(team, remembered_label)
+            if self.u_can_propagate_visible_supply_chain_label(tile, team):
+                remembered_queue.append(tile)
+
+        self.u_propagate_supply_chain_labels_for_team(
+            remembered_queue,
+            team,
+            fill_only_unlabeled=True,
+        )
+
+    def u_update_supply_chain_labels(self) -> None:
         self.u_update_supply_chain_labels_for_team(self.own_team)
         self.u_update_supply_chain_labels_for_team(self.enemy_team)
 
@@ -1022,8 +1109,6 @@ class Map:
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
 
-        self.u_update_supply_chain_labels()
-
         for supply_link_tile in self.own_supply_links_in_vision:
             self.own_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
@@ -1033,6 +1118,8 @@ class Map:
             self.enemy_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
+
+        self.u_update_supply_chain_labels()
 
         for tile in self.tiles_in_vision:
             if tile.in_own_resource_range > 0:
