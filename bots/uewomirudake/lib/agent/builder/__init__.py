@@ -34,7 +34,7 @@ class BuilderAgent(
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
 
-    def __init__(self, strategy: list[StrategyEntry] | None):
+    def __init__(self, strategy: list[StrategyEntry] | None = None):
         Agent.__init__(self)
         self.strategy = list(strategy or [])
         self.last_strategy_index = -1

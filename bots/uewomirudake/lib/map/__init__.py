@@ -54,8 +54,6 @@ class Map:
         self.width = self.INITIAL_WIDTH
         self.height = self.INITIAL_HEIGHT
         self.tile_count = self.INITIAL_MAP_SIZE
-        self.active_tile_indices: tuple[int, ...] = tuple(range(self.INITIAL_MAP_SIZE))
-        self.active_tiles: list[Tile] = []
         self.own_team: Team | None = None
         self.enemy_team: Team | None = None
         self.current_round = -1
@@ -66,6 +64,8 @@ class Map:
         self._direction_slot_by_direction = {
             direction: slot for slot, direction in enumerate(DIRECTIONS)
         }
+        self.index_x_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
+        self.index_y_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
@@ -119,7 +119,8 @@ class Map:
             for y in range(self.INITIAL_HEIGHT)
         ]
         self.tiles_by_index = self.matrix
-        self.active_tiles = list(self.tiles_by_index)
+        self._active_mask_by_dimensions: dict[tuple[int, int], bytes] = {}
+        self.active_mask_by_index = b"\x01" * self.INITIAL_MAP_SIZE
         self.neighbor_count_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.neighbor_indices_by_index = array("H", [0]) * (
             self.INITIAL_MAP_SIZE * self.MAX_NEIGHBOR_COUNT
@@ -149,7 +150,7 @@ class Map:
             tuple[int, EntityType, Direction],
             tuple[int, ...],
         ] = {}
-        self._build_index_caches(self.INITIAL_WIDTH, self.INITIAL_HEIGHT)
+        self._build_index_caches()
 
         self.symmetry_mode: SymmetryMode | None = None
         self.symmetry_mode_candidates = [
@@ -202,43 +203,16 @@ class Map:
         self.enemy_supply_link_target_indices_in_vision = set()
         self.frontier_expand_newly_seen_indices = []
 
-    def _build_index_caches(self, width: int, height: int) -> None:
-        self.neighbor_count_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
-        self.neighbor_indices_by_index = array("H", [0]) * (
-            self.INITIAL_MAP_SIZE * self.MAX_NEIGHBOR_COUNT
-        )
-        self.cardinal_neighbor_count_by_index = (
-            array("B", [0]) * self.INITIAL_MAP_SIZE
-        )
-        self.cardinal_neighbor_indices_by_index = array("H", [0]) * (
-            self.INITIAL_MAP_SIZE * self.MAX_CARDINAL_NEIGHBOR_COUNT
-        )
-        self.neighbor_index_by_direction_by_index = array("h", [-1]) * (
-            self.INITIAL_MAP_SIZE * self.DIRECTION_SLOT_COUNT
-        )
-        self.builder_action_target_count_by_index = (
-            array("B", [0]) * self.INITIAL_MAP_SIZE
-        )
-        self.builder_action_target_indices_by_index = array("H", [0]) * (
-            self.INITIAL_MAP_SIZE * self.MAX_BUILDER_ACTION_TARGET_COUNT
-        )
-        self.core_footprint_target_count_by_index = (
-            array("B", [0]) * self.INITIAL_MAP_SIZE
-        )
-        self.core_footprint_target_indices_by_index = array("H", [0]) * (
-            self.INITIAL_MAP_SIZE * self.MAX_CORE_FOOTPRINT_TARGET_COUNT
-        )
+    def _build_index_caches(self) -> None:
+        max_width = self.INITIAL_WIDTH
+        max_height = self.INITIAL_HEIGHT
 
-        active_tile_indices: list[int] = []
-        active_tiles: list[Tile] = []
-        stride = self.INDEX_STRIDE
-
-        for x in range(width):
-            base_idx = x * stride
-            for y in range(height):
+        for x in range(max_width):
+            base_idx = x * self.INDEX_STRIDE
+            for y in range(max_height):
                 idx = base_idx + y
-                active_tile_indices.append(idx)
-                active_tiles.append(self.tiles_by_index[idx])
+                self.index_x_by_index[idx] = x
+                self.index_y_by_index[idx] = y
 
                 neighbor_count = 0
                 cardinal_neighbor_count = 0
@@ -247,7 +221,7 @@ class Map:
                     dx, dy = direction.delta()
                     nx = x + dx
                     ny = y + dy
-                    if 0 <= nx < width and 0 <= ny < height:
+                    if 0 <= nx < max_width and 0 <= ny < max_height:
                         neighbor_idx = self.u_to_index_xy(nx, ny)
                         self.neighbor_indices_by_index[
                             idx * self.MAX_NEIGHBOR_COUNT + neighbor_count
@@ -269,7 +243,7 @@ class Map:
                 for dx, dy in BUILDER_ACTION_OFFSETS:
                     nx = x + dx
                     ny = y + dy
-                    if 0 <= nx < width and 0 <= ny < height:
+                    if 0 <= nx < max_width and 0 <= ny < max_height:
                         self.builder_action_target_indices_by_index[
                             idx * self.MAX_BUILDER_ACTION_TARGET_COUNT
                             + builder_target_count
@@ -282,7 +256,7 @@ class Map:
                     for dy in range(-1, 2):
                         nx = x + dx
                         ny = y + dy
-                        if 0 <= nx < width and 0 <= ny < height:
+                        if 0 <= nx < max_width and 0 <= ny < max_height:
                             self.core_footprint_target_indices_by_index[
                                 idx * self.MAX_CORE_FOOTPRINT_TARGET_COUNT
                                 + core_target_count
@@ -290,11 +264,13 @@ class Map:
                             core_target_count += 1
                 self.core_footprint_target_count_by_index[idx] = core_target_count
 
-        self.active_tile_indices = tuple(active_tile_indices)
-        self.active_tiles = active_tiles
-
-    def _build_index_caches_for_actual_map(self) -> None:
-        self._build_index_caches(self.width, self.height)
+        for width in range(1, max_width + 1):
+            for height in range(1, max_height + 1):
+                mask = bytearray(self.INITIAL_MAP_SIZE)
+                for x in range(width):
+                    start = x * self.INDEX_STRIDE
+                    mask[start : start + height] = b"\x01" * height
+                self._active_mask_by_dimensions[(width, height)] = bytes(mask)
 
     def _first_round_init(self, ct: Controller) -> None:
         self.ct = ct
@@ -303,7 +279,9 @@ class Map:
         self.tile_count = self.width * self.height
         self.own_team = ct.get_team()
         self.enemy_team = next(team for team in Team if team != self.own_team)
-        self._build_index_caches_for_actual_map()
+        self.active_mask_by_index = self._active_mask_by_dimensions[
+            (self.width, self.height)
+        ]
         self._first_round_initialized = True
         self._reset_turn_state()
 
@@ -314,31 +292,48 @@ class Map:
         return self.u_to_index_xy(pos.x, pos.y)
 
     def u_index_to_xy(self, idx: int) -> tuple[int, int]:
-        return (idx // self.INDEX_STRIDE, idx % self.INDEX_STRIDE)
+        return (self.index_x_by_index[idx], self.index_y_by_index[idx])
+
+    def u_is_index_active(self, idx: int) -> bool:
+        return bool(self.active_mask_by_index[idx])
+
+    def u_iter_active_tile_indices(self):
+        for x in range(self.width):
+            base_idx = x * self.INDEX_STRIDE
+            for y in range(self.height):
+                yield base_idx + y
 
     def u_iter_neighbor_indices(self, idx: int):
         base = idx * self.MAX_NEIGHBOR_COUNT
         count = self.neighbor_count_by_index[idx]
         for offset in range(count):
-            yield self.neighbor_indices_by_index[base + offset]
+            neighbor_idx = self.neighbor_indices_by_index[base + offset]
+            if self.active_mask_by_index[neighbor_idx]:
+                yield neighbor_idx
 
     def u_iter_cardinal_neighbor_indices(self, idx: int):
         base = idx * self.MAX_CARDINAL_NEIGHBOR_COUNT
         count = self.cardinal_neighbor_count_by_index[idx]
         for offset in range(count):
-            yield self.cardinal_neighbor_indices_by_index[base + offset]
+            neighbor_idx = self.cardinal_neighbor_indices_by_index[base + offset]
+            if self.active_mask_by_index[neighbor_idx]:
+                yield neighbor_idx
 
     def u_iter_builder_action_target_indices(self, idx: int):
         base = idx * self.MAX_BUILDER_ACTION_TARGET_COUNT
         count = self.builder_action_target_count_by_index[idx]
         for offset in range(count):
-            yield self.builder_action_target_indices_by_index[base + offset]
+            target_idx = self.builder_action_target_indices_by_index[base + offset]
+            if self.active_mask_by_index[target_idx]:
+                yield target_idx
 
     def u_iter_core_footprint_target_indices(self, idx: int):
         base = idx * self.MAX_CORE_FOOTPRINT_TARGET_COUNT
         count = self.core_footprint_target_count_by_index[idx]
         for offset in range(count):
-            yield self.core_footprint_target_indices_by_index[base + offset]
+            target_idx = self.core_footprint_target_indices_by_index[base + offset]
+            if self.active_mask_by_index[target_idx]:
+                yield target_idx
 
     def u_get_neighbor_index_by_direction(
         self,
@@ -348,7 +343,9 @@ class Map:
         neighbor_idx = self.neighbor_index_by_direction_by_index[
             idx * self.DIRECTION_SLOT_COUNT + self._direction_slot_by_direction[direction]
         ]
-        return None if neighbor_idx < 0 else neighbor_idx
+        if neighbor_idx < 0 or not self.active_mask_by_index[neighbor_idx]:
+            return None
+        return neighbor_idx
 
     def u_update_vision(self):
         if not self._first_round_initialized or self.ct is None:
@@ -1068,6 +1065,7 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
 
         for source_idx in own_core_source_indices:
             if source_idx == blocked_idx:
@@ -1088,7 +1086,10 @@ class Map:
             neighbor_count = neighbor_count_by_index[current_idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
-                if neighbor_idx == blocked_idx:
+                if (
+                    neighbor_idx == blocked_idx
+                    or not active_mask_by_index[neighbor_idx]
+                ):
                     continue
 
                 if (
@@ -1369,6 +1370,7 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
         while queue_head < len(queue):
@@ -1380,7 +1382,10 @@ class Map:
             neighbor_count = neighbor_count_by_index[current_idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
-                if not intrinsic_passable_by_index[neighbor_idx]:
+                if (
+                    not active_mask_by_index[neighbor_idx]
+                    or not intrinsic_passable_by_index[neighbor_idx]
+                ):
                     continue
 
                 next_dist = current_dist + 1
@@ -1427,6 +1432,7 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
         for idx in source_indices:
@@ -1438,6 +1444,8 @@ class Map:
             neighbor_count = neighbor_count_by_index[idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[neighbor_idx]:
+                    continue
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
         while queue_head < len(queue):
@@ -1455,6 +1463,8 @@ class Map:
                 neighbor_count = neighbor_count_by_index[idx]
                 for offset in range(neighbor_count):
                     neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
+                    if not active_mask_by_index[neighbor_idx]:
+                        continue
                     neighbor_dist = distance_by_index[neighbor_idx]
                     if neighbor_dist >= CORE_DIST_INF:
                         continue
@@ -1474,6 +1484,8 @@ class Map:
             neighbor_count = neighbor_count_by_index[idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[neighbor_idx]:
+                    continue
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
     def u_initialize_core_distance_field(
@@ -1493,6 +1505,7 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
         while heap:
@@ -1504,7 +1517,10 @@ class Map:
             neighbor_count = neighbor_count_by_index[current_idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
-                if not intrinsic_passable_by_index[neighbor_idx]:
+                if (
+                    not active_mask_by_index[neighbor_idx]
+                    or not intrinsic_passable_by_index[neighbor_idx]
+                ):
                     continue
 
                 next_dist = current_dist + self.u_get_core_distance_step_cost(
@@ -1537,6 +1553,7 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
         dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
@@ -1551,7 +1568,8 @@ class Map:
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if (
-                    not intrinsic_passable_by_index[neighbor_idx]
+                    not active_mask_by_index[neighbor_idx]
+                    or not intrinsic_passable_by_index[neighbor_idx]
                     or dist_to_self_epoch_by_index[neighbor_idx] == dist_to_self_epoch
                 ):
                     continue
@@ -1578,6 +1596,7 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
         dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
@@ -1604,6 +1623,8 @@ class Map:
                 for offset in range(neighbor_count):
                     adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
                     if (
+                        not active_mask_by_index[adjacent_idx]
+                        or
                         dist_to_self_epoch_by_index[adjacent_idx]
                         != self.dist_to_self_epoch
                         or dist_to_self_by_index[adjacent_idx] != next_dist_to_self
@@ -1663,7 +1684,10 @@ class Map:
             neighbor_count = neighbor_count_by_index[current_idx]
             for offset in range(neighbor_count):
                 adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
-                if seen_epoch_by_index[adjacent_idx] == path_epoch:
+                if (
+                    not active_mask_by_index[adjacent_idx]
+                    or seen_epoch_by_index[adjacent_idx] == path_epoch
+                ):
                     continue
 
                 if (

@@ -31,6 +31,8 @@ class Agent:
         if not self.first_turn_initialized:
             self.map._first_round_init(ct)
             self.first_turn_initialized = True
+            self.stopwatch.lap("first round init")
+            self.stopwatch.log()
         else:
             self.map.ct = ct
 

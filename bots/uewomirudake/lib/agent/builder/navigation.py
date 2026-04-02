@@ -287,7 +287,7 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         candidate_tiles: list[tuple[tuple[int, ...], Position]] = []
 
-        for tile_idx in self.map.active_tile_indices:
+        for tile_idx in self.map.u_iter_active_tile_indices():
             tile = self.map.tiles_by_index[tile_idx]
             tile_pos = tile.position
             if (
@@ -517,7 +517,7 @@ class BuilderNavigationMixin:
                 seen_indices.add(next_idx)
                 queue.append(next_pos)
 
-            for target_idx in self.map.active_tile_indices:
+            for target_idx in self.map.u_iter_active_tile_indices():
                 target_tile = tiles_by_index[target_idx]
                 target_pos_candidate = target_tile.position
                 if target_pos_candidate == current_pos:
@@ -1071,7 +1071,7 @@ class BuilderNavigationMixin:
         source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
         candidate_tiles = []
 
-        for target_idx in self.map.active_tile_indices:
+        for target_idx in self.map.u_iter_active_tile_indices():
             target_tile = self.map.tiles_by_index[target_idx]
             target_pos = target_tile.position
             if target_pos == pos:
