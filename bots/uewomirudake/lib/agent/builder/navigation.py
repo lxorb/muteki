@@ -3,6 +3,7 @@ from collections.abc import Callable
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
+    AVOID_EMPTY_ORE_BRIDGE_TARGETS,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
     ENEMY_TURRET_TYPES,
@@ -422,7 +423,11 @@ class BuilderNavigationMixin:
             and target_tile.building.team == self.map.own_team
         ):
             return False
-        if via_bridge and self.u_is_empty_ore_tile(pos):
+        if (
+            via_bridge
+            and AVOID_EMPTY_ORE_BRIDGE_TARGETS
+            and self.u_is_empty_ore_tile(pos)
+        ):
             return False
         if (
             target_tile.building.entity_type == EntityType.BARRIER
@@ -1153,7 +1158,10 @@ class BuilderNavigationMixin:
             return None
         if self.u_is_supply_tile_forbidden(target_tile.position, resource):
             return None
-        if self.u_is_empty_ore_tile(target_tile.position):
+        if (
+            AVOID_EMPTY_ORE_BRIDGE_TARGETS
+            and self.u_is_empty_ore_tile(target_tile.position)
+        ):
             return None
         if self.u_is_axionite_foundry_target(target_tile.position, resource):
             if self.u_can_host_foundry_site(target_tile.position):
@@ -1330,7 +1338,10 @@ class BuilderNavigationMixin:
                 if building_type == EntityType.BRIDGE:
                     if target_pos is None:
                         return False
-                    if self.u_is_empty_ore_tile(target_pos):
+                    if (
+                        AVOID_EMPTY_ORE_BRIDGE_TARGETS
+                        and self.u_is_empty_ore_tile(target_pos)
+                    ):
                         return False
                     if not can_build_method(pos, target_pos):
                         if should_try_attack_enemy_passable:
