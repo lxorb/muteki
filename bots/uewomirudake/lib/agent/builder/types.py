@@ -21,8 +21,13 @@ SupplierBuildPlan: TypeAlias = tuple[EntityType | None, Direction | Position | N
 class BuilderCommonSelf(Protocol):
     ct: Controller
     map: Map
+    strategy: list[StrategyEntry]
+    last_strategy_index: int
+    last_turn_completed: bool
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
+    harvesters_built: int
+    last_built_entity_type: EntityType | None
 
     def u_filter_tiles(
         self,
@@ -139,8 +144,17 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         avoid_enemy_turrets: bool = True,
     ) -> bool: ...
 
+    def u_heal_at(
+        self,
+        pos: Position,
+        move_towards: bool,
+        avoid_enemy_turrets: bool = True,
+    ) -> bool: ...
+
 
 class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
+    def s_convert_to_defender(self) -> BuilderActionResult: ...
+
     def s_insert_core_splitter(
         self,
         move_towards: bool = True,
@@ -207,6 +221,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         hold: bool = True,
+        only_out_of_reach: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_attack_enemy_harvester_supply_link(

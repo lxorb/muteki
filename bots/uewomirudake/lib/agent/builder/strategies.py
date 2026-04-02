@@ -4,6 +4,7 @@ from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
 INITRES_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,
@@ -30,6 +31,7 @@ INITRES_STRATEGY = [
 
 SCAVENGER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
+    (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (BuilderStrategyMethodsMixin.s_build_harvester_supply_link, True, True),
     (
@@ -44,6 +46,8 @@ SCAVENGER_STRATEGY = [
         False,
         False,
     ),
+    (BuilderStrategyMethodsMixin.s_block_titanium, True),
+    (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,
@@ -66,6 +70,7 @@ HARASSMENT_STRATEGY = [
 
 # TODO
 FOUNDRY_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (BuilderStrategyMethodsMixin.s_insert_core_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_build_core_foundry, True, True),
     (
@@ -80,13 +85,6 @@ FOUNDRY_STRATEGY = [
         True,
         Environment.ORE_AXIONITE,
     ),
-    # TODO: -> for axionite harvester
-    # (
-    #     BuilderStrategyMethodsMixin.s_surround_harvester,
-    #     True,
-    #     True,
-    #     Environment.ORE_AXIONITE,
-    # ),
     (
         BuilderStrategyMethodsMixin.s_build_missing_supply_link,
         True,
@@ -104,10 +102,10 @@ FOUNDRY_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]
 
-# TODO
 DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
+    (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (
         BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester,
         True,

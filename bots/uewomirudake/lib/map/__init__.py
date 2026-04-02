@@ -185,6 +185,8 @@ class Map:
         self.enemy_supply_links_in_vision: list[Tile] = []
         self.own_buildings_in_vision: list[Tile] = []
         self.enemy_buildings_in_vision: list[Tile] = []
+        self.own_buildings_healable_in_action_range: list[Tile] = []
+        self.own_buildings_needing_heal: list[Tile] = []
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
         self.visible_builder_bot_ids_by_index = {}
@@ -291,6 +293,24 @@ class Map:
                     self.own_buildings_in_vision.append(tile)
                 else:
                     self.enemy_buildings_in_vision.append(tile)
+
+                if building.team == self.own_team:
+                    building_damaged = building.hp < self.ct.get_max_hp(building.id)
+                    if (
+                        building.entity_type == EntityType.CONVEYOR
+                        and building.hp > 16
+                    ):
+                        building_damaged = False
+                    own_bot_damaged = (
+                        tile.bot.id is not None
+                        and tile.bot.team == self.own_team
+                        and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
+                    )
+                    if building_damaged or own_bot_damaged:
+                        if self.ct.can_heal(tile.position):
+                            self.own_buildings_healable_in_action_range.append(tile)
+                        else:
+                            self.own_buildings_needing_heal.append(tile)
 
                 if building.entity_type in SUPPLY_LINK_TYPES:
                     if building.team == self.own_team:

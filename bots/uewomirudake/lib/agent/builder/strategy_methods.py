@@ -2,17 +2,26 @@ from heapq import heapify, heappop
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
-from lib.agent.builder.constants import (
-    BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN,
-    FOUNDRY_WAIT_RADIUS_SQ,
-    MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST,
-)
-
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
 
 class BuilderStrategyMethodsMixin:
+    def s_convert_to_defender(self):
+        from lib.agent.constants import HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER
+        if self.harvesters_built < HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER:
+            return False
+
+        from .strategies import DEFENDER_STRATEGY
+
+        if self.strategy == DEFENDER_STRATEGY:
+            return False
+
+        self.strategy = list(DEFENDER_STRATEGY)
+        self.last_strategy_index = -1
+        self.last_turn_completed = True
+        return True
+
     def s_build_harvester_supply_link(
         self,
         move_towards: bool = True,
@@ -29,8 +38,22 @@ class BuilderStrategyMethodsMixin:
         to the builder and the own core. The supplier type and target are
         chosen by `u_get_supplier_build_plan(...)`.
         """
+        from lib.agent.constants import (
+            MAX_CORE_ORE_DIRECT_DIST,
+            PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
+        )
+        from .strategies import SCAVENGER_STRATEGY
+
+        if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
+            return False
+
         own_team = self.map.own_team
         attack_enemy_passable = False
+        max_core_ore_direct_dist = (
+            MAX_CORE_ORE_DIRECT_DIST
+            if self.strategy == SCAVENGER_STRATEGY
+            else None
+        )
         supply_chain_label = self.u_get_supply_chain_label_for_resource(resource)
         if supply_chain_label == SupplyChainLabel.NONE:
             return False
@@ -57,6 +80,11 @@ class BuilderStrategyMethodsMixin:
             self.map.own_harvesters_in_vision
         ):
             if harvester_tile.environment != resource:
+                continue
+            if (
+                max_core_ore_direct_dist is not None
+                and harvester_tile.own_core_dist > max_core_ore_direct_dist
+            ):
                 continue
 
             adjacent_tiles = []
@@ -294,9 +322,17 @@ class BuilderStrategyMethodsMixin:
         hold: bool = True,
         resource: Environment = Environment.ORE_TITANIUM,
     ):
+        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
+        from .strategies import SCAVENGER_STRATEGY
+
         current_pos = self.map.current_pos
         current_tile = self.map.u_get_pos_tile(current_pos)
         if current_tile.environment != resource:
+            return False
+        if (
+            self.strategy == SCAVENGER_STRATEGY
+            and current_tile.own_core_dist > MAX_CORE_ORE_DIRECT_DIST
+        ):
             return False
 
         empty_adjacent_tiles = []
@@ -342,6 +378,11 @@ class BuilderStrategyMethodsMixin:
         the builder, and relies on the supplier-plan helper to choose whether
         the tile should become a conveyor or a bridge plus its optimal target.
         """
+        from lib.agent.constants import PREVENT_SUPPLY_LINKS_TILL_HARVESTER
+
+        if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
+            return False
+
         own_team = self.map.own_team
         supply_chain_label = self.u_get_supply_chain_label_for_resource(resource)
         if supply_chain_label == SupplyChainLabel.NONE:
@@ -474,12 +515,20 @@ class BuilderStrategyMethodsMixin:
         builder, and delegates the actual build, replacement, movement, hold,
         and optional enemy-passable clearing to `u_build_at`.
         """
+        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
+        from .strategies import SCAVENGER_STRATEGY
+
         current_pos = self.map.current_pos
         if (
             self.pending_missing_supply_link_index is not None
             and self.pending_missing_supply_link_resource == resource
         ):
             return False
+        max_core_ore_direct_dist = (
+            MAX_CORE_ORE_DIRECT_DIST
+            if self.strategy == SCAVENGER_STRATEGY
+            else None
+        )
 
         own_team = self.map.own_team
         if resource == Environment.ORE_TITANIUM:
@@ -625,6 +674,8 @@ class BuilderStrategyMethodsMixin:
             lambda tile: tile.bot.id is None or tile.position == current_pos,
             lambda tile: not tile.in_enemy_attack_range,
             lambda tile: not has_orthogonally_adjacent_enemy_building(tile.position),
+            lambda tile: max_core_ore_direct_dist is None
+            or tile.own_core_dist <= max_core_ore_direct_dist,
         )
         if not candidate_tiles:
             return False
@@ -648,6 +699,8 @@ class BuilderStrategyMethodsMixin:
                 move_towards=move_towards,
                 attack_enemy_passable=attack_enemy_passable,
             ):
+                if self.last_built_entity_type == EntityType.HARVESTER:
+                    self.harvesters_built += 1
                 return True
 
         return False
@@ -892,7 +945,12 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_block_titanium(self, move_towards: bool = True, hold: bool = True):
+    def s_block_titanium(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        only_out_of_reach: bool = True,
+    ):
         """
         Build a barrier on the closest known empty titanium tile.
 
@@ -900,12 +958,16 @@ class BuilderStrategyMethodsMixin:
         distance, and delegates build, movement, and hold handling to
         `u_build_at`.
         """
+        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
+
         current_pos = self.map.current_pos
 
         titanium_tiles = self.u_filter_tiles(
             list(dict.fromkeys(self.map.known_accessible_titanium_tiles)),
             lambda tile: tile.environment == Environment.ORE_TITANIUM,
             lambda tile: tile.building.id is None,
+            lambda tile: (not only_out_of_reach)
+            or tile.own_core_dist > MAX_CORE_ORE_DIRECT_DIST,
         )
         if not titanium_tiles:
             return False
@@ -932,6 +994,8 @@ class BuilderStrategyMethodsMixin:
         wait near the foundry until a valid routed splitter slot becomes
         available.
         """
+        from lib.agent.constants import FOUNDRY_WAIT_RADIUS_SQ
+
         foundry_pos = self.u_get_core_foundry_plan()
         if foundry_pos is None:
             return False
@@ -993,6 +1057,12 @@ class BuilderStrategyMethodsMixin:
         """
         Build or confirm the planned core-side foundry before splitter work.
         """
+        from lib.agent.constants import (
+            BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN,
+            FOUNDRY_WAIT_RADIUS_SQ,
+            MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST,
+        )
+
         foundry_pos = self.u_get_core_foundry_plan()
         if foundry_pos is None:
             return False
@@ -1254,6 +1324,68 @@ class BuilderStrategyMethodsMixin:
                     != self.ct.get_current_round()
                 ),
             ):
+                return True
+
+        return False
+
+    def s_heal_own_building(self, move_towards: bool = True, hold: bool = True):
+        """
+        Heal the highest-priority damaged allied tile, preferring immediate heals.
+        
+        If any damaged allied tile is already healable this turn, only those
+        in-range candidates are considered. Otherwise the builder targets the
+        remaining visible damaged allied tiles and moves toward the best one.
+        Priorities are: core first, then tiles with a damaged own builder bot
+        standing on them, then by building type in this order: bridge,
+        conveyor, road, foundry, harvester, armoured conveyor, splitter,
+        sentinel, gunner, launcher, breach, barrier. Ties are broken by
+        distance to self and then distance to own core.
+        """
+        own_team = self.map.own_team
+
+        candidate_tiles = self.map.own_buildings_healable_in_action_range
+        if not candidate_tiles:
+            candidate_tiles = self.map.own_buildings_needing_heal
+        if not candidate_tiles:
+            return False
+
+        building_type_rank = {
+            EntityType.CORE: 0,
+            EntityType.BRIDGE: 2,
+            EntityType.CONVEYOR: 3,
+            EntityType.ROAD: 4,
+            EntityType.FOUNDRY: 5,
+            EntityType.HARVESTER: 6,
+            EntityType.ARMOURED_CONVEYOR: 7,
+            EntityType.SPLITTER: 8,
+            EntityType.SENTINEL: 9,
+            EntityType.GUNNER: 10,
+            EntityType.LAUNCHER: 11,
+            EntityType.BREACH: 12,
+            EntityType.BARRIER: 13,
+        }
+
+        def has_damaged_own_builder(tile) -> bool:
+            return bool(
+                tile.bot.id is not None
+                and tile.bot.team == own_team
+                and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
+            )
+
+        candidate_tiles = self.u_prioritize_tiles(
+            list(dict.fromkeys(candidate_tiles)),
+            lambda tile: (
+                0
+                if tile.building.entity_type == EntityType.CORE
+                else 1 if has_damaged_own_builder(tile) else 2
+            ),
+            lambda tile: building_type_rank.get(tile.building.entity_type, 99),
+            lambda tile: tile.dist_to_self,
+            lambda tile: tile.own_core_dist,
+        )
+
+        for target_tile in candidate_tiles:
+            if self.u_heal_at(target_tile.position, move_towards=move_towards):
                 return True
 
         return False
