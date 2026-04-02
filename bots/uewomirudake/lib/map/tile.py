@@ -57,6 +57,7 @@ class TileBuilding:
     entity_type: EntityType | None
     prev_entity_type: EntityType | None
     team: Team | None
+    prev_team: Team | None
     targets: list["Tile"]
     prev_targets: list["Tile"]
     hp: int | None
@@ -74,6 +75,7 @@ class Tile:
         self.environment: Environment | None = None
         self.is_passable: bool = False
         self.building: TileBuilding = TileBuilding(
+            None,
             None,
             None,
             None,
@@ -98,7 +100,6 @@ class Tile:
         self.in_own_resource_range: int = 0
 
         self.last_seen_turn: int = -1
-        self.last_titanium_onit_turn: int = -1
 
         self.last_patrolled_index: int = -1
 
@@ -247,9 +248,6 @@ class Tile:
             self.map.frontier_expand_newly_seen_indices.append(self.index)
         self.last_seen_turn = current_round
 
-        if self.environment == Environment.ORE_TITANIUM:
-            self.last_titanium_onit_turn = current_round
-
         bot_id = self.map.visible_builder_bot_ids_by_index.get(self.index)
         building_id = self.map.visible_building_ids_by_index.get(self.index)
 
@@ -293,11 +291,9 @@ class Tile:
     def update_building(self, id_changed: bool) -> None:
         ct = self.map.ct
         if id_changed:
-            prev_entity_type = self.building.entity_type
-            prev_targets = self.building.targets.copy()
-            prev_team = self.building.team
             self.building.prev_entity_type = self.building.entity_type
             self.building.prev_targets = self.building.targets.copy()
+            self.building.prev_team = self.building.team
             self.building.entity_type = ct.get_entity_type(self.building.id)
             self.building.team = ct.get_team(self.building.id)
             tracks_targets = self.u_tracks_building_targets()
@@ -323,11 +319,7 @@ class Tile:
                 if tracks_targets
                 else []
             )
-            self.update_target_zones_building(
-                prev_entity_type,
-                prev_targets,
-                prev_team,
-            )
+            self.update_target_zones_building()
         else:
             if (
                 self.u_tracks_building_targets()
@@ -335,22 +327,16 @@ class Tile:
             ):
                 new_direction = ct.get_direction(self.building.id)
                 if new_direction != self.building.direction:
-                    prev_entity_type = self.building.entity_type
-                    prev_targets = self.building.targets.copy()
-                    prev_team = self.building.team
                     self.building.prev_entity_type = self.building.entity_type
                     self.building.prev_targets = self.building.targets.copy()
+                    self.building.prev_team = self.building.team
                     self.building.direction = new_direction
                     self.building.targets = self.get_targets(
                         self.building.entity_type,
                         self.building.id,
                         direction=self.building.direction,
                     )
-                    self.update_target_zones_building(
-                        prev_entity_type,
-                        prev_targets,
-                        prev_team,
-                    )
+                    self.update_target_zones_building()
 
         if id_changed or self.building.team != self.map.own_team:
             self.building.hp = ct.get_hp(self.building.id)
@@ -516,22 +502,18 @@ class Tile:
                             or target.in_enemy_launcher_pickup_zone > 0
                         )
 
-    def update_target_zones_building(
-        self,
-        prev_entity_type: EntityType | None,
-        prev_targets: list["Tile"],
-        prev_team: Team | None,
+    def update_target_zones_building( self
     ) -> None:
         if (
-            self.building.entity_type == prev_entity_type
-            and Counter(prev_targets) == Counter(self.building.targets)
-            and self.building.team == prev_team
+            self.building.entity_type == self.building.prev_entity_type
+            and Counter(self.building.prev_targets) == Counter(self.building.targets)
+            and self.building.team == self.building.prev_team
         ):
             return
         self.update_target_zones_building_by(
-            prev_targets,
-            prev_entity_type,
-            prev_team,
+            self.building.prev_targets,
+            self.building.prev_entity_type,
+            self.building.prev_team,
             -1,
         )
         self.update_target_zones_building_by(
