@@ -65,6 +65,11 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         foundry_pos: Position,
     ) -> Position | None: ...
 
+    def u_foundry_site_has_visible_axionite_supply(
+        self,
+        foundry_pos: Position,
+    ) -> bool: ...
+
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
 
     def u_get_sentinel_direction_score(

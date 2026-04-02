@@ -792,6 +792,9 @@ class BuilderStrategyMethodsMixin:
                 self.map.built_foundry_index = foundry_tile.index
             else:
                 return False
+        else:
+            if not self.u_foundry_site_has_visible_axionite_supply(foundry_pos):
+                return False
 
         core_plan = self.u_get_core_splitter_foundry_plan()
         if core_plan is None:
@@ -847,6 +850,8 @@ class BuilderStrategyMethodsMixin:
         ):
             self.map.has_built_foundry = True
             self.map.built_foundry_index = foundry_tile.index
+            return False
+        if not self.u_foundry_site_has_visible_axionite_supply(foundry_pos):
             return False
 
         titanium_cost, axionite_cost = self.ct.get_foundry_cost()

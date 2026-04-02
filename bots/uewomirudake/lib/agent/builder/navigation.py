@@ -110,12 +110,14 @@ class BuilderNavigationMixin:
                     if foundry_tile.own_supply_chain_label & SupplyChainLabel.AXIONITE
                     else 1
                 )
+                bot_dist_rank = foundry_tile.dist_to_self
                 candidate_plans.append(
                     (
                         (
                             planned_rank,
                             foundry_rank,
                             label_rank,
+                            bot_dist_rank,
                             foundry_tile.position.x,
                             foundry_tile.position.y,
                         ),
@@ -357,6 +359,37 @@ class BuilderNavigationMixin:
         candidate_tiles.sort(key=lambda item: item[0])
         return candidate_tiles[0][1]
 
+    def u_foundry_site_has_visible_axionite_supply(
+        self,
+        foundry_pos: Position,
+    ) -> bool:
+        foundry_tile = self.map.u_get_pos_tile(foundry_pos)
+        if (
+            foundry_tile.last_seen_turn != self.map.current_round
+            or foundry_tile.index
+            not in self.map.own_supply_link_target_indices_in_vision
+        ):
+            return False
+
+        for neighbor_pos in self.map.u_iter_adjacent_positions(
+            foundry_pos,
+            consider_diagonal=False,
+        ):
+            neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
+            if not (
+                neighbor_tile.building.team == self.map.own_team
+                and neighbor_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and neighbor_tile.own_supply_chain_label & SupplyChainLabel.AXIONITE
+                and any(
+                    target.index == foundry_tile.index
+                    for target in neighbor_tile.building.targets
+                )
+            ):
+                continue
+            return True
+
+        return False
+
     def u_get_supply_chain_progress_key_to_target(
         self,
         pos: Position,
@@ -381,6 +414,8 @@ class BuilderNavigationMixin:
 
         target_tile = self.map.u_get_pos_tile(pos)
         if target_tile.index in blocked_indices:
+            return False
+        if target_tile.environment == Environment.WALL:
             return False
         if self.u_is_supply_tile_forbidden(pos, resource):
             return False
@@ -918,6 +953,8 @@ class BuilderNavigationMixin:
         resource: Environment = Environment.ORE_TITANIUM,
     ) -> int | None:
         own_team = self.map.own_team
+        if target_tile.environment == Environment.WALL:
+            return None
         if self.u_is_supply_tile_forbidden(target_tile.position, resource):
             return None
         if (
@@ -1043,6 +1080,8 @@ class BuilderNavigationMixin:
         resource: Environment = Environment.ORE_TITANIUM,
     ) -> int | None:
         own_team = self.map.own_team
+        if target_tile.environment == Environment.WALL:
+            return None
         if self.u_is_supply_tile_forbidden(target_tile.position, resource):
             return None
         if self.u_is_empty_ore_tile(target_tile.position):
