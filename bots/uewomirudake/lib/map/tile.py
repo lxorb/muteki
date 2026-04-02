@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from cambc import Direction, EntityType, Environment, Position, Team
 from lib.map.constants import (
+    CORE_DIST_INF,
     INF_DIST,
     PASSABLE_TYPES,
     RESOURCE_TARGET_TYPES,
@@ -101,41 +102,38 @@ class Tile:
 
         self.last_patrolled_index: int = -1
 
-    def _u_distance_to_core_center(self, center_pos: Position | None) -> int:
-        if center_pos is None:
-            return INF_DIST
-
-        dx = max(abs(self.position.x - center_pos.x) - 1, 0)
-        dy = max(abs(self.position.y - center_pos.y) - 1, 0)
-        return dx + dy
-
     @property
     def own_core_dist(self) -> int:
-        return self._u_distance_to_core_center(self.map.own_core_center_pos)
+        value = self.map.own_core_dist_by_index[self.index]
+        return INF_DIST if value >= CORE_DIST_INF else value
 
     @own_core_dist.setter
     def own_core_dist(self, value: int) -> None:
-        return None
+        self.map.own_core_dist_by_index[self.index] = (
+            CORE_DIST_INF if value >= INF_DIST else value
+        )
 
     @property
     def enemy_core_dist(self) -> int:
-        return self._u_distance_to_core_center(self.map.enemy_core_center_pos)
+        value = self.map.enemy_core_dist_by_index[self.index]
+        return INF_DIST if value >= CORE_DIST_INF else value
 
     @enemy_core_dist.setter
     def enemy_core_dist(self, value: int) -> None:
-        return None
+        self.map.enemy_core_dist_by_index[self.index] = (
+            CORE_DIST_INF if value >= INF_DIST else value
+        )
 
     @property
     def dist_to_self(self) -> int:
-        current_pos = self.map.current_pos
-        return max(
-            abs(self.position.x - current_pos.x),
-            abs(self.position.y - current_pos.y),
-        )
+        if self.map.dist_to_self_epoch_by_index[self.index] != self.map.dist_to_self_epoch:
+            return INF_DIST
+        return self.map.dist_to_self_by_index[self.index]
 
     @dist_to_self.setter
     def dist_to_self(self, value: int) -> None:
-        return None
+        self.map.dist_to_self_by_index[self.index] = value
+        self.map.dist_to_self_epoch_by_index[self.index] = self.map.dist_to_self_epoch
 
     @property
     def own_supply_chain_label(self) -> SupplyChainLabel:
@@ -207,6 +205,9 @@ class Tile:
         if intrinsic_passable == self.map.intrinsic_passable_by_index[self.index]:
             return
         self.map.intrinsic_passable_by_index[self.index] = intrinsic_passable
+        # Any traversability change invalidates cached chokepoint answers.
+        self.map.passability_epoch += 1
+        self.map.core_distance_dirty_indices.add(self.index)
 
     def clear_bot(self) -> None:
         self.bot = TileBot(None, None, None, [], None)
@@ -557,19 +558,10 @@ class Tile:
         if self.building.entity_type == EntityType.CORE and self.building.team == team:
             return True
         if team == self.map.own_team:
-            center_pos = self.map.own_core_center_pos
-        elif team == self.map.enemy_team:
-            center_pos = self.map.enemy_core_center_pos
-        else:
-            return False
-
-        if center_pos is None:
-            return False
-
-        return (
-            abs(self.position.x - center_pos.x) <= 1
-            and abs(self.position.y - center_pos.y) <= 1
-        )
+            return bool(self.map.own_core_source_by_index[self.index])
+        if team == self.map.enemy_team:
+            return bool(self.map.enemy_core_source_by_index[self.index])
+        return False
 
     def propagates_for_team(self, team: Team) -> bool:
         return (
