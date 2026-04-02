@@ -1267,6 +1267,16 @@ class BuilderNavigationMixin:
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
+        print(
+            "Build target:",
+            building_type,
+            "at",
+            pos,
+            "facing",
+            facing_direction,
+            "target",
+            target_pos,
+        )
         can_build_on_own_tile = building_type in {
             EntityType.ARMOURED_CONVEYOR,
             EntityType.BRIDGE,
