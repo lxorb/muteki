@@ -21,6 +21,7 @@ from lib.map.constants import (
     CORE_DIST_INF,
     DEEP_CHOKEPOINT_CHECKING,
     DIRECTIONS,
+    DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION,
     INF_DIST,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
@@ -1319,6 +1320,9 @@ class Map:
         neighbor_indices_by_index = self.neighbor_indices_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
+        if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION:
+            vision_radius_sq = self.ct.get_vision_radius_sq()
+
         while heap:
             current_dist, current_idx = heappop(heap)
             if current_dist != distance_by_index[current_idx]:
@@ -1327,6 +1331,14 @@ class Map:
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
                 if not intrinsic_passable_by_index[neighbor_idx]:
                     continue
+
+                if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION:
+                    neighbor_pos = self.tiles_by_index[current_idx].position
+                    if (
+                        self.own_core_center_pos.distance_squared(neighbor_pos)
+                        > vision_radius_sq
+                    ):
+                        continue
 
                 next_dist = current_dist + self.u_get_core_distance_step_cost(
                     current_idx,
