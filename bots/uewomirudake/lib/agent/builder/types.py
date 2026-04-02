@@ -165,6 +165,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         hold: bool = True,
+        resource: Environment = Environment.ORE_TITANIUM,
     ) -> BuilderActionResult: ...
 
     def s_build_missing_supply_link(

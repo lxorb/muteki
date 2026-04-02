@@ -12,7 +12,12 @@ INITRES_STRATEGY = [
         True,
         Environment.ORE_TITANIUM,
     ),
-    (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
+    (
+        BuilderStrategyMethodsMixin.s_surround_harvester,
+        True,
+        True,
+        Environment.ORE_TITANIUM,
+    ),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
@@ -28,7 +33,12 @@ SCAVENGER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (BuilderStrategyMethodsMixin.s_build_harvester_supply_link, True, True),
-    (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
+    (
+        BuilderStrategyMethodsMixin.s_surround_harvester,
+        True,
+        True,
+        Environment.ORE_TITANIUM,
+    ),
     (
         BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester,
         True,
@@ -63,8 +73,19 @@ FOUNDRY_STRATEGY = [
         True,
         Environment.ORE_AXIONITE,
     ),
+    (
+        BuilderStrategyMethodsMixin.s_surround_harvester,
+        True,
+        True,
+        Environment.ORE_AXIONITE,
+    ),
     # TODO: -> for axionite harvester
-    # (BuilderStrategyMethodsMixin.s_surround_harvester, True, True),
+    # (
+    #     BuilderStrategyMethodsMixin.s_surround_harvester,
+    #     True,
+    #     True,
+    #     Environment.ORE_AXIONITE,
+    # ),
     (
         BuilderStrategyMethodsMixin.s_build_missing_supply_link,
         True,

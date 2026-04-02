@@ -292,13 +292,11 @@ class BuilderStrategyMethodsMixin:
         self,
         move_towards: bool = True,
         hold: bool = True,
+        resource: Environment = Environment.ORE_TITANIUM,
     ):
         current_pos = self.map.current_pos
         current_tile = self.map.u_get_pos_tile(current_pos)
-        if current_tile.environment not in {
-            Environment.ORE_TITANIUM,
-            Environment.ORE_AXIONITE,
-        }:
+        if current_tile.environment != resource:
             return False
 
         empty_adjacent_tiles = []
@@ -490,6 +488,9 @@ class BuilderStrategyMethodsMixin:
             ore_positions = self.map.known_accessible_axionite_tiles
         else:
             return False
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        tiles_by_index = self.map.tiles_by_index
+        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
 
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_positions(
@@ -504,6 +505,90 @@ class BuilderStrategyMethodsMixin:
                 ):
                     return True
             return False
+
+        def has_orthogonally_adjacent_supply_link(tile_index: int) -> bool:
+            for adjacent_idx in cardinal_neighbor_indices_by_index[tile_index]:
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES:
+                    return True
+            return False
+
+        if (
+            current_tile.environment == resource
+            and not has_orthogonally_adjacent_supply_link(current_tile.index)
+        ):
+            replaceable_building_types = {EntityType.ROAD, EntityType.BARRIER}
+            supplier_plan_by_index: dict[
+                int, tuple[EntityType | None, Direction | Position | None]
+            ] = {}
+            candidate_entries: list[tuple[tuple[int, int, int], int]] = []
+
+            for safe_order, adjacent_idx in enumerate(
+                cardinal_neighbor_indices_by_index[current_tile.index]
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.is_enemy_turret_target_tile:
+                    continue
+                if adjacent_tile.building.entity_type == EntityType.CORE:
+                    continue
+                if adjacent_tile.building.id is not None and not (
+                    adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type in replaceable_building_types
+                ):
+                    continue
+
+                supplier_plan_by_index[adjacent_idx] = self.u_get_supplier_build_plan(
+                    adjacent_tile.position,
+                    resource,
+                )
+                supplier_type, _ = supplier_plan_by_index[adjacent_idx]
+                if supplier_type is None:
+                    continue
+
+                candidate_entries.append(
+                    (
+                        (
+                            adjacent_tile.own_core_dist,
+                            adjacent_tile.dist_to_self,
+                            safe_order,
+                        ),
+                        adjacent_idx,
+                    )
+                )
+
+            candidate_entries.sort()
+            for _, target_idx in candidate_entries:
+                target_tile = tiles_by_index[target_idx]
+                supplier_type, supplier_target = supplier_plan_by_index[target_idx]
+                if supplier_type == EntityType.CONVEYOR:
+                    if self.u_build_at(
+                        target_tile.position,
+                        supplier_type,
+                        hold=hold,
+                        move_towards=move_towards,
+                        attack_enemy_passable=False,
+                        facing_direction=supplier_target,
+                    ):
+                        return True
+                elif supplier_type == EntityType.BRIDGE:
+                    if self.u_build_at(
+                        target_tile.position,
+                        supplier_type,
+                        hold=hold,
+                        move_towards=move_towards,
+                        attack_enemy_passable=False,
+                        target_pos=supplier_target,
+                    ):
+                        next_direction = self.map.u_get_direction_between(
+                            current_pos,
+                            target_tile.position,
+                        )
+                        if (
+                            next_direction is not None
+                            and self.ct.can_move(next_direction)
+                        ):
+                            self.ct.move(next_direction)
+                        return True
 
         def has_orthogonally_adjacent_empty_tile(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_positions(

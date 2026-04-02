@@ -72,7 +72,9 @@ class CoreAgent(Agent):
         return False
 
     def u_convert_axionite(self) -> bool:
-        self.ct.convert(self.map.axionite)
+        if self.map.axionite <= 1:
+            return False
+        self.ct.convert(self.map.axionite - 1)
         return True
 
     def u_spawn_initial_bb(self) -> bool:
