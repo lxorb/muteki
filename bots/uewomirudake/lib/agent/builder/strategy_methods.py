@@ -157,7 +157,11 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_surround_harvester(self, move_towards: bool = True, hold: bool = True):
+    def s_surround_harvester_old(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
         """
         Secure visible own harvesters with nearby barriers.
 
@@ -276,6 +280,46 @@ class BuilderStrategyMethodsMixin:
             if self.u_build_at(
                 target_tile.position,
                 EntityType.BARRIER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+            ):
+                return True
+
+        return False
+
+    def s_surround_harvester(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if current_tile.environment not in {
+            Environment.ORE_TITANIUM,
+            Environment.ORE_AXIONITE,
+        }:
+            return False
+
+        empty_adjacent_tiles = []
+        for adjacent_pos in self.map.u_iter_adjacent_positions(
+            current_pos,
+            consider_diagonal=False,
+        ):
+            adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+            if (
+                adjacent_tile.building.id is None
+                and adjacent_tile.environment != Environment.WALL
+            ):
+                empty_adjacent_tiles.append(adjacent_tile)
+
+        if not empty_adjacent_tiles:
+            return False
+
+        for target_tile in empty_adjacent_tiles:
+            if self.u_build_at(
+                target_tile.position,
+                EntityType.ROAD,
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=False,
@@ -432,6 +476,7 @@ class BuilderStrategyMethodsMixin:
         builder, and delegates the actual build, replacement, movement, hold,
         and optional enemy-passable clearing to `u_build_at`.
         """
+        current_pos = self.map.current_pos
         if (
             self.pending_missing_supply_link_index is not None
             and self.pending_missing_supply_link_resource == resource
@@ -456,6 +501,20 @@ class BuilderStrategyMethodsMixin:
                 if (
                     adjacent_tile.building.id is not None
                     and adjacent_tile.building.team != own_team
+                ):
+                    return True
+            return False
+
+        def has_orthogonally_adjacent_empty_tile(pos: Position) -> bool:
+            adjacent_positions = self.map.u_iter_adjacent_positions(
+                pos,
+                consider_diagonal=False,
+            )
+            for adjacent_pos in adjacent_positions:
+                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                if (
+                    adjacent_tile.building.id is None
+                    and adjacent_tile.environment == Environment.EMPTY
                 ):
                     return True
             return False
@@ -491,6 +550,12 @@ class BuilderStrategyMethodsMixin:
             lambda tile: tile.dist_to_self,
         )
         for target_tile in candidate_tiles:
+            if (
+                current_pos != target_tile.position
+                and has_orthogonally_adjacent_empty_tile(target_tile.position)
+                and self.u_move_to(target_tile.position)
+            ):
+                return True
             if self.u_build_at(
                 target_tile.position,
                 EntityType.HARVESTER,
