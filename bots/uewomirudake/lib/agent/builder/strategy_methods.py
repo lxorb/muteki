@@ -538,6 +538,7 @@ class BuilderStrategyMethodsMixin:
             list(dict.fromkeys(ore_positions)),
             lambda tile: tile.environment == resource,
             can_use_tile,
+            lambda tile: tile.bot.id is None or tile.position == current_pos,
             lambda tile: not tile.in_enemy_attack_range,
             lambda tile: not has_orthogonally_adjacent_enemy_building(tile.position),
         )
