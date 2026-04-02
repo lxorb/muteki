@@ -122,7 +122,7 @@ class Tile:
             or self.map.dist_to_self_epoch_by_index[self.index]
             != self.map.dist_to_self_epoch
         ):
-            return INF_DIST
+            return self.map.u_get_estimated_dist_to_self_by_index(self.index)
         return self.map.dist_to_self_by_index[self.index]
 
     @dist_to_self.setter

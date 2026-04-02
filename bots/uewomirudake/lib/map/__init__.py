@@ -17,6 +17,7 @@ from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
     CORE_DIST_INF,
     DIRECTIONS,
+    DISABLE_CORRECT_OWN_CORE_DISTANCE,
     DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION,
     INF_DIST,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
@@ -1435,6 +1436,36 @@ class Map:
                     far_bucket.append(neighbor_idx)
                 pending_entries += 1
 
+    def u_initialize_own_core_distance_field_manhattan(self) -> None:
+        center = self.own_core_center_pos
+        if center is None:
+            return
+
+        distance_by_index = self.own_core_dist_by_index
+        distance_by_index[:] = self.core_inf_distances_by_index
+
+        center_x = center.x
+        center_y = center.y
+        for idx in self.u_iter_active_tile_indices():
+            x = self.index_x_by_index[idx]
+            y = self.index_y_by_index[idx]
+            dx = abs(x - center_x) - 1
+            dy = abs(y - center_y) - 1
+            if dx < 0:
+                dx = 0
+            if dy < 0:
+                dy = 0
+            distance_by_index[idx] = dx + dy
+
+    def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
+        current_idx = self.u_to_index(self.current_pos)
+        dx = abs(self.index_x_by_index[idx] - self.index_x_by_index[current_idx])
+        dy = abs(self.index_y_by_index[idx] - self.index_y_by_index[current_idx])
+        return dx if dx >= dy else dy
+
+    def u_get_estimated_dist_to_self(self, pos: Position) -> int:
+        return self.u_get_estimated_dist_to_self_by_index(self.u_to_index(pos))
+
     def u_refresh_dist_to_self(self) -> None:
         source_idx = self.u_to_index(self.current_pos)
         if (
@@ -1637,17 +1668,20 @@ class Map:
         sw = Stopwatch("Map distances")
         sw.start()
 
-        if self.compute_dist_to_self:
-            self.u_refresh_dist_to_self()
-
         sw.lap("Self distance field")
 
         dirty_indices = tuple(self.core_distance_dirty_indices)
 
         if self.own_core_source_indices and (
-            dirty_indices or not self.own_core_dist_initialized
+            not self.own_core_dist_initialized
+            or (
+                dirty_indices
+                and not DISABLE_CORRECT_OWN_CORE_DISTANCE
+            )
         ):
-            if not self.own_core_dist_initialized:
+            if DISABLE_CORRECT_OWN_CORE_DISTANCE:
+                self.u_initialize_own_core_distance_field_manhattan()
+            elif not self.own_core_dist_initialized:
                 self.u_initialize_core_distance_field(
                     self.own_core_source_indices,
                     self.own_core_dist_by_index,

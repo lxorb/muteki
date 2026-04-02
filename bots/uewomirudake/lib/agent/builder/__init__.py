@@ -37,7 +37,6 @@ class BuilderAgent(
 
     def __init__(self, strategy: list[StrategyEntry] | None = None):
         Agent.__init__(self)
-        self.map.compute_dist_to_self = True
         self.strategy = list(strategy or [])
         self.last_strategy_index = -1
         self.last_turn_completed = True

@@ -257,7 +257,6 @@ class BuilderStrategyMethodsMixin:
             return False
         tiles_by_index = self.map.tiles_by_index
         own_core_dist_by_index = self.map.own_core_dist_by_index
-        dist_to_self_by_index = self.map.dist_to_self_by_index
         current_round = self.map.current_round
 
         def can_use_tile(target_tile) -> bool:
@@ -320,7 +319,7 @@ class BuilderStrategyMethodsMixin:
                 (
                     (
                         own_core_dist_by_index[target_idx],
-                        dist_to_self_by_index[target_idx],
+                        self.map.u_get_estimated_dist_to_self_by_index(target_idx),
                     ),
                     encounter_order,
                     target_idx,
@@ -587,15 +586,11 @@ class BuilderStrategyMethodsMixin:
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
         tiles_by_index = self.map.tiles_by_index
-        dist_to_self_by_index = self.map.dist_to_self_by_index
         own_core_dist_by_index = self.map.own_core_dist_by_index
         candidate_entries: list[tuple[tuple[int, int, int, int], int]] = []
 
         for idx in frontier_indices:
-            dist_to_self = dist_to_self_by_index[idx]
-            if dist_to_self >= INF_DIST:
-                continue
-
+            dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(idx)
             frontier_tile = tiles_by_index[idx]
             if frontier_tile.is_enemy_turret_target_tile:
                 continue
@@ -1032,7 +1027,6 @@ class BuilderStrategyMethodsMixin:
         current_idx = self.map.u_to_index(current_pos)
         tiles_by_index = self.map.tiles_by_index
         known_own_supply_link_indices = self.map.known_own_supply_link_indices
-        dist_to_self_by_index = self.map.dist_to_self_by_index
         own_core_dist_by_index = self.map.own_core_dist_by_index
 
         def stamp_local_patrol_coverage() -> None:
@@ -1056,17 +1050,15 @@ class BuilderStrategyMethodsMixin:
             candidate_entries: list[tuple[int, int, int, int]] = []
 
             for idx in known_own_supply_link_indices:
-                if dist_to_self_by_index[idx] >= INF_DIST:
-                    continue
-
                 target_tile = tiles_by_index[idx]
                 last_patrolled_index = target_tile.last_patrolled_index
                 if last_patrolled_index >= supply_patrol_index:
                     continue
+                dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(idx)
 
                 candidate_entries.append(
                     (
-                        dist_to_self_by_index[idx],
+                        dist_to_self,
                         last_patrolled_index,
                         own_core_dist_by_index[idx],
                         idx,
