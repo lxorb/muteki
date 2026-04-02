@@ -1,9 +1,6 @@
-from array import array
 from collections import deque
 from collections.abc import Iterable
 from enum import Enum
-from heapq import heappop, heappush
-import time
 
 from cambc import (
     Controller,
@@ -17,11 +14,7 @@ from cambc import (
 
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
-    CHOKEPOINT_MIN_DIST_INCREASE,
-    CORE_DIST_INF,
-    DEEP_CHOKEPOINT_CHECKING,
     DIRECTIONS,
-    INF_DIST,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
@@ -43,31 +36,9 @@ class Map:
         self.width = ct.get_map_width()
         self.height = ct.get_map_height()
         self.tile_count = self.width * self.height
-        self.dist_to_self_by_index = array("H", [0]) * self.tile_count
-        self.dist_to_self_epoch_by_index = array("I", [0]) * self.tile_count
-        self.dist_to_self_epoch = 0
-        self.last_dist_to_self_source_idx: int | None = None
-        self.own_core_dist_by_index = array("H", [CORE_DIST_INF]) * self.tile_count
-        self.enemy_core_dist_by_index = array("H", [CORE_DIST_INF]) * self.tile_count
-        self.core_inf_distances_by_index = array("H", [CORE_DIST_INF]) * self.tile_count
-        self.inf_distances_by_index = array("I", [INF_DIST]) * self.tile_count
         self.intrinsic_passable_by_index = [True] * self.tile_count
         self.bot_present_by_index = bytearray(self.tile_count)
         self.enemy_turret_target_by_index = bytearray(self.tile_count)
-        # Bump whenever intrinsic traversability changes so chokepoint answers
-        # can be reused safely until the passability graph changes again.
-        self.passability_epoch = 0
-        self.core_distance_dirty_indices: set[int] = set()
-        self.core_distance_enqueued_by_index = bytearray(self.tile_count)
-        self.own_core_source_indices: tuple[int, ...] = ()
-        # Track own-core source changes separately from passability changes.
-        self.own_core_source_epoch = 0
-        self.enemy_core_source_indices: tuple[int, ...] = ()
-        self.own_core_source_by_index = bytearray(self.tile_count)
-        self.enemy_core_source_by_index = bytearray(self.tile_count)
-        self.own_core_dist_initialized = False
-        self.enemy_core_dist_initialized = False
-        self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
@@ -75,15 +46,9 @@ class Map:
         self.enemy_supply_link_target_indices_in_vision: set[int] = set()
         self.own_supply_chain_labels_by_index = bytearray(self.tile_count)
         self.enemy_supply_chain_labels_by_index = bytearray(self.tile_count)
-        # Dedicated chokepoint BFS buffers avoid per-call queue/list allocation.
-        self.chokepoint_queue_buffer_by_index: list[int] = []
         self.path_seen_epoch_by_index = [0] * self.tile_count
         self.path_predecessor_by_index = [-1] * self.tile_count
         self.path_epoch = 0
-        self.chokepoint_seen_epoch_by_index = [0] * self.tile_count
-        self.chokepoint_dist_by_index = [0] * self.tile_count
-        self.chokepoint_epoch = 0
-        self.chokepoint_cache_by_index: dict[int, tuple[int, int, bool]] = {}
         self.matrix: list[list[Tile]] = [
             [Tile(Position(x, y), self) for y in range(self.height)]
             for x in range(self.width)
@@ -239,10 +204,6 @@ class Map:
         self.u_update_supply_patrol_indices()
 
         self.stopwatch.lap("Patrol indices")
-
-        self.u_update_distances()
-
-        self.stopwatch.lap("Distances")
 
         self.stopwatch.log()
 
@@ -464,11 +425,6 @@ class Map:
         remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
         if len(remaining_positions) == 1:
             self.enemy_core_center_pos = next(iter(remaining_positions))
-            self.enemy_core_source_indices = self.u_cache_core_source_indices(
-                self.enemy_core_center_pos,
-                self.enemy_core_source_by_index,
-            )
-            self.enemy_core_dist_initialized = False
 
     def u_get_pos_tile(self, pos: Position) -> Tile:
         return self.matrix[pos.x][pos.y]
@@ -546,22 +502,6 @@ class Map:
             ]
         )
 
-    def u_cache_core_source_indices(
-        self,
-        center: Position | None,
-        source_mask_by_index: bytearray,
-    ) -> tuple[int, ...]:
-        source_mask_by_index[:] = b"\x00" * self.tile_count
-        if center is None:
-            return ()
-
-        source_indices = tuple(
-            tile.index for tile in self.u_get_core_footprint_positions(center)
-        )
-        for idx in source_indices:
-            source_mask_by_index[idx] = 1
-        return source_indices
-
     def u_calc_core_center_positions(self) -> bool:
         if self.own_core_center_pos is not None:
             return True
@@ -584,12 +524,6 @@ class Map:
                 return False
 
         self.own_core_center_pos = self.ct.get_position(core_tile.building.id)
-        self.own_core_source_indices = self.u_cache_core_source_indices(
-            self.own_core_center_pos,
-            self.own_core_source_by_index,
-        )
-        self.own_core_source_epoch += 1
-        self.own_core_dist_initialized = False
         if not self.enemy_core_center_pos_candidates:
             center = self.own_core_center_pos
             all_enemy_core_center_pos_candidates = [
@@ -616,11 +550,6 @@ class Map:
             }
             if len(remaining_positions) == 1:
                 self.enemy_core_center_pos = next(iter(remaining_positions))
-                self.enemy_core_source_indices = self.u_cache_core_source_indices(
-                    self.enemy_core_center_pos,
-                    self.enemy_core_source_by_index,
-                )
-                self.enemy_core_dist_initialized = False
         return True
 
     def u_is_enemy_bot_on_ally_tile(self, target_tile: Tile) -> bool:
@@ -813,8 +742,6 @@ class Map:
         ]
 
     def u_is_chokepoint(self, pos: Position) -> bool:
-        if DEEP_CHOKEPOINT_CHECKING:
-            return self.u_is_chokepoint_deep(pos)
         return self.u_is_chokepoint_light(pos)
 
     def u_is_chokepoint_light(self, pos: Position) -> bool:
@@ -851,125 +778,6 @@ class Map:
         return (left_right_blocked and up_down_open) or (
             up_down_blocked and left_right_open
         )
-
-    def u_is_chokepoint_deep(self, pos: Position) -> bool:
-        """
-        Return whether blocking this tile would significantly lengthen a nearby route to the own core.
-        """
-        if not self.u_is_in_bounds(pos):
-            return False
-
-        blocked_idx = pos.x * self.height + pos.y
-        if (
-            not self.own_core_source_indices
-            or self.own_core_source_by_index[blocked_idx]
-        ):
-            return False
-
-        cache_entry = self.chokepoint_cache_by_index.get(blocked_idx)
-        if cache_entry is not None:
-            cached_passability_epoch, cached_core_epoch, cached_result = cache_entry
-            if (
-                cached_passability_epoch == self.passability_epoch
-                and cached_core_epoch == self.own_core_source_epoch
-            ):
-                return cached_result
-
-        # One weighted shortest-path search from the core with this tile
-        # blocked gives the alternative path length for every adjacent tile,
-        # which is much cheaper than rerunning the search once per neighbor.
-        bfs_epoch = self.u_run_own_core_distance_bfs_avoiding_tile(blocked_idx)
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
-        own_core_dist_by_index = self.own_core_dist_by_index
-        chokepoint_seen_epoch_by_index = self.chokepoint_seen_epoch_by_index
-        chokepoint_dist_by_index = self.chokepoint_dist_by_index
-
-        for adjacent_idx in self.neighbor_indices_by_index[blocked_idx]:
-            if (
-                own_core_dist_by_index[adjacent_idx] >= CORE_DIST_INF
-                or not intrinsic_passable_by_index[adjacent_idx]
-            ):
-                continue
-
-            alternative_dist = (
-                chokepoint_dist_by_index[adjacent_idx]
-                if chokepoint_seen_epoch_by_index[adjacent_idx] == bfs_epoch
-                else INF_DIST
-            )
-            if (
-                alternative_dist - own_core_dist_by_index[adjacent_idx]
-                >= CHOKEPOINT_MIN_DIST_INCREASE
-            ):
-                self.chokepoint_cache_by_index[blocked_idx] = (
-                    self.passability_epoch,
-                    self.own_core_source_epoch,
-                    True,
-                )
-                return True
-
-        self.chokepoint_cache_by_index[blocked_idx] = (
-            self.passability_epoch,
-            self.own_core_source_epoch,
-            False,
-        )
-        return False
-
-    def u_run_own_core_distance_bfs_avoiding_tile(
-        self,
-        blocked_idx: int,
-    ) -> int:
-        # Epoch-stamped seen/dist arrays let us reuse the same storage without
-        # clearing full-size lists on every chokepoint query.
-        self.chokepoint_epoch += 1
-        chokepoint_epoch = self.chokepoint_epoch
-        heap: list[tuple[int, int]] = []
-        seen_epoch_by_index = self.chokepoint_seen_epoch_by_index
-        dist_by_index = self.chokepoint_dist_by_index
-        own_core_source_indices = self.own_core_source_indices
-        own_core_source_by_index = self.own_core_source_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
-        neighbor_indices_by_index = self.neighbor_indices_by_index
-
-        for source_idx in own_core_source_indices:
-            if source_idx == blocked_idx:
-                continue
-            seen_epoch_by_index[source_idx] = chokepoint_epoch
-            dist_by_index[source_idx] = 0
-            heappush(heap, (0, source_idx))
-
-        while heap:
-            current_dist, current_idx = heappop(heap)
-            if (
-                seen_epoch_by_index[current_idx] != chokepoint_epoch
-                or current_dist != dist_by_index[current_idx]
-            ):
-                continue
-
-            for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if neighbor_idx == blocked_idx:
-                    continue
-
-                if (
-                    not own_core_source_by_index[neighbor_idx]
-                    and not intrinsic_passable_by_index[neighbor_idx]
-                ):
-                    continue
-
-                next_dist = current_dist + self.u_get_core_distance_step_cost(
-                    current_idx,
-                    neighbor_idx,
-                )
-                if (
-                    seen_epoch_by_index[neighbor_idx] == chokepoint_epoch
-                    and next_dist >= dist_by_index[neighbor_idx]
-                ):
-                    continue
-
-                seen_epoch_by_index[neighbor_idx] = chokepoint_epoch
-                dist_by_index[neighbor_idx] = next_dist
-                heappush(heap, (next_dist, neighbor_idx))
-
-        return chokepoint_epoch
 
     def u_get_supply_chain_source_label(
         self,
@@ -1212,188 +1020,6 @@ class Map:
             known_supply_indices.discard(tile.index)
             tile.last_patrolled_index = -1
 
-    def u_run_distance_bfs(
-        self,
-        seed_indices: list[int] | tuple[int, ...],
-        distance_by_index,
-    ) -> None:
-        queue = self.distance_queue_buffer_by_index
-        queue.clear()
-        queue.extend(seed_indices)
-        queue_head = 0
-        for seed_idx in seed_indices:
-            distance_by_index[seed_idx] = 0
-
-        neighbor_indices_by_index = self.neighbor_indices_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
-
-        while queue_head < len(queue):
-            current_idx = queue[queue_head]
-            queue_head += 1
-            current_dist = distance_by_index[current_idx]
-
-            for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if not intrinsic_passable_by_index[neighbor_idx]:
-                    continue
-
-                next_dist = current_dist + 1
-                if next_dist >= distance_by_index[neighbor_idx]:
-                    continue
-
-                distance_by_index[neighbor_idx] = next_dist
-                queue.append(neighbor_idx)
-
-    def u_get_core_distance_step_cost(
-        self,
-        source_idx: int,
-        target_idx: int,
-    ) -> int:
-        source_x = source_idx // self.height
-        source_y = source_idx % self.height
-        target_x = target_idx // self.height
-        target_y = target_idx % self.height
-        if abs(source_x - target_x) + abs(source_y - target_y) == 1:
-            return 1
-        return 2
-
-    def u_enqueue_core_distance_index(
-        self,
-        idx: int,
-        queue: list[int],
-    ) -> None:
-        if self.core_distance_enqueued_by_index[idx]:
-            return
-        self.core_distance_enqueued_by_index[idx] = 1
-        queue.append(idx)
-
-    def u_update_core_distance_field_incremental(
-        self,
-        source_indices: list[int] | tuple[int, ...],
-        source_by_index: bytearray,
-        distance_by_index,
-        dirty_indices: list[int] | tuple[int, ...],
-    ) -> None:
-        if not source_indices:
-            return
-
-        queue = self.distance_queue_buffer_by_index
-        queue.clear()
-        queue_head = 0
-        neighbor_indices_by_index = self.neighbor_indices_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
-
-        for idx in source_indices:
-            self.u_enqueue_core_distance_index(idx, queue)
-
-        for idx in dirty_indices:
-            self.u_enqueue_core_distance_index(idx, queue)
-            for neighbor_idx in neighbor_indices_by_index[idx]:
-                self.u_enqueue_core_distance_index(neighbor_idx, queue)
-
-        while queue_head < len(queue):
-            idx = queue[queue_head]
-            queue_head += 1
-            self.core_distance_enqueued_by_index[idx] = 0
-
-            if source_by_index[idx]:
-                updated_dist = 0
-            elif not intrinsic_passable_by_index[idx]:
-                updated_dist = CORE_DIST_INF
-            else:
-                best_neighbor_dist = CORE_DIST_INF
-                for neighbor_idx in neighbor_indices_by_index[idx]:
-                    neighbor_dist = distance_by_index[neighbor_idx]
-                    if neighbor_dist >= CORE_DIST_INF:
-                        continue
-                    neighbor_dist += self.u_get_core_distance_step_cost(
-                        idx,
-                        neighbor_idx,
-                    )
-                    if neighbor_dist < best_neighbor_dist:
-                        best_neighbor_dist = neighbor_dist
-                updated_dist = best_neighbor_dist
-
-            if updated_dist == distance_by_index[idx]:
-                continue
-
-            distance_by_index[idx] = updated_dist
-            for neighbor_idx in neighbor_indices_by_index[idx]:
-                self.u_enqueue_core_distance_index(neighbor_idx, queue)
-
-    def u_initialize_core_distance_field(
-        self,
-        source_indices: list[int] | tuple[int, ...],
-        distance_by_index,
-    ) -> None:
-        if not source_indices:
-            return
-
-        distance_by_index[:] = self.core_inf_distances_by_index
-        heap: list[tuple[int, int]] = []
-        for source_idx in source_indices:
-            distance_by_index[source_idx] = 0
-            heappush(heap, (0, source_idx))
-
-        neighbor_indices_by_index = self.neighbor_indices_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
-
-        while heap:
-            current_dist, current_idx = heappop(heap)
-            if current_dist != distance_by_index[current_idx]:
-                continue
-
-            for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if not intrinsic_passable_by_index[neighbor_idx]:
-                    continue
-
-                next_dist = current_dist + self.u_get_core_distance_step_cost(
-                    current_idx,
-                    neighbor_idx,
-                )
-                if next_dist >= distance_by_index[neighbor_idx]:
-                    continue
-
-                distance_by_index[neighbor_idx] = next_dist
-                heappush(heap, (next_dist, neighbor_idx))
-
-    def u_refresh_dist_to_self(self) -> None:
-        source_idx = self.current_pos.x * self.height + self.current_pos.y
-        if (
-            self.last_dist_to_self_source_idx == source_idx
-            and self.dist_to_self_epoch != 0
-        ):
-            return
-
-        self.dist_to_self_epoch += 1
-        dist_to_self_epoch = self.dist_to_self_epoch
-        self.last_dist_to_self_source_idx = source_idx
-        queue = self.distance_queue_buffer_by_index
-        queue.clear()
-        queue.append(source_idx)
-        queue_head = 0
-        self.dist_to_self_epoch_by_index[source_idx] = dist_to_self_epoch
-        self.dist_to_self_by_index[source_idx] = 0
-        neighbor_indices_by_index = self.neighbor_indices_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
-        dist_to_self_by_index = self.dist_to_self_by_index
-        dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
-
-        while queue_head < len(queue):
-            current_idx = queue[queue_head]
-            queue_head += 1
-            current_dist = dist_to_self_by_index[current_idx]
-
-            for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if (
-                    not intrinsic_passable_by_index[neighbor_idx]
-                    or dist_to_self_epoch_by_index[neighbor_idx] == dist_to_self_epoch
-                ):
-                    continue
-
-                dist_to_self_epoch_by_index[neighbor_idx] = dist_to_self_epoch
-                dist_to_self_by_index[neighbor_idx] = current_dist + 1
-                queue.append(neighbor_idx)
-
     def u_calculate_shortest_path(
         self,
         source_pos: Position,
@@ -1411,67 +1037,10 @@ class Map:
         tiles_by_index = self.tiles_by_index
         neighbor_indices_by_index = self.neighbor_indices_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
-        dist_to_self_by_index = self.dist_to_self_by_index
-        dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
-        own_core_dist_by_index = self.own_core_dist_by_index
         enemy_turret_target_by_index = self.enemy_turret_target_by_index
         bot_present_by_index = self.bot_present_by_index
         if source_pos == target_pos:
             return [source_tile]
-
-        if (
-            source_pos == self.current_pos
-            and dist_to_self_epoch_by_index[target_idx] == self.dist_to_self_epoch
-        ):
-            current_idx = target_idx
-            path = [tiles_by_index[current_idx]]
-
-            while current_idx != source_idx:
-                next_dist_to_self = dist_to_self_by_index[current_idx] - 1
-                best_candidate_idx: int | None = None
-                best_candidate_score: tuple[int, int, int] | None = None
-
-                for adjacent_idx in neighbor_indices_by_index[current_idx]:
-                    if (
-                        dist_to_self_epoch_by_index[adjacent_idx]
-                        != self.dist_to_self_epoch
-                        or dist_to_self_by_index[adjacent_idx] != next_dist_to_self
-                    ):
-                        continue
-                    if (
-                        avoid_enemy_turrets
-                        and adjacent_idx != source_idx
-                        and enemy_turret_target_by_index[adjacent_idx]
-                    ):
-                        continue
-                    if (
-                        avoid_other_builder_bots
-                        and adjacent_idx != source_idx
-                        and adjacent_idx != target_idx
-                        and bot_present_by_index[adjacent_idx]
-                    ):
-                        continue
-                    candidate_score = (
-                        own_core_dist_by_index[adjacent_idx],
-                        adjacent_idx // self.height,
-                        adjacent_idx % self.height,
-                    )
-                    if (
-                        best_candidate_score is None
-                        or candidate_score < best_candidate_score
-                    ):
-                        best_candidate_score = candidate_score
-                        best_candidate_idx = adjacent_idx
-
-                if best_candidate_idx is None:
-                    break
-
-                current_idx = best_candidate_idx
-                path.append(tiles_by_index[current_idx])
-
-            if path[-1].index == source_idx:
-                path.reverse()
-                return path
 
         self.path_epoch += 1
         path_epoch = self.path_epoch
@@ -1529,54 +1098,3 @@ class Map:
                 queue.append(adjacent_idx)
 
         return []
-
-    def u_update_distances(self) -> None:
-        sw = Stopwatch("Map distances")
-        sw.start()
-
-        self.u_refresh_dist_to_self()
-        dirty_indices = tuple(self.core_distance_dirty_indices)
-
-        sw.lap("Init")
-
-        if self.own_core_source_indices and (
-            dirty_indices or not self.own_core_dist_initialized
-        ):
-            if not self.own_core_dist_initialized:
-                self.u_initialize_core_distance_field(
-                    self.own_core_source_indices,
-                    self.own_core_dist_by_index,
-                )
-            else:
-                self.u_update_core_distance_field_incremental(
-                    self.own_core_source_indices,
-                    self.own_core_source_by_index,
-                    self.own_core_dist_by_index,
-                    dirty_indices,
-                )
-            self.own_core_dist_initialized = True
-
-        sw.lap("Own distance field")
-
-        if self.enemy_core_source_indices and (
-            dirty_indices or not self.enemy_core_dist_initialized
-        ):
-            if not self.enemy_core_dist_initialized:
-                self.u_initialize_core_distance_field(
-                    self.enemy_core_source_indices,
-                    self.enemy_core_dist_by_index,
-                )
-            else:
-                self.u_update_core_distance_field_incremental(
-                    self.enemy_core_source_indices,
-                    self.enemy_core_source_by_index,
-                    self.enemy_core_dist_by_index,
-                    dirty_indices,
-                )
-            self.enemy_core_dist_initialized = True
-
-        sw.lap("Enemy distance field")
-
-        self.core_distance_dirty_indices.clear()
-
-        sw.log()
