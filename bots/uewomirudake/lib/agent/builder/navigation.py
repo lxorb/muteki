@@ -553,9 +553,6 @@ class BuilderNavigationMixin:
         pos: Position,
         resource: Environment,
     ) -> tuple[int, int]:
-        """
-        TODO: AI code, NOT REVIEWED (needs review)
-        """
         target_tile = self.map.u_get_pos_tile(pos)
         if resource == Environment.ORE_AXIONITE:
             foundry_pos = self.u_get_core_foundry_plan()
@@ -597,6 +594,38 @@ class BuilderNavigationMixin:
 
     def u_supply_chain_targets_core(self, resource: Environment) -> bool:
         return resource == Environment.ORE_TITANIUM
+
+    def u_is_axionite_foundry_target(
+        self,
+        pos: Position,
+        resource: Environment,
+    ) -> bool:
+        if resource != Environment.ORE_AXIONITE:
+            return False
+
+        foundry_pos = self.u_get_core_foundry_plan()
+        return foundry_pos is not None and pos == foundry_pos
+
+    def u_can_wrap_axionite_chain_around_core(
+        self,
+        source_pos: Position,
+        target_pos: Position,
+        resource: Environment,
+    ) -> bool:
+        if resource != Environment.ORE_AXIONITE:
+            return False
+
+        source_tile = self.map.u_get_pos_tile(source_pos)
+        if source_tile.own_core_dist != 1:
+            return False
+
+        foundry_pos = self.u_get_core_foundry_plan()
+        if foundry_pos is None:
+            return False
+
+        return target_pos.distance_squared(foundry_pos) < source_pos.distance_squared(
+            foundry_pos
+        )
 
     def u_is_supply_tile_forbidden(
         self,
@@ -865,6 +894,35 @@ class BuilderNavigationMixin:
             return (EntityType.CONVEYOR, conveyor_direction)
 
         source_tile = self.map.u_get_pos_tile(pos)
+        conveyor_target_pos = pos.add(conveyor_direction)
+        if self.u_is_axionite_foundry_target(
+            conveyor_target_pos,
+            resource,
+        ):
+            return (EntityType.CONVEYOR, conveyor_direction)
+        if self.u_is_axionite_foundry_target(
+            bridge_target,
+            resource,
+        ):
+            return (EntityType.BRIDGE, bridge_target)
+        if self.u_can_wrap_axionite_chain_around_core(
+            pos,
+            conveyor_target_pos,
+            resource,
+        ) or self.u_can_wrap_axionite_chain_around_core(
+            pos,
+            bridge_target,
+            resource,
+        ):
+            foundry_pos = self.u_get_core_foundry_plan()
+            if foundry_pos is not None:
+                if (
+                    bridge_target.distance_squared(foundry_pos)
+                    < conveyor_target_pos.distance_squared(foundry_pos)
+                ):
+                    return (EntityType.BRIDGE, bridge_target)
+            return (EntityType.CONVEYOR, conveyor_direction)
+
         bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
         bridge_dist_covered = (
             source_tile.own_core_dist - bridge_target_tile.own_core_dist
@@ -904,6 +962,11 @@ class BuilderNavigationMixin:
             if (
                 self.u_get_supply_chain_progress_key(neighbor_pos, resource)
                 >= source_progress_key
+                and not self.u_can_wrap_axionite_chain_around_core(
+                    pos,
+                    neighbor_pos,
+                    resource,
+                )
             ):
                 continue
 
@@ -955,6 +1018,9 @@ class BuilderNavigationMixin:
             return None
         if self.u_is_supply_tile_forbidden(target_tile.position, resource):
             return None
+        if self.u_is_axionite_foundry_target(target_tile.position, resource):
+            if self.u_can_host_foundry_site(target_tile.position):
+                return -1
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
@@ -1012,6 +1078,11 @@ class BuilderNavigationMixin:
                 if (
                     self.u_get_supply_chain_progress_key(target_pos, resource)
                     >= source_progress_key
+                    and not self.u_can_wrap_axionite_chain_around_core(
+                        pos,
+                        target_pos,
+                        resource,
+                    )
                 ):
                     continue
                 candidate_tiles.append(target_tile)
@@ -1084,6 +1155,9 @@ class BuilderNavigationMixin:
             return None
         if self.u_is_empty_ore_tile(target_tile.position):
             return None
+        if self.u_is_axionite_foundry_target(target_tile.position, resource):
+            if self.u_can_host_foundry_site(target_tile.position):
+                return -1
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
