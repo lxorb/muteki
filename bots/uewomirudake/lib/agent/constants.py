@@ -78,7 +78,6 @@ TURRET_TARGET_PRIORITY = (
     "enemy_bot_on_ally_tile",
     "enemy_bot_on_non_ally_tile",
     EntityType.CORE,
-    EntityType.HARVESTER,
     EntityType.BRIDGE,
     EntityType.CONVEYOR,
     EntityType.BARRIER,
