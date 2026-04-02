@@ -145,6 +145,13 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         avoid_enemy_turrets: bool = True,
     ) -> bool: ...
 
+    def u_heal_at(
+        self,
+        pos: Position,
+        move_towards: bool,
+        avoid_enemy_turrets: bool = True,
+    ) -> bool: ...
+
 
 class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_convert_to_defender(self) -> BuilderActionResult: ...

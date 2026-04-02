@@ -1328,3 +1328,65 @@ class BuilderStrategyMethodsMixin:
                 return True
 
         return False
+
+    def s_heal_own_building(self, move_towards: bool = True, hold: bool = True):
+        """
+        Heal the highest-priority damaged allied tile, preferring immediate heals.
+        
+        If any damaged allied tile is already healable this turn, only those
+        in-range candidates are considered. Otherwise the builder targets the
+        remaining visible damaged allied tiles and moves toward the best one.
+        Priorities are: core first, then tiles with a damaged own builder bot
+        standing on them, then by building type in this order: bridge,
+        conveyor, foundry, harvester, armoured conveyor, splitter, sentinel,
+        gunner, launcher, breach, road, barrier. Ties are broken by distance
+        to self and then distance to own core.
+        """
+        own_team = self.map.own_team
+
+        candidate_tiles = self.map.own_buildings_healable_in_action_range
+        if not candidate_tiles:
+            candidate_tiles = self.map.own_buildings_needing_heal
+        if not candidate_tiles:
+            return False
+
+        building_type_rank = {
+            EntityType.CORE: 0,
+            EntityType.BRIDGE: 2,
+            EntityType.CONVEYOR: 3,
+            EntityType.FOUNDRY: 4,
+            EntityType.HARVESTER: 5,
+            EntityType.ARMOURED_CONVEYOR: 6,
+            EntityType.SPLITTER: 7,
+            EntityType.SENTINEL: 8,
+            EntityType.GUNNER: 9,
+            EntityType.LAUNCHER: 10,
+            EntityType.BREACH: 11,
+            EntityType.ROAD: 12,
+            EntityType.BARRIER: 13,
+        }
+
+        def has_damaged_own_builder(tile) -> bool:
+            return bool(
+                tile.bot.id is not None
+                and tile.bot.team == own_team
+                and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
+            )
+
+        candidate_tiles = self.u_prioritize_tiles(
+            list(dict.fromkeys(candidate_tiles)),
+            lambda tile: (
+                0
+                if tile.building.entity_type == EntityType.CORE
+                else 1 if has_damaged_own_builder(tile) else 2
+            ),
+            lambda tile: building_type_rank.get(tile.building.entity_type, 99),
+            lambda tile: tile.dist_to_self,
+            lambda tile: tile.own_core_dist,
+        )
+
+        for target_tile in candidate_tiles:
+            if self.u_heal_at(target_tile.position, move_towards=move_towards):
+                return True
+
+        return False

@@ -107,10 +107,10 @@ FOUNDRY_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]
 
-# TODO
 DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
+    (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (
         BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester,
         True,

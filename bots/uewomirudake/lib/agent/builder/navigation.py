@@ -1424,3 +1424,23 @@ class BuilderNavigationMixin:
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,
         )
+
+    def u_heal_at(
+        self,
+        pos: Position,
+        move_towards: bool,
+        avoid_enemy_turrets: bool = True,
+    ) -> bool:
+        current_pos = self.map.current_pos
+        if current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ:
+            if not self.ct.can_heal(pos):
+                return False
+            self.ct.heal(pos)
+            return True
+
+        if not move_towards:
+            return False
+        return self.u_move_to(
+            pos,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+        )
