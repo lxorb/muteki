@@ -219,3 +219,8 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
     ) -> BuilderActionResult: ...
+
+    def s_move_toward_enemy_core(
+        self,
+        move_towards: bool = True,
+    ) -> BuilderActionResult: ...

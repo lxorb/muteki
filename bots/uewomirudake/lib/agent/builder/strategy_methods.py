@@ -1258,3 +1258,13 @@ class BuilderStrategyMethodsMixin:
                 return True
 
         return False
+
+    def s_move_toward_enemy_core(self, move_towards: bool = True):
+        """
+        Placeholder harassment step for advancing toward the enemy core.
+
+        This is intentionally a no-op for now so the strategy entry can be
+        added and invoked safely without changing builder behavior yet.
+        """
+        _ = move_towards
+        return False
