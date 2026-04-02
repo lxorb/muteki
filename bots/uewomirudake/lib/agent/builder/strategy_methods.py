@@ -38,8 +38,14 @@ class BuilderStrategyMethodsMixin:
         to the builder and the own core. The supplier type and target are
         chosen by `u_get_supplier_build_plan(...)`.
         """
-        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
+        from lib.agent.constants import (
+            MAX_CORE_ORE_DIRECT_DIST,
+            PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
+        )
         from .strategies import SCAVENGER_STRATEGY
+
+        if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
+            return False
 
         own_team = self.map.own_team
         attack_enemy_passable = False
@@ -372,6 +378,11 @@ class BuilderStrategyMethodsMixin:
         the builder, and relies on the supplier-plan helper to choose whether
         the tile should become a conveyor or a bridge plus its optimal target.
         """
+        from lib.agent.constants import PREVENT_SUPPLY_LINKS_TILL_HARVESTER
+
+        if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
+            return False
+
         own_team = self.map.own_team
         supply_chain_label = self.u_get_supply_chain_label_for_resource(resource)
         if supply_chain_label == SupplyChainLabel.NONE:
@@ -935,7 +946,12 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_block_titanium(self, move_towards: bool = True, hold: bool = True):
+    def s_block_titanium(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        only_out_of_reach: bool = True,
+    ):
         """
         Build a barrier on the closest known empty titanium tile.
 
@@ -943,12 +959,16 @@ class BuilderStrategyMethodsMixin:
         distance, and delegates build, movement, and hold handling to
         `u_build_at`.
         """
+        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
+
         current_pos = self.map.current_pos
 
         titanium_tiles = self.u_filter_tiles(
             list(dict.fromkeys(self.map.known_accessible_titanium_tiles)),
             lambda tile: tile.environment == Environment.ORE_TITANIUM,
             lambda tile: tile.building.id is None,
+            lambda tile: (not only_out_of_reach)
+            or tile.own_core_dist > MAX_CORE_ORE_DIRECT_DIST,
         )
         if not titanium_tiles:
             return False

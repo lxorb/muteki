@@ -46,6 +46,7 @@ SCAVENGER_STRATEGY = [
         False,
         False,
     ),
+    (BuilderStrategyMethodsMixin.s_block_titanium, True),
     (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,

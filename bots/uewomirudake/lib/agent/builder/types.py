@@ -215,6 +215,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         hold: bool = True,
+        only_out_of_reach: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_attack_enemy_harvester_supply_link(
