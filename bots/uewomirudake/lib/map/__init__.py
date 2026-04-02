@@ -2,6 +2,7 @@ from array import array
 from collections import deque
 from collections.abc import Iterable
 from enum import Enum
+from heapq import heappop, heappush
 import time
 
 from cambc import (
@@ -854,9 +855,9 @@ class Map:
             ):
                 return cached_result
 
-        # One BFS from the core with this tile blocked gives the alternative
-        # path length for every adjacent tile, which is much cheaper than
-        # rerunning BFS once per neighbor.
+        # One weighted shortest-path search from the core with this tile
+        # blocked gives the alternative path length for every adjacent tile,
+        # which is much cheaper than rerunning the search once per neighbor.
         bfs_epoch = self.u_run_own_core_distance_bfs_avoiding_tile(blocked_idx)
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         own_core_dist_by_index = self.own_core_dist_by_index
@@ -901,8 +902,7 @@ class Map:
         # clearing full-size lists on every chokepoint query.
         self.chokepoint_epoch += 1
         chokepoint_epoch = self.chokepoint_epoch
-        queue = self.chokepoint_queue_buffer_by_index
-        queue.clear()
+        heap: list[tuple[int, int]] = []
         seen_epoch_by_index = self.chokepoint_seen_epoch_by_index
         dist_by_index = self.chokepoint_dist_by_index
         own_core_source_indices = self.own_core_source_indices
@@ -915,20 +915,18 @@ class Map:
                 continue
             seen_epoch_by_index[source_idx] = chokepoint_epoch
             dist_by_index[source_idx] = 0
-            queue.append(source_idx)
+            heappush(heap, (0, source_idx))
 
-        queue_head = 0
-
-        while queue_head < len(queue):
-            current_idx = queue[queue_head]
-            queue_head += 1
-            current_dist = dist_by_index[current_idx]
+        while heap:
+            current_dist, current_idx = heappop(heap)
+            if (
+                seen_epoch_by_index[current_idx] != chokepoint_epoch
+                or current_dist != dist_by_index[current_idx]
+            ):
+                continue
 
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if (
-                    neighbor_idx == blocked_idx
-                    or seen_epoch_by_index[neighbor_idx] == chokepoint_epoch
-                ):
+                if neighbor_idx == blocked_idx:
                     continue
 
                 if (
@@ -937,9 +935,19 @@ class Map:
                 ):
                     continue
 
+                next_dist = current_dist + self.u_get_core_distance_step_cost(
+                    current_idx,
+                    neighbor_idx,
+                )
+                if (
+                    seen_epoch_by_index[neighbor_idx] == chokepoint_epoch
+                    and next_dist >= dist_by_index[neighbor_idx]
+                ):
+                    continue
+
                 seen_epoch_by_index[neighbor_idx] = chokepoint_epoch
-                dist_by_index[neighbor_idx] = current_dist + 1
-                queue.append(neighbor_idx)
+                dist_by_index[neighbor_idx] = next_dist
+                heappush(heap, (next_dist, neighbor_idx))
 
         return chokepoint_epoch
 
@@ -1202,6 +1210,19 @@ class Map:
                 distance_by_index[neighbor_idx] = next_dist
                 queue.append(neighbor_idx)
 
+    def u_get_core_distance_step_cost(
+        self,
+        source_idx: int,
+        target_idx: int,
+    ) -> int:
+        source_x = source_idx // self.height
+        source_y = source_idx % self.height
+        target_x = target_idx // self.height
+        target_y = target_idx % self.height
+        if abs(source_x - target_x) + abs(source_y - target_y) == 1:
+            return 1
+        return 2
+
     def u_enqueue_core_distance_index(
         self,
         idx: int,
@@ -1249,13 +1270,15 @@ class Map:
                 best_neighbor_dist = CORE_DIST_INF
                 for neighbor_idx in neighbor_indices_by_index[idx]:
                     neighbor_dist = distance_by_index[neighbor_idx]
+                    if neighbor_dist >= CORE_DIST_INF:
+                        continue
+                    neighbor_dist += self.u_get_core_distance_step_cost(
+                        idx,
+                        neighbor_idx,
+                    )
                     if neighbor_dist < best_neighbor_dist:
                         best_neighbor_dist = neighbor_dist
-                updated_dist = (
-                    CORE_DIST_INF
-                    if best_neighbor_dist >= CORE_DIST_INF
-                    else best_neighbor_dist + 1
-                )
+                updated_dist = best_neighbor_dist
 
             if updated_dist == distance_by_index[idx]:
                 continue
@@ -1273,30 +1296,32 @@ class Map:
             return
 
         distance_by_index[:] = self.core_inf_distances_by_index
-        queue = self.distance_queue_buffer_by_index
-        queue.clear()
-        queue.extend(source_indices)
-        queue_head = 0
+        heap: list[tuple[int, int]] = []
         for source_idx in source_indices:
             distance_by_index[source_idx] = 0
+            heappush(heap, (0, source_idx))
 
         neighbor_indices_by_index = self.neighbor_indices_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
 
-        while queue_head < len(queue):
-            current_idx = queue[queue_head]
-            queue_head += 1
-            current_dist = distance_by_index[current_idx]
+        while heap:
+            current_dist, current_idx = heappop(heap)
+            if current_dist != distance_by_index[current_idx]:
+                continue
 
             for neighbor_idx in neighbor_indices_by_index[current_idx]:
-                if (
-                    not intrinsic_passable_by_index[neighbor_idx]
-                    or distance_by_index[neighbor_idx] != CORE_DIST_INF
-                ):
+                if not intrinsic_passable_by_index[neighbor_idx]:
                     continue
 
-                distance_by_index[neighbor_idx] = current_dist + 1
-                queue.append(neighbor_idx)
+                next_dist = current_dist + self.u_get_core_distance_step_cost(
+                    current_idx,
+                    neighbor_idx,
+                )
+                if next_dist >= distance_by_index[neighbor_idx]:
+                    continue
+
+                distance_by_index[neighbor_idx] = next_dist
+                heappush(heap, (next_dist, neighbor_idx))
 
     def u_refresh_dist_to_self(self) -> None:
         source_idx = self.current_pos.x * self.height + self.current_pos.y
