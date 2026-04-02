@@ -72,7 +72,6 @@ FOUNDRY_STRATEGY = [
         True,
         Environment.ORE_AXIONITE,
     ),
-    # TODO: -> for axionite supply chain
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,

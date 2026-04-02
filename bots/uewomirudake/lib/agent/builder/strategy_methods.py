@@ -3,6 +3,7 @@ from heapq import heapify, heappop
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.builder.constants import (
+    BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN,
     FOUNDRY_WAIT_RADIUS_SQ,
     MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST,
 )
@@ -845,7 +846,6 @@ class BuilderStrategyMethodsMixin:
         foundry_pos = self.u_get_core_foundry_plan()
         if foundry_pos is None:
             return False
-
         foundry_tile = self.map.u_get_pos_tile(foundry_pos)
         if (
             foundry_tile.building.entity_type == EntityType.FOUNDRY
@@ -854,9 +854,11 @@ class BuilderStrategyMethodsMixin:
             self.map.has_built_foundry = True
             self.map.built_foundry_index = foundry_tile.index
             return False
-        if not self.u_foundry_site_has_visible_axionite_supply(foundry_pos):
+        if (
+            not BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN
+            and not self.u_foundry_site_has_visible_axionite_supply(foundry_pos)
+        ):
             return False
-
         titanium_cost, axionite_cost = self.ct.get_foundry_cost()
         can_afford_foundry = (
             self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
