@@ -1305,7 +1305,12 @@ class BuilderNavigationMixin:
                 and building_type != EntityType.BARRIER
             )
         )
-        if hold and can_hold_build_target and not affordable:
+        if (
+            hold
+            and can_hold_build_target
+            and not affordable
+            and current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ
+        ):
             return True
 
         if current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ and (
