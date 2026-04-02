@@ -352,8 +352,7 @@ class Tile:
                         prev_team,
                     )
 
-        if id_changed or self.building.team != self.map.own_team:
-            self.building.hp = ct.get_hp(self.building.id)
+        self.building.hp = ct.get_hp(self.building.id)
         if self.building.entity_type in STORED_RESOURCE_TRACKED_ENTITY_TYPES:
             stored_resource = ct.get_stored_resource(self.building.id)
             if stored_resource is not None:

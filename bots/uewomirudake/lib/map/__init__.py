@@ -294,6 +294,13 @@ class Map:
 
                 if building.team == self.own_team:
                     building_damaged = building.hp < self.ct.get_max_hp(building.id)
+                    if (
+                        building.entity_type == EntityType.CONVEYOR
+                        and building.hp > 16
+                    ):
+                        building_damaged = False
+                    if building.entity_type == EntityType.ROAD:
+                        building_damaged = False
                     own_bot_damaged = (
                         tile.bot.id is not None
                         and tile.bot.team == self.own_team

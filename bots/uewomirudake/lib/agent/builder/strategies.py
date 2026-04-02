@@ -84,13 +84,6 @@ FOUNDRY_STRATEGY = [
         True,
         Environment.ORE_AXIONITE,
     ),
-    # TODO: -> for axionite harvester
-    # (
-    #     BuilderStrategyMethodsMixin.s_surround_harvester,
-    #     True,
-    #     True,
-    #     Environment.ORE_AXIONITE,
-    # ),
     (
         BuilderStrategyMethodsMixin.s_build_missing_supply_link,
         True,
