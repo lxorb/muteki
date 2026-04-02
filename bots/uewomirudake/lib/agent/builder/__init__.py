@@ -1,4 +1,4 @@
-from cambc import Controller, Environment
+from cambc import Controller, EntityType, Environment
 import time
 
 from lib.agent import Agent
@@ -33,6 +33,8 @@ class BuilderAgent(
     last_turn_completed: bool
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
+    harvesters_built: int
+    last_built_entity_type: EntityType | None
 
     def __init__(self, strategy: list[StrategyEntry] | None):
         Agent.__init__(self)
@@ -43,6 +45,8 @@ class BuilderAgent(
         self.supply_patrol_index = 0
         self.pending_missing_supply_link_index = None
         self.pending_missing_supply_link_resource = None
+        self.harvesters_built = 0
+        self.last_built_entity_type = None
 
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos

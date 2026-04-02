@@ -6,13 +6,13 @@ from lib.agent.constants import (
     AVOID_EMPTY_ORE_BRIDGE_TARGETS,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
-    ENEMY_TURRET_TYPES,
     ATTACK_TURRET_FEEDER_TYPES,
-    OWN_SUPPLIER_TYPES,
     DIRECTIONAL_BUILDING_TYPES,
+    ENEMY_TURRET_TYPES,
+    FOUNDRY_WAIT_RADIUS_SQ,
     NONDIRECTIONAL_BUILDING_TYPES,
+    OWN_SUPPLIER_TYPES,
 )
-from lib.agent.builder.constants import FOUNDRY_WAIT_RADIUS_SQ
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -1272,6 +1272,7 @@ class BuilderNavigationMixin:
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
+        self.last_built_entity_type = None
         print(
             "Build target:",
             building_type,
@@ -1353,6 +1354,7 @@ class BuilderNavigationMixin:
                             )
                         return False
                     build_method(pos, facing_direction)
+                    self.last_built_entity_type = building_type
                     if building_type == EntityType.CONVEYOR:
                         next_direction = self.map.u_get_direction_between(
                             current_pos,
@@ -1382,6 +1384,7 @@ class BuilderNavigationMixin:
                             )
                         return False
                     build_method(pos, target_pos)
+                    self.last_built_entity_type = building_type
                     return True
 
                 if building_type in NONDIRECTIONAL_BUILDING_TYPES:
@@ -1395,6 +1398,7 @@ class BuilderNavigationMixin:
                             )
                         return False
                     build_method(pos)
+                    self.last_built_entity_type = building_type
                     return True
 
                 raise ValueError(f"Unsupported builder target type: {building_type}")

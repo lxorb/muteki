@@ -5,6 +5,7 @@ from .types import StrategyEntry
 
 
 INITRES_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,
@@ -45,6 +46,7 @@ SCAVENGER_STRATEGY = [
         False,
         False,
     ),
+    (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,
@@ -65,6 +67,7 @@ HARASSMENT_STRATEGY = [
 
 # TODO
 FOUNDRY_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (BuilderStrategyMethodsMixin.s_insert_core_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_build_core_foundry, True, True),
     (

@@ -22,8 +22,13 @@ SupplierBuildPlan: TypeAlias = tuple[EntityType | None, Direction | Position | N
 class BuilderCommonSelf(Protocol):
     ct: Controller
     map: Map
+    strategy: list[StrategyEntry]
+    last_strategy_index: int
+    last_turn_completed: bool
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
+    harvesters_built: int
+    last_built_entity_type: EntityType | None
 
     def u_filter_tiles(
         self,
@@ -142,6 +147,8 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
+    def s_convert_to_defender(self) -> BuilderActionResult: ...
+
     def s_insert_core_splitter(
         self,
         move_towards: bool = True,

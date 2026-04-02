@@ -17,6 +17,19 @@ NS_PER_TURN: int = 2_000_000
 BRIDGE_PREFERRED_DIST: int = 6
 BUILD_CONVEYOR_FOR_CHOKEPOINT: bool = False
 AVOID_EMPTY_ORE_BRIDGE_TARGETS: bool = False
+HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
+MAX_CORE_ORE_DIRECT_DIST: int = 20
+
+# Builder tuning constants.
+# `BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN` toggles when
+# `s_build_core_foundry()` is allowed to commit to the planned foundry site.
+# Building the foundry first guarantees it can still be afforded before
+# titanium costs scale too high, but may force a suboptimal placement.
+# Building the supply chain first allows for optimal foundry placement, but
+# increases the risk that the foundry later becomes too expensive to build.
+FOUNDRY_WAIT_RADIUS_SQ: int = 8
+MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST: int = 0  # TODO: Unused
+BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN: bool = True
 
 ### ENTITY TYPE GROUPS ###
 ATTACK_TURRET_FEEDER_TYPES: set[EntityType] = {
@@ -103,9 +116,9 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
 INITIAL_BB_ORDER: list[list[StrategyEntry]] = [
     SCAVENGER_STRATEGY,
     SCAVENGER_STRATEGY,
-    SCAVENGER_STRATEGY,
-    SCAVENGER_STRATEGY,
-    FOUNDRY_STRATEGY,
+    # SCAVENGER_STRATEGY,
+    # SCAVENGER_STRATEGY,
+    # FOUNDRY_STRATEGY,
     # HARASSMENT_STRATEGY,
 ]
 FURTHER_BB_ROTATION: list[list[StrategyEntry]] = [
