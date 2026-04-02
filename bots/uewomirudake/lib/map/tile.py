@@ -57,6 +57,7 @@ class TileBuilding:
     entity_type: EntityType | None
     prev_entity_type: EntityType | None
     team: Team | None
+    prev_team: Team | None
     targets: list["Tile"]
     prev_targets: list["Tile"]
     hp: int | None
@@ -69,11 +70,12 @@ class Tile:
     def __init__(self, position: Position, map: "Map") -> None:
         self.map: Map = map
         self.position: Position = position
-        self.index: int = position.x * map.height + position.y
+        self.index: int = map.u_to_index(position)
 
         self.environment: Environment | None = None
         self.is_passable: bool = False
         self.building: TileBuilding = TileBuilding(
+            None,
             None,
             None,
             None,
@@ -98,7 +100,6 @@ class Tile:
         self.in_own_resource_range: int = 0
 
         self.last_seen_turn: int = -1
-        self.last_titanium_onit_turn: int = -1
 
         self.last_patrolled_index: int = -1
 
@@ -226,6 +227,7 @@ class Tile:
             None,
             None,
             None,
+            None,
             [],
             [],
             None,
@@ -246,9 +248,6 @@ class Tile:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)
         self.last_seen_turn = current_round
-
-        if self.environment == Environment.ORE_TITANIUM:
-            self.last_titanium_onit_turn = current_round
 
         bot_id = self.map.visible_builder_bot_ids_by_index.get(self.index)
         building_id = self.map.visible_building_ids_by_index.get(self.index)
@@ -293,11 +292,9 @@ class Tile:
     def update_building(self, id_changed: bool) -> None:
         ct = self.map.ct
         if id_changed:
-            prev_entity_type = self.building.entity_type
-            prev_targets = self.building.targets.copy()
-            prev_team = self.building.team
             self.building.prev_entity_type = self.building.entity_type
             self.building.prev_targets = self.building.targets.copy()
+            self.building.prev_team = self.building.team
             self.building.entity_type = ct.get_entity_type(self.building.id)
             self.building.team = ct.get_team(self.building.id)
             tracks_targets = self.u_tracks_building_targets()
@@ -323,11 +320,7 @@ class Tile:
                 if tracks_targets
                 else []
             )
-            self.update_target_zones_building(
-                prev_entity_type,
-                prev_targets,
-                prev_team,
-            )
+            self.update_target_zones_building()
         else:
             if (
                 self.u_tracks_building_targets()
@@ -335,22 +328,16 @@ class Tile:
             ):
                 new_direction = ct.get_direction(self.building.id)
                 if new_direction != self.building.direction:
-                    prev_entity_type = self.building.entity_type
-                    prev_targets = self.building.targets.copy()
-                    prev_team = self.building.team
                     self.building.prev_entity_type = self.building.entity_type
                     self.building.prev_targets = self.building.targets.copy()
+                    self.building.prev_team = self.building.team
                     self.building.direction = new_direction
                     self.building.targets = self.get_targets(
                         self.building.entity_type,
                         self.building.id,
                         direction=self.building.direction,
                     )
-                    self.update_target_zones_building(
-                        prev_entity_type,
-                        prev_targets,
-                        prev_team,
-                    )
+                    self.update_target_zones_building()
 
         self.building.hp = ct.get_hp(self.building.id)
         if self.building.entity_type in STORED_RESOURCE_TRACKED_ENTITY_TYPES:
@@ -381,35 +368,29 @@ class Tile:
             case EntityType.BUILDER_BOT:
                 return [
                     tiles_by_index[idx]
-                    for idx in self.map.builder_action_target_indices_by_index[
-                        self.index
-                    ]
+                    for idx in self.map.u_iter_builder_action_target_indices(self.index)
                 ]
             case EntityType.CORE:
                 return [
                     tiles_by_index[idx]
-                    for idx in self.map.core_footprint_target_indices_by_index[
-                        self.index
-                    ]
+                    for idx in self.map.u_iter_core_footprint_target_indices(self.index)
                 ]
             case EntityType.HARVESTER | EntityType.FOUNDRY:
                 return [
                     tiles_by_index[idx]
-                    for idx in self.map.cardinal_neighbor_indices_by_index[self.index]
+                    for idx in self.map.u_iter_cardinal_neighbor_indices(self.index)
                 ]
             case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR:
                 if direction is None:
                     return []
-                target_idx = self.map.neighbor_index_by_direction_by_index[
-                    self.index
-                ].get(direction)
+                target_idx = self.map.u_get_neighbor_index_by_direction(
+                    self.index,
+                    direction,
+                )
                 return [] if target_idx is None else [tiles_by_index[target_idx]]
             case EntityType.SPLITTER:
                 if direction is None:
                     return []
-                neighbor_idx_by_direction = (
-                    self.map.neighbor_index_by_direction_by_index[self.index]
-                )
                 return [
                     tiles_by_index[target_idx]
                     for output_direction in (
@@ -417,7 +398,12 @@ class Tile:
                         direction.rotate_left().rotate_left(),
                         direction.rotate_right().rotate_right(),
                     )
-                    if (target_idx := neighbor_idx_by_direction.get(output_direction))
+                    if (
+                        target_idx := self.map.u_get_neighbor_index_by_direction(
+                            self.index,
+                            output_direction,
+                        )
+                    )
                     is not None
                 ]
             case EntityType.BRIDGE:
@@ -516,22 +502,18 @@ class Tile:
                             or target.in_enemy_launcher_pickup_zone > 0
                         )
 
-    def update_target_zones_building(
-        self,
-        prev_entity_type: EntityType | None,
-        prev_targets: list["Tile"],
-        prev_team: Team | None,
+    def update_target_zones_building( self
     ) -> None:
         if (
-            self.building.entity_type == prev_entity_type
-            and Counter(prev_targets) == Counter(self.building.targets)
-            and self.building.team == prev_team
+            self.building.entity_type == self.building.prev_entity_type
+            and Counter(self.building.prev_targets) == Counter(self.building.targets)
+            and self.building.team == self.building.prev_team
         ):
             return
         self.update_target_zones_building_by(
-            prev_targets,
-            prev_entity_type,
-            prev_team,
+            self.building.prev_targets,
+            self.building.prev_entity_type,
+            self.building.prev_team,
             -1,
         )
         self.update_target_zones_building_by(

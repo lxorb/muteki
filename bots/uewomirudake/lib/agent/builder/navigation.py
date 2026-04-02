@@ -287,7 +287,8 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         candidate_tiles: list[tuple[tuple[int, ...], Position]] = []
 
-        for tile in self.map.tiles_by_index:
+        for tile_idx in self.map.u_iter_active_tile_indices():
+            tile = self.map.tiles_by_index[tile_idx]
             tile_pos = tile.position
             if (
                 tile_pos == foundry_pos
@@ -516,7 +517,8 @@ class BuilderNavigationMixin:
                 seen_indices.add(next_idx)
                 queue.append(next_pos)
 
-            for target_tile in tiles_by_index:
+            for target_idx in self.map.u_iter_active_tile_indices():
+                target_tile = tiles_by_index[target_idx]
                 target_pos_candidate = target_tile.position
                 if target_pos_candidate == current_pos:
                     continue
@@ -1069,33 +1071,33 @@ class BuilderNavigationMixin:
         source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
         candidate_tiles = []
 
-        for column in self.map.matrix:
-            for target_tile in column:
-                target_pos = target_tile.position
-                if target_pos == pos:
-                    continue
-                if (
-                    pos.distance_squared(target_pos)
-                    > GameConstants.BRIDGE_TARGET_RADIUS_SQ
-                ):
-                    continue
-                if abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1:
-                    continue
-                if target_tile.is_core_of(
-                    self.map.own_team
-                ) and not self.u_supply_chain_targets_core(resource):
-                    continue
-                if (
-                    self.u_get_supply_chain_progress_key(target_pos, resource)
-                    >= source_progress_key
-                    and not self.u_can_wrap_axionite_chain_around_core(
-                        pos,
-                        target_pos,
-                        resource,
-                    )
-                ):
-                    continue
-                candidate_tiles.append(target_tile)
+        for target_idx in self.map.u_iter_active_tile_indices():
+            target_tile = self.map.tiles_by_index[target_idx]
+            target_pos = target_tile.position
+            if target_pos == pos:
+                continue
+            if (
+                pos.distance_squared(target_pos)
+                > GameConstants.BRIDGE_TARGET_RADIUS_SQ
+            ):
+                continue
+            if abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1:
+                continue
+            if target_tile.is_core_of(
+                self.map.own_team
+            ) and not self.u_supply_chain_targets_core(resource):
+                continue
+            if (
+                self.u_get_supply_chain_progress_key(target_pos, resource)
+                >= source_progress_key
+                and not self.u_can_wrap_axionite_chain_around_core(
+                    pos,
+                    target_pos,
+                    resource,
+                )
+            ):
+                continue
+            candidate_tiles.append(target_tile)
 
         if not candidate_tiles:
             return None

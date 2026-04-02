@@ -58,7 +58,6 @@ class BuilderStrategyMethodsMixin:
         if supply_chain_label == SupplyChainLabel.NONE:
             return False
         tiles_by_index = self.map.tiles_by_index
-        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
         replaceable_building_types = {EntityType.ROAD, EntityType.BARRIER}
         supplier_plan_by_index: dict[
             int, tuple[EntityType | None, Direction | Position | None]
@@ -91,7 +90,7 @@ class BuilderStrategyMethodsMixin:
             has_own_supply_link = False
 
             for safe_order, adjacent_idx in enumerate(
-                cardinal_neighbor_indices_by_index[harvester_tile.index]
+                self.map.u_iter_cardinal_neighbor_indices(harvester_tile.index)
             ):
                 adjacent_tile = tiles_by_index[adjacent_idx]
                 if adjacent_tile.is_enemy_turret_target_tile:
@@ -203,7 +202,6 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         tiles_by_index = self.map.tiles_by_index
         dist_to_self_by_index = self.map.dist_to_self_by_index
-        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
         build_plan_by_index: dict[
             tuple[int, int], tuple[EntityType | None, Direction | None]
         ] = {}
@@ -231,9 +229,9 @@ class BuilderStrategyMethodsMixin:
             return build_plan_by_index[plan_key]
 
         for harvester_tile in self.map.own_harvesters_in_vision:
-            for adjacent_idx in cardinal_neighbor_indices_by_index[
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
                 harvester_tile.index
-            ]:
+            ):
                 if adjacent_idx in seen_candidate_indices:
                     continue
                 seen_candidate_indices.add(adjacent_idx)
@@ -532,14 +530,13 @@ class BuilderStrategyMethodsMixin:
 
         own_team = self.map.own_team
         if resource == Environment.ORE_TITANIUM:
-            ore_positions = self.map.known_accessible_titanium_tiles
+            ore_indices = self.map.known_accessible_titanium_indices
         elif resource == Environment.ORE_AXIONITE:
-            ore_positions = self.map.known_accessible_axionite_tiles
+            ore_indices = self.map.known_accessible_axionite_indices
         else:
             return False
         current_tile = self.map.u_get_pos_tile(current_pos)
         tiles_by_index = self.map.tiles_by_index
-        cardinal_neighbor_indices_by_index = self.map.cardinal_neighbor_indices_by_index
 
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_positions(
@@ -556,7 +553,7 @@ class BuilderStrategyMethodsMixin:
             return False
 
         def has_orthogonally_adjacent_supply_link(tile_index: int) -> bool:
-            for adjacent_idx in cardinal_neighbor_indices_by_index[tile_index]:
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile_index):
                 adjacent_tile = tiles_by_index[adjacent_idx]
                 if adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES:
                     return True
@@ -573,7 +570,7 @@ class BuilderStrategyMethodsMixin:
             candidate_entries: list[tuple[tuple[int, int, int], int]] = []
 
             for safe_order, adjacent_idx in enumerate(
-                cardinal_neighbor_indices_by_index[current_tile.index]
+                self.map.u_iter_cardinal_neighbor_indices(current_tile.index)
             ):
                 adjacent_tile = tiles_by_index[adjacent_idx]
                 if adjacent_tile.is_enemy_turret_target_tile:
@@ -668,7 +665,7 @@ class BuilderStrategyMethodsMixin:
             )
 
         candidate_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(ore_positions)),
+            [tiles_by_index[idx] for idx in dict.fromkeys(ore_indices)],
             lambda tile: tile.environment == resource,
             can_use_tile,
             lambda tile: tile.bot.id is None or tile.position == current_pos,
@@ -963,7 +960,10 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
 
         titanium_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(self.map.known_accessible_titanium_tiles)),
+            [
+                self.map.tiles_by_index[idx]
+                for idx in dict.fromkeys(self.map.known_accessible_titanium_indices)
+            ],
             lambda tile: tile.environment == Environment.ORE_TITANIUM,
             lambda tile: tile.building.id is None,
             lambda tile: (not only_out_of_reach)
@@ -1159,9 +1159,8 @@ class BuilderStrategyMethodsMixin:
         """
         own_team = self.map.own_team
         current_pos = self.map.current_pos
-        current_idx = current_pos.x * self.map.height + current_pos.y
+        current_idx = self.map.u_to_index(current_pos)
         tiles_by_index = self.map.tiles_by_index
-        neighbor_indices_by_index = self.map.neighbor_indices_by_index
         known_own_supply_link_indices = self.map.known_own_supply_link_indices
         dist_to_self_by_index = self.map.dist_to_self_by_index
         own_core_dist_by_index = self.map.own_core_dist_by_index
@@ -1174,7 +1173,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 current_tile.last_patrolled_index = self.supply_patrol_index
 
-            for adjacent_idx in neighbor_indices_by_index[current_idx]:
+            for adjacent_idx in self.map.u_iter_neighbor_indices(current_idx):
                 adjacent_tile = tiles_by_index[adjacent_idx]
                 if (
                     adjacent_tile.building.team == own_team

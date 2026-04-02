@@ -36,7 +36,7 @@ class BuilderAgent(
     harvesters_built: int
     last_built_entity_type: EntityType | None
 
-    def __init__(self, strategy: list[StrategyEntry] | None):
+    def __init__(self, strategy: list[StrategyEntry] | None = None):
         Agent.__init__(self)
         self.strategy = list(strategy or [])
         self.last_strategy_index = -1
