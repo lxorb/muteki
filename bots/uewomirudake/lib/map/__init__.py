@@ -146,9 +146,9 @@ class Map:
         self.core_footprint_target_indices_by_index = array("H", [0]) * (
             self.INITIAL_MAP_SIZE * self.MAX_CORE_FOOTPRINT_TARGET_COUNT
         )
-        self.attackable_target_indices_cache: dict[
-            tuple[int, EntityType, Direction],
-            tuple[int, ...],
+        self.attackable_target_offset_cache: dict[
+            tuple[EntityType, Direction],
+            tuple[tuple[int, int], ...],
         ] = {}
         self._build_index_caches()
 
@@ -274,6 +274,59 @@ class Map:
                     mask[start : start + height] = b"\x01" * height
                 self._active_mask_by_dimensions[(width, height)] = bytes(mask)
 
+        self._build_attackable_target_offset_cache()
+
+    def _build_attackable_target_offset_cache(self) -> None:
+        max_width = self.INITIAL_WIDTH
+        max_height = self.INITIAL_HEIGHT
+        source_pos = Position(max_width // 2, max_height // 2)
+        cache = self.attackable_target_offset_cache
+
+        for direction in DIRECTIONS:
+            cache[(EntityType.GUNNER, direction)] = tuple(
+                (target_x - source_pos.x, target_y - source_pos.y)
+                for target_x in range(max_width)
+                for target_y in range(max_height)
+                if self.u_gunner_covers_target(
+                    source_pos,
+                    direction,
+                    Position(target_x, target_y),
+                    GameConstants.GUNNER_VISION_RADIUS_SQ,
+                )
+            )
+
+            cache[(EntityType.SENTINEL, direction)] = tuple(
+                (target_x - source_pos.x, target_y - source_pos.y)
+                for target_x in range(max_width)
+                for target_y in range(max_height)
+                if self.u_sentinel_covers_target(
+                    source_pos,
+                    direction,
+                    Position(target_x, target_y),
+                    GameConstants.SENTINEL_VISION_RADIUS_SQ,
+                )
+            )
+
+            cache[(EntityType.BREACH, direction)] = tuple(
+                (target_x - source_pos.x, target_y - source_pos.y)
+                for target_x in range(max_width)
+                for target_y in range(max_height)
+                if self.u_breach_covers_target(
+                    source_pos,
+                    direction,
+                    Position(target_x, target_y),
+                )
+            )
+
+        cache[(EntityType.LAUNCHER, Direction.NORTH)] = tuple(
+            (target_x - source_pos.x, target_y - source_pos.y)
+            for target_x in range(max_width)
+            for target_y in range(max_height)
+            if 0
+            < source_pos.distance_squared(Position(target_x, target_y))
+            <= GameConstants.LAUNCHER_VISION_RADIUS_SQ
+        )
+
     def _first_round_init(self, ct: Controller) -> None:
         self.ct = ct
         self.width = ct.get_map_width()
@@ -358,10 +411,12 @@ class Map:
         self.stopwatch.start()
 
         self._reset_turn_state()
+        self.stopwatch.lap("Reset turn state")
 
         self.tiles_in_vision = [
             self.u_get_pos_tile(pos) for pos in self.ct.get_nearby_tiles()
         ]
+        self.stopwatch.lap("Nearby tiles")
 
         for unit_id in self.ct.get_nearby_units():
             if self.ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
@@ -369,20 +424,22 @@ class Map:
             pos = self.ct.get_position(unit_id)
             if self.u_is_in_bounds(pos):
                 self.visible_builder_bot_ids_by_index[self.u_to_index(pos)] = unit_id
+        self.stopwatch.lap("Nearby units")
 
         for building_id in self.ct.get_nearby_buildings():
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
                 self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
+        self.stopwatch.lap("Nearby buildings")
 
         for tile in self.tiles_in_vision:
             tile.update_attributes()
 
-        self.stopwatch.lap("Attributes")
+        self.stopwatch.lap("Tile attributes")
 
         self.u_update_visible_map_caches()
 
-        self.stopwatch.lap("Caches")
+        self.stopwatch.lap("Visible caches")
 
         if self.own_core_center_pos is None:
             self.u_calc_core_center_positions()
@@ -409,23 +466,19 @@ class Map:
         turret_type: EntityType,
         direction: Direction,
     ) -> tuple[int, ...]:
-        cache_key = (source_idx, turret_type, direction)
-        cached_indices = self.attackable_target_indices_cache.get(cache_key)
-        if cached_indices is not None:
-            return cached_indices
+        if not self.u_is_index_active(source_idx):
+            return ()
 
-        source_pos = self.tiles_by_index[source_idx].position
-        target_indices = tuple(
-            self.u_to_index(pos)
-            for pos in self.ct.get_attackable_tiles_from(
-                source_pos,
-                direction,
-                turret_type,
-            )
-            if self.u_is_in_bounds(pos)
+        source_x, source_y = self.u_index_to_xy(source_idx)
+        if turret_type == EntityType.LAUNCHER:
+            direction = Direction.NORTH
+
+        return tuple(
+            self.u_to_index_xy(target_x, target_y)
+            for dx, dy in self.attackable_target_offset_cache[(turret_type, direction)]
+            if 0 <= (target_x := source_x + dx) < self.width
+            and 0 <= (target_y := source_y + dy) < self.height
         )
-        self.attackable_target_indices_cache[cache_key] = target_indices
-        return target_indices
 
     def u_update_visible_map_caches(self) -> None:
         self.u_update_symmetry_from_visible_tiles()
