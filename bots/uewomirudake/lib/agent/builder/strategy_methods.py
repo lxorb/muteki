@@ -1337,9 +1337,9 @@ class BuilderStrategyMethodsMixin:
         remaining visible damaged allied tiles and moves toward the best one.
         Priorities are: core first, then tiles with a damaged own builder bot
         standing on them, then by building type in this order: bridge,
-        conveyor, foundry, harvester, armoured conveyor, splitter, sentinel,
-        gunner, launcher, breach, road, barrier. Ties are broken by distance
-        to self and then distance to own core.
+        conveyor, road, foundry, harvester, armoured conveyor, splitter,
+        sentinel, gunner, launcher, breach, barrier. Ties are broken by
+        distance to self and then distance to own core.
         """
         own_team = self.map.own_team
 
@@ -1353,15 +1353,15 @@ class BuilderStrategyMethodsMixin:
             EntityType.CORE: 0,
             EntityType.BRIDGE: 2,
             EntityType.CONVEYOR: 3,
-            EntityType.FOUNDRY: 4,
-            EntityType.HARVESTER: 5,
-            EntityType.ARMOURED_CONVEYOR: 6,
-            EntityType.SPLITTER: 7,
-            EntityType.SENTINEL: 8,
-            EntityType.GUNNER: 9,
-            EntityType.LAUNCHER: 10,
-            EntityType.BREACH: 11,
-            EntityType.ROAD: 12,
+            EntityType.ROAD: 4,
+            EntityType.FOUNDRY: 5,
+            EntityType.HARVESTER: 6,
+            EntityType.ARMOURED_CONVEYOR: 7,
+            EntityType.SPLITTER: 8,
+            EntityType.SENTINEL: 9,
+            EntityType.GUNNER: 10,
+            EntityType.LAUNCHER: 11,
+            EntityType.BREACH: 12,
             EntityType.BARRIER: 13,
         }
 

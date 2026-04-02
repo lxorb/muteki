@@ -299,8 +299,6 @@ class Map:
                         and building.hp > 16
                     ):
                         building_damaged = False
-                    if building.entity_type == EntityType.ROAD:
-                        building_damaged = False
                     own_bot_damaged = (
                         tile.bot.id is not None
                         and tile.bot.team == self.own_team
