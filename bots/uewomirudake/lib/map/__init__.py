@@ -17,10 +17,12 @@ from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
     CORE_DIST_INF,
     DIRECTIONS,
+    DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION,
     INF_DIST,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
+    TEMPORARY_TITANIUM_SUPPLY_AT_FOUNDRY_FIX,
 )
 from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel
@@ -1044,8 +1046,10 @@ class Map:
                 return SupplyChainLabel.AXIONITE
             return SupplyChainLabel.NONE
 
-        if tile.building.entity_type == EntityType.FOUNDRY:
-            return SupplyChainLabel.AXIONITE
+        # TODO: More robust fix, don't just disable foundry supply label marking.
+        if not TEMPORARY_TITANIUM_SUPPLY_AT_FOUNDRY_FIX:
+            if tile.building.entity_type == EntityType.FOUNDRY:
+                return SupplyChainLabel.AXIONITE
 
         return SupplyChainLabel.NONE
 
@@ -1379,6 +1383,10 @@ class Map:
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
         active_mask_by_index = self.active_mask_by_index
         core_distance_passable_by_index = self.core_distance_passable_by_index
+        own_core_center_pos = self.own_core_center_pos
+        vision_radius_sq = 0
+        if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION and own_core_center_pos is not None:
+            vision_radius_sq = self.ct.get_vision_radius_sq()
         current_dist = 0
 
         while pending_entries:
@@ -1406,6 +1414,13 @@ class Map:
                     or not core_distance_passable_by_index[neighbor_idx]
                 ):
                     continue
+                if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION and own_core_center_pos is not None:
+                    neighbor_pos = self.tiles_by_index[neighbor_idx].position
+                    if (
+                        own_core_center_pos.distance_squared(neighbor_pos)
+                        > vision_radius_sq
+                    ):
+                        continue
 
                 next_dist = current_dist + neighbor_step_costs_by_index[
                     neighbor_base + offset
