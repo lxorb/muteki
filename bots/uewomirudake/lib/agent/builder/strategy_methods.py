@@ -632,9 +632,8 @@ class BuilderStrategyMethodsMixin:
                             current_pos,
                             target_tile.position,
                         )
-                        if (
-                            next_direction is not None
-                            and self.ct.can_move(next_direction)
+                        if next_direction is not None and self.ct.can_move(
+                            next_direction
                         ):
                             self.ct.move(next_direction)
                         return True
@@ -1388,5 +1387,19 @@ class BuilderStrategyMethodsMixin:
         for target_tile in candidate_tiles:
             if self.u_heal_at(target_tile.position, move_towards=move_towards):
                 return True
+
+        return False
+
+    def s_move_toward_enemy_core(self):
+        """
+        Harassment step for advancing toward the enemy core.
+        """
+        enemy_core_center_pos = self.map.enemy_core_center_pos
+
+        if not enemy_core_center_pos:
+            return False
+
+        if self.u_move_to(self.map.enemy_core_center_pos):
+            return True
 
         return False
