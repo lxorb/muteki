@@ -2,7 +2,10 @@ from heapq import heapify, heappop
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
-from lib.agent.builder.constants import FOUNDRY_WAIT_RADIUS_SQ
+from lib.agent.builder.constants import (
+    FOUNDRY_WAIT_RADIUS_SQ,
+    MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST,
+)
 
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
@@ -855,13 +858,55 @@ class BuilderStrategyMethodsMixin:
             return False
 
         titanium_cost, axionite_cost = self.ct.get_foundry_cost()
+        can_afford_foundry = (
+            self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+        )
         can_build_now = (
             self.map.current_pos.distance_squared(foundry_pos)
             <= GameConstants.ACTION_RADIUS_SQ
-            and self.map.titanium >= titanium_cost
-            and self.map.axionite >= axionite_cost
+            and can_afford_foundry
             and self.ct.can_build_foundry(foundry_pos)
         )
+
+        if not can_afford_foundry:
+            barrier_titanium_cost, _ = self.ct.get_barrier_cost()
+            can_reserve_with_barrier = foundry_tile.building.id is None or (
+                foundry_tile.building.entity_type == EntityType.ROAD
+                and foundry_tile.building.team == self.map.own_team
+            )
+            if (
+                barrier_titanium_cost <= MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST
+                and self.map.titanium >= barrier_titanium_cost
+                and can_reserve_with_barrier
+            ) and self.u_build_at(
+                foundry_pos,
+                EntityType.BARRIER,
+                hold=False,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+            ):
+                self.map.built_foundry_index = foundry_tile.index
+                return True
+            if (
+                foundry_tile.building.entity_type == EntityType.BARRIER
+                and foundry_tile.building.team == self.map.own_team
+            ):
+                self.map.built_foundry_index = foundry_tile.index
+
+            wait_pos = self.u_get_foundry_wait_position(foundry_pos)
+            if wait_pos is None:
+                return (
+                    self.map.current_pos.distance_squared(foundry_pos)
+                    <= FOUNDRY_WAIT_RADIUS_SQ
+                )
+            if self.map.current_pos == wait_pos:
+                return True
+            if move_towards and self.u_move_to(wait_pos):
+                return True
+            return (
+                self.map.current_pos.distance_squared(foundry_pos)
+                <= FOUNDRY_WAIT_RADIUS_SQ
+            )
 
         if self.u_build_at(
             foundry_pos,

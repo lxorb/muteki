@@ -59,9 +59,7 @@ class BuilderNavigationMixin:
             return None
 
         own_team = self.map.own_team
-        built_foundry_index = (
-            self.map.built_foundry_index if self.map.has_built_foundry else -1
-        )
+        planned_foundry_index = self.map.built_foundry_index
         core_tiles = self.map.u_get_core_footprint_positions(own_core_center_pos)
         core_tile_indices = {tile.index for tile in core_tiles}
         candidate_plans: list[tuple[tuple[int, ...], Position]] = []
@@ -93,7 +91,7 @@ class BuilderNavigationMixin:
                 ):
                     continue
 
-                planned_rank = 0 if foundry_tile.index == built_foundry_index else 1
+                planned_rank = 0 if foundry_tile.index == planned_foundry_index else 1
                 foundry_rank = 0
                 if (
                     foundry_tile.building.entity_type != EntityType.FOUNDRY
