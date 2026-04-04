@@ -1730,6 +1730,9 @@ class Map:
             path = [tiles_by_index[current_idx]]
 
             while current_idx != source_idx:
+                if GlobalRoundStopwatch.is_overtime():
+                    break
+
                 next_dist_to_self = dist_to_self_by_index[current_idx] - 1
                 best_candidate_idx: int | None = None
                 best_candidate_score: tuple[int, int, int] | None = None
@@ -1777,9 +1780,6 @@ class Map:
                 current_idx = best_candidate_idx
                 path.append(tiles_by_index[current_idx])
 
-                if GlobalRoundStopwatch.is_overtime():
-                    break
-
             if path[-1].index == source_idx:
                 path.reverse()
                 return path
@@ -1796,6 +1796,9 @@ class Map:
         queue_head = 0
 
         while queue_head < len(queue):
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
             current_idx = queue[queue_head]
             queue_head += 1
             neighbor_base = current_idx * max_neighbor_count
@@ -1847,9 +1850,6 @@ class Map:
                     return path
 
                 queue.append(adjacent_idx)
-
-            if GlobalRoundStopwatch.is_overtime():
-                break
 
         return []
 

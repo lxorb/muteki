@@ -756,7 +756,7 @@ class BuilderNavigationMixin:
                 )
             )
 
-            if GlobalRoundStopwatch.is_overtime():
+            if GlobalRoundStopwatch.is_overtime_always_check():
                 break
 
         if not direction_scores:

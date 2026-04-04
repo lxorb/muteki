@@ -141,6 +141,8 @@ surrendering early in submissions.
 import os
 import sys
 
+SURRENDER_AT_TURN: int = 1e6
+
 try:
     module_dir = os.path.join(os.getcwd(), "./bots/exclude")
     sys.path.insert(0, module_dir)
@@ -149,4 +151,4 @@ try:
 
     SURRENDER_AT_TURN: int = exclude.SURRENDER_AT_TURN
 except ImportError:
-    SURRENDER_AT_TURN: int = 1e6
+    pass

@@ -654,7 +654,7 @@ class BuilderStrategyMethodsMixin:
         candidate_entries: list[tuple[tuple[int, int, int, int], int]] = []
 
         for idx in frontier_indices:
-            if GlobalRoundStopwatch.is_overtime():
+            if GlobalRoundStopwatch.is_overtime_always_check():
                 break
             dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(idx)
             frontier_tile = tiles_by_index[idx]
@@ -683,7 +683,7 @@ class BuilderStrategyMethodsMixin:
             if self.u_move_to(tiles_by_index[idx].position):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if GlobalRoundStopwatch.is_overtime_always_check():
                 break
 
         if current_tile.is_enemy_turret_target_tile:
@@ -694,7 +694,7 @@ class BuilderStrategyMethodsMixin:
                 ):
                     return True
 
-                if GlobalRoundStopwatch.is_overtime():
+                if GlobalRoundStopwatch.is_overtime_always_check():
                     break
 
         return False
@@ -843,7 +843,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if GlobalRoundStopwatch.is_overtime_always_check():
                 break
 
         return False
