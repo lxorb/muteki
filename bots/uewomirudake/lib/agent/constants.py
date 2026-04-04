@@ -130,4 +130,21 @@ FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN: int = 0
 MAX_BOTS: int = 999
 DISABLE_HARASSMENT: bool = False
 START_FOUNDRY_TURN: int = 150
-SURRENDER_AT_TURN: int = 200
+
+"""
+The following code automatically prevents
+surrendering early in submissions.
+"""
+
+import os
+import sys
+
+try:
+    module_dir = os.path.join(os.getcwd(), "./bots/exclude")
+    sys.path.insert(0, module_dir)
+
+    import exclude
+
+    SURRENDER_AT_TURN: int = exclude.SURRENDER_AT_TURN
+except ImportError:
+    SURRENDER_AT_TURN: int = 1e6
