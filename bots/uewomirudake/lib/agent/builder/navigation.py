@@ -4,6 +4,7 @@ from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
     AVOID_EMPTY_ORE_BRIDGE_TARGETS,
+    AVOID_OTHER_SUPPLY_LABEL_ORES,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
     ATTACK_TURRET_FEEDER_TYPES,
@@ -664,7 +665,8 @@ class BuilderNavigationMixin:
                 and target_tile.own_supply_chain_label & avoidance_label
             )
             or (
-                avoidance_ore is not None
+                AVOID_EMPTY_ORE_BRIDGE_TARGETS
+                and avoidance_ore is not None
                 and self.map.u_is_adjacent_to_ore(pos, avoidance_ore)
             )
         )
@@ -939,10 +941,9 @@ class BuilderNavigationMixin:
         ):
             foundry_pos = self.u_get_core_foundry_plan()
             if foundry_pos is not None:
-                if (
-                    bridge_target.distance_squared(foundry_pos)
-                    < conveyor_target_pos.distance_squared(foundry_pos)
-                ):
+                if bridge_target.distance_squared(
+                    foundry_pos
+                ) < conveyor_target_pos.distance_squared(foundry_pos):
                     return (EntityType.BRIDGE, bridge_target)
             return (EntityType.CONVEYOR, conveyor_direction)
 
@@ -982,14 +983,12 @@ class BuilderNavigationMixin:
                 if self.u_supply_chain_targets_core(resource):
                     return direction
                 continue
-            if (
-                self.u_get_supply_chain_progress_key(neighbor_pos, resource)
-                >= source_progress_key
-                and not self.u_can_wrap_axionite_chain_around_core(
-                    pos,
-                    neighbor_pos,
-                    resource,
-                )
+            if self.u_get_supply_chain_progress_key(
+                neighbor_pos, resource
+            ) >= source_progress_key and not self.u_can_wrap_axionite_chain_around_core(
+                pos,
+                neighbor_pos,
+                resource,
             ):
                 continue
 
@@ -1089,10 +1088,7 @@ class BuilderNavigationMixin:
             target_pos = target_tile.position
             if target_pos == pos:
                 continue
-            if (
-                pos.distance_squared(target_pos)
-                > GameConstants.BRIDGE_TARGET_RADIUS_SQ
-            ):
+            if pos.distance_squared(target_pos) > GameConstants.BRIDGE_TARGET_RADIUS_SQ:
                 continue
             if abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1:
                 continue
@@ -1100,14 +1096,12 @@ class BuilderNavigationMixin:
                 self.map.own_team
             ) and not self.u_supply_chain_targets_core(resource):
                 continue
-            if (
-                self.u_get_supply_chain_progress_key(target_pos, resource)
-                >= source_progress_key
-                and not self.u_can_wrap_axionite_chain_around_core(
-                    pos,
-                    target_pos,
-                    resource,
-                )
+            if self.u_get_supply_chain_progress_key(
+                target_pos, resource
+            ) >= source_progress_key and not self.u_can_wrap_axionite_chain_around_core(
+                pos,
+                target_pos,
+                resource,
             ):
                 continue
             candidate_tiles.append(target_tile)
@@ -1180,9 +1174,8 @@ class BuilderNavigationMixin:
             return None
         if self.u_is_supply_tile_forbidden(target_tile.position, resource):
             return None
-        if (
-            AVOID_EMPTY_ORE_BRIDGE_TARGETS
-            and self.u_is_empty_ore_tile(target_tile.position)
+        if AVOID_EMPTY_ORE_BRIDGE_TARGETS and self.u_is_empty_ore_tile(
+            target_tile.position
         ):
             return None
         if self.u_is_axionite_foundry_target(target_tile.position, resource):
@@ -1386,9 +1379,8 @@ class BuilderNavigationMixin:
                 if building_type == EntityType.BRIDGE:
                     if target_pos is None:
                         return False
-                    if (
-                        AVOID_EMPTY_ORE_BRIDGE_TARGETS
-                        and self.u_is_empty_ore_tile(target_pos)
+                    if AVOID_EMPTY_ORE_BRIDGE_TARGETS and self.u_is_empty_ore_tile(
+                        target_pos
                     ):
                         return False
                     if not can_build_method(pos, target_pos):

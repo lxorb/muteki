@@ -15,7 +15,9 @@ NS_PER_TURN: int = 2_000_000
 
 ### BOT LOGIC ###
 BRIDGE_PREFERRED_DIST: int = 6
+# TODO: Temporary fix for bots becoming unable to place supply chains.
 AVOID_EMPTY_ORE_BRIDGE_TARGETS: bool = False
+AVOID_OTHER_SUPPLY_LABEL_ORES: bool = False
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 MAX_CORE_ORE_DIRECT_DIST: int = 20
 PREVENT_SUPPLY_LINKS_TILL_HARVESTER: bool = True
