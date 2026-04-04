@@ -1,8 +1,13 @@
 import time
 import itertools
 
+from cambc import Controller
+
 
 class GlobalRoundStopwatch:
+    active_ct: Controller = None
+    submission_env = False
+
     checkpoint_time = 0
     map_done = False
 
@@ -16,19 +21,31 @@ class GlobalRoundStopwatch:
     ALLOCATED_MAP_TIME = ALLOCATED_MAP_TIME_MS * MS_TO_NS
     ALLOCATED_BOT_TIME = ALLOCATED_BOT_TIME_MS * MS_TO_NS
 
+    MS_TO_MUS = 1e3
+
+    ALLOCATED_MAP_TIME_MUS = ALLOCATED_MAP_TIME_MS * MS_TO_MUS
+    ALLOCATED_BOT_TIME_MUS = ALLOCATED_BOT_TIME_MS * MS_TO_MUS
+
     OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 6
     OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
+
+    @classmethod
+    def check_submission_env(cls):
+        if time.perf_counter_ns() == 0:
+            cls.submission_env = True
 
     @classmethod
     def start_map_time(cls):
         cls.iterations = 0
 
-        cls.checkpoint_time = time.perf_counter_ns()
+        if not cls.submission_env:
+            cls.checkpoint_time = time.perf_counter_ns()
         cls.map_done = False
 
     @classmethod
     def start_bot_time(cls):
-        cls.checkpoint_time = time.perf_counter_ns()
+        if not cls.submission_env:
+            cls.checkpoint_time = time.perf_counter_ns()
         cls.map_done = True
 
     @classmethod
@@ -42,12 +59,28 @@ class GlobalRoundStopwatch:
         if cls.iterations & cls.OVERTIME_CHECK_MASK:
             return False
 
+        if cls.submission_env:
+            active_cpu_time = cls.active_ct.get_cpu_time_elapsed()
+            return (
+                active_cpu_time > 1 + cls.ALLOCATED_BOT_TIME_MUS
+                if cls.map_done
+                else active_cpu_time > cls.ALLOCATED_MAP_TIME_MUS
+            )
+
         checkpoint = cls.checkpoint_time
         allocated = cls.ALLOCATED_BOT_TIME if cls.map_done else cls.ALLOCATED_MAP_TIME
         return time.perf_counter_ns() - checkpoint > allocated
 
     @classmethod
     def is_overtime_always_check(cls):
+        if cls.submission_env:
+            active_cpu_time = cls.active_ct.get_cpu_time_elapsed()
+            return (
+                active_cpu_time > 1 + cls.ALLOCATED_BOT_TIME_MUS
+                if cls.map_done
+                else active_cpu_time > cls.ALLOCATED_MAP_TIME_MUS
+            )
+
         checkpoint = cls.checkpoint_time
         allocated = cls.ALLOCATED_BOT_TIME if cls.map_done else cls.ALLOCATED_MAP_TIME
         return time.perf_counter_ns() - checkpoint > allocated

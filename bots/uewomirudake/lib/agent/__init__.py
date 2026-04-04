@@ -17,6 +17,8 @@ class Agent:
         self.stopwatch = Stopwatch("Agent")
 
     def u_run(self, ct: Controller) -> None:
+        GlobalRoundStopwatch.active_ct = ct
+        
         GlobalRoundStopwatch.start_map_time()
 
         self.stopwatch.start()
