@@ -105,8 +105,7 @@ class Tile:
 
     @property
     def own_core_dist(self) -> int:
-        value = self.map.own_core_dist_by_index[self.index]
-        return INF_DIST if value >= CORE_DIST_INF else value
+        return self.map.u_get_own_core_dist_by_index(self.index)
 
     @own_core_dist.setter
     def own_core_dist(self, value: int) -> None:

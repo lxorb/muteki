@@ -1,12 +1,13 @@
 from cambc import Direction, EntityType
 
-
 INF_DIST = 10**9
 CORE_DIST_INF = 0xFFFF
 OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS = True
 
 
-DIRECTIONS = tuple(direction for direction in Direction if direction != Direction.CENTRE)
+DIRECTIONS = tuple(
+    direction for direction in Direction if direction != Direction.CENTRE
+)
 
 CARDINAL_DIRECTIONS = tuple(
     direction
@@ -18,9 +19,7 @@ BUILDER_ACTION_OFFSETS = tuple(
     (dx, dy) for dx in range(-1, 2) for dy in range(-1, 2) if dx * dx + dy * dy <= 2
 )
 
-SENTINEL_COVER_OFFSETS = tuple(
-    (dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)
-)
+SENTINEL_COVER_OFFSETS = tuple((dx, dy) for dx in range(-1, 2) for dy in range(-1, 2))
 
 
 RESOURCE_TARGET_TYPES = {
@@ -55,5 +54,5 @@ SUPPLY_LINK_TYPES = {
 }
 
 TEMPORARY_TITANIUM_SUPPLY_AT_FOUNDRY_FIX = True
-DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION = True
+OWN_CORE_DISTANCE_INIT_SETTLE_BUDGET = 128
 DISABLE_CORRECT_OWN_CORE_DISTANCE = False

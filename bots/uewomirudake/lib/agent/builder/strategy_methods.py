@@ -256,7 +256,7 @@ class BuilderStrategyMethodsMixin:
         if supply_chain_label == SupplyChainLabel.NONE:
             return False
         tiles_by_index = self.map.tiles_by_index
-        own_core_dist_by_index = self.map.own_core_dist_by_index
+        get_own_core_dist = self.map.u_get_own_core_dist_by_index
         current_round = self.map.current_round
 
         def can_use_tile(target_tile) -> bool:
@@ -318,7 +318,7 @@ class BuilderStrategyMethodsMixin:
             candidate_entries.append(
                 (
                     (
-                        own_core_dist_by_index[target_idx],
+                        get_own_core_dist(target_idx),
                         self.map.u_get_estimated_dist_to_self_by_index(target_idx),
                     ),
                     encounter_order,
@@ -586,7 +586,7 @@ class BuilderStrategyMethodsMixin:
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
         tiles_by_index = self.map.tiles_by_index
-        own_core_dist_by_index = self.map.own_core_dist_by_index
+        get_own_core_dist = self.map.u_get_own_core_dist_by_index
         candidate_entries: list[tuple[tuple[int, int, int, int], int]] = []
 
         for idx in frontier_indices:
@@ -600,7 +600,7 @@ class BuilderStrategyMethodsMixin:
                 (
                     (
                         dist_to_self,
-                        own_core_dist_by_index[idx],
+                        get_own_core_dist(idx),
                         target_pos.x,
                         target_pos.y,
                     ),
@@ -1027,7 +1027,7 @@ class BuilderStrategyMethodsMixin:
         current_idx = self.map.u_to_index(current_pos)
         tiles_by_index = self.map.tiles_by_index
         known_own_supply_link_indices = self.map.known_own_supply_link_indices
-        own_core_dist_by_index = self.map.own_core_dist_by_index
+        get_own_core_dist = self.map.u_get_own_core_dist_by_index
 
         def stamp_local_patrol_coverage() -> None:
             current_tile = tiles_by_index[current_idx]
@@ -1060,7 +1060,7 @@ class BuilderStrategyMethodsMixin:
                     (
                         dist_to_self,
                         last_patrolled_index,
-                        own_core_dist_by_index[idx],
+                        get_own_core_dist(idx),
                         idx,
                     )
                 )

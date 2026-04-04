@@ -2,6 +2,7 @@ from array import array
 from collections import deque
 from collections.abc import Iterable
 from enum import Enum
+from heapq import heappop, heappush
 
 from cambc import (
     Controller,
@@ -18,8 +19,8 @@ from lib.map.constants import (
     CORE_DIST_INF,
     DIRECTIONS,
     DISABLE_CORRECT_OWN_CORE_DISTANCE,
-    DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION,
     INF_DIST,
+    OWN_CORE_DISTANCE_INIT_SETTLE_BUDGET,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
@@ -85,13 +86,11 @@ class Map:
         self.own_core_source_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_core_source_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_core_dist_initialized = False
+        self.own_core_dist_init_started = False
+        self.own_core_dist_exact_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.own_core_dist_init_heap: list[tuple[int, int]] = []
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
-        self.core_distance_bucket_queues: tuple[list[int], list[int], list[int]] = (
-            [],
-            [],
-            [],
-        )
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.own_supply_link_target_indices_in_vision: set[int] = set()
@@ -786,7 +785,7 @@ class Map:
             self.own_core_center_pos,
             self.own_core_source_by_index,
         )
-        self.own_core_dist_initialized = False
+        self.u_reset_own_core_distance_initialization()
         if not self.enemy_core_center_pos_candidates:
             center = self.own_core_center_pos
             all_enemy_core_center_pos_candidates = [
@@ -1357,54 +1356,62 @@ class Map:
                     continue
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
-    def u_initialize_core_distance_field(
-        self,
-        source_indices: list[int] | tuple[int, ...],
-        distance_by_index,
-    ) -> None:
-        if not source_indices:
-            return
+    def u_reset_own_core_distance_initialization(self) -> None:
+        self.own_core_dist_initialized = False
+        self.own_core_dist_init_started = False
+        self.own_core_dist_by_index[:] = self.core_inf_distances_by_index
+        self.own_core_dist_exact_by_index[:] = b"\x00" * len(
+            self.own_core_dist_exact_by_index
+        )
+        self.own_core_dist_init_heap.clear()
 
-        distance_by_index[:] = self.core_inf_distances_by_index
-        bucket_queues = self.core_distance_bucket_queues
-        for bucket in bucket_queues:
-            bucket.clear()
-        current_bucket, next_bucket, far_bucket = bucket_queues
-        pending_entries = 0
-        for source_idx in source_indices:
+    def u_start_own_core_distance_initialization(self) -> bool:
+        if not self.own_core_source_indices:
+            return False
+
+        self.u_reset_own_core_distance_initialization()
+        self.own_core_dist_init_started = True
+        distance_by_index = self.own_core_dist_by_index
+        frontier = self.own_core_dist_init_heap
+        for source_idx in self.own_core_source_indices:
             if distance_by_index[source_idx] == 0:
                 continue
             distance_by_index[source_idx] = 0
-            current_bucket.append(source_idx)
-            pending_entries += 1
+            heappush(frontier, (0, source_idx))
+        return bool(frontier)
 
+    def u_continue_own_core_distance_initialization(
+        self,
+        max_finalized_nodes: int,
+    ) -> bool:
+        if self.own_core_dist_initialized:
+            return True
+        if not self.own_core_source_indices:
+            return False
+        if (
+            not self.own_core_dist_init_started
+            and not self.u_start_own_core_distance_initialization()
+        ):
+            return False
+
+        distance_by_index = self.own_core_dist_by_index
+        exact_by_index = self.own_core_dist_exact_by_index
+        frontier = self.own_core_dist_init_heap
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
         active_mask_by_index = self.active_mask_by_index
         core_distance_passable_by_index = self.core_distance_passable_by_index
-        own_core_center_pos = self.own_core_center_pos
-        vision_radius_sq = 0
-        if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION and own_core_center_pos is not None:
-            vision_radius_sq = self.ct.get_vision_radius_sq()
-        current_dist = 0
+        finalized_nodes = 0
 
-        while pending_entries:
-            if not current_bucket:
-                current_dist += 1
-                current_bucket, next_bucket, far_bucket = (
-                    next_bucket,
-                    far_bucket,
-                    current_bucket,
-                )
-                far_bucket.clear()
+        while frontier and finalized_nodes < max_finalized_nodes:
+            current_dist, current_idx = heappop(frontier)
+            if exact_by_index[current_idx] or current_dist != distance_by_index[current_idx]:
                 continue
 
-            current_idx = current_bucket.pop()
-            pending_entries -= 1
-            if current_dist != distance_by_index[current_idx]:
-                continue
+            exact_by_index[current_idx] = 1
+            finalized_nodes += 1
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
@@ -1412,16 +1419,10 @@ class Map:
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if (
                     not active_mask_by_index[neighbor_idx]
+                    or exact_by_index[neighbor_idx]
                     or not core_distance_passable_by_index[neighbor_idx]
                 ):
                     continue
-                if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION and own_core_center_pos is not None:
-                    neighbor_pos = self.tiles_by_index[neighbor_idx].position
-                    if (
-                        own_core_center_pos.distance_squared(neighbor_pos)
-                        > vision_radius_sq
-                    ):
-                        continue
 
                 next_dist = current_dist + neighbor_step_costs_by_index[
                     neighbor_base + offset
@@ -1430,11 +1431,34 @@ class Map:
                     continue
 
                 distance_by_index[neighbor_idx] = next_dist
-                if next_dist == current_dist + 1:
-                    next_bucket.append(neighbor_idx)
-                else:
-                    far_bucket.append(neighbor_idx)
-                pending_entries += 1
+                heappush(frontier, (next_dist, neighbor_idx))
+
+            if False:
+                break
+
+        if not frontier:
+            self.own_core_dist_initialized = True
+
+        return self.own_core_dist_initialized
+
+    def u_get_estimated_own_core_dist_by_index(self, idx: int) -> int:
+        center = self.own_core_center_pos
+        if center is None:
+            return INF_DIST
+
+        dx = abs(self.index_x_by_index[idx] - center.x) - 1
+        dy = abs(self.index_y_by_index[idx] - center.y) - 1
+        if dx < 0:
+            dx = 0
+        if dy < 0:
+            dy = 0
+        return dx + dy
+
+    def u_get_own_core_dist_by_index(self, idx: int) -> int:
+        value = self.own_core_dist_by_index[idx]
+        if self.own_core_dist_initialized or self.own_core_dist_exact_by_index[idx]:
+            return INF_DIST if value >= CORE_DIST_INF else value
+        return self.u_get_estimated_own_core_dist_by_index(idx)
 
     def u_initialize_own_core_distance_field_manhattan(self) -> None:
         center = self.own_core_center_pos
@@ -1443,19 +1467,14 @@ class Map:
 
         distance_by_index = self.own_core_dist_by_index
         distance_by_index[:] = self.core_inf_distances_by_index
+        self.own_core_dist_exact_by_index[:] = b"\x00" * len(
+            self.own_core_dist_exact_by_index
+        )
+        self.own_core_dist_init_started = False
+        self.own_core_dist_init_heap.clear()
 
-        center_x = center.x
-        center_y = center.y
         for idx in self.u_iter_active_tile_indices():
-            x = self.index_x_by_index[idx]
-            y = self.index_y_by_index[idx]
-            dx = abs(x - center_x) - 1
-            dy = abs(y - center_y) - 1
-            if dx < 0:
-                dx = 0
-            if dy < 0:
-                dy = 0
-            distance_by_index[idx] = dx + dy
+            distance_by_index[idx] = self.u_get_estimated_own_core_dist_by_index(idx)
 
     def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
         current_idx = self.u_to_index(self.current_pos)
@@ -1533,7 +1552,6 @@ class Map:
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
         dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
-        own_core_dist_by_index = self.own_core_dist_by_index
         enemy_turret_target_by_index = self.enemy_turret_target_by_index
         bot_present_by_index = self.bot_present_by_index
         if source_pos == target_pos:
@@ -1580,7 +1598,7 @@ class Map:
                         continue
                     adjacent_x, adjacent_y = self.u_index_to_xy(adjacent_idx)
                     candidate_score = (
-                        own_core_dist_by_index[adjacent_idx],
+                        self.u_get_own_core_dist_by_index(adjacent_idx),
                         adjacent_x,
                         adjacent_y,
                     )
@@ -1682,9 +1700,10 @@ class Map:
             if DISABLE_CORRECT_OWN_CORE_DISTANCE:
                 self.u_initialize_own_core_distance_field_manhattan()
             elif not self.own_core_dist_initialized:
-                self.u_initialize_core_distance_field(
-                    self.own_core_source_indices,
-                    self.own_core_dist_by_index,
+                if dirty_indices and self.own_core_dist_init_started:
+                    self.u_reset_own_core_distance_initialization()
+                self.u_continue_own_core_distance_initialization(
+                    OWN_CORE_DISTANCE_INIT_SETTLE_BUDGET
                 )
             else:
                 self.u_update_core_distance_field_incremental(
@@ -1693,7 +1712,8 @@ class Map:
                     self.own_core_dist_by_index,
                     dirty_indices,
                 )
-            self.own_core_dist_initialized = True
+            if DISABLE_CORRECT_OWN_CORE_DISTANCE:
+                self.own_core_dist_initialized = True
 
         sw.lap("Own core field")
 
