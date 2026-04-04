@@ -8,8 +8,8 @@ class GlobalRoundStopwatch:
 
     iterations = 0
 
-    ALLOCATED_MAP_TIME_MS = 0.7
-    ALLOCATED_BOT_TIME_MS = 1.2
+    ALLOCATED_MAP_TIME_MS = 0.5
+    ALLOCATED_BOT_TIME_MS = 0.5
 
     MS_TO_NS = 1e6
 

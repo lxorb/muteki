@@ -116,7 +116,7 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
 }
 INITIAL_BB_ORDER: list[list[StrategyEntry]] = [
     # HARASSMENT_STRATEGY,
-    # HARASSMENT_STRATEGY,
+    HARASSMENT_STRATEGY,
     SCAVENGER_STRATEGY,
     SCAVENGER_STRATEGY,
     # SCAVENGER_STRATEGY,
