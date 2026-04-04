@@ -2,6 +2,50 @@ import time
 import itertools
 
 
+class GlobalRoundStopwatch:
+    checkpoint_time = 0
+    map_done = False
+
+    iterations = 0
+
+    ALLOCATED_MAP_TIME_MS = 0.7
+    ALLOCATED_BOT_TIME_MS = 1.2
+
+    MS_TO_NS = 1e6
+
+    ALLOCATED_MAP_TIME = ALLOCATED_MAP_TIME_MS * MS_TO_NS
+    ALLOCATED_BOT_TIME = ALLOCATED_BOT_TIME_MS * MS_TO_NS
+
+    OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 6
+    OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
+
+    @classmethod
+    def start_map_time(cls):
+        cls.iterations = 0
+
+        cls.checkpoint_time = time.perf_counter_ns()
+        cls.map_done = False
+
+    @classmethod
+    def start_bot_time(cls):
+        cls.checkpoint_time = time.perf_counter_ns()
+        cls.map_done = True
+
+    @classmethod
+    def t(cls):
+        return time.perf_counter_ns()
+
+    @classmethod
+    def is_overtime(cls):
+        cls.iterations += 1
+
+        return cls.iterations & cls.OVERTIME_CHECK_MASK == 0 and (
+            cls.t() - cls.checkpoint_time > cls.ALLOCATED_BOT_TIME
+            if cls.map_done
+            else cls.t() - cls.checkpoint_time > cls.ALLOCATED_MAP_TIME
+        )
+
+
 class Stopwatch:
     def __init__(self, name: str):
         """
