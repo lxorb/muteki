@@ -63,11 +63,6 @@ class DefaultAgent(ABC, Agent):
         self.core_pos: Position = self.ct.get_position(core[0])
         self.turn_last_completed: bool | None = None
 
-        self.time_start: int = 0
-        self.time_end: int = 0
-        self.time_delta: int = 0
-        self.time_delta_overall: int = 0
-
         _r = self.ct.get_global_resources()
         self.res_prev: Resources = Resources(_r[0], _r[1])
         self.res: Resources = Resources(0, 0)
@@ -76,7 +71,7 @@ class DefaultAgent(ABC, Agent):
 
     def run(self) -> None:
         self.turn_last_completed = False
-        self.time_start = time.perf_counter_ns()
+        time_start = time.perf_counter_ns()
         # --------------------------------------------------------
 
         _r = self.ct.get_global_resources()
@@ -93,11 +88,9 @@ class DefaultAgent(ABC, Agent):
         self.round += 1
 
         # --------------------------------------------------------
-        self.time_end = time.perf_counter_ns()
-        self.time_delta = self.time_end - self.time_start
-        print(f'run() took: {self.time_delta / 1_000_000:.4f} ms')
-        self.time_start = self.time_end
-        self.time_delta_overall += self.time_delta
+        time_end = time.perf_counter_ns()
+        time_delta = time_end - time_start
+        print(f'run() took: {time_delta / 1_000_000:.4f} ms')
         self.turn_last_completed = True
 
     @abstractmethod
@@ -128,6 +121,8 @@ class DStarLite:
     """D* Lite algorithm for incremental path planning with dynamic obstacles."""
 
     def __init__(self, agent: 'BuilderAgent'):
+        time_init_start = time.perf_counter_ns()
+
         self.agent = agent
         self.width = agent.width
         self.height = agent.height
@@ -148,6 +143,10 @@ class DStarLite:
 
         # Track which cells have changed since last replan
         self.changed_cells: set[Position] = set()
+
+        time_init_end = time.perf_counter_ns()
+
+        print(f'd star lite __init__() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ns')
 
     def _heuristic(self, s1: Position, s2: Position) -> float:
         """Chebyshev distance heuristic for 8-directional movement with uniform cost."""
@@ -243,6 +242,8 @@ class DStarLite:
 
     def initialize(self, start: Position, goal: Position) -> None:
         """Initialize D* Lite for a new goal."""
+        time_init_start = time.perf_counter_ns()
+
         self.s_start = start
         self.s_goal = goal
         self.s_last = start
@@ -260,6 +261,10 @@ class DStarLite:
         self._push_vertex(self.s_goal, self._calculate_key(self.s_goal))
 
         self._compute_shortest_path()
+
+        time_init_end = time.perf_counter_ns()
+
+        print(f'd star lite initialize() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ns')
 
     def update_start(self, new_start: Position) -> None:
         """Update when the agent has moved to a new position."""
@@ -356,7 +361,13 @@ class BuilderAgent(DefaultAgent):
     def make_turn(self):
         self.position = self.ct.get_position()
 
+        start = time.perf_counter_ns()
+
         self.update_on_view()
+
+        end = time.perf_counter_ns()
+
+        print(f'update_on_view() took: {(end - start) / 1_000_000:.4f} ns')
 
         self.choose_task()
 
