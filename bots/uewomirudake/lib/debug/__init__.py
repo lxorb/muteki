@@ -32,17 +32,13 @@ class GlobalRoundStopwatch:
         cls.map_done = True
 
     @classmethod
-    def t(cls):
-        return time.perf_counter_ns()
-
-    @classmethod
     def is_overtime(cls):
         cls.iterations += 1
 
         return cls.iterations & cls.OVERTIME_CHECK_MASK == 0 and (
-            cls.t() - cls.checkpoint_time > cls.ALLOCATED_BOT_TIME
+            time.perf_counter_ns() - cls.checkpoint_time > cls.ALLOCATED_BOT_TIME
             if cls.map_done
-            else cls.t() - cls.checkpoint_time > cls.ALLOCATED_MAP_TIME
+            else time.perf_counter_ns() - cls.checkpoint_time > cls.ALLOCATED_MAP_TIME
         )
 
 
