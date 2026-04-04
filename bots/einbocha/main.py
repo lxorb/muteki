@@ -288,8 +288,11 @@ class DStarLite:
 
     def update_start(self, new_start: Position) -> None:
         """Update when the agent has moved to a new position."""
+        start = time.perf_counter_ns()
         new_start_idx = new_start.y * self.width + new_start.x
         if self.s_start_idx == -1 or self.s_goal_idx == -1:
+            end = time.perf_counter_ns()
+            print(f'd star lite update_start() took: {(end - start) / 1_000_000:.4f} ms')
             return
 
         # Inlined heuristic
@@ -299,6 +302,8 @@ class DStarLite:
         
         self.s_last_idx = new_start_idx
         self.s_start_idx = new_start_idx
+        end = time.perf_counter_ns()
+        print(f'd star lite update_start() took: {(end - start) / 1_000_000:.4f} ms')
 
     def update_cell(self, pos: Position) -> None:
         """Mark a cell as changed (obstacle detected/removed)."""
@@ -306,7 +311,10 @@ class DStarLite:
         self.changed_cells.add(idx)
 
     def replan(self) -> None:
+        start = time.perf_counter_ns()
         if self.s_start_idx == -1 or self.s_goal_idx == -1:
+            end = time.perf_counter_ns()
+            print(f'd star lite replan() took: {(end - start) / 1_000_000:.4f} ms')
             return
 
         if self.changed_cells:
@@ -321,16 +329,25 @@ class DStarLite:
                 self._update_vertex(u_idx)
 
         self._compute_shortest_path()
+        end = time.perf_counter_ns()
+        print(f'd star lite replan() took: {(end - start) / 1_000_000:.4f} ms')
 
     def get_next_direction(self) -> Direction:
         """Return the next direction the robot should move toward the goal."""
+        start = time.perf_counter_ns()
         if self.s_start_idx == -1 or self.s_goal_idx == -1:
+            end = time.perf_counter_ns()
+            print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
         if self.s_start_idx == self.s_goal_idx:
+            end = time.perf_counter_ns()
+            print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
         if self.rhs[self.s_start_idx] >= TILE_BLOCK:
+            end = time.perf_counter_ns()
+            print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
         best_cost = float(TILE_BLOCK)
@@ -366,13 +383,21 @@ class DStarLite:
                     elif dx == 1 and dy == 1: best_dir = Direction.SOUTHEAST
                     elif dx == -1 and dy == 1: best_dir = Direction.SOUTHWEST
 
+        end = time.perf_counter_ns()
+        print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
         return best_dir
 
     def has_path(self) -> bool:
         """Check if a valid path exists to the goal."""
+        start = time.perf_counter_ns()
         if self.s_start_idx == -1:
+            end = time.perf_counter_ns()
+            print(f'd star lite has_path() took: {(end - start) / 1_000_000:.4f} ms')
             return False
-        return self.rhs[self.s_start_idx] < TILE_BLOCK
+        ret = self.rhs[self.s_start_idx] < TILE_BLOCK
+        end = time.perf_counter_ns()
+        print(f'd star lite has_path() took: {(end - start) / 1_000_000:.4f} ms')
+        return ret
 
 
 TASK_STALE = -1
