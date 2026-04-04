@@ -317,6 +317,12 @@ class DStarLite:
             print(f'd star lite replan() took: {(end - start) / 1_000_000:.4f} ms')
             return
 
+        if self.agent.map_walk[self.s_goal_idx] >= TILE_BLOCK:
+            self.changed_cells.clear()
+            end = time.perf_counter_ns()
+            print(f'd star lite replan() took: {(end - start) / 1_000_000:.4f} ms')
+            return
+
         if self.changed_cells:
             affected: set[int] = set()
             for u_idx in self.changed_cells:
@@ -345,7 +351,7 @@ class DStarLite:
             print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
-        if self.rhs[self.s_start_idx] >= TILE_BLOCK:
+        if self.rhs[self.s_start_idx] >= TILE_BLOCK or self.agent.map_walk[self.s_goal_idx] >= TILE_BLOCK:
             end = time.perf_counter_ns()
             print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
@@ -436,7 +442,7 @@ class BuilderAgent(DefaultAgent):
 
         end = time.perf_counter_ns()
 
-        print(f'update_on_view() took: {(end - start) / 1_000_000:.4f} ns')
+        print(f'update_on_view() took: {(end - start) / 1_000_000:.4f} ms')
 
         self.choose_task()
 
