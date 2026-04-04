@@ -13,6 +13,7 @@ from lib.agent.constants import (
     NONDIRECTIONAL_BUILDING_TYPES,
     OWN_SUPPLIER_TYPES,
 )
+from lib.debug import GlobalRoundStopwatch
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -188,6 +189,9 @@ class BuilderNavigationMixin:
                 source_directions.add(source_direction)
                 queue.append(source_idx)
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         candidate_plans: list[tuple[Position, Direction]] = []
         for tile_idx, directions in coreward_directions_by_index.items():
             tile = visible_titanium_tiles_by_index[tile_idx]
@@ -218,6 +222,8 @@ class BuilderNavigationMixin:
             splitter_pos,
             splitter_direction,
         ) in self.u_get_visible_titanium_core_chain_candidates():
+            if GlobalRoundStopwatch.is_overtime():
+                break
             splitter_tile = self.map.u_get_pos_tile(splitter_pos)
             splitter_building = splitter_tile.building
             if (
@@ -288,6 +294,8 @@ class BuilderNavigationMixin:
         candidate_tiles: list[tuple[tuple[int, ...], Position]] = []
 
         for tile_idx in self.map.u_iter_active_tile_indices():
+            if GlobalRoundStopwatch.is_overtime():
+                break
             tile = self.map.tiles_by_index[tile_idx]
             tile_pos = tile.position
             if (
@@ -557,6 +565,9 @@ class BuilderNavigationMixin:
                     continue
                 seen_indices.add(target_idx)
                 queue.append(target_pos_candidate)
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -1072,6 +1083,8 @@ class BuilderNavigationMixin:
         candidate_tiles = []
 
         for target_idx in self.map.u_iter_active_tile_indices():
+            if GlobalRoundStopwatch.is_overtime():
+                break
             target_tile = self.map.tiles_by_index[target_idx]
             target_pos = target_tile.position
             if target_pos == pos:
@@ -1118,6 +1131,8 @@ class BuilderNavigationMixin:
 
         categorized_tiles: list[tuple[int, object]] = []
         for target_tile in candidate_tiles:
+            if GlobalRoundStopwatch.is_overtime():
+                break
             category_rank = self.u_get_bridge_target_category_rank(
                 target_tile,
                 resource,

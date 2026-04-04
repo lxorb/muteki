@@ -2,6 +2,7 @@ from heapq import heapify, heappop
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
+from lib.debug import GlobalRoundStopwatch
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -78,6 +79,8 @@ class BuilderStrategyMethodsMixin:
         for harvester_order, harvester_tile in enumerate(
             self.map.own_harvesters_in_vision
         ):
+            if GlobalRoundStopwatch.is_overtime():
+                break
             if harvester_tile.environment != resource:
                 continue
             if (
@@ -181,6 +184,9 @@ class BuilderStrategyMethodsMixin:
                     target_pos=supplier_target,
                 ):
                     return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -305,6 +311,8 @@ class BuilderStrategyMethodsMixin:
         for encounter_order, target_tile in enumerate(
             self.map.own_missing_supply_links
         ):
+            if GlobalRoundStopwatch.is_overtime():
+                break
             target_label = target_tile.own_supply_chain_label
             if not (target_label & supply_chain_label):
                 continue
@@ -363,6 +371,9 @@ class BuilderStrategyMethodsMixin:
                     self.pending_missing_supply_link_index = target_idx
                     self.pending_missing_supply_link_resource = resource
                     return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -569,6 +580,9 @@ class BuilderStrategyMethodsMixin:
                     self.harvesters_built += 1
                 return True
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         return False
 
     def s_frontier_expand(self):
@@ -590,6 +604,8 @@ class BuilderStrategyMethodsMixin:
         candidate_entries: list[tuple[tuple[int, int, int, int], int]] = []
 
         for idx in frontier_indices:
+            if GlobalRoundStopwatch.is_overtime():
+                break
             dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(idx)
             frontier_tile = tiles_by_index[idx]
             if frontier_tile.is_enemy_turret_target_tile:
@@ -617,6 +633,9 @@ class BuilderStrategyMethodsMixin:
             if self.u_move_to(tiles_by_index[idx].position):
                 return True
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         if current_tile.is_enemy_turret_target_tile:
             for _, idx in candidate_entries:
                 if self.u_move_to(
@@ -624,6 +643,9 @@ class BuilderStrategyMethodsMixin:
                     avoid_enemy_turrets=False,
                 ):
                     return True
+
+                if GlobalRoundStopwatch.is_overtime():
+                    break
 
         return False
 
@@ -673,6 +695,9 @@ class BuilderStrategyMethodsMixin:
                 return True
             if move_towards and self.u_move_to(target_pos):
                 return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -765,6 +790,9 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         return False
 
     def s_block_enemy_supply_chain(self, move_towards: bool = True, hold: bool = True):
@@ -804,6 +832,9 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=True,
             ):
                 return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -850,6 +881,9 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=False,
             ):
                 return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -1050,6 +1084,8 @@ class BuilderStrategyMethodsMixin:
             candidate_entries: list[tuple[int, int, int, int]] = []
 
             for idx in known_own_supply_link_indices:
+                if GlobalRoundStopwatch.is_overtime():
+                    break
                 target_tile = tiles_by_index[idx]
                 last_patrolled_index = target_tile.last_patrolled_index
                 if last_patrolled_index >= supply_patrol_index:
@@ -1087,12 +1123,18 @@ class BuilderStrategyMethodsMixin:
             if self.u_move_to(tiles_by_index[target_idx].position):
                 return True
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
         for target_idx in patrol_target_indices:
             if self.u_move_to(
                 tiles_by_index[target_idx].position, avoid_enemy_turrets=False
             ):
                 return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -1140,6 +1182,9 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         return False
 
     def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
@@ -1186,6 +1231,9 @@ class BuilderStrategyMethodsMixin:
                 ),
             ):
                 return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -1248,6 +1296,9 @@ class BuilderStrategyMethodsMixin:
         for target_tile in candidate_tiles:
             if self.u_heal_at(target_tile.position, move_towards=move_towards):
                 return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 

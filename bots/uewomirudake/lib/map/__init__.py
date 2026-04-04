@@ -1147,6 +1147,9 @@ class Map:
                 if self.u_can_propagate_visible_supply_chain_label(target_tile, team):
                     queue.append(target_tile)
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
     def u_update_supply_chain_labels_for_team(self, team: Team) -> None:
         fresh_queue: deque[Tile] = deque()
         remembered_queue: deque[Tile] = deque()
@@ -1532,6 +1535,9 @@ class Map:
                 dist_to_self_by_index[neighbor_idx] = current_dist + 1
                 queue.append(neighbor_idx)
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
     def u_calculate_shortest_path(
         self,
         source_pos: Position,
@@ -1680,6 +1686,9 @@ class Map:
                     return path
 
                 queue.append(adjacent_idx)
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return []
 
