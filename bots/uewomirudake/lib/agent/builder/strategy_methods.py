@@ -391,7 +391,10 @@ class BuilderStrategyMethodsMixin:
         tiles in enemy attack range or next to orthogonally adjacent enemy
         buildings, prioritizes by cached distance to the own core and then the
         builder, and delegates the actual build, replacement, movement, hold,
-        and optional enemy-passable clearing to `u_build_at`.
+        and optional enemy-passable clearing to `u_build_at`. When the builder
+        is already standing on the ore, it first seeds a missing supply link or
+        steps off onto a nearby own walkable tile so the harvester can be
+        placed from range instead of getting stuck on a same-tile build.
         """
         from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
         from .strategies import SCAVENGER_STRATEGY
@@ -438,6 +441,67 @@ class BuilderStrategyMethodsMixin:
                 if adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES:
                     return True
             return False
+
+        def step_off_current_ore_tile() -> bool:
+            candidate_entries: list[tuple[tuple[int, int, int, int, int], Direction]] = []
+
+            for safe_order, adjacent_pos in enumerate(
+                self.map.u_iter_adjacent_positions(
+                    current_pos,
+                    consider_diagonal=False,
+                )
+            ):
+                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                if adjacent_tile.is_enemy_turret_target_tile:
+                    continue
+                if adjacent_tile.bot.id is not None:
+                    continue
+
+                adjacent_building = adjacent_tile.building
+                if (
+                    adjacent_building.team == own_team
+                    and adjacent_building.entity_type in SUPPLY_LINK_TYPES
+                ):
+                    walkable_rank = 0
+                elif adjacent_building.entity_type == EntityType.CORE and (
+                    adjacent_building.team == own_team
+                ):
+                    walkable_rank = 1
+                elif (
+                    adjacent_building.entity_type == EntityType.ROAD
+                    and adjacent_building.team == own_team
+                ):
+                    walkable_rank = 2
+                else:
+                    continue
+
+                move_direction = self.map.u_get_direction_between(
+                    current_pos,
+                    adjacent_pos,
+                )
+                if move_direction is None:
+                    continue
+
+                candidate_entries.append(
+                    (
+                        (
+                            walkable_rank,
+                            adjacent_tile.own_core_dist,
+                            adjacent_tile.dist_to_self,
+                            safe_order,
+                            adjacent_tile.index,
+                        ),
+                        move_direction,
+                    )
+                )
+
+            candidate_entries.sort()
+            for _, move_direction in candidate_entries:
+                if self.ct.can_move(move_direction):
+                    self.ct.move(move_direction)
+                    return True
+
+            return hold and bool(candidate_entries)
 
         if (
             current_tile.environment == resource
@@ -515,19 +579,12 @@ class BuilderStrategyMethodsMixin:
                             self.ct.move(next_direction)
                         return True
 
-        def has_orthogonally_adjacent_empty_tile(pos: Position) -> bool:
-            adjacent_positions = self.map.u_iter_adjacent_positions(
-                pos,
-                consider_diagonal=False,
-            )
-            for adjacent_pos in adjacent_positions:
-                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-                if (
-                    adjacent_tile.building.id is None
-                    and adjacent_tile.environment == Environment.EMPTY
-                ):
-                    return True
-            return False
+        if (
+            current_tile.environment == resource
+            and has_orthogonally_adjacent_supply_link(current_tile.index)
+            and step_off_current_ore_tile()
+        ):
+            return True
 
         def can_use_tile(target_tile) -> bool:
             if target_tile.building.id is None:
@@ -563,12 +620,6 @@ class BuilderStrategyMethodsMixin:
             lambda tile: tile.dist_to_self,
         )
         for target_tile in candidate_tiles:
-            if (
-                current_pos != target_tile.position
-                and has_orthogonally_adjacent_empty_tile(target_tile.position)
-                and self.u_move_to(target_tile.position)
-            ):
-                return True
             if self.u_build_at(
                 target_tile.position,
                 EntityType.HARVESTER,
