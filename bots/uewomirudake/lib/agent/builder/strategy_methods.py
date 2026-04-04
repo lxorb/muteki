@@ -807,6 +807,9 @@ class BuilderStrategyMethodsMixin:
                 consider_diagonal=False,
             ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
+            
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
         candidate_tiles = self.u_filter_tiles(

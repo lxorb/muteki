@@ -91,6 +91,11 @@ class Map:
         self.own_core_dist_init_started = False
         self.own_core_dist_exact_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_core_dist_init_heap: list[tuple[int, int]] = []
+        self.own_core_dist_incremental_queue: list[int] = []
+        self.own_core_dist_incremental_queue_head = 0
+        self.own_core_dist_manhattan_init_started = False
+        self.own_core_dist_manhattan_init_next_x = 0
+        self.own_core_dist_manhattan_init_next_y = 0
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
@@ -1286,19 +1291,34 @@ class Map:
         self.core_distance_enqueued_by_index[idx] = 1
         queue.append(idx)
 
+    def u_reset_own_core_distance_incremental_update(self) -> None:
+        queue = self.own_core_dist_incremental_queue
+        queue_head = self.own_core_dist_incremental_queue_head
+
+        for idx in queue[queue_head:]:
+            self.core_distance_enqueued_by_index[idx] = 0
+
+        queue.clear()
+        self.own_core_dist_incremental_queue_head = 0
+
+    def u_reset_own_core_distance_manhattan_initialization(self) -> None:
+        self.own_core_dist_manhattan_init_started = False
+        self.own_core_dist_manhattan_init_next_x = 0
+        self.own_core_dist_manhattan_init_next_y = 0
+
     def u_update_core_distance_field_incremental(
         self,
         source_indices: list[int] | tuple[int, ...],
         source_by_index: bytearray,
         distance_by_index,
         dirty_indices: list[int] | tuple[int, ...],
-    ) -> None:
+    ) -> bool:
         if not source_indices:
-            return
+            self.u_reset_own_core_distance_incremental_update()
+            return True
 
-        queue = self.distance_queue_buffer_by_index
-        queue.clear()
-        queue_head = 0
+        queue = self.own_core_dist_incremental_queue
+        queue_head = self.own_core_dist_incremental_queue_head
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
@@ -1306,8 +1326,9 @@ class Map:
         core_distance_passable_by_index = self.core_distance_passable_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
 
-        for idx in source_indices:
-            self.u_enqueue_core_distance_index(idx, queue)
+        if not queue:
+            for idx in source_indices:
+                self.u_enqueue_core_distance_index(idx, queue)
 
         for idx in dirty_indices:
             self.u_enqueue_core_distance_index(idx, queue)
@@ -1320,6 +1341,10 @@ class Map:
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
         while queue_head < len(queue):
+            if GlobalRoundStopwatch.is_overtime():
+                self.own_core_dist_incremental_queue_head = queue_head
+                return False
+
             idx = queue[queue_head]
             queue_head += 1
             self.core_distance_enqueued_by_index[idx] = 0
@@ -1358,9 +1383,15 @@ class Map:
                     continue
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
+        queue.clear()
+        self.own_core_dist_incremental_queue_head = 0
+        return True
+
     def u_reset_own_core_distance_initialization(self) -> None:
         self.own_core_dist_initialized = False
         self.own_core_dist_init_started = False
+        self.u_reset_own_core_distance_incremental_update()
+        self.u_reset_own_core_distance_manhattan_initialization()
         self.own_core_dist_by_index[:] = self.core_inf_distances_by_index
         self.own_core_dist_exact_by_index[:] = b"\x00" * len(
             self.own_core_dist_exact_by_index
@@ -1465,21 +1496,48 @@ class Map:
             return INF_DIST if value >= CORE_DIST_INF else value
         return self.u_get_estimated_own_core_dist_by_index(idx)
 
-    def u_initialize_own_core_distance_field_manhattan(self) -> None:
+    def u_initialize_own_core_distance_field_manhattan(self) -> bool:
         center = self.own_core_center_pos
         if center is None:
-            return
+            self.u_reset_own_core_distance_manhattan_initialization()
+            return False
+
+        if not self.own_core_dist_manhattan_init_started:
+            distance_by_index = self.own_core_dist_by_index
+            distance_by_index[:] = self.core_inf_distances_by_index
+            self.own_core_dist_exact_by_index[:] = b"\x00" * len(
+                self.own_core_dist_exact_by_index
+            )
+            self.own_core_dist_init_started = False
+            self.own_core_dist_init_heap.clear()
+            self.u_reset_own_core_distance_incremental_update()
+            self.own_core_dist_manhattan_init_started = True
+            self.own_core_dist_manhattan_init_next_x = 0
+            self.own_core_dist_manhattan_init_next_y = 0
 
         distance_by_index = self.own_core_dist_by_index
-        distance_by_index[:] = self.core_inf_distances_by_index
-        self.own_core_dist_exact_by_index[:] = b"\x00" * len(
-            self.own_core_dist_exact_by_index
-        )
-        self.own_core_dist_init_started = False
-        self.own_core_dist_init_heap.clear()
+        x = self.own_core_dist_manhattan_init_next_x
+        y = self.own_core_dist_manhattan_init_next_y
 
-        for idx in self.u_iter_active_tile_indices():
-            distance_by_index[idx] = self.u_get_estimated_own_core_dist_by_index(idx)
+        while x < self.width:
+            base_idx = x * self.INDEX_STRIDE
+
+            while y < self.height:
+                if GlobalRoundStopwatch.is_overtime():
+                    self.own_core_dist_manhattan_init_next_x = x
+                    self.own_core_dist_manhattan_init_next_y = y
+                    return False
+
+                distance_by_index[base_idx + y] = (
+                    self.u_get_estimated_own_core_dist_by_index(base_idx + y)
+                )
+                y += 1
+
+            x += 1
+            y = 0
+
+        self.u_reset_own_core_distance_manhattan_initialization()
+        return True
 
     def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
         current_idx = self.u_to_index(self.current_pos)
@@ -1699,13 +1757,18 @@ class Map:
         sw.lap("Self distance field")
 
         dirty_indices = tuple(self.core_distance_dirty_indices)
+        has_pending_own_core_dist_incremental_update = bool(
+            self.own_core_dist_incremental_queue
+        )
 
         if self.own_core_source_indices and (
             not self.own_core_dist_initialized
+            or has_pending_own_core_dist_incremental_update
             or (dirty_indices and not DISABLE_CORRECT_OWN_CORE_DISTANCE)
         ):
             if DISABLE_CORRECT_OWN_CORE_DISTANCE:
-                self.u_initialize_own_core_distance_field_manhattan()
+                if self.u_initialize_own_core_distance_field_manhattan():
+                    self.own_core_dist_initialized = True
             elif not self.own_core_dist_initialized:
                 if dirty_indices and self.own_core_dist_init_started:
                     self.u_reset_own_core_distance_initialization()
@@ -1719,8 +1782,6 @@ class Map:
                     self.own_core_dist_by_index,
                     dirty_indices,
                 )
-            if DISABLE_CORRECT_OWN_CORE_DISTANCE:
-                self.own_core_dist_initialized = True
 
         sw.lap("Own core field")
 
