@@ -768,15 +768,11 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        print(GlobalRoundStopwatch.t())
-
         enemy_harvesters = self.map.enemy_harvesters_in_vision
         if not enemy_harvesters:
             return False
 
         tile_kind_by_pos: dict[Position, str | None] = {}
-
-        print(GlobalRoundStopwatch.t())
 
         def get_tile_kind(pos: Position) -> str | None:
             if pos not in tile_kind_by_pos:
@@ -814,8 +810,6 @@ class BuilderStrategyMethodsMixin:
             if GlobalRoundStopwatch.is_overtime():
                 break
 
-        print(GlobalRoundStopwatch.t())
-
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
         candidate_tiles = self.u_filter_tiles(
             candidate_tiles,
@@ -826,8 +820,6 @@ class BuilderStrategyMethodsMixin:
         if not candidate_tiles:
             return False
 
-        print(GlobalRoundStopwatch.t())
-
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
             lambda tile: tile.dist_to_self,
@@ -837,7 +829,6 @@ class BuilderStrategyMethodsMixin:
                 else 1 if get_tile_kind(tile.position) == "own_road" else 2
             ),
         )
-        print(GlobalRoundStopwatch.t())
         for candidate_tile in candidate_tiles:
             sentinel_direction = self.u_get_sentinel_orientation(
                 candidate_tile.position
@@ -850,13 +841,10 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=attack_enemy_passable,
                 facing_direction=sentinel_direction,
             ):
-                print(GlobalRoundStopwatch.t())
                 return True
 
             if GlobalRoundStopwatch.is_overtime():
                 break
-
-        print(GlobalRoundStopwatch.t())
 
         return False
 
