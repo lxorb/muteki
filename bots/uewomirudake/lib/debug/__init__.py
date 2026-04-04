@@ -13,8 +13,8 @@ class GlobalRoundStopwatch:
 
     iterations = 0
 
-    ALLOCATED_MAP_TIME_MS = 0.5
-    ALLOCATED_BOT_TIME_MS = 0.5
+    ALLOCATED_MAP_TIME_MS = 0.8
+    ALLOCATED_BOT_TIME_MS = 0.8
 
     MS_TO_NS = 1e6
 
@@ -76,7 +76,7 @@ class GlobalRoundStopwatch:
         if cls.submission_env:
             active_cpu_time = cls.active_ct.get_cpu_time_elapsed()
             return (
-                active_cpu_time > 1 + cls.ALLOCATED_BOT_TIME_MUS
+                active_cpu_time > cls.ALLOCATED_BOT_TIME_MUS
                 if cls.map_done
                 else active_cpu_time > cls.ALLOCATED_MAP_TIME_MUS
             )
