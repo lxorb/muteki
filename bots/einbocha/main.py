@@ -98,19 +98,6 @@ class DefaultAgent(ABC, Agent):
         pass
 
 
-# Todo: put the largest map size here
-@lru_cache(maxsize=10000)
-def neighbor_tiles(width: int, height: int, pos: Position) -> dict[Direction, Position]:
-    neighbors = {}
-    for d in Direction:
-        if d is Direction.CENTRE:
-            continue
-        n = pos.add(d)
-        if 0 <= n.x < width and 0 <= n.y < height:
-            neighbors[d] = n
-    return neighbors
-
-
 TILE_WALK = 10
 TILE_EMPTY = 11
 TILE_UNKNOWN = 12
