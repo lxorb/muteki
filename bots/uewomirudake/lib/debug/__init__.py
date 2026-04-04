@@ -16,7 +16,7 @@ class GlobalRoundStopwatch:
     ALLOCATED_MAP_TIME = ALLOCATED_MAP_TIME_MS * MS_TO_NS
     ALLOCATED_BOT_TIME = ALLOCATED_BOT_TIME_MS * MS_TO_NS
 
-    OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 6
+    OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 7
     OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
 
     @classmethod
@@ -32,14 +32,19 @@ class GlobalRoundStopwatch:
         cls.map_done = True
 
     @classmethod
+    def t(cls):
+        return time.perf_counter_ns() - cls.checkpoint_time
+
+    @classmethod
     def is_overtime(cls):
         cls.iterations += 1
 
-        return cls.iterations & cls.OVERTIME_CHECK_MASK == 0 and (
-            time.perf_counter_ns() - cls.checkpoint_time > cls.ALLOCATED_BOT_TIME
-            if cls.map_done
-            else time.perf_counter_ns() - cls.checkpoint_time > cls.ALLOCATED_MAP_TIME
-        )
+        if cls.iterations & cls.OVERTIME_CHECK_MASK:
+            return False
+
+        checkpoint = cls.checkpoint_time
+        allocated = cls.ALLOCATED_BOT_TIME if cls.map_done else cls.ALLOCATED_MAP_TIME
+        return time.perf_counter_ns() - checkpoint > allocated
 
 
 class Stopwatch:

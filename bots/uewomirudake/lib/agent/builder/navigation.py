@@ -171,6 +171,9 @@ class BuilderNavigationMixin:
                     (tile.index, target_direction)
                 )
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         queue = list(coreward_directions_by_index)
         queue_idx = 0
         while queue_idx < len(queue):
@@ -198,6 +201,9 @@ class BuilderNavigationMixin:
             tile = visible_titanium_tiles_by_index[tile_idx]
             for direction in directions:
                 candidate_plans.append((tile.position, direction))
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return candidate_plans
 
@@ -567,6 +573,9 @@ class BuilderNavigationMixin:
                 seen_indices.add(target_idx)
                 queue.append(target_pos_candidate)
 
+                if GlobalRoundStopwatch.is_overtime():
+                    break
+
             if GlobalRoundStopwatch.is_overtime():
                 break
 
@@ -707,11 +716,17 @@ class BuilderNavigationMixin:
             if building_type in OWN_SUPPLIER_TYPES:
                 own_supplier_tiles.append(building_tile)
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         for building_tile in self.map.enemy_buildings_in_vision:
             building_type = building_tile.building.entity_type
             enemy_building_tiles.append(building_tile)
             if building_type in ENEMY_TURRET_TYPES:
                 enemy_turret_tiles.append(building_tile)
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         blocked_direction = (
             feeder_directions[0] if len(feeder_directions) == 1 else None
@@ -727,18 +742,25 @@ class BuilderNavigationMixin:
             for idx, direction in enumerate(Direction)
             if direction != Direction.CENTRE
         }
-        direction_scores = [
-            self.u_get_sentinel_direction_score(
-                pos,
-                direction,
-                enemy_core_tiles,
-                enemy_turret_tiles,
-                own_supplier_tiles,
-                enemy_building_tiles,
-                direction_order,
+        direction_scores = []
+        for direction in candidate_directions:
+            direction_scores.append(
+                self.u_get_sentinel_direction_score(
+                    pos,
+                    direction,
+                    enemy_core_tiles,
+                    enemy_turret_tiles,
+                    own_supplier_tiles,
+                    enemy_building_tiles,
+                    direction_order,
+                )
             )
-            for direction in candidate_directions
-        ]
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
+        if not direction_scores:
+            return candidate_directions[0]
 
         direction_scores.sort(key=lambda item: item[0])
         return direction_scores[0][1]
@@ -753,45 +775,55 @@ class BuilderNavigationMixin:
         enemy_building_tiles,
         direction_order: dict[Direction, int],
     ) -> tuple[tuple[int, ...], Direction]:
-        can_target_enemy_core = any(
-            self.map.u_sentinel_covers_target(
-                pos,
-                direction,
-                target_tile.position,
-                GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-            for target_tile in enemy_core_tiles
-        )
-        enemy_turret_count = sum(
-            1
-            for target_tile in enemy_turret_tiles
+        can_target_enemy_core = False
+        for target_tile in enemy_core_tiles:
             if self.map.u_sentinel_covers_target(
                 pos,
                 direction,
                 target_tile.position,
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-        )
-        own_supplier_count = sum(
-            1
-            for target_tile in own_supplier_tiles
+            ):
+                can_target_enemy_core = True
+                break
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
+        enemy_turret_count = 0
+        for target_tile in enemy_turret_tiles:
             if self.map.u_sentinel_covers_target(
                 pos,
                 direction,
                 target_tile.position,
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-        )
-        enemy_building_count = sum(
-            1
-            for target_tile in enemy_building_tiles
+            ):
+                enemy_turret_count += 1
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
+        own_supplier_count = 0
+        for target_tile in own_supplier_tiles:
             if self.map.u_sentinel_covers_target(
                 pos,
                 direction,
                 target_tile.position,
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-        )
+            ):
+                own_supplier_count += 1
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
+        enemy_building_count = 0
+        for target_tile in enemy_building_tiles:
+            if self.map.u_sentinel_covers_target(
+                pos,
+                direction,
+                target_tile.position,
+                GameConstants.SENTINEL_VISION_RADIUS_SQ,
+            ):
+                enemy_building_count += 1
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         return (
             (
                 0 if can_target_enemy_core else 1,
@@ -834,6 +866,9 @@ class BuilderNavigationMixin:
                 if feeder_direction is not None:
                     feeder_directions.append(feeder_direction)
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         blocked_direction = (
             feeder_directions[0] if len(feeder_directions) == 1 else None
         )
@@ -870,6 +905,9 @@ class BuilderNavigationMixin:
                     if target_tile.building.entity_type in ENEMY_TURRET_TYPES:
                         visible_enemy_turrets += 1
 
+                if GlobalRoundStopwatch.is_overtime():
+                    break
+
             direction_scores.append(
                 (
                     (
@@ -881,6 +919,12 @@ class BuilderNavigationMixin:
                     direction,
                 )
             )
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
+        if not direction_scores:
+            return candidate_directions[0]
 
         direction_scores.sort(key=lambda item: item[0])
         return direction_scores[0][1]

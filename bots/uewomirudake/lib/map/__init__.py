@@ -93,6 +93,10 @@ class Map:
         self.own_core_dist_init_heap: list[tuple[int, int]] = []
         self.own_core_dist_incremental_queue: list[int] = []
         self.own_core_dist_incremental_queue_head = 0
+        self.own_core_dist_incremental_dirty_queue: list[int] = []
+        self.own_core_dist_incremental_dirty_queue_head = 0
+        self.own_core_dist_incremental_seed_queue: list[int] = []
+        self.own_core_dist_incremental_seed_queue_head = 0
         self.own_core_dist_manhattan_init_started = False
         self.own_core_dist_manhattan_init_next_x = 0
         self.own_core_dist_manhattan_init_next_y = 0
@@ -164,6 +168,8 @@ class Map:
         # Frontier expansion cache used by `s_frontier_expand_new`.
         self.frontier_expand_cached_unseen_indices: set[int] = set()
         self.frontier_expand_newly_seen_indices: list[int] = []
+        self.frontier_expand_pending_indices: list[int] = []
+        self.frontier_expand_pending_head = 0
         self.known_own_supply_link_indices: set[int] = set()
 
         self.stopwatch = Stopwatch("Map")
@@ -432,8 +438,15 @@ class Map:
                 self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
         self.stopwatch.lap("Nearby buildings")
 
+        processed_tiles_in_vision = []
         for tile in self.tiles_in_vision:
             tile.update_attributes()
+            processed_tiles_in_vision.append(tile)
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
+        self.tiles_in_vision = processed_tiles_in_vision
 
         self.stopwatch.lap("Tile attributes")
 
@@ -549,6 +562,9 @@ class Map:
             else:
                 known_accessible_axionite_indices.discard(tile.index)
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         self.known_accessible_titanium_indices = sorted(
             known_accessible_titanium_indices
         )
@@ -558,17 +574,34 @@ class Map:
         self.u_update_frontier_expand_cache()
 
     def u_update_frontier_expand_cache(self) -> None:
-        if not self.frontier_expand_newly_seen_indices:
+        pending_indices = self.frontier_expand_pending_indices
+        if self.frontier_expand_newly_seen_indices:
+            pending_indices.extend(self.frontier_expand_newly_seen_indices)
+            self.frontier_expand_newly_seen_indices.clear()
+
+        pending_head = self.frontier_expand_pending_head
+        if pending_head >= len(pending_indices):
+            pending_indices.clear()
+            self.frontier_expand_pending_head = 0
             return
 
         frontier_indices = self.frontier_expand_cached_unseen_indices
         tiles_by_index = self.tiles_by_index
 
-        for idx in self.frontier_expand_newly_seen_indices:
+        while pending_head < len(pending_indices):
+            idx = pending_indices[pending_head]
+            pending_head += 1
             frontier_indices.discard(idx)
             for neighbor_idx in self.u_iter_neighbor_indices(idx):
                 if tiles_by_index[neighbor_idx].last_seen_turn == -1:
                     frontier_indices.add(neighbor_idx)
+
+            if GlobalRoundStopwatch.is_overtime():
+                self.frontier_expand_pending_head = pending_head
+                return
+
+        pending_indices.clear()
+        self.frontier_expand_pending_head = 0
 
     def u_update_symmetry_from_visible_tiles(self) -> None:
         if self.symmetry_mode is not None:
@@ -641,6 +674,9 @@ class Map:
                 int(rotation_possible) + int(mirror_x_possible) + int(mirror_y_possible)
                 <= 1
             ):
+                break
+
+            if GlobalRoundStopwatch.is_overtime():
                 break
 
         new_symmetry_mode_candidates = []
@@ -783,6 +819,8 @@ class Map:
                 ):
                     core_tile = candidate_tile
                     break
+                if GlobalRoundStopwatch.is_overtime():
+                    break
             if core_tile is None:
                 return False
 
@@ -919,6 +957,9 @@ class Map:
                 break
             tiles.append(self.u_get_pos_tile(target_pos))
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
         return tiles
 
     def u_get_gunner_open_ray_tiles(
@@ -939,6 +980,8 @@ class Map:
             ):
                 break
             open_tiles.append(target_tile)
+            if GlobalRoundStopwatch.is_overtime():
+                break
         return open_tiles
 
     def u_sentinel_covers_target(
@@ -969,6 +1012,9 @@ class Map:
                 <= 1
             ):
                 return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
 
@@ -1163,6 +1209,8 @@ class Map:
         for tile in self.tiles_in_vision:
             remembered_labels.append((tile, tile.get_supply_chain_label(team)))
             tile.set_supply_chain_label(team, SupplyChainLabel.NONE)
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         for tile, _ in remembered_labels:
             source_label = self.u_get_supply_chain_source_label(tile, team)
@@ -1170,6 +1218,8 @@ class Map:
                 continue
             tile.set_supply_chain_label(team, source_label)
             fresh_queue.append(tile)
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         self.u_propagate_supply_chain_labels_for_team(
             fresh_queue,
@@ -1188,6 +1238,8 @@ class Map:
             tile.set_supply_chain_label(team, remembered_label)
             if self.u_can_propagate_visible_supply_chain_label(tile, team):
                 remembered_queue.append(tile)
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         self.u_propagate_supply_chain_labels_for_team(
             remembered_queue,
@@ -1213,11 +1265,15 @@ class Map:
             self.own_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         for supply_link_tile in self.enemy_supply_links_in_vision:
             self.enemy_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         self.u_update_supply_chain_labels()
 
@@ -1251,6 +1307,9 @@ class Map:
             ):
                 self.enemy_missing_supply_links.append(tile)
 
+            if GlobalRoundStopwatch.is_overtime():
+                break
+
     def u_is_own_supply_link_occupied_by_other_builder(self, tile: Tile) -> bool:
         return bool(
             tile.building.team == self.own_team
@@ -1280,6 +1339,8 @@ class Map:
                 continue
             known_supply_indices.discard(tile.index)
             tile.last_patrolled_index = -1
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
     def u_enqueue_core_distance_index(
         self,
@@ -1292,14 +1353,15 @@ class Map:
         queue.append(idx)
 
     def u_reset_own_core_distance_incremental_update(self) -> None:
-        queue = self.own_core_dist_incremental_queue
-        queue_head = self.own_core_dist_incremental_queue_head
-
-        for idx in queue[queue_head:]:
-            self.core_distance_enqueued_by_index[idx] = 0
-
-        queue.clear()
+        self.core_distance_enqueued_by_index[:] = b"\x00" * len(
+            self.core_distance_enqueued_by_index
+        )
+        self.own_core_dist_incremental_queue.clear()
         self.own_core_dist_incremental_queue_head = 0
+        self.own_core_dist_incremental_dirty_queue.clear()
+        self.own_core_dist_incremental_dirty_queue_head = 0
+        self.own_core_dist_incremental_seed_queue.clear()
+        self.own_core_dist_incremental_seed_queue_head = 0
 
     def u_reset_own_core_distance_manhattan_initialization(self) -> None:
         self.own_core_dist_manhattan_init_started = False
@@ -1319,6 +1381,10 @@ class Map:
 
         queue = self.own_core_dist_incremental_queue
         queue_head = self.own_core_dist_incremental_queue_head
+        dirty_queue = self.own_core_dist_incremental_dirty_queue
+        dirty_queue_head = self.own_core_dist_incremental_dirty_queue_head
+        seed_queue = self.own_core_dist_incremental_seed_queue
+        seed_queue_head = self.own_core_dist_incremental_seed_queue_head
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
@@ -1326,23 +1392,52 @@ class Map:
         core_distance_passable_by_index = self.core_distance_passable_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
 
-        if not queue:
+        if not queue and not dirty_queue and not seed_queue:
             for idx in source_indices:
                 self.u_enqueue_core_distance_index(idx, queue)
 
-        for idx in dirty_indices:
-            self.u_enqueue_core_distance_index(idx, queue)
+        if dirty_indices:
+            dirty_queue.extend(dirty_indices)
+
+        while dirty_queue_head < len(dirty_queue):
+            if GlobalRoundStopwatch.is_overtime():
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = dirty_queue_head
+                self.own_core_dist_incremental_seed_queue_head = seed_queue_head
+                return False
+
+            idx = dirty_queue[dirty_queue_head]
+            dirty_queue_head += 1
+            seed_queue.append(idx)
             neighbor_base = idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[neighbor_idx]:
                     continue
-                self.u_enqueue_core_distance_index(neighbor_idx, queue)
+                seed_queue.append(neighbor_idx)
+
+        dirty_queue.clear()
+        self.own_core_dist_incremental_dirty_queue_head = 0
+
+        while seed_queue_head < len(seed_queue):
+            if GlobalRoundStopwatch.is_overtime():
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = 0
+                self.own_core_dist_incremental_seed_queue_head = seed_queue_head
+                return False
+
+            self.u_enqueue_core_distance_index(seed_queue[seed_queue_head], queue)
+            seed_queue_head += 1
+
+        seed_queue.clear()
+        self.own_core_dist_incremental_seed_queue_head = 0
 
         while queue_head < len(queue):
             if GlobalRoundStopwatch.is_overtime():
                 self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = 0
+                self.own_core_dist_incremental_seed_queue_head = 0
                 return False
 
             idx = queue[queue_head]
@@ -1385,6 +1480,8 @@ class Map:
 
         queue.clear()
         self.own_core_dist_incremental_queue_head = 0
+        self.own_core_dist_incremental_dirty_queue_head = 0
+        self.own_core_dist_incremental_seed_queue_head = 0
         return True
 
     def u_reset_own_core_distance_initialization(self) -> None:
@@ -1680,6 +1777,9 @@ class Map:
                 current_idx = best_candidate_idx
                 path.append(tiles_by_index[current_idx])
 
+                if GlobalRoundStopwatch.is_overtime():
+                    break
+
             if path[-1].index == source_idx:
                 path.reverse()
                 return path
@@ -1740,6 +1840,9 @@ class Map:
                         path.append(tiles_by_index[previous_idx])
                         walk_idx = previous_idx
 
+                        if GlobalRoundStopwatch.is_overtime():
+                            break
+
                     path.reverse()
                     return path
 
@@ -1759,6 +1862,8 @@ class Map:
         dirty_indices = tuple(self.core_distance_dirty_indices)
         has_pending_own_core_dist_incremental_update = bool(
             self.own_core_dist_incremental_queue
+            or self.own_core_dist_incremental_dirty_queue
+            or self.own_core_dist_incremental_seed_queue
         )
 
         if self.own_core_source_indices and (

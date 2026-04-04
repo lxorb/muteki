@@ -6,6 +6,7 @@ from lib.agent.constants import (
     LAUNCHER_THROWABLE_PRIORITY_RANK,
     TURRET_TARGET_PRIORITY_RANK,
 )
+from lib.debug import GlobalRoundStopwatch
 
 
 class TurretAgent(Agent):
@@ -104,6 +105,8 @@ class TurretAgent(Agent):
         for bot_tile in throwable_tiles:
             if self.u_get_launcher_throw_target(bot_tile.position) is not None:
                 return bot_tile.position
+            if GlobalRoundStopwatch.is_overtime():
+                break
         return None
 
     def u_get_launcher_throwable_priority_key(
@@ -199,6 +202,9 @@ class TurretAgent(Agent):
                     target_pos,
                 ):
                     return True
+
+            if GlobalRoundStopwatch.is_overtime():
+                break
 
         return False
     
