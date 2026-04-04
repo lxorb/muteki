@@ -4,7 +4,7 @@ from cambc import Controller
 from lib.map import Map
 from lib.map.tile import Tile
 
-from lib.debug import Stopwatch
+from lib.debug import Stopwatch, GlobalRoundStopwatch
 
 
 class Agent:
@@ -17,6 +17,8 @@ class Agent:
         self.stopwatch = Stopwatch("Agent")
 
     def u_run(self, ct: Controller) -> None:
+        GlobalRoundStopwatch.start_map_time()
+
         self.stopwatch.start()
 
         self.ct = ct
@@ -30,6 +32,8 @@ class Agent:
 
         self.map.u_update_vision()
         self.stopwatch.lap("Map vision")
+
+        GlobalRoundStopwatch.start_bot_time()
 
         self.u_handler()
         self.stopwatch.lap("Handle agent")
