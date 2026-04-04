@@ -29,7 +29,7 @@ from lib.map.constants import (
 from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel
 
-from lib.debug import Stopwatch
+from lib.debug import Stopwatch, GlobalRoundStopwatch
 
 
 class SymmetryMode(Enum):
@@ -71,7 +71,9 @@ class Map:
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
-        self.own_core_dist_by_index = array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
+        self.own_core_dist_by_index = (
+            array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
+        )
         self.core_inf_distances_by_index = (
             array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
         )
@@ -114,9 +116,7 @@ class Map:
         self.neighbor_step_costs_by_index = array("B", [0]) * (
             self.INITIAL_MAP_SIZE * self.MAX_NEIGHBOR_COUNT
         )
-        self.cardinal_neighbor_count_by_index = (
-            array("B", [0]) * self.INITIAL_MAP_SIZE
-        )
+        self.cardinal_neighbor_count_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.cardinal_neighbor_indices_by_index = array("H", [0]) * (
             self.INITIAL_MAP_SIZE * self.MAX_CARDINAL_NEIGHBOR_COUNT
         )
@@ -165,7 +165,9 @@ class Map:
 
     def _reset_turn_state(self) -> None:
         if self.ct is None:
-            raise RuntimeError("Map controller must be set before resetting turn state.")
+            raise RuntimeError(
+                "Map controller must be set before resetting turn state."
+            )
 
         self.current_round = self.ct.get_current_round()
         self.current_pos = self.ct.get_position()
@@ -220,7 +222,8 @@ class Map:
                             1 if dx == 0 or dy == 0 else 2
                         )
                         self.neighbor_index_by_direction_by_index[
-                            direction_base + self._direction_slot_by_direction[direction]
+                            direction_base
+                            + self._direction_slot_by_direction[direction]
                         ] = neighbor_idx
                         neighbor_count += 1
                         if dx == 0 or dy == 0:
@@ -387,7 +390,8 @@ class Map:
         direction: Direction,
     ) -> int | None:
         neighbor_idx = self.neighbor_index_by_direction_by_index[
-            idx * self.DIRECTION_SLOT_COUNT + self._direction_slot_by_direction[direction]
+            idx * self.DIRECTION_SLOT_COUNT
+            + self._direction_slot_by_direction[direction]
         ]
         if neighbor_idx < 0 or not self.active_mask_by_index[neighbor_idx]:
             return None
@@ -491,10 +495,7 @@ class Map:
 
                 if building.team == self.own_team:
                     building_damaged = building.hp < self.ct.get_max_hp(building.id)
-                    if (
-                        building.entity_type == EntityType.CONVEYOR
-                        and building.hp > 16
-                    ):
+                    if building.entity_type == EntityType.CONVEYOR and building.hp > 16:
                         building_damaged = False
                     own_bot_damaged = (
                         tile.bot.id is not None
@@ -543,8 +544,12 @@ class Map:
             else:
                 known_accessible_axionite_indices.discard(tile.index)
 
-        self.known_accessible_titanium_indices = sorted(known_accessible_titanium_indices)
-        self.known_accessible_axionite_indices = sorted(known_accessible_axionite_indices)
+        self.known_accessible_titanium_indices = sorted(
+            known_accessible_titanium_indices
+        )
+        self.known_accessible_axionite_indices = sorted(
+            known_accessible_axionite_indices
+        )
         self.u_update_frontier_expand_cache()
 
     def u_update_frontier_expand_cache(self) -> None:
@@ -589,17 +594,13 @@ class Map:
                 has_known_symmetric_tile = rotation_tile.environment is not None
 
             if mirror_x_possible:
-                mirror_x_tile = self.u_get_pos_tile(
-                    Position(x, self.height - 1 - y)
-                )
+                mirror_x_tile = self.u_get_pos_tile(Position(x, self.height - 1 - y))
                 has_known_symmetric_tile = (
                     has_known_symmetric_tile or mirror_x_tile.environment is not None
                 )
 
             if mirror_y_possible:
-                mirror_y_tile = self.u_get_pos_tile(
-                    Position(self.width - 1 - x, y)
-                )
+                mirror_y_tile = self.u_get_pos_tile(Position(self.width - 1 - x, y))
                 has_known_symmetric_tile = (
                     has_known_symmetric_tile or mirror_y_tile.environment is not None
                 )
@@ -992,8 +993,7 @@ class Map:
     def u_get_launcher_pickup_positions(self, source_pos: Position) -> list[Tile]:
         source_idx = self.u_to_index(source_pos)
         return [
-            self.tiles_by_index[idx]
-            for idx in self.u_iter_neighbor_indices(source_idx)
+            self.tiles_by_index[idx] for idx in self.u_iter_neighbor_indices(source_idx)
         ]
 
     def u_is_chokepoint(self, pos: Position) -> bool:
@@ -1246,8 +1246,7 @@ class Map:
     def u_is_own_supply_link_occupied_by_other_builder(self, tile: Tile) -> bool:
         return bool(
             tile.building.team == self.own_team
-            and tile.building.entity_type
-            in {EntityType.CONVEYOR, EntityType.BRIDGE}
+            and tile.building.entity_type in {EntityType.CONVEYOR, EntityType.BRIDGE}
             and tile.bot.id is not None
             and tile.bot.team == self.own_team
             and tile.bot.entity_type == EntityType.BUILDER_BOT
@@ -1407,7 +1406,10 @@ class Map:
 
         while frontier and finalized_nodes < max_finalized_nodes:
             current_dist, current_idx = heappop(frontier)
-            if exact_by_index[current_idx] or current_dist != distance_by_index[current_idx]:
+            if (
+                exact_by_index[current_idx]
+                or current_dist != distance_by_index[current_idx]
+            ):
                 continue
 
             exact_by_index[current_idx] = 1
@@ -1424,16 +1426,16 @@ class Map:
                 ):
                     continue
 
-                next_dist = current_dist + neighbor_step_costs_by_index[
-                    neighbor_base + offset
-                ]
+                next_dist = (
+                    current_dist + neighbor_step_costs_by_index[neighbor_base + offset]
+                )
                 if next_dist >= distance_by_index[neighbor_idx]:
                     continue
 
                 distance_by_index[neighbor_idx] = next_dist
                 heappush(frontier, (next_dist, neighbor_idx))
 
-            if False:
+            if GlobalRoundStopwatch.is_overtime():
                 break
 
         if not frontier:
@@ -1577,8 +1579,7 @@ class Map:
                     adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
                     if (
                         not active_mask_by_index[adjacent_idx]
-                        or
-                        dist_to_self_epoch_by_index[adjacent_idx]
+                        or dist_to_self_epoch_by_index[adjacent_idx]
                         != self.dist_to_self_epoch
                         or dist_to_self_by_index[adjacent_idx] != next_dist_to_self
                     ):
@@ -1692,10 +1693,7 @@ class Map:
 
         if self.own_core_source_indices and (
             not self.own_core_dist_initialized
-            or (
-                dirty_indices
-                and not DISABLE_CORRECT_OWN_CORE_DISTANCE
-            )
+            or (dirty_indices and not DISABLE_CORRECT_OWN_CORE_DISTANCE)
         ):
             if DISABLE_CORRECT_OWN_CORE_DISTANCE:
                 self.u_initialize_own_core_distance_field_manhattan()
