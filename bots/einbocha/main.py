@@ -4,6 +4,8 @@ from typing import NamedTuple
 import array
 from functools import lru_cache
 import heapq
+import random
+from collections import deque
 
 from cambc import (
     Controller,
@@ -13,6 +15,14 @@ from cambc import (
     Position,
     Environment,
 )
+
+
+def idx_to_pos(idx: int, width: int) -> Position:
+    return Position(idx % width, idx // width)
+
+
+def pos_to_idx(pos: Position, width: int) -> int:
+    return pos.y * width + pos.x
 
 
 class Player:
@@ -37,6 +47,7 @@ class Agent:
         pass
 
 
+# Todo: remove Resources inefficient too many object creations
 class Resources(NamedTuple):
     ti: int
     ax: int
@@ -58,9 +69,14 @@ class DefaultAgent(ABC, Agent):
         self.team: Team = self.ct.get_team()
         self.birth: int = self.ct.get_current_round()
         self.round: int = self.ct.get_current_round()
-        self.position: Position = self.ct.get_position()
-        core = self.ct.get_nearby_buildings(1)
-        self.core_pos: Position = self.ct.get_position(core[0])
+        self.width: int = self.ct.get_map_width()
+        self.height: int = self.ct.get_map_height()
+        self.size: int = self.width * self.height
+        _pos = self.ct.get_position()
+        self.position: int = pos_to_idx(_pos, self.width)
+        _core = self.ct.get_nearby_buildings(1)
+        _core = self.ct.get_position(_core[0])
+        self.core_pos: int = pos_to_idx(_core, self.width)
         self.turn_last_completed: bool | None = None
 
         _r = self.ct.get_global_resources()
@@ -115,7 +131,7 @@ class DStarLite:
         self.height = agent.height
         self.size = agent.size
 
-        # Precompute neighbors as indices for faster lookup
+        # Todo: move the calculation somewhere else maybe into a hardcoded thingy
         self.neighbors: list[list[int]] = [[] for _ in range(self.size)]
         for y in range(self.height):
             for x in range(self.width):
@@ -147,6 +163,9 @@ class DStarLite:
         time_init_end = time.perf_counter_ns()
 
         print(f'd star lite __init__() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ms')
+
+    def target_position(self) -> int:
+        return self.s_goal_idx
 
     def _heuristic(self, s1_idx: int, s2_idx: int) -> float:
         """Chebyshev distance heuristic for 8-directional movement with uniform cost."""
@@ -261,12 +280,12 @@ class DStarLite:
                 for s_idx in self.neighbors[u_idx]:
                     self._update_vertex(s_idx)
 
-    def initialize(self, start: Position, goal: Position) -> None:
+    def initialize(self, start_idx: int, goal_idx: int) -> None:
         """Initialize D* Lite for a new goal."""
         time_init_start = time.perf_counter_ns()
 
-        self.s_start_idx = start.y * self.width + start.x
-        self.s_goal_idx = goal.y * self.width + goal.x
+        self.s_start_idx = start_idx
+        self.s_goal_idx = goal_idx
         self.s_last_idx = self.s_start_idx
         self.km = 0.0
 
@@ -286,10 +305,9 @@ class DStarLite:
 
         print(f'd star lite initialize() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ms')
 
-    def update_start(self, new_start: Position) -> None:
+    def update_start(self, new_start_idx: int) -> None:
         """Update when the agent has moved to a new position."""
         start = time.perf_counter_ns()
-        new_start_idx = new_start.y * self.width + new_start.x
         if self.s_start_idx == -1 or self.s_goal_idx == -1:
             end = time.perf_counter_ns()
             print(f'd star lite update_start() took: {(end - start) / 1_000_000:.4f} ms')
@@ -305,9 +323,8 @@ class DStarLite:
         end = time.perf_counter_ns()
         print(f'd star lite update_start() took: {(end - start) / 1_000_000:.4f} ms')
 
-    def update_cell(self, pos: Position) -> None:
+    def update_cell(self, idx: int) -> None:
         """Mark a cell as changed (obstacle detected/removed)."""
-        idx = pos.y * self.width + pos.x
         self.changed_cells.add(idx)
 
     def replan(self) -> None:
@@ -406,35 +423,56 @@ class DStarLite:
         return ret
 
 
-TASK_STALE = -1
-TASK_EXPLORE = 0
+def explore(self: 'BuilderAgent') -> bool:
+    target = self.dstar.target_position() # -1 if uninitialized
 
+    if self.round == self.birth:
+        x, y = random.randint(0, self.width - 1), random.randint(0, self.height - 1)
+        target = y * self.width + x
+
+    if self.position == target:
+        return True
+
+    self.move(target) # Todo: maybe smarter to just read self.target_position inside self.move
+
+    return False
+
+
+def important(self: 'BuilderAgent') -> bool:
+    return True
+
+
+DIST_INF = 10_000_000
+
+ORE_NOTHING = 0
+ORE_TI = 1
+ORE_AX = 2
+
+BB_NORMAL = 0
+
+HIERARCHIES: dict[int, tuple] = {
+    BB_NORMAL: (important, explore),
+}
 
 class BuilderAgent(DefaultAgent):
     def __init__(self, ct: Controller):
         super().__init__(ct)
-        self.task: int = TASK_EXPLORE
-        self.target_pos: Position = self.position
-        self.target_pos_prev: Position | None = None
-        self.direction: Direction = Direction.CENTRE
+        self.bb_type: int = BB_NORMAL # Todo: here should go spawn-position-based type derivation
+        self.todo_hierarchy: tuple = HIERARCHIES[self.bb_type]
+        self.todo_list: deque = deque([self.todo_hierarchy[-1]], maxlen=len(self.todo_hierarchy))
 
-        self.width: int = self.ct.get_map_width()
-        self.height: int = self.ct.get_map_height()
-        self.size: int = self.width * self.height
-
-        # two maps, one for passability and the other stores the round in which a tile was last seen
         self.map_walk = array.array('i', [TILE_UNKNOWN] * self.size)
+        self.map_dist = array.array('i', [DIST_INF] * self.size) # Todo: distance map
+        self.map_ore = array.array('i', [ORE_NOTHING] * self.size)
+
+        self.set_ti: set[int] = set()
+        self.set_ax: set[int] = set()
 
         self.dstar: DStarLite = DStarLite(self)
 
-    def choose_task(self):
-        if self.position == self.target_pos and self.round != self.birth:
-            self.task = TASK_STALE
-        else:
-            self.task = TASK_EXPLORE
-
     def make_turn(self):
-        self.position = self.ct.get_position()
+        _pos = self.ct.get_position()
+        self.position = pos_to_idx(_pos, self.width)
 
         start = time.perf_counter_ns()
 
@@ -444,61 +482,99 @@ class BuilderAgent(DefaultAgent):
 
         print(f'update_on_view() took: {(end - start) / 1_000_000:.4f} ms')
 
-        self.choose_task()
+        self.todo_handler()
 
-        task = self.task
-        if task == TASK_EXPLORE:
-            self.explore()
+        # Todo: try to use your leftover actions in a meaningful way
 
-    def explore(self):
-        if self.round == self.birth:
-            self.target_pos = Position(4, 21)
+        # Todo: place marker with information
 
-        self.d_star_next()
-        self.move()
+        # Todo: do any precomputation until turn 2ms reached
 
-    def d_star_next(self):
-        if self.target_pos != self.target_pos_prev:
-            self.dstar.initialize(self.position, self.target_pos)
-            self.target_pos_prev = self.target_pos
+    def todo_handler(self):
+        todo = self.todo_list[0] if self.todo_list else None
+        if todo is not None:
+            idx = self.todo_hierarchy.index(todo)
+            self.todo_list.extendleft(
+                self.todo_hierarchy[idx-1::-1]
+            )  # 2k, all C — optimal
+        else:
+            self.todo_list.extendleft(
+                reversed(self.todo_hierarchy)
+            )   # n, all C — optimal
+
+        print(f'todo_list: {self.todo_list}')
+
+        while self.todo_list:
+            todo = self.todo_list[0]  # peek at front without removing
+            skip = todo(self)
+            print(f'{todo} skipped: {skip}')
+            if skip:
+                self.todo_list.popleft()  # now safe to remove
+            else:
+                break
+
+    def move(self, target_pos_idx: int):
+
+        if target_pos_idx != self.dstar.target_position():
+            self.dstar.initialize(self.position, target_pos_idx)
         else:
             self.dstar.update_start(self.position)
             self.dstar.replan()
 
-        self.direction = self.dstar.get_next_direction()
+        direction = self.dstar.get_next_direction() # Todo: first try greedy best first search for in vision targets
 
-    def move(self):
-        d = self.direction
-        next_pos = self.position.add(d)
+        pos = idx_to_pos(self.position, self.width)
+        next_pos = pos.add(direction)
         if self.ct.can_build_road(next_pos):
             self.ct.build_road(next_pos)
-        if self.ct.can_move(d):
-            self.ct.move(d)
+        if self.ct.can_move(direction):
+            self.ct.move(direction)
 
     def update_on_view(self):
         ct = self.ct
         map_walk = self.map_walk
+        map_ore = self.map_ore
         width = self.width
         dstar_update = self.dstar.update_cell
+        set_ti = self.set_ti
+        set_ax = self.set_ax
 
         for pos in ct.get_nearby_tiles():
-            if ct.is_tile_passable(pos):
+
+            idx = pos.y * width + pos.x
+            passable = ct.is_tile_passable(pos)
+            bb = ct.get_tile_builder_bot_id(pos)
+            empty = ct.is_tile_empty(pos)
+            env = ct.get_tile_env(pos)
+            building = ct.get_tile_building_id(pos)
+
+            # movement related:
+            if passable:
                 walk = TILE_WALK
-            elif ct.get_tile_builder_bot_id(pos) is not None:
+            elif bb is not None:
                 walk = TILE_BLOCK
-            elif ct.is_tile_empty(pos):
+            elif empty:
                 walk = TILE_EMPTY
-            elif ct.get_tile_env(pos) is Environment.WALL:
+            elif env is Environment.WALL:
                 walk = TILE_BLOCK
-            elif ct.get_tile_building_id(pos) is not None:
+            elif building is not None:
                 walk = TILE_BLOCK
             else:
                 walk = TILE_UNKNOWN
 
-            idx = pos.y * width + pos.x
             if walk != map_walk[idx]:
-                dstar_update(pos)
+                dstar_update(idx)
                 map_walk[idx] = walk
+
+            # environment related:
+            if idx not in set_ti and idx not in set_ax:
+                # Todo: add opponent and harvester connection check
+                if env is Environment.ORE_TITANIUM:
+                    map_ore[idx] = ORE_TI
+                    set_ti.add(idx)
+                elif env is Environment.ORE_AXIONITE:
+                    map_ore[idx] = ORE_AX
+                    set_ax.add(idx)
 
 
 class CoreAgent(DefaultAgent):
@@ -511,7 +587,7 @@ class CoreAgent(DefaultAgent):
             self.spawn_bb()
 
     def spawn_bb(self) -> bool:
-        pos = self.position
+        pos = idx_to_pos(self.position, self.width)
 
         if self.ct.can_spawn(pos):
             self.ct.spawn_builder(pos)
