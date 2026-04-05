@@ -131,7 +131,6 @@ class DStarLite:
         self.height = agent.height
         self.size = agent.size
 
-        # Todo: move the calculation somewhere else maybe into a hardcoded thingy
         self.neighbors: list[list[int]] = [[] for _ in range(self.size)]
         for y in range(self.height):
             for x in range(self.width):
