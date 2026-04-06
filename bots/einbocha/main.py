@@ -114,10 +114,22 @@ class DefaultAgent(ABC, Agent):
         pass
 
 
-TILE_WALK = 10
-TILE_EMPTY = 11
-TILE_UNKNOWN = 12
-TILE_BLOCK = 10_000_000
+TILE_WALK: float = 10
+TILE_EMPTY: float = 11
+TILE_UNKNOWN: float = 12
+TILE_BLOCK: float = 10_000_000
+
+# Direction lookup dictionary for (dx, dy) -> Direction
+_DIRECTION_MAP: dict[tuple[int, int], Direction] = {
+    (0, -1): Direction.NORTH,
+    (0, 1): Direction.SOUTH,
+    (1, 0): Direction.EAST,
+    (-1, 0): Direction.WEST,
+    (1, -1): Direction.NORTHEAST,
+    (-1, -1): Direction.NORTHWEST,
+    (1, 1): Direction.SOUTHEAST,
+    (-1, 1): Direction.SOUTHWEST,
+}
 
 
 class DStarLite:
@@ -144,16 +156,16 @@ class DStarLite:
                             self.neighbors[idx].append(ny * self.width + nx)
 
         # D* Lite state using lists for performance
-        self.g = [float(TILE_BLOCK)] * self.size
-        self.rhs = [float(TILE_BLOCK)] * self.size
-        self.U: list[tuple[tuple[float, float], int]] = []
+        self.g = [TILE_BLOCK] * self.size
+        self.rhs = [TILE_BLOCK] * self.size
+        self.U: list[tuple[float, float, int]] = []  # Flattened: (k1, k2, idx)
         self.km: float = 0.0
 
         self.s_start_idx: int = -1
         self.s_goal_idx: int = -1
         self.s_last_idx: int = -1
 
-        # in_queue tracks the key for each idx (lazy deletion)
+        # in_queue tracks the key (k1, k2) for each idx (lazy deletion)
         self.in_queue: list[tuple[float, float] | None] = [None] * self.size
 
         # Track which cells have changed since last replan
@@ -183,20 +195,20 @@ class DStarLite:
         h = float(max(abs((s_idx % self.width) - (self.s_start_idx % self.width)), 
                       abs((s_idx // self.width) - (self.s_start_idx // self.width))))
         
-        return (min_val + h + self.km, min_val)
+        return min_val + h + self.km, min_val
 
     def _calculate_rhs(self, u_idx: int) -> float:
         """Calculate one-step lookahead value for vertex u."""
         if u_idx == self.s_goal_idx:
             return 0.0
         
-        min_rhs = float(TILE_BLOCK)
+        min_rhs = TILE_BLOCK
         map_walk = self.agent.map_walk
         g = self.g
         for s_prime_idx in self.neighbors[u_idx]:
             cost = map_walk[s_prime_idx]
             if cost < TILE_BLOCK:
-                candidate = float(cost) + g[s_prime_idx]
+                candidate = cost + g[s_prime_idx]
                 if candidate < min_rhs:
                     min_rhs = candidate
         return min_rhs
@@ -206,7 +218,7 @@ class DStarLite:
         if self.in_queue[u_idx] == key:
             return
         self.in_queue[u_idx] = key
-        heapq.heappush(self.U, (key, u_idx))
+        heapq.heappush(self.U, (key[0], key[1], u_idx))
 
     def _update_vertex(self, u_idx: int) -> None:
         """Update a vertex's rhs value and its position in the priority queue."""
@@ -225,12 +237,15 @@ class DStarLite:
         """Compute or update the shortest path (canonical D* Lite inner loop)."""
         max_iterations = self.size * 4
         
+        # Cache hot attributes as locals
         g = self.g
         rhs = self.rhs
         in_queue = self.in_queue
         U = self.U
         width = self.width
         s_start_idx = self.s_start_idx
+        km = self.km
+        neighbors = self.neighbors
 
         for _ in range(max_iterations):
             if not U:
@@ -241,13 +256,17 @@ class DStarLite:
             rhs_start = rhs[s_start_idx]
             min_start = min(g_start, rhs_start)
             # h is 0 for start to start
-            start_key = (min_start + self.km, min_start)
+            start_key = (min_start + km, min_start)
 
-            top_key, _ = U[0]
+            # Peek at flattened heap entry
+            top_k1, top_k2, _ = U[0]
+            top_key = (top_k1, top_k2)
             if top_key >= start_key and rhs_start == g_start:
                 break
 
-            k_old, u_idx = heapq.heappop(U)
+            # Pop flattened entry
+            k1_old, k2_old, u_idx = heapq.heappop(U)
+            k_old = (k1_old, k2_old)
 
             # Inlined _calculate_key(u_idx)
             g_u = g[u_idx]
@@ -255,7 +274,7 @@ class DStarLite:
             min_u = min(g_u, rhs_u)
             h_u = float(max(abs((u_idx % width) - (s_start_idx % width)), 
                             abs((u_idx // width) - (s_start_idx // width))))
-            k_new = (min_u + h_u + self.km, min_u)
+            k_new = (min_u + h_u + km, min_u)
 
             if k_old < k_new:
                 if g[u_idx] != rhs[u_idx]:
@@ -271,12 +290,12 @@ class DStarLite:
 
             if g_val > rhs_val:
                 g[u_idx] = rhs_val
-                for s_idx in self.neighbors[u_idx]:
+                for s_idx in neighbors[u_idx]:
                     self._update_vertex(s_idx)
             else:
-                g[u_idx] = float(TILE_BLOCK)
+                g[u_idx] = TILE_BLOCK
                 self._update_vertex(u_idx)
-                for s_idx in self.neighbors[u_idx]:
+                for s_idx in neighbors[u_idx]:
                     self._update_vertex(s_idx)
 
     def initialize(self, start_idx: int, goal_idx: int) -> None:
@@ -288,10 +307,10 @@ class DStarLite:
         self.s_last_idx = self.s_start_idx
         self.km = 0.0
 
-        for i in range(self.size):
-            self.g[i] = float(TILE_BLOCK)
-            self.rhs[i] = float(TILE_BLOCK)
-            self.in_queue[i] = None
+        # Fast full reset using list multiplication
+        self.g = [TILE_BLOCK] * self.size
+        self.rhs = [TILE_BLOCK] * self.size
+        self.in_queue = [None] * self.size
         self.U.clear()
         self.changed_cells.clear()
 
@@ -340,11 +359,11 @@ class DStarLite:
             return
 
         if self.changed_cells:
-            affected: set[int] = set()
+            # Improved affected-cell expansion
+            affected = set(self.changed_cells)
+            neighbors = self.neighbors
             for u_idx in self.changed_cells:
-                affected.add(u_idx)
-                for s_idx in self.neighbors[u_idx]:
-                    affected.add(s_idx)
+                affected.update(neighbors[u_idx])
             self.changed_cells.clear()
 
             for u_idx in affected:
@@ -372,7 +391,7 @@ class DStarLite:
             print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
-        best_cost = float(TILE_BLOCK)
+        best_cost = TILE_BLOCK
         best_dir = Direction.CENTRE
 
         # Still need current Position to get coordinates for Direction calculation
@@ -382,28 +401,22 @@ class DStarLite:
         map_walk = self.agent.map_walk
         g = self.g
         rhs = self.rhs
+        width = self.width
         
         for neighbor_idx in self.neighbors[self.s_start_idx]:
             cost = map_walk[neighbor_idx]
             if cost < TILE_BLOCK:
                 neighbor_cost = min(g[neighbor_idx], rhs[neighbor_idx])
-                total = float(cost) + neighbor_cost
+                total = cost + neighbor_cost
                 if total < best_cost:
                     best_cost = total
                     
                     # Calculate direction from indices
-                    nx, ny = neighbor_idx % self.width, neighbor_idx // self.width
+                    nx, ny = neighbor_idx % width, neighbor_idx // width
                     dx, dy = nx - curr_x, ny - curr_y
                     
-                    # Map dx, dy back to Direction
-                    if dx == 0 and dy == -1: best_dir = Direction.NORTH
-                    elif dx == 0 and dy == 1: best_dir = Direction.SOUTH
-                    elif dx == 1 and dy == 0: best_dir = Direction.EAST
-                    elif dx == -1 and dy == 0: best_dir = Direction.WEST
-                    elif dx == 1 and dy == -1: best_dir = Direction.NORTHEAST
-                    elif dx == -1 and dy == -1: best_dir = Direction.NORTHWEST
-                    elif dx == 1 and dy == 1: best_dir = Direction.SOUTHEAST
-                    elif dx == -1 and dy == 1: best_dir = Direction.SOUTHWEST
+                    # Use dictionary lookup for direction
+                    best_dir = _DIRECTION_MAP.get((dx, dy), Direction.CENTRE)
 
         end = time.perf_counter_ns()
         print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
@@ -460,7 +473,7 @@ class BuilderAgent(DefaultAgent):
         self.todo_hierarchy: tuple = HIERARCHIES[self.bb_type]
         self.todo_list: deque = deque([self.todo_hierarchy[-1]], maxlen=len(self.todo_hierarchy))
 
-        self.map_walk = array.array('i', [TILE_UNKNOWN] * self.size)
+        self.map_walk = array.array('d', [TILE_UNKNOWN] * self.size)
         self.map_dist = array.array('i', [DIST_INF] * self.size) # Todo: distance map
         self.map_ore = array.array('i', [ORE_NOTHING] * self.size)
 
