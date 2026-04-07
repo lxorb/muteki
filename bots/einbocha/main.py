@@ -134,6 +134,20 @@ _DIRECTION_MAP: dict[tuple[int, int], Direction] = {
 
 class DStarLite:
     """D* Lite algorithm for incremental path planning with dynamic obstacles."""
+    agent: 'BuilderAgent'
+    width: int
+    height: int
+    size: int
+    neighbors: list[list[int]]
+    g: list[float]  # or list[int] if TILE_BLOCK is int
+    rhs: list[float]
+    U: list[tuple[float, float, int]]
+    km: float
+    s_start_idx: int
+    s_goal_idx: int
+    s_last_idx: int
+    in_queue: list[tuple[float, float] | None]
+    changed_cells: set[int]
 
     def __init__(self, agent: 'BuilderAgent'):
         time_init_start = time.perf_counter_ns()
@@ -143,7 +157,7 @@ class DStarLite:
         self.height = agent.height
         self.size = agent.size
 
-        self.neighbors: list[list[int]] = [[] for _ in range(self.size)]
+        self.neighbors = [[] for _ in range(self.size)]
         for y in range(self.height):
             for x in range(self.width):
                 idx = y * self.width + x
@@ -155,25 +169,28 @@ class DStarLite:
                         if 0 <= nx < self.width and 0 <= ny < self.height:
                             self.neighbors[idx].append(ny * self.width + nx)
 
-        # D* Lite state using lists for performance
-        self.g = [TILE_BLOCK] * self.size
-        self.rhs = [TILE_BLOCK] * self.size
-        self.U: list[tuple[float, float, int]] = []  # Flattened: (k1, k2, idx)
-        self.km: float = 0.0
-
-        self.s_start_idx: int = -1
-        self.s_goal_idx: int = -1
-        self.s_last_idx: int = -1
-
-        # in_queue tracks the key (k1, k2) for each idx (lazy deletion)
-        self.in_queue: list[tuple[float, float] | None] = [None] * self.size
-
-        # Track which cells have changed since last replan
-        self.changed_cells: set[int] = set()
+        self.reset()
 
         time_init_end = time.perf_counter_ns()
 
         print(f'd star lite __init__() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ms')
+
+    def reset(self) -> None:
+        # D* Lite state using lists for performance
+        self.g = [TILE_BLOCK] * self.size
+        self.rhs = [TILE_BLOCK] * self.size
+        self.U = []  # Flattened: (k1, k2, idx)
+        self.km = 0.0
+
+        self.s_start_idx = -1
+        self.s_goal_idx = -1
+        self.s_last_idx = -1
+
+        # in_queue tracks the key (k1, k2) for each idx (lazy deletion)
+        self.in_queue = [None] * self.size
+
+        # Track which cells have changed since last replan
+        self.changed_cells = set()
 
     def target_position(self) -> int:
         return self.s_goal_idx
@@ -438,15 +455,20 @@ class DStarLite:
 def explore(self: 'BuilderAgent') -> bool:
     target = self.dstar.target_position() # -1 if uninitialized
 
-    if self.round == self.birth:
-        x, y = random.randint(0, self.width - 1), random.randint(0, self.height - 1)
-        target = y * self.width + x
+    print(f'ti_pending: {[idx_to_pos(ti, self.width) for ti in self.ti_pending]}')
+    print(f'ti_finished: {[idx_to_pos(ti, self.width) for ti in self.ti_finished]}')
 
-    if self.position == target:
+    if target == -1 and self.ti_pending:
+        target = next(iter(self.ti_pending))
+
+    elif self.position == target:
+        self.ti_pending.remove(target)
+        self.ti_finished.add(target)
+        self.dstar.reset()
         return True
 
-    self.move(target) # Todo: maybe smarter to just read self.target_position inside self.move
-
+    self.move(target)
+    print(f'explore: {idx_to_pos(self.position, self.width)} -> {idx_to_pos(target, self.width)}')
     return False
 
 
@@ -477,8 +499,10 @@ class BuilderAgent(DefaultAgent):
         self.map_dist = array.array('i', [DIST_INF] * self.size) # Todo: distance map
         self.map_ore = array.array('i', [ORE_NOTHING] * self.size)
 
-        self.set_ti: set[int] = set()
-        self.set_ax: set[int] = set()
+        self.ti_finished: set[int] = set()
+        self.ti_pending: set[int] = set()
+        self.ax_finished: set[int] = set()
+        self.ax_pending: set[int] = set()
 
         self.dstar: DStarLite = DStarLite(self)
 
@@ -548,8 +572,10 @@ class BuilderAgent(DefaultAgent):
         map_ore = self.map_ore
         width = self.width
         dstar_update = self.dstar.update_cell
-        set_ti = self.set_ti
-        set_ax = self.set_ax
+        ti_finished = self.ti_finished
+        ti_pending = self.ti_pending
+        ax_finished = self.ax_finished
+        ax_pending = self.ax_pending
 
         for pos in ct.get_nearby_tiles():
 
@@ -579,14 +605,19 @@ class BuilderAgent(DefaultAgent):
                 map_walk[idx] = walk
 
             # environment related:
-            if idx not in set_ti and idx not in set_ax:
+            if (
+                    idx not in ti_finished and
+                    idx not in ti_pending and
+                    idx not in ax_finished and
+                    idx not in ax_pending
+            ):
                 # Todo: add opponent and harvester connection check
                 if env is Environment.ORE_TITANIUM:
                     map_ore[idx] = ORE_TI
-                    set_ti.add(idx)
+                    ti_pending.add(idx)
                 elif env is Environment.ORE_AXIONITE:
                     map_ore[idx] = ORE_AX
-                    set_ax.add(idx)
+                    ax_pending.add(idx)
 
 
 class CoreAgent(DefaultAgent):
