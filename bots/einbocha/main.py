@@ -2,9 +2,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import NamedTuple
 import array
-from functools import lru_cache
 import heapq
-import random
 from collections import deque
 
 from cambc import (
@@ -452,28 +450,42 @@ class DStarLite:
         return ret
 
 
-def explore(self: 'BuilderAgent') -> bool:
-    target = self.dstar.target_position() # -1 if uninitialized
+class Action(ABC):
+    agent: 'BuilderAgent'
 
-    print(f'ti_pending: {[idx_to_pos(ti, self.width) for ti in self.ti_pending]}')
-    print(f'ti_finished: {[idx_to_pos(ti, self.width) for ti in self.ti_finished]}')
+    def set_builder_agent(self, agent: 'BuilderAgent'):
+        self.agent = agent
 
-    if target == -1 and self.ti_pending:
-        target = next(iter(self.ti_pending))
+    @abstractmethod
+    def do(self) -> bool:
+        pass
 
-    elif self.position == target:
-        self.ti_pending.remove(target)
-        self.ti_finished.add(target)
-        self.dstar.reset()
+
+class Explore(Action):
+    def do(self) -> bool:
+        agent = self.agent
+        target = agent.dstar.target_position() # -1 if uninitialized
+
+        print(f'ti_pending: {[idx_to_pos(ti, agent.width) for ti in agent.ti_pending]}')
+        print(f'ti_finished: {[idx_to_pos(ti, agent.width) for ti in agent.ti_finished]}')
+
+        if target == -1 and agent.ti_pending:
+            target = next(iter(agent.ti_pending))
+
+        elif agent.position == target:
+            agent.ti_pending.remove(target)
+            agent.ti_finished.add(target)
+            agent.dstar.reset()
+            return True
+
+        agent.move(target)
+        print(f'explore: {idx_to_pos(agent.position, agent.width)} -> {idx_to_pos(target, agent.width)}')
+        return False
+
+
+class Important(Action):
+    def do(self) -> bool:
         return True
-
-    self.move(target)
-    print(f'explore: {idx_to_pos(self.position, self.width)} -> {idx_to_pos(target, self.width)}')
-    return False
-
-
-def important(self: 'BuilderAgent') -> bool:
-    return True
 
 
 DIST_INF = 10_000_000
@@ -485,7 +497,7 @@ ORE_AX = 2
 BB_NORMAL = 0
 
 HIERARCHIES: dict[int, tuple] = {
-    BB_NORMAL: (important, explore),
+    BB_NORMAL: (Important(), Explore()),
 }
 
 class BuilderAgent(DefaultAgent):
@@ -493,6 +505,8 @@ class BuilderAgent(DefaultAgent):
         super().__init__(ct)
         self.bb_type: int = BB_NORMAL # Todo: here should go spawn-position-based type derivation
         self.todo_hierarchy: tuple = HIERARCHIES[self.bb_type]
+        for action in self.todo_hierarchy:
+            action.set_builder_agent(self)
         self.todo_list: deque = deque([self.todo_hierarchy[-1]], maxlen=len(self.todo_hierarchy))
 
         self.map_walk = array.array('d', [TILE_UNKNOWN] * self.size)
@@ -542,7 +556,7 @@ class BuilderAgent(DefaultAgent):
 
         while self.todo_list:
             todo = self.todo_list[0]  # peek at front without removing
-            skip = todo(self)
+            skip = todo.do()
             print(f'{todo} skipped: {skip}')
             if skip:
                 self.todo_list.popleft()  # now safe to remove
