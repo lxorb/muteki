@@ -486,18 +486,22 @@ class Explore(Action):
 
 class EnemyCore(Action):
     done: bool = False
+
     def do(self) -> bool:
         agent = self.agent
 
         if agent.enemy_core_pos == -1 or self.done:
             return False
 
-        if agent.position == agent.core_pos:
+        if agent.position == agent.core_pos or agent.position in self.agent.dstar.neighbors[agent.core_pos]:
+            print(f'enemy_core_pos: {idx_to_pos(agent.enemy_core_pos, agent.width)}')
             self.done = True
             return False
 
-        agent.write_marker() # write enemy core position
         agent.move(agent.core_pos)
+        agent.write_marker() # write enemy core position
+        # if marker place before movement d star moves on top because not yet updated doesn't know about the marker
+        # solution would be update the map_walk and dstar.update_cell inside write_marker on successful placement
         return True
 
 
@@ -534,10 +538,10 @@ def mask_offset(width: int) -> tuple[int, int]:
 
 
 M_ENEMY_CORE_SET = mask_offset(1)
-M_ENEMY_CORE_POS = mask_offset(7)
-M_DUMMY1 = mask_offset(4)
-M_DUMMY2 = mask_offset(11)
-M_DUMMY3 = mask_offset(9)
+M_ENEMY_CORE_POS = mask_offset(12)
+M_DUMMY1 = mask_offset(7)
+M_DUMMY2 = mask_offset(6)
+M_DUMMY3 = mask_offset(6)
 
 del _start
 del mask_offset
@@ -611,6 +615,10 @@ class BuilderAgent(DefaultAgent):
     def move(self, target_pos_idx: int):
         print(f'{idx_to_pos(self.position, self.width)} to {idx_to_pos(target_pos_idx, self.width)}')
 
+        if self.map_walk[target_pos_idx] == TILE_BLOCK:
+            self.map_walk[target_pos_idx] = TILE_UNKNOWN
+            self.dstar.update_cell(target_pos_idx)
+
         if target_pos_idx != self.dstar.target_position():
             self.dstar.initialize(self.position, target_pos_idx)
         else:
@@ -627,7 +635,7 @@ class BuilderAgent(DefaultAgent):
             self.ct.move(direction)
 
     def write_marker(self) -> None:
-        pos = idx_to_pos(self.position+1, self.width)
+        pos = idx_to_pos(self.position+1, self.width) # todo better marker placement
 
         if not self.ct.can_place_marker(pos):
             print('cannot place marker')
@@ -660,7 +668,7 @@ class BuilderAgent(DefaultAgent):
         )
 
         self.ct.place_marker(pos, marker_value)
-        print('wrote marker')
+        print(f'wrote marker {idx_to_pos(enemy_core_pos, self.width)}')
 
     def read_marker(self, marker_id: int) -> None:
         marker_value = self.ct.get_marker_value(marker_id)
@@ -669,6 +677,7 @@ class BuilderAgent(DefaultAgent):
                 (marker_value >> M_ENEMY_CORE_SET[1]) & M_ENEMY_CORE_SET[0]
         ):
             self.enemy_core_pos = (marker_value >> M_ENEMY_CORE_POS[1]) & M_ENEMY_CORE_POS[0]
+            print(f'read marker {idx_to_pos(self.enemy_core_pos, self.width)}')
 
         # self.dummy1 = (packed >> MARKER_DUMMY1[1]) & MARKER_DUMMY1[0]
         # self.dummy2 = (packed >> MARKER_DUMMY2[1]) & MARKER_DUMMY2[0]
@@ -747,7 +756,7 @@ class BuilderAgent(DefaultAgent):
                 self.enemy_core_pos = idx
 
 
-BB_COUNT_MAX = 10
+BB_COUNT_MAX = 3
 
 
 class CoreAgent(DefaultAgent):

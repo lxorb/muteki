@@ -1,11 +1,24 @@
-update_on_view() took: 0.0794 ms
-todo_list: deque([<player_mod.RepairHarvester object at 0x1079675f0>, <player_mod.BuildHarvester object at 0x107967620>, <player_mod.EnemyCore object at 0x107967650>, <player_mod.Explore object at 0x107967680>], maxlen=4)
-<player_mod.RepairHarvester object at 0x1079675f0> repeat: False
-<player_mod.BuildHarvester object at 0x107967620> repeat: False
-wrote marker
+read marker Position(x=9, y=11)
+update_on_view() took: 0.0504 ms
+todo_list: deque([<player_mod.RepairHarvester object at 0x107febef0>, <player_mod.BuildHarvester object at 0x107febf20>, <player_mod.EnemyCore object at 0x107febf50>, <player_mod.Explore object at 0x107febf80>], maxlen=4)
+<player_mod.RepairHarvester object at 0x107febef0> repeat: False
+<player_mod.BuildHarvester object at 0x107febf20> repeat: False
+enemy_core_pos: Position(x=9, y=11)
+<player_mod.EnemyCore object at 0x107febf50> repeat: False
+Position(x=15, y=13) to Position(x=1, y=13)
+d star lite update_start() took: 0.0008 ms
+d star lite replan() took: 0.1736 ms
+d star lite get_next_direction() took: 0.0020 ms
+<player_mod.Explore object at 0x107febf80> repeat: True
+run() took: 0.2440 ms
+
+update_on_view() took: 0.0514 ms
+todo_list: deque([<player_mod.RepairHarvester object at 0x107ab88c0>, <player_mod.BuildHarvester object at 0x107ab88f0>, <player_mod.EnemyCore object at 0x107ab8920>, <player_mod.Explore object at 0x107ab8950>], maxlen=4)
+<player_mod.RepairHarvester object at 0x107ab88c0> repeat: False
+<player_mod.BuildHarvester object at 0x107ab88f0> repeat: False
 Position(x=13, y=11) to Position(x=16, y=14)
-d star lite update_start() took: 0.0010 ms
-d star lite replan() took: 0.0004 ms
-d star lite get_next_direction() took: 0.0003 ms
-<player_mod.EnemyCore object at 0x107967650> repeat: True
-run() took: 0.1042 ms
+d star lite initialize() took: 0.2793 ms
+d star lite get_next_direction() took: 0.0022 ms
+wrote marker Position(x=9, y=11)
+<player_mod.EnemyCore object at 0x107ab8920> repeat: True
+run() took: 0.3583 ms
