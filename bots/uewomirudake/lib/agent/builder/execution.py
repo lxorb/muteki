@@ -1,4 +1,4 @@
-from lib.debug import GlobalRoundStopwatch, Stopwatch
+from lib.debug import Stopwatch
 
 
 class BuilderExecutionMixin:
@@ -32,7 +32,7 @@ class BuilderExecutionMixin:
 
         self.last_turn_completed = False
         for idx in range(start_index, len(self.strategy)):
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 stopwatch.lap("Overtime")
                 stopwatch.log()
                 return False

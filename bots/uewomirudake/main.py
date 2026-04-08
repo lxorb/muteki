@@ -5,7 +5,7 @@ from lib.agent.builder import BuilderAgent
 from lib.agent.core import CoreAgent
 from lib.agent.turret import TurretAgent
 
-from lib.debug import Stopwatch, GlobalRoundStopwatch
+from lib.debug import Stopwatch
 
 core_agent = CoreAgent()
 builder_agent = BuilderAgent()
@@ -19,14 +19,7 @@ class Player:
     def __init__(self):
         self.agent: Agent | None = None
 
-        self.has_determined_submission_env: bool = False
-
     def run(self, ct: Controller) -> None:
-        if not self.has_determined_submission_env:
-            self.has_determined_submission_env = True
-
-            GlobalRoundStopwatch.check_submission_env()
-
         entity_type: EntityType = ct.get_entity_type()
 
         if self.agent is None:

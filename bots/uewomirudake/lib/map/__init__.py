@@ -14,6 +14,8 @@ from cambc import (
     Team,
 )
 
+from lib.agent.time import RoundStopwatch
+
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
     CORE_DIST_INF,
@@ -29,7 +31,7 @@ from lib.map.constants import (
 from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel
 
-from lib.debug import Stopwatch, GlobalRoundStopwatch
+from lib.debug import Stopwatch
 
 
 class SymmetryMode(Enum):
@@ -49,8 +51,9 @@ class Map:
     MAX_CORE_FOOTPRINT_TARGET_COUNT = 9
     DIRECTION_SLOT_COUNT = len(DIRECTIONS)
 
-    def __init__(self):
+    def __init__(self, round_stopwatch: RoundStopwatch):
         self.ct: Controller | None = None
+        self.round_stopwatch: RoundStopwatch = round_stopwatch
         self.width = self.INITIAL_WIDTH
         self.height = self.INITIAL_HEIGHT
         self.tile_count = self.INITIAL_MAP_SIZE
@@ -443,7 +446,7 @@ class Map:
             tile.update_attributes()
             processed_tiles_in_vision.append(tile)
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         self.tiles_in_vision = processed_tiles_in_vision
@@ -562,7 +565,7 @@ class Map:
             else:
                 known_accessible_axionite_indices.discard(tile.index)
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         self.known_accessible_titanium_indices = sorted(
@@ -596,7 +599,7 @@ class Map:
                 if tiles_by_index[neighbor_idx].last_seen_turn == -1:
                     frontier_indices.add(neighbor_idx)
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 self.frontier_expand_pending_head = pending_head
                 return
 
@@ -676,7 +679,7 @@ class Map:
             ):
                 break
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         new_symmetry_mode_candidates = []
@@ -819,7 +822,7 @@ class Map:
                 ):
                     core_tile = candidate_tile
                     break
-                if GlobalRoundStopwatch.is_overtime():
+                if self.round_stopwatch.is_overtime_interval():
                     break
             if core_tile is None:
                 return False
@@ -957,7 +960,7 @@ class Map:
                 break
             tiles.append(self.u_get_pos_tile(target_pos))
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         return tiles
@@ -980,7 +983,7 @@ class Map:
             ):
                 break
             open_tiles.append(target_tile)
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
         return open_tiles
 
@@ -1013,7 +1016,7 @@ class Map:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         return False
@@ -1198,7 +1201,7 @@ class Map:
                 if self.u_can_propagate_visible_supply_chain_label(target_tile, team):
                     queue.append(target_tile)
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
     def u_update_supply_chain_labels_for_team(self, team: Team) -> None:
@@ -1209,7 +1212,7 @@ class Map:
         for tile in self.tiles_in_vision:
             remembered_labels.append((tile, tile.get_supply_chain_label(team)))
             tile.set_supply_chain_label(team, SupplyChainLabel.NONE)
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         for tile, _ in remembered_labels:
@@ -1218,7 +1221,7 @@ class Map:
                 continue
             tile.set_supply_chain_label(team, source_label)
             fresh_queue.append(tile)
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         self.u_propagate_supply_chain_labels_for_team(
@@ -1238,7 +1241,7 @@ class Map:
             tile.set_supply_chain_label(team, remembered_label)
             if self.u_can_propagate_visible_supply_chain_label(tile, team):
                 remembered_queue.append(tile)
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         self.u_propagate_supply_chain_labels_for_team(
@@ -1265,14 +1268,14 @@ class Map:
             self.own_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         for supply_link_tile in self.enemy_supply_links_in_vision:
             self.enemy_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         self.u_update_supply_chain_labels()
@@ -1307,7 +1310,7 @@ class Map:
             ):
                 self.enemy_missing_supply_links.append(tile)
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
     def u_is_own_supply_link_occupied_by_other_builder(self, tile: Tile) -> bool:
@@ -1339,7 +1342,7 @@ class Map:
                 continue
             known_supply_indices.discard(tile.index)
             tile.last_patrolled_index = -1
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
     def u_enqueue_core_distance_index(
@@ -1400,7 +1403,7 @@ class Map:
             dirty_queue.extend(dirty_indices)
 
         while dirty_queue_head < len(dirty_queue):
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 self.own_core_dist_incremental_queue_head = queue_head
                 self.own_core_dist_incremental_dirty_queue_head = dirty_queue_head
                 self.own_core_dist_incremental_seed_queue_head = seed_queue_head
@@ -1421,7 +1424,7 @@ class Map:
         self.own_core_dist_incremental_dirty_queue_head = 0
 
         while seed_queue_head < len(seed_queue):
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 self.own_core_dist_incremental_queue_head = queue_head
                 self.own_core_dist_incremental_dirty_queue_head = 0
                 self.own_core_dist_incremental_seed_queue_head = seed_queue_head
@@ -1434,7 +1437,7 @@ class Map:
         self.own_core_dist_incremental_seed_queue_head = 0
 
         while queue_head < len(queue):
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 self.own_core_dist_incremental_queue_head = queue_head
                 self.own_core_dist_incremental_dirty_queue_head = 0
                 self.own_core_dist_incremental_seed_queue_head = 0
@@ -1566,7 +1569,7 @@ class Map:
                 distance_by_index[neighbor_idx] = next_dist
                 heappush(frontier, (next_dist, neighbor_idx))
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         if not frontier:
@@ -1620,7 +1623,7 @@ class Map:
             base_idx = x * self.INDEX_STRIDE
 
             while y < self.height:
-                if GlobalRoundStopwatch.is_overtime():
+                if self.round_stopwatch.is_overtime_interval():
                     self.own_core_dist_manhattan_init_next_x = x
                     self.own_core_dist_manhattan_init_next_y = y
                     return False
@@ -1690,7 +1693,7 @@ class Map:
                 dist_to_self_by_index[neighbor_idx] = current_dist + 1
                 queue.append(neighbor_idx)
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
     def u_calculate_shortest_path(
@@ -1730,7 +1733,7 @@ class Map:
             path = [tiles_by_index[current_idx]]
 
             while current_idx != source_idx:
-                if GlobalRoundStopwatch.is_overtime():
+                if self.round_stopwatch.is_overtime_interval():
                     break
 
                 next_dist_to_self = dist_to_self_by_index[current_idx] - 1
@@ -1796,7 +1799,7 @@ class Map:
         queue_head = 0
 
         while queue_head < len(queue):
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
             current_idx = queue[queue_head]
@@ -1843,13 +1846,133 @@ class Map:
                         path.append(tiles_by_index[previous_idx])
                         walk_idx = previous_idx
 
-                        if GlobalRoundStopwatch.is_overtime():
+                        if self.round_stopwatch.is_overtime_interval():
                             break
 
                     path.reverse()
                     return path
 
                 queue.append(adjacent_idx)
+
+        return []
+
+    def u_calculate_shortest_path_to_frontier(
+        self,
+        source_pos: Position,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> list[Tile]:
+        if not self.u_is_in_bounds(source_pos):
+            return []
+
+        frontier_indices = self.frontier_expand_cached_unseen_indices
+        if not frontier_indices:
+            return []
+
+        source_tile = self.u_get_pos_tile(source_pos)
+        source_idx = source_tile.index
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        neighbor_count_by_index = self.neighbor_count_by_index
+        max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        seen_epoch_by_index = self.path_seen_epoch_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+
+        self.path_epoch += 1
+        path_epoch = self.path_epoch
+        seen_epoch_by_index[source_idx] = path_epoch
+        predecessor_by_index[source_idx] = source_idx
+        queue = self.path_queue_buffer_by_index
+        queue.clear()
+        queue.append(source_idx)
+        queue_head = 0
+
+        while queue_head < len(queue):
+            layer_end = len(queue)
+            best_target_idx: int | None = None
+            best_target_score: tuple[int, int, int] | None = None
+
+            while queue_head < layer_end:
+                if self.round_stopwatch.is_overtime_interval():
+                    return []
+
+                current_idx = queue[queue_head]
+                queue_head += 1
+                neighbor_base = current_idx * max_neighbor_count
+                neighbor_count = neighbor_count_by_index[current_idx]
+
+                for offset in range(neighbor_count):
+                    adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
+                    if (
+                        not active_mask_by_index[adjacent_idx]
+                        or seen_epoch_by_index[adjacent_idx] == path_epoch
+                    ):
+                        continue
+
+                    is_frontier = (
+                        adjacent_idx in frontier_indices
+                        and tiles_by_index[adjacent_idx].last_seen_turn == -1
+                    )
+
+                    if (
+                        avoid_enemy_turrets
+                        and enemy_turret_target_by_index[adjacent_idx]
+                    ):
+                        continue
+                    if (
+                        avoid_other_builder_bots
+                        and adjacent_idx != source_idx
+                        and bot_present_by_index[adjacent_idx]
+                    ):
+                        continue
+                    if (
+                        not is_frontier
+                        and not intrinsic_passable_by_index[adjacent_idx]
+                    ):
+                        continue
+
+                    predecessor_by_index[adjacent_idx] = current_idx
+                    seen_epoch_by_index[adjacent_idx] = path_epoch
+
+                    if is_frontier:
+                        candidate_score = (
+                            self.u_get_own_core_dist_by_index(adjacent_idx),
+                            index_x_by_index[adjacent_idx],
+                            index_y_by_index[adjacent_idx],
+                        )
+                        if (
+                            best_target_score is None
+                            or candidate_score < best_target_score
+                        ):
+                            best_target_score = candidate_score
+                            best_target_idx = adjacent_idx
+                        continue
+
+                    queue.append(adjacent_idx)
+
+            if best_target_idx is None:
+                continue
+
+            path = [tiles_by_index[best_target_idx]]
+            walk_idx = best_target_idx
+            while walk_idx != source_idx:
+                if self.round_stopwatch.is_overtime_interval():
+                    return []
+
+                previous_idx = predecessor_by_index[walk_idx]
+                if previous_idx == -1:
+                    return []
+                path.append(tiles_by_index[previous_idx])
+                walk_idx = previous_idx
+
+            path.reverse()
+            return path
 
         return []
 

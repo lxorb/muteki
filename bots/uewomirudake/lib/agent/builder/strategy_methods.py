@@ -2,7 +2,6 @@ from heapq import heapify, heappop
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
-from lib.debug import GlobalRoundStopwatch
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -78,7 +77,7 @@ class BuilderStrategyMethodsMixin:
         for harvester_order, harvester_tile in enumerate(
             self.map.own_harvesters_in_vision
         ):
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
             if harvester_tile.environment != resource:
                 continue
@@ -184,7 +183,7 @@ class BuilderStrategyMethodsMixin:
                 ):
                     return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -310,7 +309,7 @@ class BuilderStrategyMethodsMixin:
         for encounter_order, target_tile in enumerate(
             self.map.own_missing_supply_links
         ):
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
             target_label = target_tile.own_supply_chain_label
             if not (target_label & supply_chain_label):
@@ -371,7 +370,7 @@ class BuilderStrategyMethodsMixin:
                     self.pending_missing_supply_link_resource = resource
                     return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -630,74 +629,53 @@ class BuilderStrategyMethodsMixin:
                     self.harvesters_built += 1
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
 
     def s_frontier_expand(self):
         """
-        Move toward a reachable unseen frontier tile using the cached frontier set.
+        Move toward the nearest reachable unseen frontier tile.
 
-        Prefer routes that stay outside enemy turret coverage. If the builder is
-        already standing in enemy turret range, retry the same frontier targets
-        without the turret-avoidance restriction so the bot does not freeze in
-        place waiting for a fully safe path that may not exist.
+        Uses a single BFS from the builder to find the closest frontier layer,
+        preferring lower own-core distance and stable coordinates among ties.
+        If the builder is already standing in enemy turret range, retry once
+        without turret avoidance so it does not freeze in place.
         """
-        frontier_indices = self.map.frontier_expand_cached_unseen_indices
-        if not frontier_indices:
-            return False
-
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
-        tiles_by_index = self.map.tiles_by_index
-        get_own_core_dist = self.map.u_get_own_core_dist_by_index
-        candidate_entries: list[tuple[tuple[int, int, int, int], int]] = []
 
-        for idx in frontier_indices:
-            if GlobalRoundStopwatch.is_overtime_always_check():
-                break
-            dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(idx)
-            frontier_tile = tiles_by_index[idx]
-            if frontier_tile.is_enemy_turret_target_tile:
-                continue
-
-            target_pos = frontier_tile.position
-            candidate_entries.append(
-                (
-                    (
-                        dist_to_self,
-                        get_own_core_dist(idx),
-                        target_pos.x,
-                        target_pos.y,
-                    ),
-                    idx,
-                )
+        def move_along_frontier_path(avoid_enemy_turrets: bool) -> bool:
+            shortest_path = self.map.u_calculate_shortest_path_to_frontier(
+                self.map.current_pos,
+                avoid_enemy_turrets=avoid_enemy_turrets,
             )
+            if len(shortest_path) < 2:
+                return False
 
-        if not candidate_entries:
+            next_tile = shortest_path[1]
+            next_direction = self.map.u_get_direction_between(
+                self.map.current_pos,
+                next_tile.position,
+            )
+            if next_direction is not None and self.ct.can_move(next_direction):
+                self.ct.move(next_direction)
+                return True
+            if self.ct.can_build_road(next_tile.position):
+                self.ct.build_road(next_tile.position)
+                if next_direction is not None and self.ct.can_move(next_direction):
+                    self.ct.move(next_direction)
+                return True
             return False
 
-        candidate_entries.sort()
-
-        for _, idx in candidate_entries:
-            if self.u_move_to(tiles_by_index[idx].position):
-                return True
-
-            if GlobalRoundStopwatch.is_overtime_always_check():
-                break
-
-        if current_tile.is_enemy_turret_target_tile:
-            for _, idx in candidate_entries:
-                if self.u_move_to(
-                    tiles_by_index[idx].position,
-                    avoid_enemy_turrets=False,
-                ):
-                    return True
-
-                if GlobalRoundStopwatch.is_overtime_always_check():
-                    break
-
-        return False
+        if move_along_frontier_path(avoid_enemy_turrets=True):
+            return True
+        if (
+            not current_tile.is_enemy_turret_target_tile
+            or self.round_stopwatch.is_overtime_always_check()
+        ):
+            return False
+        return move_along_frontier_path(avoid_enemy_turrets=False)
 
     def s_destroy_hijacked_supplier(self, move_towards: bool = True):
         """
@@ -746,7 +724,7 @@ class BuilderStrategyMethodsMixin:
             if move_towards and self.u_move_to(target_pos):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -807,7 +785,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
@@ -843,7 +821,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime_always_check():
+            if self.round_stopwatch.is_overtime_always_check():
                 break
 
         return False
@@ -886,7 +864,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -935,7 +913,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -1137,7 +1115,7 @@ class BuilderStrategyMethodsMixin:
             candidate_entries: list[tuple[int, int, int, int]] = []
 
             for idx in known_own_supply_link_indices:
-                if GlobalRoundStopwatch.is_overtime():
+                if self.round_stopwatch.is_overtime():
                     break
                 target_tile = tiles_by_index[idx]
                 last_patrolled_index = target_tile.last_patrolled_index
@@ -1176,7 +1154,7 @@ class BuilderStrategyMethodsMixin:
             if self.u_move_to(tiles_by_index[target_idx].position):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
@@ -1186,7 +1164,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -1211,7 +1189,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
@@ -1238,7 +1216,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -1288,7 +1266,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False
@@ -1353,7 +1331,7 @@ class BuilderStrategyMethodsMixin:
             if self.u_heal_at(target_tile.position, move_towards=move_towards):
                 return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime():
                 break
 
         return False

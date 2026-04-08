@@ -6,7 +6,6 @@ from lib.agent.constants import (
     LAUNCHER_THROWABLE_PRIORITY_RANK,
     TURRET_TARGET_PRIORITY_RANK,
 )
-from lib.debug import GlobalRoundStopwatch
 
 
 class TurretAgent(Agent):
@@ -105,7 +104,7 @@ class TurretAgent(Agent):
         for bot_tile in throwable_tiles:
             if self.u_get_launcher_throw_target(bot_tile.position) is not None:
                 return bot_tile.position
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
         return None
 
@@ -203,11 +202,11 @@ class TurretAgent(Agent):
                 ):
                     return True
 
-            if GlobalRoundStopwatch.is_overtime():
+            if self.round_stopwatch.is_overtime_interval():
                 break
 
         return False
-    
+
     def u_get_target_priority_key(
         self,
         target_tile,
@@ -218,23 +217,14 @@ class TurretAgent(Agent):
 
         enemy_building_id = None
         enemy_building_type = target_tile.building.entity_type
-        if (
-            building_id is not None
-            and target_tile.building.team != own_team
-        ):
+        if building_id is not None and target_tile.building.team != own_team:
             enemy_building_id = building_id
 
         enemy_builder_bot_id = None
-        if (
-            builder_bot_id is not None
-            and target_tile.bot.team != own_team
-        ):
+        if builder_bot_id is not None and target_tile.bot.team != own_team:
             enemy_builder_bot_id = builder_bot_id
 
-        if (
-            enemy_building_id is not None
-            and enemy_building_type in ATTACK_TURRET_TYPES
-        ):
+        if enemy_building_id is not None and enemy_building_type in ATTACK_TURRET_TYPES:
             return (
                 TURRET_TARGET_PRIORITY_RANK[enemy_building_type],
                 0 if self.map.u_enemy_turret_targets_self(enemy_building_id) else 1,
@@ -244,9 +234,11 @@ class TurretAgent(Agent):
         if enemy_builder_bot_id is not None:
             return (
                 TURRET_TARGET_PRIORITY_RANK[
-                    "enemy_bot_on_ally_tile"
-                    if self.map.u_is_enemy_bot_on_ally_tile(target_tile)
-                    else "enemy_bot_on_non_ally_tile"
+                    (
+                        "enemy_bot_on_ally_tile"
+                        if self.map.u_is_enemy_bot_on_ally_tile(target_tile)
+                        else "enemy_bot_on_non_ally_tile"
+                    )
                 ],
                 target_tile.bot.hp,
             )
