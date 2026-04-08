@@ -204,20 +204,20 @@ class DStarLite:
         g_val = self.g[s_idx]
         rhs_val = self.rhs[s_idx]
         min_val = min(g_val, rhs_val)
-        
+
         # Inlined heuristic for speed
         # s_idx % self.width, s_idx // self.width
         # self.s_start_idx % self.width, self.s_start_idx // self.width
-        h = float(max(abs((s_idx % self.width) - (self.s_start_idx % self.width)), 
+        h = float(max(abs((s_idx % self.width) - (self.s_start_idx % self.width)),
                       abs((s_idx // self.width) - (self.s_start_idx // self.width))))
-        
+
         return min_val + h + self.km, min_val
 
     def _calculate_rhs(self, u_idx: int) -> float:
         """Calculate one-step lookahead value for vertex u."""
         if u_idx == self.s_goal_idx:
             return 0.0
-        
+
         min_rhs = TILE_BLOCK
         map_walk = self.agent.map_walk
         g = self.g
@@ -252,7 +252,7 @@ class DStarLite:
     def _compute_shortest_path(self) -> None:
         """Compute or update the shortest path (canonical D* Lite inner loop)."""
         max_iterations = self.size * 4
-        
+
         # Cache hot attributes as locals
         g = self.g
         rhs = self.rhs
@@ -288,7 +288,7 @@ class DStarLite:
             g_u = g[u_idx]
             rhs_u = rhs[u_idx]
             min_u = min(g_u, rhs_u)
-            h_u = float(max(abs((u_idx % width) - (s_start_idx % width)), 
+            h_u = float(max(abs((u_idx % width) - (s_start_idx % width)),
                             abs((u_idx // width) - (s_start_idx // width))))
             k_new = (min_u + h_u + km, min_u)
 
@@ -351,7 +351,7 @@ class DStarLite:
         x1, y1 = self.s_last_idx % self.width, self.s_last_idx // self.width
         x2, y2 = new_start_idx % self.width, new_start_idx // self.width
         self.km += float(max(abs(x1 - x2), abs(y1 - y2)))
-        
+
         self.s_last_idx = new_start_idx
         self.s_start_idx = new_start_idx
         end = time.perf_counter_ns()
@@ -413,12 +413,12 @@ class DStarLite:
         # Still need current Position to get coordinates for Direction calculation
         # but we can do it more efficiently
         curr_x, curr_y = self.s_start_idx % self.width, self.s_start_idx // self.width
-        
+
         map_walk = self.agent.map_walk
         g = self.g
         rhs = self.rhs
         width = self.width
-        
+
         for neighbor_idx in self.neighbors[self.s_start_idx]:
             cost = map_walk[neighbor_idx]
             if cost < TILE_BLOCK:
@@ -426,11 +426,11 @@ class DStarLite:
                 total = cost + neighbor_cost
                 if total < best_cost:
                     best_cost = total
-                    
+
                     # Calculate direction from indices
                     nx, ny = neighbor_idx % width, neighbor_idx // width
                     dx, dy = nx - curr_x, ny - curr_y
-                    
+
                     # Use dictionary lookup for direction
                     best_dir = _DIRECTION_MAP.get((dx, dy), Direction.CENTRE)
 
@@ -465,24 +465,41 @@ class Action(ABC):
 class Explore(Action):
     goal: int = -1
     since: int = -1
+
     def do(self) -> bool:
         agent = self.agent
 
         if (
-            self.goal == -1 or
-            20 < agent.round - self.since or
-            agent.position == self.goal or
-            agent.map_walk[self.goal] == TILE_BLOCK
+                self.goal == -1 or
+                20 < agent.round - self.since or
+                agent.position == self.goal or
+                agent.map_walk[self.goal] == TILE_BLOCK
         ):
-            self.goal = random.randrange(agent.size) # 0 <= n < size, because we start at 0, uniform random
+            # Todo: maybe frame the new position to be in medium range from the current position
+            # such that it can be reached realistically
+            self.goal = random.randrange(agent.size)  # 0 <= n < size, because we start at 0, uniform random
             self.since = agent.round
 
         agent.move(self.goal)
         return True
 
+
 class EnemyCore(Action):
+    done: bool = False
     def do(self) -> bool:
-        return False
+        agent = self.agent
+
+        if agent.enemy_core_pos == -1 or self.done:
+            return False
+
+        if agent.position == agent.core_pos:
+            self.done = True
+            return False
+
+        agent.write_marker() # write enemy core position
+        agent.move(agent.core_pos)
+        return True
+
 
 class BuildHarvester(Action):
     def do(self) -> bool:
@@ -506,17 +523,39 @@ HIERARCHIES: dict[int, tuple] = {
     BB_NORMAL: (RepairHarvester(), BuildHarvester(), EnemyCore(), Explore()),
 }
 
+_start: int = 0
+
+
+def mask_offset(width: int) -> tuple[int, int]:
+    global _start
+    out = (1 << width) - 1, _start
+    _start += width
+    return out
+
+
+M_ENEMY_CORE_SET = mask_offset(1)
+M_ENEMY_CORE_POS = mask_offset(7)
+M_DUMMY1 = mask_offset(4)
+M_DUMMY2 = mask_offset(11)
+M_DUMMY3 = mask_offset(9)
+
+del _start
+del mask_offset
+
+
 class BuilderAgent(DefaultAgent):
     def __init__(self, ct: Controller):
         super().__init__(ct)
-        self.bb_type: int = BB_NORMAL # Todo: here should go spawn-position-based type derivation
+        self.bb_type: int = BB_NORMAL  # Todo: here should go spawn-position-based type derivation
         self.todo_hierarchy: tuple = HIERARCHIES[self.bb_type]
         for action in self.todo_hierarchy:
             action.set_builder_agent(self)
         self.todo_list: deque = deque([self.todo_hierarchy[-1]], maxlen=len(self.todo_hierarchy))
 
+        self.enemy_core_pos: int = -1
+
         self.map_walk = array.array('d', [TILE_UNKNOWN] * self.size)
-        self.map_dist = array.array('i', [DIST_INF] * self.size) # Todo: distance map
+        self.map_dist = array.array('i', [DIST_INF] * self.size)  # Todo: distance map
         self.map_ore = array.array('i', [ORE_NOTHING] * self.size)
 
         self.ti_finished: set[int] = set()
@@ -551,25 +590,26 @@ class BuilderAgent(DefaultAgent):
         if todo is not None:
             idx = self.todo_hierarchy.index(todo)
             self.todo_list.extendleft(
-                self.todo_hierarchy[idx-1::-1]
+                self.todo_hierarchy[idx - 1::-1]
             )  # 2k, all C — optimal
         else:
             self.todo_list.extendleft(
                 reversed(self.todo_hierarchy)
-            )   # n, all C — optimal
+            )  # n, all C — optimal
 
         print(f'todo_list: {self.todo_list}')
 
         while self.todo_list:
             todo = self.todo_list[0]  # peek at front without removing
-            productive = todo.do()
-            print(f'{todo} productive: {productive}')
-            if productive:
+            repeat = todo.do()
+            print(f'{todo} repeat: {repeat}')
+            if repeat:
                 break
             else:
                 self.todo_list.popleft()  # now safe to remove
 
     def move(self, target_pos_idx: int):
+        print(f'{idx_to_pos(self.position, self.width)} to {idx_to_pos(target_pos_idx, self.width)}')
 
         if target_pos_idx != self.dstar.target_position():
             self.dstar.initialize(self.position, target_pos_idx)
@@ -577,7 +617,7 @@ class BuilderAgent(DefaultAgent):
             self.dstar.update_start(self.position)
             self.dstar.replan()
 
-        direction = self.dstar.get_next_direction() # Todo: first try greedy best first search for in vision targets
+        direction = self.dstar.get_next_direction()  # Todo: first try greedy best first search for in vision targets
 
         pos = idx_to_pos(self.position, self.width)
         next_pos = pos.add(direction)
@@ -585,6 +625,54 @@ class BuilderAgent(DefaultAgent):
             self.ct.build_road(next_pos)
         if self.ct.can_move(direction):
             self.ct.move(direction)
+
+    def write_marker(self) -> None:
+        pos = idx_to_pos(self.position+1, self.width)
+
+        if not self.ct.can_place_marker(pos):
+            print('cannot place marker')
+            return
+
+        enemy_core_pos = self.enemy_core_pos
+        enemy_core_set = enemy_core_pos != -1
+
+        dummy1 = 1
+        dummy2 = 2
+        dummy3 = 3
+
+        marker_value = (
+            (
+                (int(enemy_core_set) & M_ENEMY_CORE_SET[0])
+                << M_ENEMY_CORE_SET[1]
+            ) | (
+                (enemy_core_pos & M_ENEMY_CORE_POS[0])
+                << M_ENEMY_CORE_POS[1]
+            ) | (
+                (dummy1 & M_DUMMY1[0])
+                << M_DUMMY1[1]
+            ) | (
+                (dummy2 & M_DUMMY2[0])
+                << M_DUMMY2[1]
+            ) | (
+                (dummy3 & M_DUMMY3[0])
+                << M_DUMMY3[1]
+            )
+        )
+
+        self.ct.place_marker(pos, marker_value)
+        print('wrote marker')
+
+    def read_marker(self, marker_id: int) -> None:
+        marker_value = self.ct.get_marker_value(marker_id)
+
+        if self.enemy_core_pos == -1 and bool(
+                (marker_value >> M_ENEMY_CORE_SET[1]) & M_ENEMY_CORE_SET[0]
+        ):
+            self.enemy_core_pos = (marker_value >> M_ENEMY_CORE_POS[1]) & M_ENEMY_CORE_POS[0]
+
+        # self.dummy1 = (packed >> MARKER_DUMMY1[1]) & MARKER_DUMMY1[0]
+        # self.dummy2 = (packed >> MARKER_DUMMY2[1]) & MARKER_DUMMY2[0]
+        # self.dummy3 = (packed >> MARKER_DUMMY3[1]) & MARKER_DUMMY3[0]
 
     def update_on_view(self):
         ct = self.ct
@@ -596,15 +684,26 @@ class BuilderAgent(DefaultAgent):
         ti_pending = self.ti_pending
         ax_finished = self.ax_finished
         ax_pending = self.ax_pending
+        our_team = self.team
 
-        for pos in ct.get_nearby_tiles():
+        for entity_id in ct.get_nearby_entities(): # do little in this loop, else it gets slow
+            entity_type = ct.get_entity_type(entity_id)
+            entity_team = ct.get_team(entity_id)
+            if entity_type is EntityType.MARKER and entity_team == our_team:
+                self.read_marker(entity_id)
 
+        enemy_core_pos = self.enemy_core_pos
+
+        for pos in ct.get_nearby_tiles(): # do much more in this loop because it has fewer iterations
             idx = pos.y * width + pos.x
+
             passable = ct.is_tile_passable(pos)
             bb = ct.get_tile_builder_bot_id(pos)
             empty = ct.is_tile_empty(pos)
             env = ct.get_tile_env(pos)
             building = ct.get_tile_building_id(pos)
+            building_team = ct.get_team(building) if building else None
+            building_type = ct.get_entity_type(building) if building else None
 
             # movement related:
             if passable:
@@ -639,8 +738,17 @@ class BuilderAgent(DefaultAgent):
                     map_ore[idx] = ORE_AX
                     ax_pending.add(idx)
 
+            # enemy core related:
+            if (
+                    enemy_core_pos == -1 and
+                    building_team is not our_team and
+                    building_type == EntityType.CORE
+            ):
+                self.enemy_core_pos = idx
+
 
 BB_COUNT_MAX = 10
+
 
 class CoreAgent(DefaultAgent):
     def __init__(self, ct: Controller):

@@ -1,9 +1,11 @@
-update_on_view() took: 0.0327 ms
-todo_list: deque([<player_mod.RepairHarvester object at 0x1070b9580>, <player_mod.BuildHarvester object at 0x1070b95b0>, <player_mod.EnemyCore object at 0x1070b95e0>, <player_mod.Explore object at 0x1070b9610>], maxlen=4)
-<player_mod.RepairHarvester object at 0x1070b9580> productive: False
-<player_mod.BuildHarvester object at 0x1070b95b0> productive: False
-<player_mod.EnemyCore object at 0x1070b95e0> productive: False
-d star lite initialize() took: 3.0741 ms
-d star lite get_next_direction() took: 0.0022 ms
-<player_mod.Explore object at 0x1070b9610> productive: True
-run() took: 3.1309 ms
+update_on_view() took: 0.0794 ms
+todo_list: deque([<player_mod.RepairHarvester object at 0x1079675f0>, <player_mod.BuildHarvester object at 0x107967620>, <player_mod.EnemyCore object at 0x107967650>, <player_mod.Explore object at 0x107967680>], maxlen=4)
+<player_mod.RepairHarvester object at 0x1079675f0> repeat: False
+<player_mod.BuildHarvester object at 0x107967620> repeat: False
+wrote marker
+Position(x=13, y=11) to Position(x=16, y=14)
+d star lite update_start() took: 0.0010 ms
+d star lite replan() took: 0.0004 ms
+d star lite get_next_direction() took: 0.0003 ms
+<player_mod.EnemyCore object at 0x107967650> repeat: True
+run() took: 0.1042 ms
