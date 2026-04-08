@@ -1,3 +1,4 @@
+import random
 import time
 from abc import ABC, abstractmethod
 from typing import NamedTuple
@@ -462,30 +463,35 @@ class Action(ABC):
 
 
 class Explore(Action):
+    goal: int = -1
+    since: int = -1
     def do(self) -> bool:
         agent = self.agent
-        target = agent.dstar.target_position() # -1 if uninitialized
 
-        print(f'ti_pending: {[idx_to_pos(ti, agent.width) for ti in agent.ti_pending]}')
-        print(f'ti_finished: {[idx_to_pos(ti, agent.width) for ti in agent.ti_finished]}')
+        if (
+            self.goal == -1 or
+            20 < agent.round - self.since or
+            agent.position == self.goal or
+            agent.map_walk[self.goal] == TILE_BLOCK
+        ):
+            self.goal = random.randrange(agent.size) # 0 <= n < size, because we start at 0, uniform random
+            self.since = agent.round
 
-        if target == -1 and agent.ti_pending:
-            target = next(iter(agent.ti_pending))
+        agent.move(self.goal)
+        return True
 
-        elif agent.position == target:
-            agent.ti_pending.remove(target)
-            agent.ti_finished.add(target)
-            agent.dstar.reset()
-            return True
+class EnemyCore(Action):
+    def do(self) -> bool:
+        return False
 
-        agent.move(target)
-        print(f'explore: {idx_to_pos(agent.position, agent.width)} -> {idx_to_pos(target, agent.width)}')
+class BuildHarvester(Action):
+    def do(self) -> bool:
         return False
 
 
-class Important(Action):
+class RepairHarvester(Action):
     def do(self) -> bool:
-        return True
+        return False
 
 
 DIST_INF = 10_000_000
@@ -497,7 +503,7 @@ ORE_AX = 2
 BB_NORMAL = 0
 
 HIERARCHIES: dict[int, tuple] = {
-    BB_NORMAL: (Important(), Explore()),
+    BB_NORMAL: (RepairHarvester(), BuildHarvester(), EnemyCore(), Explore()),
 }
 
 class BuilderAgent(DefaultAgent):
@@ -532,7 +538,7 @@ class BuilderAgent(DefaultAgent):
 
         print(f'update_on_view() took: {(end - start) / 1_000_000:.4f} ms')
 
-        self.todo_handler()
+        self.handle_todos()
 
         # Todo: try to use your leftover actions in a meaningful way
 
@@ -540,7 +546,7 @@ class BuilderAgent(DefaultAgent):
 
         # Todo: do any precomputation until turn 2ms reached
 
-    def todo_handler(self):
+    def handle_todos(self):
         todo = self.todo_list[0] if self.todo_list else None
         if todo is not None:
             idx = self.todo_hierarchy.index(todo)
@@ -556,12 +562,12 @@ class BuilderAgent(DefaultAgent):
 
         while self.todo_list:
             todo = self.todo_list[0]  # peek at front without removing
-            skip = todo.do()
-            print(f'{todo} skipped: {skip}')
-            if skip:
-                self.todo_list.popleft()  # now safe to remove
-            else:
+            productive = todo.do()
+            print(f'{todo} productive: {productive}')
+            if productive:
                 break
+            else:
+                self.todo_list.popleft()  # now safe to remove
 
     def move(self, target_pos_idx: int):
 
@@ -634,13 +640,15 @@ class BuilderAgent(DefaultAgent):
                     ax_pending.add(idx)
 
 
+BB_COUNT_MAX = 10
+
 class CoreAgent(DefaultAgent):
     def __init__(self, ct: Controller):
         super().__init__(ct)
         self.spawn_bb_count: int = 0
 
     def make_turn(self) -> None:
-        if self.spawn_bb_count < 3:
+        if self.spawn_bb_count < BB_COUNT_MAX:
             self.spawn_bb()
 
     def spawn_bb(self) -> bool:

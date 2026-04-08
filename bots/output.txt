@@ -1,0 +1,9 @@
+update_on_view() took: 0.0327 ms
+todo_list: deque([<player_mod.RepairHarvester object at 0x1070b9580>, <player_mod.BuildHarvester object at 0x1070b95b0>, <player_mod.EnemyCore object at 0x1070b95e0>, <player_mod.Explore object at 0x1070b9610>], maxlen=4)
+<player_mod.RepairHarvester object at 0x1070b9580> productive: False
+<player_mod.BuildHarvester object at 0x1070b95b0> productive: False
+<player_mod.EnemyCore object at 0x1070b95e0> productive: False
+d star lite initialize() took: 3.0741 ms
+d star lite get_next_direction() took: 0.0022 ms
+<player_mod.Explore object at 0x1070b9610> productive: True
+run() took: 3.1309 ms
