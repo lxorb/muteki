@@ -62,27 +62,57 @@ class Resources(NamedTuple):
 
 
 class DefaultAgent(ABC, Agent):
+    ct: Controller
+    id: int
+    team: Team
+    birth: int
+    round: int
+    width: int
+    height: int
+    size: int
+    position: int
+    neighbors: list[list[int]]
+    core_pos: int
+    core_tiles: list[int]
+    turn_last_completed: bool | None
+    res_prev: Resources
+    res: Resources
+    res_change: Resources
+    res_last_dec: int
     def __init__(self, ct: Controller):
-        self.ct: Controller = ct
-        self.id: int = self.ct.get_id()
-        self.team: Team = self.ct.get_team()
-        self.birth: int = self.ct.get_current_round()
-        self.round: int = self.ct.get_current_round()
-        self.width: int = self.ct.get_map_width()
-        self.height: int = self.ct.get_map_height()
-        self.size: int = self.width * self.height
-        _pos = self.ct.get_position()
-        self.position: int = pos_to_idx(_pos, self.width)
-        _core = self.ct.get_nearby_buildings(1)
-        _core = self.ct.get_position(_core[0])
-        self.core_pos: int = pos_to_idx(_core, self.width)
-        self.turn_last_completed: bool | None = None
+        self.ct = ct
+        self.id = ct.get_id()
+        self.team = ct.get_team()
+        self.birth = ct.get_current_round()
+        self.round = ct.get_current_round()
+        self.width = ct.get_map_width()
+        self.height = ct.get_map_height()
+        self.size = self.width * self.height
+        self.position = pos_to_idx(ct.get_position(), self.width)
 
-        _r = self.ct.get_global_resources()
-        self.res_prev: Resources = Resources(_r[0], _r[1])
-        self.res: Resources = Resources(0, 0)
-        self.res_change: Resources = Resources(0, 0)
-        self.res_last_dec: int = 0
+        self.neighbors = [[] for _ in range(self.size)]
+        for y in range(self.height):
+            for x in range(self.width):
+                idx = y * self.width + x
+                for dx in [-1, 0, 1]:
+                    for dy in [-1, 0, 1]:
+                        if dx == 0 and dy == 0:
+                            continue
+                        nx, ny = x + dx, y + dy
+                        if 0 <= nx < self.width and 0 <= ny < self.height:
+                            self.neighbors[idx].append(ny * self.width + nx)
+
+        _core = ct.get_nearby_buildings(1)
+        _core = ct.get_position(_core[0])
+        self.core_pos = pos_to_idx(_core, self.width)
+        self.core_tiles = self.neighbors[self.core_pos]
+        self.turn_last_completed = None
+
+        _r = ct.get_global_resources()
+        self.res_prev = Resources(_r[0], _r[1])
+        self.res = Resources(0, 0)
+        self.res_change = Resources(0, 0)
+        self.res_last_dec = 0
 
     def run(self) -> None:
         self.turn_last_completed = False
@@ -156,17 +186,7 @@ class DStarLite:
         self.height = agent.height
         self.size = agent.size
 
-        self.neighbors = [[] for _ in range(self.size)]
-        for y in range(self.height):
-            for x in range(self.width):
-                idx = y * self.width + x
-                for dx in [-1, 0, 1]:
-                    for dy in [-1, 0, 1]:
-                        if dx == 0 and dy == 0:
-                            continue
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < self.width and 0 <= ny < self.height:
-                            self.neighbors[idx].append(ny * self.width + nx)
+        self.neighbors = agent.neighbors
 
         self.reset()
 
@@ -490,15 +510,15 @@ class EnemyCore(Action):
     def do(self) -> bool:
         agent = self.agent
 
-        if agent.enemy_core_pos == -1 or self.done:
+        if agent.core_enemy_pos == -1 or self.done:
             return False
 
-        if agent.position == agent.core_pos or agent.position in self.agent.dstar.neighbors[agent.core_pos]:
-            print(f'enemy_core_pos: {idx_to_pos(agent.enemy_core_pos, agent.width)}')
+        if agent.position in agent.core_tiles:
+            print('brought information home')
             self.done = True
             return False
 
-        agent.move(agent.core_pos)
+        agent.move(agent.core_tiles[0])
         agent.write_marker() # write enemy core position
         # if marker place before movement d star moves on top because not yet updated doesn't know about the marker
         # solution would be update the map_walk and dstar.update_cell inside write_marker on successful placement
@@ -548,30 +568,44 @@ del mask_offset
 
 
 class BuilderAgent(DefaultAgent):
+    bb_type: int
+    todo_hierarchy: tuple
+    todo_list: deque
+    core_enemy_pos: int
+    core_enemy_tiles: list[int]
+    map_walk: array.array
+    map_dist: array.array
+    map_ore: array.array
+    ti_finished: set[int]
+    ti_pending: set[int]
+    ax_finished: set[int]
+    ax_pending: set[int]
+    dstar: DStarLite
     def __init__(self, ct: Controller):
         super().__init__(ct)
-        self.bb_type: int = BB_NORMAL  # Todo: here should go spawn-position-based type derivation
-        self.todo_hierarchy: tuple = HIERARCHIES[self.bb_type]
+        self.bb_type = BB_NORMAL  # Todo: here should go spawn-position-based type derivation
+        self.todo_hierarchy = HIERARCHIES[self.bb_type]
         for action in self.todo_hierarchy:
             action.set_builder_agent(self)
-        self.todo_list: deque = deque([self.todo_hierarchy[-1]], maxlen=len(self.todo_hierarchy))
+        self.todo_list = deque([self.todo_hierarchy[-1]], maxlen=len(self.todo_hierarchy))
 
-        self.enemy_core_pos: int = -1
+        self.core_enemy_pos = -1
+        self.core_enemy_tiles = []
 
         self.map_walk = array.array('d', [TILE_UNKNOWN] * self.size)
         self.map_dist = array.array('i', [DIST_INF] * self.size)  # Todo: distance map
         self.map_ore = array.array('i', [ORE_NOTHING] * self.size)
 
-        self.ti_finished: set[int] = set()
-        self.ti_pending: set[int] = set()
-        self.ax_finished: set[int] = set()
-        self.ax_pending: set[int] = set()
+        self.ti_finished = set()
+        self.ti_pending = set()
+        self.ax_finished = set()
+        self.ax_pending = set()
 
-        self.dstar: DStarLite = DStarLite(self)
+        self.dstar = DStarLite(self)
 
     def make_turn(self):
-        _pos = self.ct.get_position()
-        self.position = pos_to_idx(_pos, self.width)
+        ct = self.ct
+        self.position = pos_to_idx(ct.get_position(), self.width)
 
         start = time.perf_counter_ns()
 
@@ -601,19 +635,19 @@ class BuilderAgent(DefaultAgent):
                 reversed(self.todo_hierarchy)
             )  # n, all C — optimal
 
-        print(f'todo_list: {self.todo_list}')
-
         while self.todo_list:
             todo = self.todo_list[0]  # peek at front without removing
+            print(f'TODO: {todo}')
             repeat = todo.do()
-            print(f'{todo} repeat: {repeat}')
+            print(f'REPEAT: {repeat}')
             if repeat:
                 break
             else:
                 self.todo_list.popleft()  # now safe to remove
 
     def move(self, target_pos_idx: int):
-        print(f'{idx_to_pos(self.position, self.width)} to {idx_to_pos(target_pos_idx, self.width)}')
+        ct = self.ct
+        print(f'move from {idx_to_pos(self.position, self.width)} to {idx_to_pos(target_pos_idx, self.width)}')
 
         if self.map_walk[target_pos_idx] == TILE_BLOCK:
             self.map_walk[target_pos_idx] = TILE_UNKNOWN
@@ -629,19 +663,27 @@ class BuilderAgent(DefaultAgent):
 
         pos = idx_to_pos(self.position, self.width)
         next_pos = pos.add(direction)
-        if self.ct.can_build_road(next_pos):
-            self.ct.build_road(next_pos)
-        if self.ct.can_move(direction):
-            self.ct.move(direction)
+        if ct.can_build_road(next_pos):
+            ct.build_road(next_pos)
+        if ct.can_move(direction):
+            ct.move(direction)
 
     def write_marker(self) -> None:
-        pos = idx_to_pos(self.position+1, self.width) # todo better marker placement
+        ct = self.ct
 
-        if not self.ct.can_place_marker(pos):
-            print('cannot place marker')
+        neighbors = self.neighbors[self.position]
+        pos = None
+        for idx in neighbors:
+            neighbor = idx_to_pos(idx, self.width)
+            if ct.can_place_marker(neighbor):
+                pos = neighbor
+                break
+
+        if pos is None:
+            print('no marker position found')
             return
 
-        enemy_core_pos = self.enemy_core_pos
+        enemy_core_pos = self.core_enemy_pos
         enemy_core_set = enemy_core_pos != -1
 
         dummy1 = 1
@@ -667,17 +709,20 @@ class BuilderAgent(DefaultAgent):
             )
         )
 
-        self.ct.place_marker(pos, marker_value)
+        ct.place_marker(pos, marker_value)
         print(f'wrote marker {idx_to_pos(enemy_core_pos, self.width)}')
 
     def read_marker(self, marker_id: int) -> None:
         marker_value = self.ct.get_marker_value(marker_id)
 
-        if self.enemy_core_pos == -1 and bool(
+        print('reading marker')
+
+        if self.core_enemy_pos == -1 and bool(
                 (marker_value >> M_ENEMY_CORE_SET[1]) & M_ENEMY_CORE_SET[0]
         ):
-            self.enemy_core_pos = (marker_value >> M_ENEMY_CORE_POS[1]) & M_ENEMY_CORE_POS[0]
-            print(f'read marker {idx_to_pos(self.enemy_core_pos, self.width)}')
+            self.core_enemy_pos = (marker_value >> M_ENEMY_CORE_POS[1]) & M_ENEMY_CORE_POS[0]
+            self.core_enemy_tiles = self.neighbors[self.core_enemy_pos]
+            print(f'updated enemy core: {idx_to_pos(self.core_enemy_pos, self.width)}')
 
         # self.dummy1 = (packed >> MARKER_DUMMY1[1]) & MARKER_DUMMY1[0]
         # self.dummy2 = (packed >> MARKER_DUMMY2[1]) & MARKER_DUMMY2[0]
@@ -701,7 +746,9 @@ class BuilderAgent(DefaultAgent):
             if entity_type is EntityType.MARKER and entity_team == our_team:
                 self.read_marker(entity_id)
 
-        enemy_core_pos = self.enemy_core_pos
+        enemy_core_pos = self.core_enemy_pos
+
+        neighbors = self.neighbors
 
         for pos in ct.get_nearby_tiles(): # do much more in this loop because it has fewer iterations
             idx = pos.y * width + pos.x
@@ -710,9 +757,9 @@ class BuilderAgent(DefaultAgent):
             bb = ct.get_tile_builder_bot_id(pos)
             empty = ct.is_tile_empty(pos)
             env = ct.get_tile_env(pos)
-            building = ct.get_tile_building_id(pos)
-            building_team = ct.get_team(building) if building else None
-            building_type = ct.get_entity_type(building) if building else None
+            building_id = ct.get_tile_building_id(pos)
+            building_team = ct.get_team(building_id) if building_id else None
+            building_type = ct.get_entity_type(building_id) if building_id else None
 
             # movement related:
             if passable:
@@ -723,7 +770,7 @@ class BuilderAgent(DefaultAgent):
                 walk = TILE_EMPTY
             elif env is Environment.WALL:
                 walk = TILE_BLOCK
-            elif building is not None:
+            elif building_id is not None:
                 walk = TILE_BLOCK
             else:
                 walk = TILE_UNKNOWN
@@ -753,7 +800,9 @@ class BuilderAgent(DefaultAgent):
                     building_team is not our_team and
                     building_type == EntityType.CORE
             ):
-                self.enemy_core_pos = idx
+                # we query the buildings pos because the core is at idx but its center position can be different.
+                self.core_enemy_pos = pos_to_idx(ct.get_position(building_id), width)
+                self.core_enemy_tiles = neighbors[self.core_enemy_pos]
 
 
 BB_COUNT_MAX = 3
@@ -769,10 +818,11 @@ class CoreAgent(DefaultAgent):
             self.spawn_bb()
 
     def spawn_bb(self) -> bool:
+        ct = self.ct
         pos = idx_to_pos(self.position, self.width)
 
-        if self.ct.can_spawn(pos):
-            self.ct.spawn_builder(pos)
+        if ct.can_spawn(pos):
+            ct.spawn_builder(pos)
             self.spawn_bb_count += 1
             return True
 
