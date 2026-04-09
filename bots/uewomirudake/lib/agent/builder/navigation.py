@@ -1132,18 +1132,23 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
         candidate_tiles = []
+        map_width = self.map.width
+        map_height = self.map.height
+        active_mask = self.map.active_mask_by_index
+        tiles_by_index = self.map.tiles_by_index
+        pos_x = pos.x
+        pos_y = pos.y
 
-        for target_idx in self.map.u_iter_active_tile_indices():
-            if self.round_stopwatch.check_overtime():
-                break
-            target_tile = self.map.tiles_by_index[target_idx]
+        for dx, dy in _BRIDGE_TARGET_OFFSETS:
+            nx = pos_x + dx
+            ny = pos_y + dy
+            if nx < 0 or ny < 0 or nx >= map_width or ny >= map_height:
+                continue
+            target_idx = self.map.u_to_index_xy(nx, ny)
+            if not active_mask[target_idx]:
+                continue
+            target_tile = tiles_by_index[target_idx]
             target_pos = target_tile.position
-            if target_pos == pos:
-                continue
-            if pos.distance_squared(target_pos) > GameConstants.BRIDGE_TARGET_RADIUS_SQ:
-                continue
-            if abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1:
-                continue
             if target_tile.is_core_of(
                 self.map.own_team
             ) and not self.u_supply_chain_targets_core(resource):
