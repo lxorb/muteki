@@ -89,7 +89,7 @@ class TurretAgent(Agent):
         throwable_tiles = self.u_filter_tiles(
             [
                 self.map.u_get_pos_tile(pos)
-                for pos in self.map.u_iter_adjacent_positions(launcher_pos)
+                for pos in self.map.u_iter_adjacent_all_positions(launcher_pos)
             ],
             lambda tile: tile.bot.id is not None,
             lambda tile: tile.bot.team != self.map.own_team,

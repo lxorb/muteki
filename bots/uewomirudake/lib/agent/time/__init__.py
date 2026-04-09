@@ -1,8 +1,8 @@
 from cambc import Controller
 import inspect
 
-ALLOCATED_MAP_TIME_MS = 0.8
-ALLOCATED_BOT_TIME_MS = 0.9
+ALLOCATED_MAP_TIME_MS = 0.75
+ALLOCATED_BOT_TIME_MS = 0.8
 
 MS_TO_MUS = 1e3
 
@@ -14,17 +14,22 @@ ALLOCATED_MAP_AND_BOT_TIME_MUS = ALLOCATED_MAP_TIME_MUS + ALLOCATED_BOT_TIME_MUS
 OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 6
 OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
 
+SHORT_OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 4
+SHORT_OVERTIME_CHECK_MASK = SHORT_OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
+
 
 class RoundStopwatch:
     def __init__(self):
         self.ct: Controller | None = None
         self.map_done: bool = False
         self.iterations: int = 0
+        self.short_iterations: int = 0
 
     def start_round(self, ct: Controller):
         self.ct = ct
 
         self.iterations = 0
+        self.short_iterations = 0
 
         self.map_done = False
 
@@ -41,7 +46,28 @@ class RoundStopwatch:
             return False
 
         active_cpu_time = self.ct.get_cpu_time_elapsed()
-        if active_cpu_time - 1500 >= 0:
+        if True or active_cpu_time - 1500 >= 0:
+            print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
+        else:
+            print(active_cpu_time)
+
+        return (
+            active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
+            if self.map_done
+            else active_cpu_time > ALLOCATED_MAP_TIME_MUS
+        )
+
+    def check_overtime_interval_short(self):
+        if self.ct is None:
+            return False
+
+        self.short_iterations += 1
+
+        if self.short_iterations & SHORT_OVERTIME_CHECK_MASK:
+            return False
+
+        active_cpu_time = self.ct.get_cpu_time_elapsed()
+        if True or active_cpu_time - 1500 >= 0:
             print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
         else:
             print(active_cpu_time)
@@ -57,7 +83,7 @@ class RoundStopwatch:
             return False
 
         active_cpu_time = self.ct.get_cpu_time_elapsed()
-        if active_cpu_time - 1500 >= 0:
+        if True or active_cpu_time - 1500 >= 0:
             print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
         else:
             print(active_cpu_time)

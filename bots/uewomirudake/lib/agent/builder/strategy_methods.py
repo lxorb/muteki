@@ -208,9 +208,8 @@ class BuilderStrategyMethodsMixin:
             return False
 
         empty_adjacent_tiles = []
-        for adjacent_pos in self.map.u_iter_adjacent_positions(
+        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
             current_pos,
-            consider_diagonal=False,
         ):
             adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
             if (
@@ -418,9 +417,8 @@ class BuilderStrategyMethodsMixin:
         tiles_by_index = self.map.tiles_by_index
 
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
-            adjacent_positions = self.map.u_iter_adjacent_positions(
+            adjacent_positions = self.map.u_iter_adjacent_cardinal_positions(
                 pos,
-                consider_diagonal=False,
             )
             for adjacent_pos in adjacent_positions:
                 adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
@@ -444,9 +442,8 @@ class BuilderStrategyMethodsMixin:
             ] = []
 
             for safe_order, adjacent_pos in enumerate(
-                self.map.u_iter_adjacent_positions(
+                self.map.u_iter_adjacent_cardinal_positions(
                     current_pos,
-                    consider_diagonal=False,
                 )
             ):
                 adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
@@ -602,6 +599,8 @@ class BuilderStrategyMethodsMixin:
         target_tile = None
         target_key = None
         for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
+            if self.round_stopwatch.check_overtime_interval():
+                return False
             if tile.environment != resource:
                 continue
             if not can_use_tile(tile):
@@ -614,7 +613,7 @@ class BuilderStrategyMethodsMixin:
                 continue
             if max_core_ore_direct_dist is not None and tile.own_core_dist > max_core_ore_direct_dist:
                 continue
-            key = (tile.own_core_dist, tile.dist_to_self)
+            key = (tile.dist_to_self, tile.own_core_dist)
             if target_key is None or key < target_key:
                 target_key = key
                 target_tile = tile
@@ -774,9 +773,8 @@ class BuilderStrategyMethodsMixin:
         candidate_tiles = []
         for harvester_tile in enemy_harvesters:
             harvester_pos = harvester_tile.position
-            for candidate_pos in self.map.u_iter_adjacent_positions(
+            for candidate_pos in self.map.u_iter_adjacent_cardinal_positions(
                 harvester_pos,
-                consider_diagonal=False,
             ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
@@ -1159,9 +1157,8 @@ class BuilderStrategyMethodsMixin:
         candidate_tiles = []
         for harvester_tile in self.map.enemy_harvesters_in_vision:
             harvester_pos = harvester_tile.position
-            for candidate_pos in self.map.u_iter_adjacent_positions(
+            for candidate_pos in self.map.u_iter_adjacent_cardinal_positions(
                 harvester_pos,
-                consider_diagonal=False,
             ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 

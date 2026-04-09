@@ -14,6 +14,7 @@ CARDINAL_DIRECTIONS = tuple(
     for direction in DIRECTIONS
     if sum(abs(delta) for delta in direction.delta()) == 1
 )
+CARDINAL_ORDINAL_DIRECTIONS = DIRECTIONS
 
 BUILDER_ACTION_OFFSETS = tuple(
     (dx, dy) for dx in range(-1, 2) for dy in range(-1, 2) if dx * dx + dy * dy <= 2

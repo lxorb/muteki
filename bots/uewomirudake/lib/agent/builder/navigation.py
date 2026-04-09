@@ -80,9 +80,8 @@ class BuilderNavigationMixin:
         seen_foundry_indices: set[int] = set()
 
         for core_tile in core_tiles:
-            for foundry_pos in self.map.u_iter_adjacent_positions(
+            for foundry_pos in self.map.u_iter_adjacent_cardinal_positions(
                 core_tile.position,
-                consider_diagonal=False,
             ):
                 foundry_tile = self.map.u_get_pos_tile(foundry_pos)
                 if (
@@ -359,9 +358,8 @@ class BuilderNavigationMixin:
             )
             is_core_adjacent = any(
                 self.map.u_get_pos_tile(neighbor_pos).is_core_of(own_team)
-                for neighbor_pos in self.map.u_iter_adjacent_positions(
+                for neighbor_pos in self.map.u_iter_adjacent_cardinal_positions(
                     tile_pos,
-                    consider_diagonal=False,
                 )
             )
             candidate_tiles.append(
@@ -396,9 +394,8 @@ class BuilderNavigationMixin:
         ):
             return False
 
-        for neighbor_pos in self.map.u_iter_adjacent_positions(
+        for neighbor_pos in self.map.u_iter_adjacent_cardinal_positions(
             foundry_pos,
-            consider_diagonal=False,
         ):
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
             if not (

@@ -18,6 +18,8 @@ from lib.agent.time import RoundStopwatch
 
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
+    CARDINAL_DIRECTIONS,
+    CARDINAL_ORDINAL_DIRECTIONS,
     CORE_DIST_INF,
     DIRECTIONS,
     DISABLE_CORRECT_OWN_CORE_DISTANCE,
@@ -732,17 +734,15 @@ class Map:
             valid_tiles.append(self.u_get_pos_tile(pos))
         return valid_tiles
 
-    def u_iter_adjacent_positions(self, pos: Position, consider_diagonal: bool = True):
-        for direction in Direction:
-            if direction == Direction.CENTRE:
+    def u_iter_adjacent_cardinal_positions(self, pos: Position):
+        for direction in CARDINAL_DIRECTIONS:
+            next_pos = pos.add(direction)
+            if not self.u_is_in_bounds(next_pos):
                 continue
-            if not consider_diagonal and direction in {
-                Direction.NORTHEAST,
-                Direction.SOUTHEAST,
-                Direction.SOUTHWEST,
-                Direction.NORTHWEST,
-            }:
-                continue
+            yield next_pos
+
+    def u_iter_adjacent_all_positions(self, pos: Position):
+        for direction in CARDINAL_ORDINAL_DIRECTIONS:
             next_pos = pos.add(direction)
             if not self.u_is_in_bounds(next_pos):
                 continue
@@ -754,10 +754,8 @@ class Map:
         ore_type: Environment,
         consider_diagonal: bool = OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     ) -> bool:
-        for adjacent_pos in self.u_iter_adjacent_positions(
-            pos,
-            consider_diagonal=consider_diagonal,
-        ):
+        iter_fn = self.u_iter_adjacent_all_positions if consider_diagonal else self.u_iter_adjacent_cardinal_positions
+        for adjacent_pos in iter_fn(pos):
             if self.u_get_pos_tile(adjacent_pos).environment == ore_type:
                 return True
         return False
