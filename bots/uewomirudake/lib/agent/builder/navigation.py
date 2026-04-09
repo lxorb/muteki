@@ -140,8 +140,7 @@ class BuilderNavigationMixin:
         if not candidate_plans:
             return None
 
-        candidate_plans.sort(key=lambda item: item[0])
-        return candidate_plans[0][1]
+        return min(candidate_plans, key=lambda item: item[0])[1]
 
     def u_get_visible_titanium_core_chain_candidates(
         self,
@@ -302,8 +301,7 @@ class BuilderNavigationMixin:
         if not candidate_plans:
             return None
 
-        candidate_plans.sort(key=lambda item: item[0])
-        _, splitter_pos, splitter_direction, foundry_pos = candidate_plans[0]
+        _, splitter_pos, splitter_direction, foundry_pos = min(candidate_plans, key=lambda item: item[0])
         return (splitter_pos, splitter_direction, foundry_pos)
 
     def u_get_foundry_wait_position(self, foundry_pos: Position) -> Position | None:
@@ -384,8 +382,7 @@ class BuilderNavigationMixin:
         if not candidate_tiles:
             return None
 
-        candidate_tiles.sort(key=lambda item: item[0])
-        return candidate_tiles[0][1]
+        return min(candidate_tiles, key=lambda item: item[0])[1]
 
     def u_foundry_site_has_visible_axionite_supply(
         self,
@@ -773,8 +770,7 @@ class BuilderNavigationMixin:
         if not direction_scores:
             return candidate_directions[0]
 
-        direction_scores.sort(key=lambda item: item[0])
-        return direction_scores[0][1]
+        return min(direction_scores, key=lambda item: item[0])[1]
 
     def u_get_sentinel_direction_score(
         self,
@@ -937,8 +933,7 @@ class BuilderNavigationMixin:
         if not direction_scores:
             return candidate_directions[0]
 
-        direction_scores.sort(key=lambda item: item[0])
-        return direction_scores[0][1]
+        return min(direction_scores, key=lambda item: item[0])[1]
 
     def u_get_supplier_build_plan(
         self,

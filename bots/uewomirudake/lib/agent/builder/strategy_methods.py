@@ -493,13 +493,13 @@ class BuilderStrategyMethodsMixin:
                     )
                 )
 
-            candidate_entries.sort()
-            for _, move_direction in candidate_entries:
-                if self.ct.can_move(move_direction):
-                    self.ct.move(move_direction)
-                    return True
-
-            return hold and bool(candidate_entries)
+            if not candidate_entries:
+                return False
+            _, move_direction = min(candidate_entries)
+            if self.ct.can_move(move_direction):
+                self.ct.move(move_direction)
+                return True
+            return hold
 
         if (
             current_tile.environment == resource
@@ -544,8 +544,8 @@ class BuilderStrategyMethodsMixin:
                     )
                 )
 
-            candidate_entries.sort()
-            for _, target_idx in candidate_entries:
+            if candidate_entries:
+                _, target_idx = min(candidate_entries)
                 target_tile = tiles_by_index[target_idx]
                 supplier_type, supplier_target = supplier_plan_by_index[target_idx]
                 if supplier_type == EntityType.CONVEYOR:
@@ -599,38 +599,39 @@ class BuilderStrategyMethodsMixin:
                 and target_tile.is_passable
             )
 
-        candidate_tiles = self.u_filter_tiles(
-            [tiles_by_index[idx] for idx in dict.fromkeys(ore_indices)],
-            lambda tile: tile.environment == resource,
-            can_use_tile,
-            lambda tile: tile.bot.id is None or tile.position == current_pos,
-            lambda tile: not tile.in_enemy_attack_range,
-            lambda tile: not has_orthogonally_adjacent_enemy_building(tile.position),
-            lambda tile: max_core_ore_direct_dist is None
-            or tile.own_core_dist <= max_core_ore_direct_dist,
-        )
-        if not candidate_tiles:
+        target_tile = None
+        target_key = None
+        for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
+            if tile.environment != resource:
+                continue
+            if not can_use_tile(tile):
+                continue
+            if tile.bot.id is not None and tile.position != current_pos:
+                continue
+            if tile.in_enemy_attack_range:
+                continue
+            if has_orthogonally_adjacent_enemy_building(tile.position):
+                continue
+            if max_core_ore_direct_dist is not None and tile.own_core_dist > max_core_ore_direct_dist:
+                continue
+            key = (tile.own_core_dist, tile.dist_to_self)
+            if target_key is None or key < target_key:
+                target_key = key
+                target_tile = tile
+
+        if target_tile is None:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.own_core_dist,
-            lambda tile: tile.dist_to_self,
-        )
-        for target_tile in candidate_tiles:
-            if self.u_build_at(
-                target_tile.position,
-                EntityType.HARVESTER,
-                hold=hold,
-                move_towards=move_towards,
-                attack_enemy_passable=attack_enemy_passable,
-            ):
-                if self.last_built_entity_type == EntityType.HARVESTER:
-                    self.harvesters_built += 1
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
+        if self.u_build_at(
+            target_tile.position,
+            EntityType.HARVESTER,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=attack_enemy_passable,
+        ):
+            if self.last_built_entity_type == EntityType.HARVESTER:
+                self.harvesters_built += 1
+            return True
 
         return False
 
@@ -694,38 +695,32 @@ class BuilderStrategyMethodsMixin:
                 for target_tile in source_tile.building.targets
             )
 
-        candidate_tiles = self.u_filter_tiles(
-            [
-                tile
-                for tile in dict.fromkeys(
-                    self.map.own_supply_links_in_vision
-                    + self.map.own_harvesters_in_vision
-                )
-            ],
-            lambda tile: tile.building.team == own_team,
-            lambda tile: tile.building.entity_type
-            in SUPPLY_LINK_TYPES | {EntityType.HARVESTER},
-            points_at_enemy_turret,
-        )
-        if not candidate_tiles:
+        target_tile = None
+        target_dist = None
+        for tile in dict.fromkeys(
+            self.map.own_supply_links_in_vision + self.map.own_harvesters_in_vision
+        ):
+            if tile.building.team != own_team:
+                continue
+            if tile.building.entity_type not in SUPPLY_LINK_TYPES | {EntityType.HARVESTER}:
+                continue
+            if not points_at_enemy_turret(tile):
+                continue
+            if target_dist is None or tile.dist_to_self < target_dist:
+                target_dist = tile.dist_to_self
+                target_tile = tile
+
+        if target_tile is None:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.dist_to_self,
-        )
-        for target_tile in candidate_tiles:
-            target_pos = target_tile.position
-            if current_pos.distance_squared(
-                target_pos
-            ) <= GameConstants.ACTION_RADIUS_SQ and self.ct.can_destroy(target_pos):
-                self.ct.destroy(target_pos)
-                return True
-            if move_towards and self.u_move_to(target_pos):
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
+        target_pos = target_tile.position
+        if current_pos.distance_squared(
+            target_pos
+        ) <= GameConstants.ACTION_RADIUS_SQ and self.ct.can_destroy(target_pos):
+            self.ct.destroy(target_pos)
+            return True
+        if move_towards and self.u_move_to(target_pos):
+            return True
 
         return False
 
@@ -788,43 +783,35 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
-        candidate_tiles = list(dict.fromkeys(candidate_tiles))
-        candidate_tiles = self.u_filter_tiles(
-            candidate_tiles,
-            lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
-            lambda tile: (tile.bot.id is None or tile.position == current_pos),
-            lambda tile: get_tile_kind(tile.position) is not None,
-        )
-        if not candidate_tiles:
+        current_round = self.ct.get_current_round()
+        target_tile = None
+        target_key = None
+        for tile in dict.fromkeys(candidate_tiles):
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.bot.id is not None and tile.position != current_pos:
+                continue
+            kind = get_tile_kind(tile.position)
+            if kind is None:
+                continue
+            kind_rank = 0 if kind == "empty" else 1 if kind == "own_road" else 2
+            key = (tile.dist_to_self, kind_rank)
+            if target_key is None or key < target_key:
+                target_key = key
+                target_tile = tile
+
+        if target_tile is None:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.dist_to_self,
-            lambda tile: (
-                0
-                if get_tile_kind(tile.position) == "empty"
-                else 1 if get_tile_kind(tile.position) == "own_road" else 2
-            ),
-        )
-        for candidate_tile in candidate_tiles:
-            sentinel_direction = self.u_get_sentinel_orientation(
-                candidate_tile.position
-            )
-            if self.u_build_at(
-                candidate_tile.position,
-                EntityType.SENTINEL,
-                hold=hold,
-                move_towards=move_towards,
-                attack_enemy_passable=attack_enemy_passable,
-                facing_direction=sentinel_direction,
-            ):
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return False
+        sentinel_direction = self.u_get_sentinel_orientation(target_tile.position)
+        return bool(self.u_build_at(
+            target_tile.position,
+            EntityType.SENTINEL,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=attack_enemy_passable,
+            facing_direction=sentinel_direction,
+        ))
 
     def s_block_enemy_supply_chain(self, move_towards: bool = True, hold: bool = True):
         """
@@ -836,38 +823,32 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        enemy_supply_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(self.map.enemy_supply_targets_in_vision)),
-            lambda tile: (
+        target_tile = None
+        target_key = None
+        for tile in dict.fromkeys(self.map.enemy_supply_targets_in_vision):
+            if not (
                 tile.building.id is None
                 or (
                     tile.building.entity_type == EntityType.ROAD
                     and tile.building.team == own_team
                 )
-            ),
-        )
-        if not enemy_supply_tiles:
+            ):
+                continue
+            key = (tile.dist_to_self, 0 if tile.building.id is None else 1)
+            if target_key is None or key < target_key:
+                target_key = key
+                target_tile = tile
+
+        if target_tile is None:
             return False
 
-        enemy_supply_tiles = self.u_prioritize_tiles(
-            enemy_supply_tiles,
-            lambda tile: tile.dist_to_self,
-            lambda tile: 0 if tile.building.id is None else 1,
-        )
-        for target_tile in enemy_supply_tiles:
-            if self.u_build_at(
-                target_tile.position,
-                EntityType.BARRIER,
-                hold=hold,
-                move_towards=move_towards,
-                attack_enemy_passable=True,
-            ):
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return False
+        return bool(self.u_build_at(
+            target_tile.position,
+            EntityType.BARRIER,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=True,
+        ))
 
     def s_block_titanium(
         self,
@@ -886,37 +867,32 @@ class BuilderStrategyMethodsMixin:
 
         current_pos = self.map.current_pos
 
-        titanium_tiles = self.u_filter_tiles(
-            [
-                self.map.tiles_by_index[idx]
-                for idx in dict.fromkeys(self.map.known_accessible_titanium_indices)
-            ],
-            lambda tile: tile.environment == Environment.ORE_TITANIUM,
-            lambda tile: tile.building.id is None,
-            lambda tile: (not only_out_of_reach)
-            or tile.own_core_dist > MAX_CORE_ORE_DIRECT_DIST,
-        )
-        if not titanium_tiles:
+        target_tile = None
+        target_dist = None
+        for tile in dict.fromkeys(
+            self.map.tiles_by_index[idx]
+            for idx in self.map.known_accessible_titanium_indices
+        ):
+            if tile.environment != Environment.ORE_TITANIUM:
+                continue
+            if tile.building.id is not None:
+                continue
+            if only_out_of_reach and tile.own_core_dist <= MAX_CORE_ORE_DIRECT_DIST:
+                continue
+            if target_dist is None or tile.dist_to_self < target_dist:
+                target_dist = tile.dist_to_self
+                target_tile = tile
+
+        if target_tile is None:
             return False
 
-        titanium_tiles = self.u_prioritize_tiles(
-            titanium_tiles,
-            lambda tile: tile.dist_to_self,
-        )
-        for target_tile in titanium_tiles:
-            if self.u_build_at(
-                target_tile.position,
-                EntityType.BARRIER,
-                hold=hold,
-                move_towards=move_towards,
-                attack_enemy_passable=False,
-            ):
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return False
+        return bool(self.u_build_at(
+            target_tile.position,
+            EntityType.BARRIER,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=False,
+        ))
 
     def s_insert_core_splitter(self, move_towards: bool = True, hold: bool = True):
         """
@@ -1192,34 +1168,30 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
-        candidate_tiles = list(dict.fromkeys(candidate_tiles))
-        candidate_tiles = self.u_filter_tiles(
-            candidate_tiles,
-            lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
-            lambda tile: tile.building.team != own_team,
-            lambda tile: tile.building.entity_type in SUPPLY_LINK_TYPES,
-            lambda tile: tile.is_passable,
-        )
-        if not candidate_tiles:
+        current_round = self.ct.get_current_round()
+        target_tile = None
+        target_dist = None
+        for tile in dict.fromkeys(candidate_tiles):
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team == own_team:
+                continue
+            if tile.building.entity_type not in SUPPLY_LINK_TYPES:
+                continue
+            if not tile.is_passable:
+                continue
+            if target_dist is None or tile.dist_to_self < target_dist:
+                target_dist = tile.dist_to_self
+                target_tile = tile
+
+        if target_tile is None:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.dist_to_self,
-        )
-
-        for target_tile in candidate_tiles:
-            if self.u_attack_passable(
-                target_tile.position,
-                move_towards=move_towards,
-                destroy_condition=lambda _: True,
-            ):
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return False
+        return bool(self.u_attack_passable(
+            target_tile.position,
+            move_towards=move_towards,
+            destroy_condition=lambda _: True,
+        ))
 
     def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
         """
@@ -1236,40 +1208,36 @@ class BuilderStrategyMethodsMixin:
         if enemy_core_pos is None:
             return False
 
-        candidate_tiles = self.u_filter_tiles(
-            list(dict.fromkeys(self.map.enemy_supply_links_in_vision)),
-            lambda tile: tile.last_seen_turn == self.ct.get_current_round(),
-            lambda tile: tile.building.team != own_team,
-            lambda tile: tile.building.entity_type in SUPPLY_LINK_TYPES,
-            lambda tile: any(
-                target.position == enemy_core_pos for target in tile.building.targets
-            ),
-            lambda tile: not tile.in_enemy_launcher_pickup_zone,
-            lambda tile: not tile.in_enemy_attack_range,
-        )
-        if not candidate_tiles:
+        current_round = self.ct.get_current_round()
+        target_tile = None
+        target_dist = None
+        for tile in dict.fromkeys(self.map.enemy_supply_links_in_vision):
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team == own_team:
+                continue
+            if tile.building.entity_type not in SUPPLY_LINK_TYPES:
+                continue
+            if not any(target.position == enemy_core_pos for target in tile.building.targets):
+                continue
+            if tile.in_enemy_launcher_pickup_zone:
+                continue
+            if tile.in_enemy_attack_range:
+                continue
+            if target_dist is None or tile.dist_to_self < target_dist:
+                target_dist = tile.dist_to_self
+                target_tile = tile
+
+        if target_tile is None:
             return False
 
-        candidate_tiles = self.u_prioritize_tiles(
-            candidate_tiles,
-            lambda tile: tile.dist_to_self,
-        )
-
-        for target_tile in candidate_tiles:
-            if self.u_attack_passable(
-                target_tile.position,
-                move_towards=move_towards,
-                destroy_condition=lambda pos: (
-                    self.map.u_get_pos_tile(pos).in_enemy_bot_action_range_turn
-                    != self.ct.get_current_round()
-                ),
-            ):
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return False
+        return bool(self.u_attack_passable(
+            target_tile.position,
+            move_towards=move_towards,
+            destroy_condition=lambda pos: (
+                self.map.u_get_pos_tile(pos).in_enemy_bot_action_range_turn != current_round
+            ),
+        ))
 
     def s_heal_own_building(self, move_towards: bool = True, hold: bool = True):
         """
@@ -1315,26 +1283,17 @@ class BuilderStrategyMethodsMixin:
                 and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
             )
 
-        candidate_tiles = self.u_prioritize_tiles(
-            list(dict.fromkeys(candidate_tiles)),
-            lambda tile: (
-                0
-                if tile.building.entity_type == EntityType.CORE
-                else 1 if has_damaged_own_builder(tile) else 2
+        target_tile = min(
+            dict.fromkeys(candidate_tiles),
+            key=lambda tile: (
+                0 if tile.building.entity_type == EntityType.CORE
+                else 1 if has_damaged_own_builder(tile) else 2,
+                building_type_rank.get(tile.building.entity_type, 99),
+                tile.dist_to_self,
+                tile.own_core_dist,
             ),
-            lambda tile: building_type_rank.get(tile.building.entity_type, 99),
-            lambda tile: tile.dist_to_self,
-            lambda tile: tile.own_core_dist,
         )
-
-        for target_tile in candidate_tiles:
-            if self.u_heal_at(target_tile.position, move_towards=move_towards):
-                return True
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return False
+        return bool(self.u_heal_at(target_tile.position, move_towards=move_towards))
 
     def s_move_toward_enemy_core(self):
         """
