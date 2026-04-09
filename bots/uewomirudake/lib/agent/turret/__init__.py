@@ -104,7 +104,7 @@ class TurretAgent(Agent):
         for bot_tile in throwable_tiles:
             if self.u_get_launcher_throw_target(bot_tile.position) is not None:
                 return bot_tile.position
-            if self.round_stopwatch.is_overtime_interval():
+            if self.round_stopwatch.check_overtime():
                 break
         return None
 
@@ -202,7 +202,7 @@ class TurretAgent(Agent):
                 ):
                     return True
 
-            if self.round_stopwatch.is_overtime_interval():
+            if self.round_stopwatch.check_overtime_interval():
                 break
 
         return False

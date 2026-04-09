@@ -170,7 +170,7 @@ class BuilderNavigationMixin:
                     (tile.index, target_direction)
                 )
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         queue = list(coreward_directions_by_index)
@@ -192,7 +192,7 @@ class BuilderNavigationMixin:
                 source_directions.add(source_direction)
                 queue.append(source_idx)
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         candidate_plans: list[tuple[Position, Direction]] = []
@@ -201,7 +201,7 @@ class BuilderNavigationMixin:
             for direction in directions:
                 candidate_plans.append((tile.position, direction))
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return candidate_plans
@@ -228,7 +228,7 @@ class BuilderNavigationMixin:
             splitter_pos,
             splitter_direction,
         ) in self.u_get_visible_titanium_core_chain_candidates():
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
             splitter_tile = self.map.u_get_pos_tile(splitter_pos)
             splitter_building = splitter_tile.building
@@ -300,7 +300,7 @@ class BuilderNavigationMixin:
         candidate_tiles: list[tuple[tuple[int, ...], Position]] = []
 
         for tile_idx in self.map.u_iter_active_tile_indices():
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
             tile = self.map.tiles_by_index[tile_idx]
             tile_pos = tile.position
@@ -572,10 +572,10 @@ class BuilderNavigationMixin:
                 seen_indices.add(target_idx)
                 queue.append(target_pos_candidate)
 
-                if self.round_stopwatch.is_overtime():
+                if self.round_stopwatch.check_overtime():
                     break
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -715,7 +715,7 @@ class BuilderNavigationMixin:
             if building_type in OWN_SUPPLIER_TYPES:
                 own_supplier_tiles.append(building_tile)
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         for building_tile in self.map.enemy_buildings_in_vision:
@@ -724,7 +724,7 @@ class BuilderNavigationMixin:
             if building_type in ENEMY_TURRET_TYPES:
                 enemy_turret_tiles.append(building_tile)
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         blocked_direction = (
@@ -755,7 +755,7 @@ class BuilderNavigationMixin:
                 )
             )
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         if not direction_scores:
@@ -784,7 +784,7 @@ class BuilderNavigationMixin:
             ):
                 can_target_enemy_core = True
                 break
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         enemy_turret_count = 0
@@ -796,7 +796,7 @@ class BuilderNavigationMixin:
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
             ):
                 enemy_turret_count += 1
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         own_supplier_count = 0
@@ -808,7 +808,7 @@ class BuilderNavigationMixin:
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
             ):
                 own_supplier_count += 1
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         enemy_building_count = 0
@@ -820,7 +820,7 @@ class BuilderNavigationMixin:
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
             ):
                 enemy_building_count += 1
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return (
@@ -865,7 +865,7 @@ class BuilderNavigationMixin:
                 if feeder_direction is not None:
                     feeder_directions.append(feeder_direction)
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         blocked_direction = (
@@ -904,7 +904,7 @@ class BuilderNavigationMixin:
                     if target_tile.building.entity_type in ENEMY_TURRET_TYPES:
                         visible_enemy_turrets += 1
 
-                if self.round_stopwatch.is_overtime():
+                if self.round_stopwatch.check_overtime():
                     break
 
             direction_scores.append(
@@ -919,7 +919,7 @@ class BuilderNavigationMixin:
                 )
             )
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         if not direction_scores:
@@ -1125,7 +1125,7 @@ class BuilderNavigationMixin:
         candidate_tiles = []
 
         for target_idx in self.map.u_iter_active_tile_indices():
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
             target_tile = self.map.tiles_by_index[target_idx]
             target_pos = target_tile.position
@@ -1168,7 +1168,7 @@ class BuilderNavigationMixin:
 
         categorized_tiles: list[tuple[int, object]] = []
         for target_tile in candidate_tiles:
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
             category_rank = self.u_get_bridge_target_category_rank(
                 target_tile,

@@ -77,7 +77,7 @@ class BuilderStrategyMethodsMixin:
         for harvester_order, harvester_tile in enumerate(
             self.map.own_harvesters_in_vision
         ):
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
             if harvester_tile.environment != resource:
                 continue
@@ -183,7 +183,7 @@ class BuilderStrategyMethodsMixin:
                 ):
                     return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -309,7 +309,7 @@ class BuilderStrategyMethodsMixin:
         for encounter_order, target_tile in enumerate(
             self.map.own_missing_supply_links
         ):
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
             target_label = target_tile.own_supply_chain_label
             if not (target_label & supply_chain_label):
@@ -370,7 +370,7 @@ class BuilderStrategyMethodsMixin:
                     self.pending_missing_supply_link_resource = resource
                     return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -629,7 +629,7 @@ class BuilderStrategyMethodsMixin:
                     self.harvesters_built += 1
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -672,7 +672,7 @@ class BuilderStrategyMethodsMixin:
             return True
         if (
             not current_tile.is_enemy_turret_target_tile
-            or self.round_stopwatch.is_overtime_always_check()
+            or self.round_stopwatch.check_overtime()
         ):
             return False
         return move_along_frontier_path(avoid_enemy_turrets=False)
@@ -724,7 +724,7 @@ class BuilderStrategyMethodsMixin:
             if move_towards and self.u_move_to(target_pos):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -785,7 +785,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
@@ -821,7 +821,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if self.round_stopwatch.is_overtime_always_check():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -864,7 +864,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -913,7 +913,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -1115,7 +1115,7 @@ class BuilderStrategyMethodsMixin:
             candidate_entries: list[tuple[int, int, int, int]] = []
 
             for idx in known_own_supply_link_indices:
-                if self.round_stopwatch.is_overtime():
+                if self.round_stopwatch.check_overtime():
                     break
                 target_tile = tiles_by_index[idx]
                 last_patrolled_index = target_tile.last_patrolled_index
@@ -1154,7 +1154,7 @@ class BuilderStrategyMethodsMixin:
             if self.u_move_to(tiles_by_index[target_idx].position):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
@@ -1164,7 +1164,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -1189,7 +1189,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         candidate_tiles = list(dict.fromkeys(candidate_tiles))
@@ -1216,7 +1216,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -1266,7 +1266,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False
@@ -1331,7 +1331,7 @@ class BuilderStrategyMethodsMixin:
             if self.u_heal_at(target_tile.position, move_towards=move_towards):
                 return True
 
-            if self.round_stopwatch.is_overtime():
+            if self.round_stopwatch.check_overtime():
                 break
 
         return False

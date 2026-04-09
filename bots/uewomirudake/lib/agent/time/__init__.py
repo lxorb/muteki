@@ -30,7 +30,7 @@ class RoundStopwatch:
     def start_bot(self):
         self.map_done = True
 
-    def is_overtime_interval(self):
+    def check_overtime_interval(self):
         if self.ct is None:
             return False
 
@@ -47,7 +47,7 @@ class RoundStopwatch:
             else active_cpu_time > ALLOCATED_MAP_TIME_MUS
         )
 
-    def is_overtime(self):
+    def check_overtime(self):
         if self.ct is None:
             return False
 

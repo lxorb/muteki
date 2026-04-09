@@ -141,7 +141,7 @@ surrendering early in submissions.
 import os
 import sys
 
-SURRENDER_AT_TURN: int = 400
+SURRENDER_AT_TURN: int = 1e6
 
 try:
     module_dir = os.path.join(os.getcwd(), "./bots/exclude")
