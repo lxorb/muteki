@@ -1548,8 +1548,13 @@ class BuilderAgent(DefaultAgent):
 
     def greedy_best_first_search(self, target_idx: int) -> 'Direction | None':
         """GBFS from self.position to target_idx. Returns first-step Direction or None."""
+        timer_start = time.perf_counter_ns()
+
         start = self.position
         if start == target_idx:
+
+            timer_end = time.perf_counter_ns()
+            print(f'greedy_bfs() took: {(timer_end - timer_start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
         map_walk  = self.map_walk       # array.array – agent attribute confirmed
@@ -1583,6 +1588,9 @@ class BuilderAgent(DefaultAgent):
                 sy  = start   // width
                 fnx = first_nb % width
                 fny = first_nb // width
+
+                timer_end = time.perf_counter_ns()
+                print(f'greedy_bfs() took: {(timer_end - timer_start) / 1_000_000:.4f} ms')
                 return _DIRECTION_MAP.get((fnx - sx, fny - sy), Direction.CENTRE)
 
             for nb in neighbors[idx]:
@@ -1593,6 +1601,8 @@ class BuilderAgent(DefaultAgent):
                     h  = max(abs(nx - tx), abs(ny - ty))
                     heapq.heappush(heap, (h, first_nb, nb))
 
+        timer_end = time.perf_counter_ns()
+        print(f'greedy_bfs() took: {(timer_end - timer_start) / 1_000_000:.4f} ms')
         return None  # no walkable path found within explored area
 
     def write_marker(self) -> None:
