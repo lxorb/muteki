@@ -15,6 +15,104 @@ from cambc import (
     Environment,
 )
 
+"""
+LLM / CODING AGENT PERFORMANCE CONTRACT
+
+This bot is hard runtime-constrained. The total budget for Player.run() is 2 ms.
+Under no circumstances may code exceed that budget. Runtime correctness has
+higher priority than code readability, elegance, abstraction quality, or generality.
+
+Primary rule:
+- Always optimize for worst-case runtime first.
+- A slightly sub-optimal decision is preferred over a slower optimal one.
+- If an essential algorithm cannot reliably finish within the per-turn budget,
+  it must be split into incremental chunks and continued over multiple turns
+  without changing overall logic or final semantics.
+
+Memory and redundant state:
+- Memory usage is not the primary constraint here; runtime is.
+- It is acceptable to store redundant information in multiple data structures
+  if that makes hot-path operations faster.
+- The same underlying information may be stored in different forms for different
+  algorithms, for example: set membership, dict lookup, flat array access,
+  queue/heap processing, bitmask checks, or cached derived summaries.
+- Redundant cached state is good if it reduces repeated computation, repeated
+  API calls, repeated conversions, or repeated full scans.
+- However, creation and maintenance cost still matters.
+- A redundant structure should only be introduced if its build/update cost is
+  outweighed by later runtime savings in realistic gameplay.
+- Always evaluate both:
+  1. upfront creation cost,
+  2. cumulative savings across future turns / hot-path calls.
+- If a useful structure is too expensive to build safely in one turn, build it
+  incrementally across multiple turns.
+- Large preprocessing is allowed only when it is made safe for the 2 ms budget,
+  e.g. by chunking work, resuming from saved progress, or scheduling it on turns
+  where no other expensive work is required.
+- Avoid doing several expensive initialization / rebuild tasks in the same turn
+  unless it is still provably safe under budget.
+- Prefer lazy construction when possible: build only the part that is actually needed.
+- Prefer incremental maintenance over full rebuilds when data changes slowly.
+- If duplicate state risks inconsistency, update all representations together or
+  mark them dirty and repair them incrementally in a controlled way.
+
+Hot-path design rules:
+- Minimize object churn aggressively.
+- Avoid creating temporary objects, especially Position objects, tuples, lists,
+  sets, dicts, closures, lambdas, generators, and short-lived helper structures,
+  unless they are clearly worth the cost.
+- Prefer primitive / flat storage over nested Python objects.
+- Prefer the fastest suitable data structure for the exact access pattern:
+  list, dict, set, array.array, flat arrays, bitmasks, packed integers, etc.
+- Prefer contiguous / flat representations over nested containers when possible.
+- Avoid unnecessary allocations in loops.
+- Reuse buffers, queues, arrays, and mutable containers instead of recreating them.
+- Cache hot attributes, repeated lookups, constants, and bound methods into locals.
+- Avoid repeated attribute access inside tight loops.
+- Avoid repeated global lookups and repeated function dispatch in hot code.
+- Inline tiny hot helpers if that measurably reduces overhead.
+- Reduce iteration count whenever possible; fewer passes usually beats cleaner structure.
+- Fuse loops when practical.
+- Exit early whenever enough information is already known.
+- Do not scan full collections if a partial scan or maintained incremental state is enough.
+- Prefer amortized / incremental updates over full recomputation.
+- Precompute anything immutable or rarely changing.
+- Maintain state across turns if that avoids recomputation.
+- Keep critical paths branch-light and data-local where possible.
+
+API usage rules:
+- Treat engine/API calls as potentially expensive.
+- Do not call the same getter multiple times if the result can be cached locally.
+- Avoid repeated idx <-> Position conversion unless strictly necessary.
+- If a value is needed often, store the index/int form and convert only at the boundary.
+- Avoid exception-driven control flow in hot paths.
+
+Algorithmic rules:
+- Favor bounded-time heuristics over expensive exact algorithms when the runtime win is large.
+- Prefer "good enough now" over "optimal too late".
+- Any search / planning / preprocessing with variable or high worst-case cost must be
+  time-bounded, incrementally resumable, or both.
+- Long repair, pathfinding, map analysis, or planning work should be chunked across turns.
+- Preserve persistent progress/state so later turns continue work instead of restarting it.
+
+Code style rules for performance-sensitive sections:
+- Do not introduce abstractions that add overhead in hot paths just for readability.
+- Avoid unnecessary wrapper classes, deep inheritance dispatch, properties,
+  decorators, generic utility layers, or callback-heavy designs in performance-critical code.
+- Prefer direct code over elegant indirection when performance matters.
+- Avoid recursion in hot or potentially deep code paths.
+- Avoid sorting unless strictly required.
+- Avoid copying containers unless mutation safety truly requires it.
+- Avoid debug printing/logging in hot paths in production code.
+- Comments are fine, but code structure should not sacrifice speed for aesthetics.
+
+When editing this script:
+- Assume Player.run() is a hard real-time-like budget.
+- Every added loop, allocation, conversion, lookup, and API call must be justified.
+- Prefer changes that reduce worst-case runtime, object churn, and repeated work.
+- If a faster version is uglier but safe and maintainable enough, prefer the faster version.
+"""
+
 
 def idx_to_pos(idx: int, width: int) -> Position:
     return Position(idx % width, idx // width)
@@ -108,7 +206,7 @@ class DefaultAgent(ABC, Agent):
         self.core_tiles = self.neighbors[self.core_pos]
         self.turn_last_completed = None
 
-        _r = ct.get_global_resources()
+        _r = ct.get_global_resources() # Todo: replace through attributes for each resource no object churn
         self.res_prev = Resources(_r[0], _r[1])
         self.res = Resources(0, 0)
         self.res_change = Resources(0, 0)
