@@ -1171,14 +1171,14 @@ class BuilderNavigationMixin:
                 tile for tile in candidate_tiles if (tile.is_core_of(self.map.own_team))
             ]
             if core_tiles:
-                core_tiles.sort(
+                return min(
+                    core_tiles,
                     key=lambda tile: (
                         pos.distance_squared(tile.position),
                         tile.position.x,
                         tile.position.y,
-                    )
-                )
-                return core_tiles[0].position
+                    ),
+                ).position
 
         categorized_tiles: list[tuple[int, object]] = []
         for target_tile in candidate_tiles:
@@ -1203,7 +1203,8 @@ class BuilderNavigationMixin:
             for category_rank, target_tile in categorized_tiles
             if category_rank == best_category_rank
         ]
-        candidate_tiles.sort(
+        best_tile = min(
+            candidate_tiles,
             key=lambda tile: (
                 *self.u_get_supply_chain_progress_key(
                     tile.position,
@@ -1217,9 +1218,9 @@ class BuilderNavigationMixin:
                 ),
                 tile.position.x,
                 tile.position.y,
-            )
+            ),
         )
-        return candidate_tiles[0].position
+        return best_tile.position
 
     def u_get_bridge_target_category_rank(
         self,
