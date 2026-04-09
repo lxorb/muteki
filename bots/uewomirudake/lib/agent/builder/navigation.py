@@ -1131,7 +1131,6 @@ class BuilderNavigationMixin:
         """
         current_pos = self.map.current_pos
         source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
-        candidate_tiles = []
         map_width = self.map.width
         map_height = self.map.height
         active_mask = self.map.active_mask_by_index
@@ -1139,6 +1138,8 @@ class BuilderNavigationMixin:
         pos_x = pos.x
         pos_y = pos.y
 
+        # Filter candidates, caching progress keys to avoid recomputing them later.
+        candidates: list[tuple[object, tuple[int, int]]] = []
         for dx, dy in _BRIDGE_TARGET_OFFSETS:
             nx = pos_x + dx
             ny = pos_y + dy
@@ -1153,22 +1154,26 @@ class BuilderNavigationMixin:
                 self.map.own_team
             ) and not self.u_supply_chain_targets_core(resource):
                 continue
-            if self.u_get_supply_chain_progress_key(
+            target_progress_key = self.u_get_supply_chain_progress_key(
                 target_pos, resource
-            ) >= source_progress_key and not self.u_can_wrap_axionite_chain_around_core(
-                pos,
-                target_pos,
-                resource,
+            )
+            if (
+                target_progress_key >= source_progress_key
+                and not self.u_can_wrap_axionite_chain_around_core(
+                    pos,
+                    target_pos,
+                    resource,
+                )
             ):
                 continue
-            candidate_tiles.append(target_tile)
+            candidates.append((target_tile, target_progress_key))
 
-        if not candidate_tiles:
+        if not candidates:
             return None
 
         if self.u_supply_chain_targets_core(resource):
             core_tiles = [
-                tile for tile in candidate_tiles if (tile.is_core_of(self.map.own_team))
+                tile for tile, _ in candidates if tile.is_core_of(self.map.own_team)
             ]
             if core_tiles:
                 return min(
@@ -1180,8 +1185,11 @@ class BuilderNavigationMixin:
                     ),
                 ).position
 
-        categorized_tiles: list[tuple[int, object]] = []
-        for target_tile in candidate_tiles:
+        # Single pass: find best tile using composite key (rank, progress, distance, pos).
+        # Avoids a separate categorize loop, a min-rank scan, a filter, and a second min.
+        best_tile = None
+        best_key: tuple | None = None
+        for target_tile, target_progress_key in candidates:
             if self.round_stopwatch.check_overtime():
                 break
             category_rank = self.u_get_bridge_target_category_rank(
@@ -1190,37 +1198,24 @@ class BuilderNavigationMixin:
             )
             if category_rank is None:
                 continue
-            categorized_tiles.append((category_rank, target_tile))
+            dist_bucket = (
+                0
+                if current_pos.distance_squared(target_tile.position)
+                <= BUILDER_ACTION_RADIUS_SQ
+                else 1
+            )
+            key = (
+                category_rank,
+                *target_progress_key,
+                dist_bucket,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_tile = target_tile
 
-        if not categorized_tiles:
-            return None
-
-        best_category_rank = min(
-            category_rank for category_rank, _ in categorized_tiles
-        )
-        candidate_tiles = [
-            target_tile
-            for category_rank, target_tile in categorized_tiles
-            if category_rank == best_category_rank
-        ]
-        best_tile = min(
-            candidate_tiles,
-            key=lambda tile: (
-                *self.u_get_supply_chain_progress_key(
-                    tile.position,
-                    resource,
-                ),
-                (
-                    0
-                    if current_pos.distance_squared(tile.position)
-                    <= BUILDER_ACTION_RADIUS_SQ
-                    else 1
-                ),
-                tile.position.x,
-                tile.position.y,
-            ),
-        )
-        return best_tile.position
+        return best_tile.position if best_tile is not None else None
 
     def u_get_bridge_target_category_rank(
         self,
@@ -1236,9 +1231,10 @@ class BuilderNavigationMixin:
             target_tile.position
         ):
             return None
-        if self.u_is_axionite_foundry_target(target_tile.position, resource):
-            if self.u_can_host_foundry_site(target_tile.position):
-                return -1
+        # TODO: Redo foundry logic efficiently and disable foundry logic properly for non-foundry bots
+        # if self.u_is_axionite_foundry_target(target_tile.position, resource):
+        #     if self.u_can_host_foundry_site(target_tile.position):
+        #         return -1
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
