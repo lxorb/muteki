@@ -1515,28 +1515,85 @@ class BuilderAgent(DefaultAgent):
             else:
                 self.todo_list.popleft()  # now safe to remove
 
-    def move(self, target_pos_idx: int):
+    def move(self, target_idx: int):
         ct = self.ct
-        print(f'move from {idx_to_pos(self.position, self.width)} to {idx_to_pos(target_pos_idx, self.width)}')
+        position = self.position
+        print(f'move from {idx_to_pos(position, self.width)} to {idx_to_pos(target_idx, self.width)}')
 
-        if self.map_walk[target_pos_idx] == TILE_BLOCK:
-            self.map_walk[target_pos_idx] = TILE_UNKNOWN
-            self.dstar.update_cell(target_pos_idx)
+        if self.map_walk[target_idx] == TILE_BLOCK:
+            self.map_walk[target_idx] = TILE_UNKNOWN
+            self.dstar.update_cell(target_idx)
 
-        if target_pos_idx != self.dstar.target_position():
-            self.dstar.initialize(self.position, target_pos_idx)
+        direction = self.greedy_best_first_search(target_idx)
+
+        if direction is None or direction == Direction.CENTRE:
+            print('d star lite is used')
+            if target_idx != self.dstar.target_position():
+                self.dstar.initialize(position, target_idx)
+            else:
+                self.dstar.update_start(position)
+                self.dstar.replan()
+
+            direction = self.dstar.get_next_direction()  # Todo: first try greedy best first search for in vision targets
         else:
-            self.dstar.update_start(self.position)
-            self.dstar.replan()
+            print('greedy bfs is used')
 
-        direction = self.dstar.get_next_direction()  # Todo: first try greedy best first search for in vision targets
+        if direction != Direction.CENTRE:
+            pos = idx_to_pos(position, self.width)
+            next_pos = pos.add(direction)
+            if ct.can_build_road(next_pos):
+                ct.build_road(next_pos)
+            if ct.can_move(direction):
+                ct.move(direction)
 
-        pos = idx_to_pos(self.position, self.width)
-        next_pos = pos.add(direction)
-        if ct.can_build_road(next_pos):
-            ct.build_road(next_pos)
-        if ct.can_move(direction):
-            ct.move(direction)
+    def greedy_best_first_search(self, target_idx: int) -> 'Direction | None':
+        """GBFS from self.position to target_idx. Returns first-step Direction or None."""
+        start = self.position
+        if start == target_idx:
+            return Direction.CENTRE
+
+        map_walk  = self.map_walk       # array.array – agent attribute confirmed
+        neighbors = self.neighbors      # list[list[int]] – precomputed by DefaultAgent.__init__
+        width     = self.width
+
+        tx = target_idx % width
+        ty = target_idx // width
+
+        # --- Seed the heap with direct walkable neighbors of start ---
+        # Store first_step_idx so path reconstruction is O(1) at goal.
+        heap: list[tuple[int, int, int]] = []   # (h, first_step_nb, current_idx)
+        visited: set[int] = {start}
+
+        for nb in neighbors[start]:
+            if map_walk[nb] < TILE_BLOCK:
+                visited.add(nb)
+                nx = nb % width
+                ny = nb // width
+                h  = max(abs(nx - tx), abs(ny - ty))   # Chebyshev, no float needed
+                heap.append((h, nb, nb))
+
+        heapq.heapify(heap)
+
+        while heap:
+            _, first_nb, idx = heapq.heappop(heap)
+
+            if idx == target_idx:
+                # Recover direction from start → first_nb
+                sx  = start   % width
+                sy  = start   // width
+                fnx = first_nb % width
+                fny = first_nb // width
+                return _DIRECTION_MAP.get((fnx - sx, fny - sy), Direction.CENTRE)
+
+            for nb in neighbors[idx]:
+                if nb not in visited and map_walk[nb] < TILE_BLOCK:
+                    visited.add(nb)
+                    nx = nb % width
+                    ny = nb // width
+                    h  = max(abs(nx - tx), abs(ny - ty))
+                    heapq.heappush(heap, (h, first_nb, nb))
+
+        return None  # no walkable path found within explored area
 
     def write_marker(self) -> None:
         ct = self.ct

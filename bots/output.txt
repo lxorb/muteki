@@ -1,13 +1,12 @@
-enemy core at Position(x=8, y=10)
-enemy core tiles: [Position(x=7, y=9), Position(x=7, y=10), Position(x=7, y=11), Position(x=8, y=9), Position(x=8, y=11), Position(x=9, y=9), Position(x=9, y=10), Position(x=9, y=11)]
-update_on_view() took: 0.0622 ms
-todo_list: deque([<player_mod.RepairHarvester object at 0x109a2d340>, <player_mod.BuildHarvester object at 0x109a2d370>, <player_mod.EnemyCore object at 0x109a2d3a0>, <player_mod.Explore object at 0x109a2d3d0>], maxlen=4)
-<player_mod.RepairHarvester object at 0x109a2d340> repeat: False
-<player_mod.BuildHarvester object at 0x109a2d370> repeat: False
-back to core: [{Position(x=15, y=13)}, {Position(x=15, y=14)}, {Position(x=15, y=15)}, {Position(x=16, y=13)}, {Position(x=16, y=15)}, {Position(x=17, y=13)}, {Position(x=17, y=14)}, {Position(x=17, y=15)}]
-Position(x=15, y=18) to Position(x=15, y=13)
-d star lite initialize() took: 0.4172 ms
-d star lite get_next_direction() took: 0.0015 ms
-wrote marker Position(x=8, y=10)
-<player_mod.EnemyCore object at 0x109a2d3a0> repeat: True
-run() took: 0.5023 ms
+update_on_view() took: 0.0456 ms
+TODO: <player_mod.RepairHarvester object at 0x10c334b90>
+REPEAT: False
+TODO: <player_mod.BuildHarvester object at 0x10c334bc0>
+REPEAT: False
+TODO: <player_mod.EnemyCore object at 0x10c334bf0>
+REPEAT: False
+TODO: <player_mod.Explore object at 0x10c334c20>
+move from Position(x=22, y=21) to Position(x=21, y=13)
+greedy bfs is used
+REPEAT: True
+run() took: 0.0664 ms
