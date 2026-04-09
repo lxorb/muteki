@@ -17,6 +17,15 @@ from lib.agent.constants import (
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
+_BRIDGE_R = int(GameConstants.BRIDGE_TARGET_RADIUS_SQ**0.5) + 1
+_BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
+    (dx, dy)
+    for dx in range(-_BRIDGE_R, _BRIDGE_R + 1)
+    for dy in range(-_BRIDGE_R, _BRIDGE_R + 1)
+    if 0 < dx * dx + dy * dy <= GameConstants.BRIDGE_TARGET_RADIUS_SQ
+    and abs(dx) + abs(dy) != 1
+)
+
 
 class BuilderNavigationMixin:
     def u_is_empty_ore_tile(self, pos: Position) -> bool:
