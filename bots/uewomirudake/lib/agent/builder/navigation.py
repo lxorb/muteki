@@ -59,6 +59,9 @@ class BuilderNavigationMixin:
         )
 
     def u_get_core_foundry_plan(self) -> Position | None:
+        # TODO: Redo foundry logic efficiently and disable foundry logic properly for non-foundry bots
+        return None
+
         if (
             self.map.own_core_center_pos is None
             and not self.map.u_calc_core_center_positions()
@@ -1231,10 +1234,9 @@ class BuilderNavigationMixin:
             target_tile.position
         ):
             return None
-        # TODO: Redo foundry logic efficiently and disable foundry logic properly for non-foundry bots
-        # if self.u_is_axionite_foundry_target(target_tile.position, resource):
-        #     if self.u_can_host_foundry_site(target_tile.position):
-        #         return -1
+        if self.u_is_axionite_foundry_target(target_tile.position, resource):
+            if self.u_can_host_foundry_site(target_tile.position):
+                return -1
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
