@@ -14,9 +14,6 @@ ALLOCATED_MAP_AND_BOT_TIME_MUS = ALLOCATED_MAP_TIME_MUS + ALLOCATED_BOT_TIME_MUS
 OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 6
 OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
 
-SHORT_OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 4
-SHORT_OVERTIME_CHECK_MASK = SHORT_OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
-
 
 class RoundStopwatch:
     def __init__(self):
@@ -47,27 +44,6 @@ class RoundStopwatch:
 
         active_cpu_time = self.ct.get_cpu_time_elapsed()
         print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
-
-        return (
-            active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
-            if self.map_done
-            else active_cpu_time > ALLOCATED_MAP_TIME_MUS
-        )
-
-    def check_overtime_interval_short(self):
-        if self.ct is None:
-            return False
-
-        self.short_iterations += 1
-
-        if self.short_iterations & SHORT_OVERTIME_CHECK_MASK:
-            return False
-
-        active_cpu_time = self.ct.get_cpu_time_elapsed()
-        if True or active_cpu_time - 1500 >= 0:
-            print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
-        else:
-            print(active_cpu_time)
 
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
