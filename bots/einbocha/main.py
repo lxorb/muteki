@@ -1392,6 +1392,7 @@ class DStarLite:
         return ret
 
 
+TRANS_SOURCE: float = 0.0
 TRANS_PASS: float = 1.0
 TRANS_EMPTY: float = 3.0
 TRANS_BRIDGE: float = 20.0
@@ -1519,22 +1520,24 @@ class LPAStar:
 
     def _get_edge_cost(self, u_idx: int, v_idx: int) -> float:
         """Get the cost of an edge from u to v."""
-        # If there is already a connection from u to v
         if self.agent.map_ti_pointer[u_idx] == v_idx:
-            return TRANS_PASS
-            
-        # If u is empty, we can build a new connection
+            return TRANS_PASS                              # existing structure reused
+
         u_trans = self.agent.map_ti_trans[u_idx]
-        if u_trans == TRANS_EMPTY:
-            # Check if v is a bridge neighbor
-            # We can use manhattan neighbors to check if it's a bridge move.
-            # (assuming u and v are neighbors in either manhattan or bridge lists)
+
+        if u_trans == TRANS_SOURCE:                        # harvester
+            if v_idx in self.agent.neighbors_manhattan[u_idx]:
+                return TRANS_SOURCE                        # 0.0 — free outbound edge
+            return TRANS_BLOCK
+
+        elif u_trans == TRANS_EMPTY:
             if v_idx in self.agent.neighbors_manhattan[u_idx]:
                 return TRANS_EMPTY
             return TRANS_BRIDGE
+
         elif u_trans == TRANS_UNKNOWN:
             return TRANS_UNKNOWN
-            
+
         return TRANS_BLOCK
 
     def _push_vertex(self, u_idx: int, key: tuple[float, float]) -> None:
@@ -1680,12 +1683,7 @@ class LPAStar:
             val = cost + min(g[nb], rhs[nb])
             if val < best_val:
                 best_val = val
-                nx, ny = nb % self.width, nb // self.width
-                dx, dy = nx - curr_pos.x, ny - curr_pos.y
-                # Map bridge offset to the closest cardinal/intercardinal direction
-                sdx = 1 if dx > 0 else (-1 if dx < 0 else 0)
-                sdy = 1 if dy > 0 else (-1 if dy < 0 else 0)
-                best_dir = _CHEBYSHEV_DICT.get((sdx, sdy), Direction.CENTRE)
+                best_dir = Direction.CENTRE # Placeholder for bridge
 
         return best_dir
 
@@ -2120,6 +2118,8 @@ class BuilderAgent(DefaultAgent):
                 trans = TRANS_PASS
             elif building_type == EntityType.CORE and building_team == our_team:
                 trans = TRANS_PASS
+            elif building_type == EntityType.HARVESTER and building_team == our_team:
+                trans = TRANS_SOURCE
             else:
                 trans = TRANS_BLOCK
 
