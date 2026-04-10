@@ -157,5 +157,5 @@ try:
         import exclude
 
         SURRENDER_AT_TURN = exclude.SURRENDER_AT_TURN
-except ImportError:
+except Exception:
     pass
