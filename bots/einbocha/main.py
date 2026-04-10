@@ -1477,7 +1477,7 @@ class LPAStar:
             return 0.0
         x1, y1 = s_idx % self.width, s_idx // self.width
         x2, y2 = self.s_source_idx % self.width, self.s_source_idx // self.width
-        return float(abs(x1 - x2) + abs(y1 - y2)) * 0.1 # Scaled to match TRANS_PASS
+        return float(abs(x1 - x2) + abs(y1 - y2)) * TRANS_PASS # Scaled to match TRANS_PASS
 
     def _calculate_key(self, s_idx: int) -> tuple[float, float]:
         g_val = self.g[s_idx]
@@ -1486,7 +1486,7 @@ class LPAStar:
 
         # Inlined Manhattan heuristic for speed
         gx, gy = self.s_source_idx % self.width, self.s_source_idx // self.width
-        h = float(abs((s_idx % self.width) - gx) + abs((s_idx // self.width) - gy)) * 0.1
+        h = float(abs((s_idx % self.width) - gx) + abs((s_idx // self.width) - gy)) * TRANS_PASS
 
         return min_val + h, min_val
 
@@ -1680,7 +1680,12 @@ class LPAStar:
             val = cost + min(g[nb], rhs[nb])
             if val < best_val:
                 best_val = val
-                best_dir = Direction.CENTRE # Placeholder for bridge
+                nx, ny = nb % self.width, nb // self.width
+                dx, dy = nx - curr_pos.x, ny - curr_pos.y
+                # Map bridge offset to the closest cardinal/intercardinal direction
+                sdx = 1 if dx > 0 else (-1 if dx < 0 else 0)
+                sdy = 1 if dy > 0 else (-1 if dy < 0 else 0)
+                best_dir = _CHEBYSHEV_DICT.get((sdx, sdy), Direction.CENTRE)
 
         return best_dir
 
