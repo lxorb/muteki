@@ -1391,7 +1391,10 @@ class DStarLite:
         return ret
 
 
+TRANS_PASS: float = 10
+TRANS_EMPTY: float = 11
 TRANS_UNKNOWN: float = 12
+TRANS_BLOCK: float = 10_000_000
 
 # manhattan direction lookup dictionary for (dx, dy) -> Direction
 _MANHATTAN_DICT: dict[tuple[int, int], Direction] = {
@@ -1403,15 +1406,203 @@ _MANHATTAN_DICT: dict[tuple[int, int], Direction] = {
 
 
 class LPAStar:
+    """LPA* algorithm for incremental path planning."""
     agent: 'BuilderAgent'
+    width: int
+    height: int
+    size: int
+    neighbors: list[list[int]]
+    g: list[float]
+    rhs: list[float]
+    U: list[tuple[float, float, int]]
+    s_start_idx: int
+    s_goal_idx: int
+    in_queue: list[tuple[float, float] | None]
+    changed_cells: set[int]
+
     def __init__(self, agent: 'BuilderAgent'):
         time_init_start = time.perf_counter_ns()
 
         self.agent = agent
+        self.width = agent.width
+        self.height = agent.height
+        self.size = agent.size
+
+        # Use manhattan neighbors for conveyors
+        self.neighbors = agent.neighbors_manhattan
+
+        self.reset()
 
         time_init_end = time.perf_counter_ns()
+        print(f'lpa star __init__() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ms')
 
-        print(f'd star lite __init__() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ms')
+    def reset(self) -> None:
+        # LPA* state using lists for performance
+        self.g = [TRANS_BLOCK] * self.size
+        self.rhs = [TRANS_BLOCK] * self.size
+        self.U = []  # Priority queue: (k1, k2, idx)
+
+        self.s_start_idx = -1
+        self.s_goal_idx = -1
+
+        # in_queue tracks the key (k1, k2) for each idx (lazy deletion)
+        self.in_queue = [None] * self.size
+
+        # Track which cells have changed since last replan
+        self.changed_cells = set()
+
+    def _heuristic(self, s1_idx: int, s2_idx: int) -> float:
+        """Manhattan distance heuristic for 4-directional movement."""
+        x1, y1 = s1_idx % self.width, s1_idx // self.width
+        x2, y2 = s2_idx % self.width, s2_idx // self.width
+        return float(abs(x1 - x2) + abs(y1 - y2))
+
+    def _calculate_key(self, s_idx: int) -> tuple[float, float]:
+        g_val = self.g[s_idx]
+        rhs_val = self.rhs[s_idx]
+        min_val = min(g_val, rhs_val)
+
+        # Inlined Manhattan heuristic for speed
+        h = float(abs((s_idx % self.width) - (self.s_goal_idx % self.width)) +
+                  abs((s_idx // self.width) - (self.s_goal_idx // self.width)))
+
+        return min_val + h, min_val
+
+    def _calculate_rhs(self, u_idx: int) -> float:
+        """Calculate one-step lookahead value for vertex u."""
+        if u_idx == self.s_start_idx:
+            return 0.0
+
+        min_rhs = TRANS_BLOCK
+        map_costs = self.agent.map_ti_trans
+        g = self.g
+        for s_prime_idx in self.neighbors[u_idx]:
+            cost = map_costs[u_idx]
+            if cost < TRANS_BLOCK:
+                candidate = cost + g[s_prime_idx]
+                if candidate < min_rhs:
+                    min_rhs = candidate
+        return min_rhs
+
+    def _push_vertex(self, u_idx: int, key: tuple[float, float]) -> None:
+        """Push u into the heap with the given key and record it in in_queue."""
+        if self.in_queue[u_idx] == key:
+            return
+        self.in_queue[u_idx] = key
+        heapq.heappush(self.U, (key[0], key[1], u_idx))
+
+    def _update_vertex(self, u_idx: int) -> None:
+        """Update a vertex's rhs value and its position in the priority queue."""
+        if u_idx != self.s_start_idx:
+            self.rhs[u_idx] = self._calculate_rhs(u_idx)
+
+        g_val = self.g[u_idx]
+        rhs_val = self.rhs[u_idx]
+
+        if g_val != rhs_val:
+            self._push_vertex(u_idx, self._calculate_key(u_idx))
+        else:
+            self.in_queue[u_idx] = None
+
+    def _compute_shortest_path(self) -> None:
+        """Compute or update the shortest path (canonical LPA* inner loop)."""
+        max_iterations = self.size * 4
+        iterations = 0
+
+        U = self.U
+        g = self.g
+        rhs = self.rhs
+        in_queue = self.in_queue
+
+        while U and iterations < max_iterations:
+            top_key = U[0][:2]
+            goal_key = self._calculate_key(self.s_goal_idx)
+
+            if top_key >= goal_key and rhs[self.s_goal_idx] == g[self.s_goal_idx]:
+                break
+
+            k1, k2, u_idx = heapq.heappop(U)
+            iterations += 1
+
+            if in_queue[u_idx] != (k1, k2):
+                continue
+            in_queue[u_idx] = None
+
+            if g[u_idx] > rhs[u_idx]:
+                g[u_idx] = rhs[u_idx]
+                for s_idx in self.neighbors[u_idx]:
+                    self._update_vertex(s_idx)
+            else:
+                g[u_idx] = TRANS_BLOCK
+                self._update_vertex(u_idx)
+                for s_idx in self.neighbors[u_idx]:
+                    self._update_vertex(s_idx)
+
+    def initialize(self, start_idx: int, goal_idx: int) -> None:
+        """Set start and goal and compute initial shortest path."""
+        self.reset()
+        self.s_start_idx = start_idx
+        self.s_goal_idx = goal_idx
+
+        self.rhs[self.s_start_idx] = 0.0
+        self._push_vertex(self.s_start_idx, self._calculate_key(self.s_start_idx))
+        self._compute_shortest_path()
+
+    def update_cell(self, idx: int) -> None:
+        """Mark a cell as changed."""
+        self.changed_cells.add(idx)
+
+    def replan(self) -> None:
+        """Replan the shortest path based on changed cells."""
+        if not self.changed_cells:
+            return
+
+        start_time = time.perf_counter_ns()
+
+        # Update affected vertices
+        affected = set()
+        neighbors = self.neighbors
+        for u_idx in self.changed_cells:
+            affected.add(u_idx)
+            # In LPA*, if cost(u) changes, successors of u need updating.
+            # In undirected graph, successors = neighbors.
+            affected.update(neighbors[u_idx])
+        self.changed_cells.clear()
+
+        for u_idx in affected:
+            self._update_vertex(u_idx)
+
+        self._compute_shortest_path()
+
+        end_time = time.perf_counter_ns()
+        print(f'lpa star replan() took: {(end_time - start_time) / 1_000_000:.4f} ms')
+
+    def get_next_direction(self, from_idx: int) -> Direction:
+        """Follow the gradient of g values back from from_idx toward start."""
+        if self.g[from_idx] >= TRANS_BLOCK:
+            return Direction.CENTRE
+
+        best_cost = TRANS_BLOCK
+        best_dir = Direction.CENTRE
+
+        curr_x, curr_y = from_idx % self.width, from_idx // self.width
+
+        g = self.g
+
+        for neighbor_idx in self.neighbors[from_idx]:
+            if g[neighbor_idx] < best_cost:
+                best_cost = g[neighbor_idx]
+                nx, ny = neighbor_idx % self.width, neighbor_idx // self.width
+                dx, dy = nx - curr_x, ny - curr_y
+                best_dir = _MANHATTAN_DICT.get((dx, dy), Direction.CENTRE)
+
+        return best_dir
+
+    def has_path(self) -> bool:
+        """Check if a valid path exists to the goal."""
+        if self.s_goal_idx == -1:
+            return False
+        return self.g[self.s_goal_idx] < TRANS_BLOCK
 
 
 class Action(ABC):
@@ -1524,6 +1715,7 @@ class BuilderAgent(DefaultAgent):
     ax_finished: set[int]
     ax_pending: set[int]
     dstar: DStarLite
+    lpastar: LPAStar
     def __init__(self, ct: Controller):
         super().__init__(ct)
         self.bb_type = BB_NORMAL  # Todo: here should go spawn-position-based type derivation
@@ -1546,6 +1738,7 @@ class BuilderAgent(DefaultAgent):
         self.ax_pending = set()
 
         self.dstar = DStarLite(self)
+        self.lpastar = LPAStar(self)
 
     def make_turn(self):
         ct = self.ct
@@ -1554,6 +1747,11 @@ class BuilderAgent(DefaultAgent):
         start = time.perf_counter_ns()
 
         self.update_on_view()
+
+        if self.lpastar.s_start_idx == -1:
+            self.lpastar.initialize(self.core_pos, self.position) # goal can be current position for now
+        else:
+            self.lpastar.replan()
 
         end = time.perf_counter_ns()
 
@@ -1749,6 +1947,8 @@ class BuilderAgent(DefaultAgent):
         ti_pending = self.ti_pending
         ax_finished = self.ax_finished
         ax_pending = self.ax_pending
+        lpa_update = self.lpastar.update_cell
+        map_ti_trans = self.map_ti_trans
         our_team = self.team
 
         for entity_id in ct.get_nearby_entities(): # do little in this loop, else it gets slow
@@ -1791,6 +1991,21 @@ class BuilderAgent(DefaultAgent):
             if walk != map_walk[idx]:
                 dstar_update(idx)
                 map_walk[idx] = walk
+
+            # transport related:
+            # Todo: use building_type to determine if it is a conveyor and if it is connected
+            if empty:
+                trans = TRANS_EMPTY
+            elif building_type == EntityType.CONVEYOR and building_team == our_team:
+                trans = 1.0 # Reuse existing conveyor
+            elif building_type == EntityType.CORE and building_team == our_team:
+                trans = 0.0
+            else:
+                trans = TRANS_BLOCK
+
+            if trans != map_ti_trans[idx]:
+                lpa_update(idx)
+                map_ti_trans[idx] = trans
 
             # environment related:
             if (
