@@ -1414,7 +1414,7 @@ class LPAStar:
     g: list[float]
     rhs: list[float]
     U: list[tuple[float, float, int]]
-    s_goal_idx: int
+    s_source_idx: int
     in_queue: list[tuple[float, float] | None]
     changed_cells: set[int]
 
@@ -1437,7 +1437,7 @@ class LPAStar:
         self.rhs = [TRANS_BLOCK] * self.size
         self.U = []  # Priority queue: (k1, k2, idx)
 
-        self.s_goal_idx = -1
+        self.s_source_idx = -1
 
         # in_queue tracks the key (k1, k2) for each idx (lazy deletion)
         self.in_queue = [None] * self.size
@@ -1445,12 +1445,34 @@ class LPAStar:
         # Track which cells have changed since last replan
         self.changed_cells = set()
 
+    def set_source(self, source_idx: int) -> None:
+        """Set the source (harvester) position. Re-keys the priority queue if it changed."""
+        if self.s_source_idx == source_idx:
+            return
+
+        self.s_source_idx = source_idx
+        if self.s_source_idx == -1 or not self.U:
+            return
+
+        # Re-key all vertices in the priority queue because the heuristic changed
+        old_U = self.U
+        self.U = []
+        nodes = set()
+        in_queue = self.in_queue
+        for k1, k2, u_idx in old_U:
+            if in_queue[u_idx] == (k1, k2):
+                nodes.add(u_idx)
+
+        self.in_queue = [None] * self.size
+        for u_idx in nodes:
+            self._push_vertex(u_idx, self._calculate_key(u_idx))
+
     def _heuristic(self, s_idx: int) -> float:
-        """Manhattan distance heuristic to s_goal_idx."""
-        if self.s_goal_idx == -1:
+        """Manhattan distance heuristic to s_source_idx."""
+        if self.s_source_idx == -1:
             return 0.0
         x1, y1 = s_idx % self.width, s_idx // self.width
-        x2, y2 = self.s_goal_idx % self.width, self.s_goal_idx // self.width
+        x2, y2 = self.s_source_idx % self.width, self.s_source_idx // self.width
         return float(abs(x1 - x2) + abs(y1 - y2)) * 0.1 # Scaled to match TRANS_PASS
 
     def _calculate_key(self, s_idx: int) -> tuple[float, float]:
@@ -1459,7 +1481,7 @@ class LPAStar:
         min_val = min(g_val, rhs_val)
 
         # Inlined Manhattan heuristic for speed
-        gx, gy = self.s_goal_idx % self.width, self.s_goal_idx // self.width
+        gx, gy = self.s_source_idx % self.width, self.s_source_idx // self.width
         h = float(abs((s_idx % self.width) - gx) + abs((s_idx // self.width) - gy)) * 0.1
 
         return min_val + h, min_val
@@ -1537,9 +1559,9 @@ class LPAStar:
 
         while U and iterations < max_iterations:
             top_key = U[0][:2]
-            goal_key = self._calculate_key(self.s_goal_idx)
+            source_key = self._calculate_key(self.s_source_idx)
 
-            if top_key >= goal_key and rhs[self.s_goal_idx] == g[self.s_goal_idx]:
+            if top_key >= source_key and rhs[self.s_source_idx] == g[self.s_source_idx]:
                 break
 
             k1, k2, u_idx = heapq.heappop(U)
@@ -1565,10 +1587,10 @@ class LPAStar:
                 for s_idx in self.agent.neighbors_bridge[u_idx]:
                     self._update_vertex(s_idx)
 
-    def initialize(self, goal_idx: int) -> None:
-        """Initial compute of the shortest path from core-connected network to goal."""
+    def initialize(self, source_idx: int) -> None:
+        """Initial compute of the shortest path from the goal (core-connected network) to the source (harvester)."""
         self.reset()
-        self.s_goal_idx = goal_idx
+        self.s_source_idx = source_idx
 
         # All core-connected tiles are starts
         for i in self.agent.dict_ti_conn:
@@ -1581,13 +1603,14 @@ class LPAStar:
         """Mark a cell as changed."""
         self.changed_cells.add(idx)
 
-    def replan(self, goal_idx: int) -> None:
-        """Replan the shortest path based on changed cells and new goal."""
-        self.s_goal_idx = goal_idx
+    def replan(self, source_idx: int = -1) -> None:
+        """Replan the shortest path based on changed cells and source."""
+        if source_idx != -1:
+            self.set_source(source_idx)
         
         if not self.changed_cells:
-            # If goal changed but no cells changed, we might still need to compute
-            if self.rhs[self.s_goal_idx] != self.g[self.s_goal_idx] or self.U:
+            # If source changed but no cells changed, we might still need to compute
+            if self.rhs[self.s_source_idx] != self.g[self.s_source_idx] or self.U:
                 self._compute_shortest_path()
             return
 
@@ -1644,10 +1667,10 @@ class LPAStar:
         return best_dir
 
     def has_path(self) -> bool:
-        """Check if a valid path exists to the goal."""
-        if self.s_goal_idx == -1:
+        """Check if a valid path exists to the source."""
+        if self.s_source_idx == -1:
             return False
-        return self.g[self.s_goal_idx] < TRANS_BLOCK
+        return self.g[self.s_source_idx] < TRANS_BLOCK
 
 
 class Action(ABC):
@@ -1797,7 +1820,7 @@ class BuilderAgent(DefaultAgent):
 
         self.update_on_view()
 
-        if self.lpastar.s_goal_idx == -1:
+        if self.lpastar.s_source_idx == -1:
             self.lpastar.initialize(self.position)
         else:
             self.lpastar.replan(self.position)
