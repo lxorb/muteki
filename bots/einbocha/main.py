@@ -1391,10 +1391,10 @@ class DStarLite:
         return ret
 
 
-TRANS_PASS: float = 10
-TRANS_EMPTY: float = 11
-TRANS_UNKNOWN: float = 12
-TRANS_BLOCK: float = 10_000_000
+TRANS_PASS: float = 1.0
+TRANS_EMPTY: float = 3.0
+TRANS_UNKNOWN: float = 4.0
+TRANS_BLOCK: float = 10_000_000.0
 
 # manhattan direction lookup dictionary for (dx, dy) -> Direction
 _MANHATTAN_DICT: dict[tuple[int, int], Direction] = {
@@ -1411,11 +1411,9 @@ class LPAStar:
     width: int
     height: int
     size: int
-    neighbors: list[list[int]]
     g: list[float]
     rhs: list[float]
     U: list[tuple[float, float, int]]
-    s_start_idx: int
     s_goal_idx: int
     in_queue: list[tuple[float, float] | None]
     changed_cells: set[int]
@@ -1428,9 +1426,6 @@ class LPAStar:
         self.height = agent.height
         self.size = agent.size
 
-        # Use manhattan neighbors for conveyors
-        self.neighbors = agent.neighbors_manhattan
-
         self.reset()
 
         time_init_end = time.perf_counter_ns()
@@ -1442,7 +1437,6 @@ class LPAStar:
         self.rhs = [TRANS_BLOCK] * self.size
         self.U = []  # Priority queue: (k1, k2, idx)
 
-        self.s_start_idx = -1
         self.s_goal_idx = -1
 
         # in_queue tracks the key (k1, k2) for each idx (lazy deletion)
@@ -1451,11 +1445,13 @@ class LPAStar:
         # Track which cells have changed since last replan
         self.changed_cells = set()
 
-    def _heuristic(self, s1_idx: int, s2_idx: int) -> float:
-        """Manhattan distance heuristic for 4-directional movement."""
-        x1, y1 = s1_idx % self.width, s1_idx // self.width
-        x2, y2 = s2_idx % self.width, s2_idx // self.width
-        return float(abs(x1 - x2) + abs(y1 - y2))
+    def _heuristic(self, s_idx: int) -> float:
+        """Manhattan distance heuristic to s_goal_idx."""
+        if self.s_goal_idx == -1:
+            return 0.0
+        x1, y1 = s_idx % self.width, s_idx // self.width
+        x2, y2 = self.s_goal_idx % self.width, self.s_goal_idx // self.width
+        return float(abs(x1 - x2) + abs(y1 - y2)) * 0.1 # Scaled to match TRANS_PASS
 
     def _calculate_key(self, s_idx: int) -> tuple[float, float]:
         g_val = self.g[s_idx]
@@ -1463,26 +1459,52 @@ class LPAStar:
         min_val = min(g_val, rhs_val)
 
         # Inlined Manhattan heuristic for speed
-        h = float(abs((s_idx % self.width) - (self.s_goal_idx % self.width)) +
-                  abs((s_idx // self.width) - (self.s_goal_idx // self.width)))
+        gx, gy = self.s_goal_idx % self.width, self.s_goal_idx // self.width
+        h = float(abs((s_idx % self.width) - gx) + abs((s_idx // self.width) - gy)) * 0.1
 
         return min_val + h, min_val
 
     def _calculate_rhs(self, u_idx: int) -> float:
         """Calculate one-step lookahead value for vertex u."""
-        if u_idx == self.s_start_idx:
+        # Core-connected tiles are sources with rhs 0
+        if self.agent.dict_ti_conn.get(u_idx, False):
             return 0.0
 
         min_rhs = TRANS_BLOCK
-        map_costs = self.agent.map_ti_trans
         g = self.g
-        for s_prime_idx in self.neighbors[u_idx]:
-            cost = map_costs[u_idx]
+        
+        # Try Manhattan neighbors (Conveyors)
+        for v_idx in self.agent.neighbors_manhattan[u_idx]:
+            cost = self._get_edge_cost(u_idx, v_idx)
             if cost < TRANS_BLOCK:
-                candidate = cost + g[s_prime_idx]
+                candidate = cost + g[v_idx]
                 if candidate < min_rhs:
                     min_rhs = candidate
+        
+        # Try Bridge neighbors
+        for v_idx in self.agent.neighbors_bridge[u_idx]:
+            cost = self._get_edge_cost(u_idx, v_idx)
+            if cost < TRANS_BLOCK:
+                candidate = cost + g[v_idx]
+                if candidate < min_rhs:
+                    min_rhs = candidate
+                    
         return min_rhs
+
+    def _get_edge_cost(self, u_idx: int, v_idx: int) -> float:
+        """Get the cost of an edge from u to v."""
+        # If there is already a connection from u to v
+        if self.agent.map_ti_pointer[u_idx] == v_idx:
+            return TRANS_PASS
+            
+        # If u is empty, we can build a new connection
+        u_trans = self.agent.map_ti_trans[u_idx]
+        if u_trans == TRANS_EMPTY:
+            return TRANS_EMPTY
+        elif u_trans == TRANS_UNKNOWN:
+            return TRANS_UNKNOWN
+            
+        return TRANS_BLOCK
 
     def _push_vertex(self, u_idx: int, key: tuple[float, float]) -> None:
         """Push u into the heap with the given key and record it in in_queue."""
@@ -1493,8 +1515,7 @@ class LPAStar:
 
     def _update_vertex(self, u_idx: int) -> None:
         """Update a vertex's rhs value and its position in the priority queue."""
-        if u_idx != self.s_start_idx:
-            self.rhs[u_idx] = self._calculate_rhs(u_idx)
+        self.rhs[u_idx] = self._calculate_rhs(u_idx)
 
         g_val = self.g[u_idx]
         rhs_val = self.rhs[u_idx]
@@ -1530,43 +1551,58 @@ class LPAStar:
 
             if g[u_idx] > rhs[u_idx]:
                 g[u_idx] = rhs[u_idx]
-                for s_idx in self.neighbors[u_idx]:
+                # Predecessors of u_idx are tiles that can reach u_idx.
+                # In Manhattan and Bridge offsets, neighbor relations are symmetric.
+                for s_idx in self.agent.neighbors_manhattan[u_idx]:
+                    self._update_vertex(s_idx)
+                for s_idx in self.agent.neighbors_bridge[u_idx]:
                     self._update_vertex(s_idx)
             else:
                 g[u_idx] = TRANS_BLOCK
                 self._update_vertex(u_idx)
-                for s_idx in self.neighbors[u_idx]:
+                for s_idx in self.agent.neighbors_manhattan[u_idx]:
+                    self._update_vertex(s_idx)
+                for s_idx in self.agent.neighbors_bridge[u_idx]:
                     self._update_vertex(s_idx)
 
-    def initialize(self, start_idx: int, goal_idx: int) -> None:
-        """Set start and goal and compute initial shortest path."""
+    def initialize(self, goal_idx: int) -> None:
+        """Initial compute of the shortest path from core-connected network to goal."""
         self.reset()
-        self.s_start_idx = start_idx
         self.s_goal_idx = goal_idx
 
-        self.rhs[self.s_start_idx] = 0.0
-        self._push_vertex(self.s_start_idx, self._calculate_key(self.s_start_idx))
+        # All core-connected tiles are starts
+        for i in self.agent.dict_ti_conn:
+            self.rhs[i] = 0.0
+            self._push_vertex(i, self._calculate_key(i))
+        
         self._compute_shortest_path()
 
     def update_cell(self, idx: int) -> None:
         """Mark a cell as changed."""
         self.changed_cells.add(idx)
 
-    def replan(self) -> None:
-        """Replan the shortest path based on changed cells."""
+    def replan(self, goal_idx: int) -> None:
+        """Replan the shortest path based on changed cells and new goal."""
+        self.s_goal_idx = goal_idx
+        
         if not self.changed_cells:
+            # If goal changed but no cells changed, we might still need to compute
+            if self.rhs[self.s_goal_idx] != self.g[self.s_goal_idx] or self.U:
+                self._compute_shortest_path()
             return
 
         start_time = time.perf_counter_ns()
 
         # Update affected vertices
         affected = set()
-        neighbors = self.neighbors
         for u_idx in self.changed_cells:
             affected.add(u_idx)
-            # In LPA*, if cost(u) changes, successors of u need updating.
-            # In undirected graph, successors = neighbors.
-            affected.update(neighbors[u_idx])
+            # In LPA*, if cost(u, v) changes, u needs updating.
+            # If u enters/leaves dict_ti_conn, u needs updating.
+            # If g[v] changes, predecessors of v need updating.
+            # Since neighbors are symmetric, we update neighbors.
+            affected.update(self.agent.neighbors_manhattan[u_idx])
+            affected.update(self.agent.neighbors_bridge[u_idx])
         self.changed_cells.clear()
 
         for u_idx in affected:
@@ -1578,23 +1614,32 @@ class LPAStar:
         print(f'lpa star replan() took: {(end_time - start_time) / 1_000_000:.4f} ms')
 
     def get_next_direction(self, from_idx: int) -> Direction:
-        """Follow the gradient of g values back from from_idx toward start."""
+        """Follow the gradient back to the core-connected network."""
         if self.g[from_idx] >= TRANS_BLOCK:
             return Direction.CENTRE
 
-        best_cost = TRANS_BLOCK
+        best_val = TRANS_BLOCK
         best_dir = Direction.CENTRE
+        curr_pos = idx_to_pos(from_idx, self.width)
 
-        curr_x, curr_y = from_idx % self.width, from_idx // self.width
-
-        g = self.g
-
-        for neighbor_idx in self.neighbors[from_idx]:
-            if g[neighbor_idx] < best_cost:
-                best_cost = g[neighbor_idx]
-                nx, ny = neighbor_idx % self.width, neighbor_idx // self.width
-                dx, dy = nx - curr_x, ny - curr_y
+        # Manhattan steps
+        for nb in self.agent.neighbors_manhattan[from_idx]:
+            cost = self._get_edge_cost(from_idx, nb)
+            val = cost + self.g[nb]
+            if val < best_val:
+                best_val = val
+                nx, ny = nb % self.width, nb // self.width
+                dx, dy = nx - curr_pos.x, ny - curr_pos.y
                 best_dir = _MANHATTAN_DICT.get((dx, dy), Direction.CENTRE)
+        
+        # Bridge steps (currently returns CENTRE as it's not a single step move)
+        # Todo: Return target position or special action for bridges
+        for nb in self.agent.neighbors_bridge[from_idx]:
+            cost = self._get_edge_cost(from_idx, nb)
+            val = cost + self.g[nb]
+            if val < best_val:
+                best_val = val
+                best_dir = Direction.CENTRE # Placeholder for bridge
 
         return best_dir
 
@@ -1707,9 +1752,11 @@ class BuilderAgent(DefaultAgent):
     core_enemy_pos: int
     core_enemy_tiles: list[int]
     map_walk: array.array
-    map_ti_trans: array.array
-    map_connected: array.array
     map_ore: array.array
+    map_ti_trans: array.array
+    map_ti_pointer: array.array
+    dict_ti_reverse_pointer: dict[int, set[int]]
+    dict_ti_conn: dict[int, bool]
     ti_finished: set[int]
     ti_pending: set[int]
     ax_finished: set[int]
@@ -1728,9 +1775,11 @@ class BuilderAgent(DefaultAgent):
         self.core_enemy_tiles = []
 
         self.map_walk = array.array('d', [WALK_UNKNOWN] * self.size)
-        self.map_ti_trans = array.array('d', [TRANS_UNKNOWN] * self.size)
-        self.map_connected = array.array('b', [False] * self.size)
         self.map_ore = array.array('i', [ORE_NOTHING] * self.size)
+        self.map_ti_trans = array.array('d', [TRANS_UNKNOWN] * self.size)
+        self.map_ti_pointer = array.array('i', [-1] * self.size)
+        self.dict_ti_reverse_pointer = {}
+        self.dict_ti_conn = {}
 
         self.ti_finished = set()
         self.ti_pending = set()
@@ -1748,10 +1797,10 @@ class BuilderAgent(DefaultAgent):
 
         self.update_on_view()
 
-        if self.lpastar.s_start_idx == -1:
-            self.lpastar.initialize(self.core_pos, self.position) # goal can be current position for now
+        if self.lpastar.s_goal_idx == -1:
+            self.lpastar.initialize(self.position)
         else:
-            self.lpastar.replan()
+            self.lpastar.replan(self.position)
 
         end = time.perf_counter_ns()
 
@@ -1939,17 +1988,20 @@ class BuilderAgent(DefaultAgent):
 
     def update_on_view(self):
         ct = self.ct
-        map_walk = self.map_walk
-        map_ore = self.map_ore
         width = self.width
+        neighbors = self.neighbors_chebyshev
+        our_team = self.team
+        map_walk = self.map_walk
         dstar_update = self.dstar.update_cell
+        map_ore = self.map_ore
+        map_ti_trans = self.map_ti_trans
+        map_ti_pointer = self.map_ti_pointer
+        rev_pointer = self.dict_ti_reverse_pointer
+        lpa_update = self.lpastar.update_cell
         ti_finished = self.ti_finished
         ti_pending = self.ti_pending
         ax_finished = self.ax_finished
         ax_pending = self.ax_pending
-        lpa_update = self.lpastar.update_cell
-        map_ti_trans = self.map_ti_trans
-        our_team = self.team
 
         for entity_id in ct.get_nearby_entities(): # do little in this loop, else it gets slow
             entity_type = ct.get_entity_type(entity_id)
@@ -1958,8 +2010,6 @@ class BuilderAgent(DefaultAgent):
                 self.read_marker(entity_id)
 
         enemy_core_pos = self.core_enemy_pos
-
-        neighbors = self.neighbors_chebyshev
 
         # Todo: reset map_walk tiles where a bb was on last turn to walk again
 
@@ -1992,12 +2042,35 @@ class BuilderAgent(DefaultAgent):
                 dstar_update(idx)
                 map_walk[idx] = walk
 
-            # transport related:
-            # Todo: use building_type to determine if it is a conveyor and if it is connected
+            # transport related (pointers):
+            old_target = map_ti_pointer[idx]
+            new_target = -1
+            if building_team == our_team:
+                if building_type == EntityType.CONVEYOR:
+                    direction = ct.get_direction(building_id)
+                    new_target = pos_to_idx(pos.add(direction), width)
+                elif building_type == EntityType.BRIDGE:
+                    target_pos = ct.get_bridge_target(building_id)
+                    new_target = pos_to_idx(target_pos, width)
+            
+            if old_target != new_target:
+                if old_target != -1:
+                    if old_target in rev_pointer:
+                        rev_pointer[old_target].discard(idx)
+                        if not rev_pointer[old_target]:
+                            del rev_pointer[old_target]
+                if new_target != -1:
+                    if new_target not in rev_pointer:
+                        rev_pointer[new_target] = set()
+                    rev_pointer[new_target].add(idx)
+                map_ti_pointer[idx] = new_target
+                lpa_update(idx)
+
+            # node-based trans costs:
             if empty:
                 trans = TRANS_EMPTY
-            elif building_type == EntityType.CONVEYOR and building_team == our_team:
-                trans = 1.0 # Reuse existing conveyor
+            elif building_type in (EntityType.CONVEYOR, EntityType.BRIDGE) and building_team == our_team:
+                trans = TRANS_PASS
             elif building_type == EntityType.CORE and building_team == our_team:
                 trans = 0.0
             else:
@@ -2031,6 +2104,31 @@ class BuilderAgent(DefaultAgent):
                 # we query the buildings pos because the core is at idx but its center position can be different.
                 self.core_enemy_pos = pos_to_idx(ct.get_position(building_id), width)
                 self.core_enemy_tiles = neighbors[self.core_enemy_pos]
+
+        # Recalculate core-connectivity (BFS)
+        new_conn = {}
+        core_seeds = [self.core_pos] + self.core_tiles
+        queue = deque()
+        for s_idx in core_seeds:
+            if s_idx not in new_conn:
+                new_conn[s_idx] = True
+                queue.append(s_idx)
+        
+        while queue:
+            u = queue.popleft()
+            if u in rev_pointer:
+                for v in rev_pointer[u]:
+                    if v not in new_conn:
+                        new_conn[v] = True
+                        lpa_update(v)
+                        queue.append(v)
+        
+        # Check for tiles that lost connectivity
+        for i in self.dict_ti_conn:
+            if i not in new_conn:
+                lpa_update(i)
+        
+        self.dict_ti_conn = new_conn
 
 
 BB_COUNT_MAX = 3
