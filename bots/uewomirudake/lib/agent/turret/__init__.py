@@ -215,6 +215,9 @@ class TurretAgent(Agent):
         building_id = target_tile.building.id
         builder_bot_id = target_tile.bot.id
 
+        if builder_bot_id is not None and target_tile.bot.team == own_team:
+            return None
+
         enemy_building_id = None
         enemy_building_type = target_tile.building.entity_type
         if building_id is not None and target_tile.building.team != own_team:
