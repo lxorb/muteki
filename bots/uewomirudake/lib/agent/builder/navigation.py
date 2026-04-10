@@ -4,6 +4,7 @@ from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
     AVOID_EMPTY_ORE_BRIDGE_TARGETS,
+    AVOID_OTHER_SUPPLY_LABEL_ORES,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
     ATTACK_TURRET_FEEDER_TYPES,
@@ -15,6 +16,15 @@ from lib.agent.constants import (
 )
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
+
+_BRIDGE_R = int(GameConstants.BRIDGE_TARGET_RADIUS_SQ**0.5) + 1
+_BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
+    (dx, dy)
+    for dx in range(-_BRIDGE_R, _BRIDGE_R + 1)
+    for dy in range(-_BRIDGE_R, _BRIDGE_R + 1)
+    if 0 < dx * dx + dy * dy <= GameConstants.BRIDGE_TARGET_RADIUS_SQ
+    and abs(dx) + abs(dy) != 1
+)
 
 
 class BuilderNavigationMixin:
@@ -49,6 +59,9 @@ class BuilderNavigationMixin:
         )
 
     def u_get_core_foundry_plan(self) -> Position | None:
+        # TODO: Redo foundry logic efficiently and disable foundry logic properly for non-foundry bots
+        return None
+
         if (
             self.map.own_core_center_pos is None
             and not self.map.u_calc_core_center_positions()
@@ -67,9 +80,8 @@ class BuilderNavigationMixin:
         seen_foundry_indices: set[int] = set()
 
         for core_tile in core_tiles:
-            for foundry_pos in self.map.u_iter_adjacent_positions(
+            for foundry_pos in self.map.u_iter_adjacent_cardinal_positions(
                 core_tile.position,
-                consider_diagonal=False,
             ):
                 foundry_tile = self.map.u_get_pos_tile(foundry_pos)
                 if (
@@ -127,8 +139,7 @@ class BuilderNavigationMixin:
         if not candidate_plans:
             return None
 
-        candidate_plans.sort(key=lambda item: item[0])
-        return candidate_plans[0][1]
+        return min(candidate_plans, key=lambda item: item[0])[1]
 
     def u_get_visible_titanium_core_chain_candidates(
         self,
@@ -169,6 +180,9 @@ class BuilderNavigationMixin:
                     (tile.index, target_direction)
                 )
 
+            if self.round_stopwatch.check_overtime():
+                break
+
         queue = list(coreward_directions_by_index)
         queue_idx = 0
         while queue_idx < len(queue):
@@ -188,11 +202,17 @@ class BuilderNavigationMixin:
                 source_directions.add(source_direction)
                 queue.append(source_idx)
 
+            if self.round_stopwatch.check_overtime():
+                break
+
         candidate_plans: list[tuple[Position, Direction]] = []
         for tile_idx, directions in coreward_directions_by_index.items():
             tile = visible_titanium_tiles_by_index[tile_idx]
             for direction in directions:
                 candidate_plans.append((tile.position, direction))
+
+            if self.round_stopwatch.check_overtime():
+                break
 
         return candidate_plans
 
@@ -218,6 +238,8 @@ class BuilderNavigationMixin:
             splitter_pos,
             splitter_direction,
         ) in self.u_get_visible_titanium_core_chain_candidates():
+            if self.round_stopwatch.check_overtime():
+                break
             splitter_tile = self.map.u_get_pos_tile(splitter_pos)
             splitter_building = splitter_tile.building
             if (
@@ -278,8 +300,7 @@ class BuilderNavigationMixin:
         if not candidate_plans:
             return None
 
-        candidate_plans.sort(key=lambda item: item[0])
-        _, splitter_pos, splitter_direction, foundry_pos = candidate_plans[0]
+        _, splitter_pos, splitter_direction, foundry_pos = min(candidate_plans, key=lambda item: item[0])
         return (splitter_pos, splitter_direction, foundry_pos)
 
     def u_get_foundry_wait_position(self, foundry_pos: Position) -> Position | None:
@@ -288,6 +309,8 @@ class BuilderNavigationMixin:
         candidate_tiles: list[tuple[tuple[int, ...], Position]] = []
 
         for tile_idx in self.map.u_iter_active_tile_indices():
+            if self.round_stopwatch.check_overtime():
+                break
             tile = self.map.tiles_by_index[tile_idx]
             tile_pos = tile.position
             if (
@@ -335,9 +358,8 @@ class BuilderNavigationMixin:
             )
             is_core_adjacent = any(
                 self.map.u_get_pos_tile(neighbor_pos).is_core_of(own_team)
-                for neighbor_pos in self.map.u_iter_adjacent_positions(
+                for neighbor_pos in self.map.u_iter_adjacent_cardinal_positions(
                     tile_pos,
-                    consider_diagonal=False,
                 )
             )
             candidate_tiles.append(
@@ -358,8 +380,7 @@ class BuilderNavigationMixin:
         if not candidate_tiles:
             return None
 
-        candidate_tiles.sort(key=lambda item: item[0])
-        return candidate_tiles[0][1]
+        return min(candidate_tiles, key=lambda item: item[0])[1]
 
     def u_foundry_site_has_visible_axionite_supply(
         self,
@@ -373,9 +394,8 @@ class BuilderNavigationMixin:
         ):
             return False
 
-        for neighbor_pos in self.map.u_iter_adjacent_positions(
+        for neighbor_pos in self.map.u_iter_adjacent_cardinal_positions(
             foundry_pos,
-            consider_diagonal=False,
         ):
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
             if not (
@@ -558,6 +578,12 @@ class BuilderNavigationMixin:
                 seen_indices.add(target_idx)
                 queue.append(target_pos_candidate)
 
+                if self.round_stopwatch.check_overtime():
+                    break
+
+            if self.round_stopwatch.check_overtime():
+                break
+
         return False
 
     def u_get_supply_chain_progress_key(
@@ -653,7 +679,8 @@ class BuilderNavigationMixin:
                 and target_tile.own_supply_chain_label & avoidance_label
             )
             or (
-                avoidance_ore is not None
+                AVOID_EMPTY_ORE_BRIDGE_TARGETS
+                and avoidance_ore is not None
                 and self.map.u_is_adjacent_to_ore(pos, avoidance_ore)
             )
         )
@@ -694,11 +721,17 @@ class BuilderNavigationMixin:
             if building_type in OWN_SUPPLIER_TYPES:
                 own_supplier_tiles.append(building_tile)
 
+            if self.round_stopwatch.check_overtime():
+                break
+
         for building_tile in self.map.enemy_buildings_in_vision:
             building_type = building_tile.building.entity_type
             enemy_building_tiles.append(building_tile)
             if building_type in ENEMY_TURRET_TYPES:
                 enemy_turret_tiles.append(building_tile)
+
+            if self.round_stopwatch.check_overtime():
+                break
 
         blocked_direction = (
             feeder_directions[0] if len(feeder_directions) == 1 else None
@@ -714,21 +747,27 @@ class BuilderNavigationMixin:
             for idx, direction in enumerate(Direction)
             if direction != Direction.CENTRE
         }
-        direction_scores = [
-            self.u_get_sentinel_direction_score(
-                pos,
-                direction,
-                enemy_core_tiles,
-                enemy_turret_tiles,
-                own_supplier_tiles,
-                enemy_building_tiles,
-                direction_order,
+        direction_scores = []
+        for direction in candidate_directions:
+            direction_scores.append(
+                self.u_get_sentinel_direction_score(
+                    pos,
+                    direction,
+                    enemy_core_tiles,
+                    enemy_turret_tiles,
+                    own_supplier_tiles,
+                    enemy_building_tiles,
+                    direction_order,
+                )
             )
-            for direction in candidate_directions
-        ]
 
-        direction_scores.sort(key=lambda item: item[0])
-        return direction_scores[0][1]
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not direction_scores:
+            return candidate_directions[0]
+
+        return min(direction_scores, key=lambda item: item[0])[1]
 
     def u_get_sentinel_direction_score(
         self,
@@ -740,45 +779,55 @@ class BuilderNavigationMixin:
         enemy_building_tiles,
         direction_order: dict[Direction, int],
     ) -> tuple[tuple[int, ...], Direction]:
-        can_target_enemy_core = any(
-            self.map.u_sentinel_covers_target(
-                pos,
-                direction,
-                target_tile.position,
-                GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-            for target_tile in enemy_core_tiles
-        )
-        enemy_turret_count = sum(
-            1
-            for target_tile in enemy_turret_tiles
+        can_target_enemy_core = False
+        for target_tile in enemy_core_tiles:
             if self.map.u_sentinel_covers_target(
                 pos,
                 direction,
                 target_tile.position,
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-        )
-        own_supplier_count = sum(
-            1
-            for target_tile in own_supplier_tiles
+            ):
+                can_target_enemy_core = True
+                break
+            if self.round_stopwatch.check_overtime():
+                break
+
+        enemy_turret_count = 0
+        for target_tile in enemy_turret_tiles:
             if self.map.u_sentinel_covers_target(
                 pos,
                 direction,
                 target_tile.position,
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-        )
-        enemy_building_count = sum(
-            1
-            for target_tile in enemy_building_tiles
+            ):
+                enemy_turret_count += 1
+            if self.round_stopwatch.check_overtime():
+                break
+
+        own_supplier_count = 0
+        for target_tile in own_supplier_tiles:
             if self.map.u_sentinel_covers_target(
                 pos,
                 direction,
                 target_tile.position,
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
-            )
-        )
+            ):
+                own_supplier_count += 1
+            if self.round_stopwatch.check_overtime():
+                break
+
+        enemy_building_count = 0
+        for target_tile in enemy_building_tiles:
+            if self.map.u_sentinel_covers_target(
+                pos,
+                direction,
+                target_tile.position,
+                GameConstants.SENTINEL_VISION_RADIUS_SQ,
+            ):
+                enemy_building_count += 1
+            if self.round_stopwatch.check_overtime():
+                break
+
         return (
             (
                 0 if can_target_enemy_core else 1,
@@ -821,6 +870,9 @@ class BuilderNavigationMixin:
                 if feeder_direction is not None:
                     feeder_directions.append(feeder_direction)
 
+            if self.round_stopwatch.check_overtime():
+                break
+
         blocked_direction = (
             feeder_directions[0] if len(feeder_directions) == 1 else None
         )
@@ -857,6 +909,9 @@ class BuilderNavigationMixin:
                     if target_tile.building.entity_type in ENEMY_TURRET_TYPES:
                         visible_enemy_turrets += 1
 
+                if self.round_stopwatch.check_overtime():
+                    break
+
             direction_scores.append(
                 (
                     (
@@ -869,8 +924,13 @@ class BuilderNavigationMixin:
                 )
             )
 
-        direction_scores.sort(key=lambda item: item[0])
-        return direction_scores[0][1]
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not direction_scores:
+            return candidate_directions[0]
+
+        return min(direction_scores, key=lambda item: item[0])[1]
 
     def u_get_supplier_build_plan(
         self,
@@ -928,10 +988,9 @@ class BuilderNavigationMixin:
         ):
             foundry_pos = self.u_get_core_foundry_plan()
             if foundry_pos is not None:
-                if (
-                    bridge_target.distance_squared(foundry_pos)
-                    < conveyor_target_pos.distance_squared(foundry_pos)
-                ):
+                if bridge_target.distance_squared(
+                    foundry_pos
+                ) < conveyor_target_pos.distance_squared(foundry_pos):
                     return (EntityType.BRIDGE, bridge_target)
             return (EntityType.CONVEYOR, conveyor_direction)
 
@@ -971,14 +1030,12 @@ class BuilderNavigationMixin:
                 if self.u_supply_chain_targets_core(resource):
                     return direction
                 continue
-            if (
-                self.u_get_supply_chain_progress_key(neighbor_pos, resource)
-                >= source_progress_key
-                and not self.u_can_wrap_axionite_chain_around_core(
-                    pos,
-                    neighbor_pos,
-                    resource,
-                )
+            if self.u_get_supply_chain_progress_key(
+                neighbor_pos, resource
+            ) >= source_progress_key and not self.u_can_wrap_axionite_chain_around_core(
+                pos,
+                neighbor_pos,
+                resource,
             ):
                 continue
 
@@ -1069,27 +1126,34 @@ class BuilderNavigationMixin:
         """
         current_pos = self.map.current_pos
         source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
-        candidate_tiles = []
+        map_width = self.map.width
+        map_height = self.map.height
+        active_mask = self.map.active_mask_by_index
+        tiles_by_index = self.map.tiles_by_index
+        pos_x = pos.x
+        pos_y = pos.y
 
-        for target_idx in self.map.u_iter_active_tile_indices():
-            target_tile = self.map.tiles_by_index[target_idx]
+        # Filter candidates, caching progress keys to avoid recomputing them later.
+        candidates: list[tuple[object, tuple[int, int]]] = []
+        for dx, dy in _BRIDGE_TARGET_OFFSETS:
+            nx = pos_x + dx
+            ny = pos_y + dy
+            if nx < 0 or ny < 0 or nx >= map_width or ny >= map_height:
+                continue
+            target_idx = self.map.u_to_index_xy(nx, ny)
+            if not active_mask[target_idx]:
+                continue
+            target_tile = tiles_by_index[target_idx]
             target_pos = target_tile.position
-            if target_pos == pos:
-                continue
-            if (
-                pos.distance_squared(target_pos)
-                > GameConstants.BRIDGE_TARGET_RADIUS_SQ
-            ):
-                continue
-            if abs(target_pos.x - pos.x) + abs(target_pos.y - pos.y) == 1:
-                continue
             if target_tile.is_core_of(
                 self.map.own_team
             ) and not self.u_supply_chain_targets_core(resource):
                 continue
+            target_progress_key = self.u_get_supply_chain_progress_key(
+                target_pos, resource
+            )
             if (
-                self.u_get_supply_chain_progress_key(target_pos, resource)
-                >= source_progress_key
+                target_progress_key >= source_progress_key
                 and not self.u_can_wrap_axionite_chain_around_core(
                     pos,
                     target_pos,
@@ -1097,63 +1161,56 @@ class BuilderNavigationMixin:
                 )
             ):
                 continue
-            candidate_tiles.append(target_tile)
+            candidates.append((target_tile, target_progress_key))
 
-        if not candidate_tiles:
+        if not candidates:
             return None
 
         if self.u_supply_chain_targets_core(resource):
             core_tiles = [
-                tile for tile in candidate_tiles if (tile.is_core_of(self.map.own_team))
+                tile for tile, _ in candidates if tile.is_core_of(self.map.own_team)
             ]
             if core_tiles:
-                core_tiles.sort(
+                return min(
+                    core_tiles,
                     key=lambda tile: (
                         pos.distance_squared(tile.position),
                         tile.position.x,
                         tile.position.y,
-                    )
-                )
-                return core_tiles[0].position
+                    ),
+                ).position
 
-        categorized_tiles: list[tuple[int, object]] = []
-        for target_tile in candidate_tiles:
+        # Single pass: find best tile using composite key (rank, progress, distance, pos).
+        # Avoids a separate categorize loop, a min-rank scan, a filter, and a second min.
+        best_tile = None
+        best_key: tuple | None = None
+        for target_tile, target_progress_key in candidates:
+            if self.round_stopwatch.check_overtime():
+                break
             category_rank = self.u_get_bridge_target_category_rank(
                 target_tile,
                 resource,
             )
             if category_rank is None:
                 continue
-            categorized_tiles.append((category_rank, target_tile))
-
-        if not categorized_tiles:
-            return None
-
-        best_category_rank = min(
-            category_rank for category_rank, _ in categorized_tiles
-        )
-        candidate_tiles = [
-            target_tile
-            for category_rank, target_tile in categorized_tiles
-            if category_rank == best_category_rank
-        ]
-        candidate_tiles.sort(
-            key=lambda tile: (
-                *self.u_get_supply_chain_progress_key(
-                    tile.position,
-                    resource,
-                ),
-                (
-                    0
-                    if current_pos.distance_squared(tile.position)
-                    <= BUILDER_ACTION_RADIUS_SQ
-                    else 1
-                ),
-                tile.position.x,
-                tile.position.y,
+            dist_bucket = (
+                0
+                if current_pos.distance_squared(target_tile.position)
+                <= BUILDER_ACTION_RADIUS_SQ
+                else 1
             )
-        )
-        return candidate_tiles[0].position
+            key = (
+                category_rank,
+                *target_progress_key,
+                dist_bucket,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_tile = target_tile
+
+        return best_tile.position if best_tile is not None else None
 
     def u_get_bridge_target_category_rank(
         self,
@@ -1165,9 +1222,8 @@ class BuilderNavigationMixin:
             return None
         if self.u_is_supply_tile_forbidden(target_tile.position, resource):
             return None
-        if (
-            AVOID_EMPTY_ORE_BRIDGE_TARGETS
-            and self.u_is_empty_ore_tile(target_tile.position)
+        if AVOID_EMPTY_ORE_BRIDGE_TARGETS and self.u_is_empty_ore_tile(
+            target_tile.position
         ):
             return None
         if self.u_is_axionite_foundry_target(target_tile.position, resource):
@@ -1371,9 +1427,8 @@ class BuilderNavigationMixin:
                 if building_type == EntityType.BRIDGE:
                     if target_pos is None:
                         return False
-                    if (
-                        AVOID_EMPTY_ORE_BRIDGE_TARGETS
-                        and self.u_is_empty_ore_tile(target_pos)
+                    if AVOID_EMPTY_ORE_BRIDGE_TARGETS and self.u_is_empty_ore_tile(
+                        target_pos
                     ):
                         return False
                     if not can_build_method(pos, target_pos):

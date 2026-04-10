@@ -2,6 +2,7 @@ from array import array
 from collections import deque
 from collections.abc import Iterable
 from enum import Enum
+from heapq import heappop, heappush
 
 from cambc import (
     Controller,
@@ -13,13 +14,17 @@ from cambc import (
     Team,
 )
 
+from lib.agent.time import RoundStopwatch
+
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
+    CARDINAL_DIRECTIONS,
+    CARDINAL_ORDINAL_DIRECTIONS,
     CORE_DIST_INF,
     DIRECTIONS,
     DISABLE_CORRECT_OWN_CORE_DISTANCE,
-    DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION,
     INF_DIST,
+    OWN_CORE_DISTANCE_INIT_SETTLE_BUDGET,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
@@ -48,8 +53,9 @@ class Map:
     MAX_CORE_FOOTPRINT_TARGET_COUNT = 9
     DIRECTION_SLOT_COUNT = len(DIRECTIONS)
 
-    def __init__(self):
+    def __init__(self, round_stopwatch: RoundStopwatch):
         self.ct: Controller | None = None
+        self.round_stopwatch: RoundStopwatch = round_stopwatch
         self.width = self.INITIAL_WIDTH
         self.height = self.INITIAL_HEIGHT
         self.tile_count = self.INITIAL_MAP_SIZE
@@ -70,7 +76,9 @@ class Map:
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
-        self.own_core_dist_by_index = array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
+        self.own_core_dist_by_index = (
+            array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
+        )
         self.core_inf_distances_by_index = (
             array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
         )
@@ -85,13 +93,20 @@ class Map:
         self.own_core_source_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_core_source_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_core_dist_initialized = False
+        self.own_core_dist_init_started = False
+        self.own_core_dist_exact_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.own_core_dist_init_heap: list[tuple[int, int]] = []
+        self.own_core_dist_incremental_queue: list[int] = []
+        self.own_core_dist_incremental_queue_head = 0
+        self.own_core_dist_incremental_dirty_queue: list[int] = []
+        self.own_core_dist_incremental_dirty_queue_head = 0
+        self.own_core_dist_incremental_seed_queue: list[int] = []
+        self.own_core_dist_incremental_seed_queue_head = 0
+        self.own_core_dist_manhattan_init_started = False
+        self.own_core_dist_manhattan_init_next_x = 0
+        self.own_core_dist_manhattan_init_next_y = 0
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
-        self.core_distance_bucket_queues: tuple[list[int], list[int], list[int]] = (
-            [],
-            [],
-            [],
-        )
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.own_supply_link_target_indices_in_vision: set[int] = set()
@@ -115,9 +130,7 @@ class Map:
         self.neighbor_step_costs_by_index = array("B", [0]) * (
             self.INITIAL_MAP_SIZE * self.MAX_NEIGHBOR_COUNT
         )
-        self.cardinal_neighbor_count_by_index = (
-            array("B", [0]) * self.INITIAL_MAP_SIZE
-        )
+        self.cardinal_neighbor_count_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.cardinal_neighbor_indices_by_index = array("H", [0]) * (
             self.INITIAL_MAP_SIZE * self.MAX_CARDINAL_NEIGHBOR_COUNT
         )
@@ -160,13 +173,17 @@ class Map:
         # Frontier expansion cache used by `s_frontier_expand_new`.
         self.frontier_expand_cached_unseen_indices: set[int] = set()
         self.frontier_expand_newly_seen_indices: list[int] = []
+        self.frontier_expand_pending_indices: list[int] = []
+        self.frontier_expand_pending_head = 0
         self.known_own_supply_link_indices: set[int] = set()
 
         self.stopwatch = Stopwatch("Map")
 
     def _reset_turn_state(self) -> None:
         if self.ct is None:
-            raise RuntimeError("Map controller must be set before resetting turn state.")
+            raise RuntimeError(
+                "Map controller must be set before resetting turn state."
+            )
 
         self.current_round = self.ct.get_current_round()
         self.current_pos = self.ct.get_position()
@@ -221,7 +238,8 @@ class Map:
                             1 if dx == 0 or dy == 0 else 2
                         )
                         self.neighbor_index_by_direction_by_index[
-                            direction_base + self._direction_slot_by_direction[direction]
+                            direction_base
+                            + self._direction_slot_by_direction[direction]
                         ] = neighbor_idx
                         neighbor_count += 1
                         if dx == 0 or dy == 0:
@@ -388,7 +406,8 @@ class Map:
         direction: Direction,
     ) -> int | None:
         neighbor_idx = self.neighbor_index_by_direction_by_index[
-            idx * self.DIRECTION_SLOT_COUNT + self._direction_slot_by_direction[direction]
+            idx * self.DIRECTION_SLOT_COUNT
+            + self._direction_slot_by_direction[direction]
         ]
         if neighbor_idx < 0 or not self.active_mask_by_index[neighbor_idx]:
             return None
@@ -424,8 +443,15 @@ class Map:
                 self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
         self.stopwatch.lap("Nearby buildings")
 
+        processed_tiles_in_vision = []
         for tile in self.tiles_in_vision:
             tile.update_attributes()
+            processed_tiles_in_vision.append(tile)
+
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+        self.tiles_in_vision = processed_tiles_in_vision
 
         self.stopwatch.lap("Tile attributes")
 
@@ -492,10 +518,7 @@ class Map:
 
                 if building.team == self.own_team:
                     building_damaged = building.hp < self.ct.get_max_hp(building.id)
-                    if (
-                        building.entity_type == EntityType.CONVEYOR
-                        and building.hp > 16
-                    ):
+                    if building.entity_type == EntityType.CONVEYOR and building.hp > 16:
                         building_damaged = False
                     own_bot_damaged = (
                         tile.bot.id is not None
@@ -544,22 +567,46 @@ class Map:
             else:
                 known_accessible_axionite_indices.discard(tile.index)
 
-        self.known_accessible_titanium_indices = sorted(known_accessible_titanium_indices)
-        self.known_accessible_axionite_indices = sorted(known_accessible_axionite_indices)
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+        self.known_accessible_titanium_indices = sorted(
+            known_accessible_titanium_indices
+        )
+        self.known_accessible_axionite_indices = sorted(
+            known_accessible_axionite_indices
+        )
         self.u_update_frontier_expand_cache()
 
     def u_update_frontier_expand_cache(self) -> None:
-        if not self.frontier_expand_newly_seen_indices:
+        pending_indices = self.frontier_expand_pending_indices
+        if self.frontier_expand_newly_seen_indices:
+            pending_indices.extend(self.frontier_expand_newly_seen_indices)
+            self.frontier_expand_newly_seen_indices.clear()
+
+        pending_head = self.frontier_expand_pending_head
+        if pending_head >= len(pending_indices):
+            pending_indices.clear()
+            self.frontier_expand_pending_head = 0
             return
 
         frontier_indices = self.frontier_expand_cached_unseen_indices
         tiles_by_index = self.tiles_by_index
 
-        for idx in self.frontier_expand_newly_seen_indices:
+        while pending_head < len(pending_indices):
+            idx = pending_indices[pending_head]
+            pending_head += 1
             frontier_indices.discard(idx)
             for neighbor_idx in self.u_iter_neighbor_indices(idx):
                 if tiles_by_index[neighbor_idx].last_seen_turn == -1:
                     frontier_indices.add(neighbor_idx)
+
+            if self.round_stopwatch.check_overtime_interval():
+                self.frontier_expand_pending_head = pending_head
+                return
+
+        pending_indices.clear()
+        self.frontier_expand_pending_head = 0
 
     def u_update_symmetry_from_visible_tiles(self) -> None:
         if self.symmetry_mode is not None:
@@ -590,17 +637,13 @@ class Map:
                 has_known_symmetric_tile = rotation_tile.environment is not None
 
             if mirror_x_possible:
-                mirror_x_tile = self.u_get_pos_tile(
-                    Position(x, self.height - 1 - y)
-                )
+                mirror_x_tile = self.u_get_pos_tile(Position(x, self.height - 1 - y))
                 has_known_symmetric_tile = (
                     has_known_symmetric_tile or mirror_x_tile.environment is not None
                 )
 
             if mirror_y_possible:
-                mirror_y_tile = self.u_get_pos_tile(
-                    Position(self.width - 1 - x, y)
-                )
+                mirror_y_tile = self.u_get_pos_tile(Position(self.width - 1 - x, y))
                 has_known_symmetric_tile = (
                     has_known_symmetric_tile or mirror_y_tile.environment is not None
                 )
@@ -636,6 +679,9 @@ class Map:
                 int(rotation_possible) + int(mirror_x_possible) + int(mirror_y_possible)
                 <= 1
             ):
+                break
+
+            if self.round_stopwatch.check_overtime_interval():
                 break
 
         new_symmetry_mode_candidates = []
@@ -688,17 +734,15 @@ class Map:
             valid_tiles.append(self.u_get_pos_tile(pos))
         return valid_tiles
 
-    def u_iter_adjacent_positions(self, pos: Position, consider_diagonal: bool = True):
-        for direction in Direction:
-            if direction == Direction.CENTRE:
+    def u_iter_adjacent_cardinal_positions(self, pos: Position):
+        for direction in CARDINAL_DIRECTIONS:
+            next_pos = pos.add(direction)
+            if not self.u_is_in_bounds(next_pos):
                 continue
-            if not consider_diagonal and direction in {
-                Direction.NORTHEAST,
-                Direction.SOUTHEAST,
-                Direction.SOUTHWEST,
-                Direction.NORTHWEST,
-            }:
-                continue
+            yield next_pos
+
+    def u_iter_adjacent_all_positions(self, pos: Position):
+        for direction in CARDINAL_ORDINAL_DIRECTIONS:
             next_pos = pos.add(direction)
             if not self.u_is_in_bounds(next_pos):
                 continue
@@ -710,10 +754,8 @@ class Map:
         ore_type: Environment,
         consider_diagonal: bool = OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     ) -> bool:
-        for adjacent_pos in self.u_iter_adjacent_positions(
-            pos,
-            consider_diagonal=consider_diagonal,
-        ):
+        iter_fn = self.u_iter_adjacent_all_positions if consider_diagonal else self.u_iter_adjacent_cardinal_positions
+        for adjacent_pos in iter_fn(pos):
             if self.u_get_pos_tile(adjacent_pos).environment == ore_type:
                 return True
         return False
@@ -778,6 +820,8 @@ class Map:
                 ):
                     core_tile = candidate_tile
                     break
+                if self.round_stopwatch.check_overtime_interval():
+                    break
             if core_tile is None:
                 return False
 
@@ -786,7 +830,7 @@ class Map:
             self.own_core_center_pos,
             self.own_core_source_by_index,
         )
-        self.own_core_dist_initialized = False
+        self.u_reset_own_core_distance_initialization()
         if not self.enemy_core_center_pos_candidates:
             center = self.own_core_center_pos
             all_enemy_core_center_pos_candidates = [
@@ -914,6 +958,9 @@ class Map:
                 break
             tiles.append(self.u_get_pos_tile(target_pos))
 
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
         return tiles
 
     def u_get_gunner_open_ray_tiles(
@@ -934,6 +981,8 @@ class Map:
             ):
                 break
             open_tiles.append(target_tile)
+            if self.round_stopwatch.check_overtime_interval():
+                break
         return open_tiles
 
     def u_sentinel_covers_target(
@@ -965,6 +1014,9 @@ class Map:
             ):
                 return True
 
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
         return False
 
     def u_breach_covers_target(
@@ -993,8 +1045,7 @@ class Map:
     def u_get_launcher_pickup_positions(self, source_pos: Position) -> list[Tile]:
         source_idx = self.u_to_index(source_pos)
         return [
-            self.tiles_by_index[idx]
-            for idx in self.u_iter_neighbor_indices(source_idx)
+            self.tiles_by_index[idx] for idx in self.u_iter_neighbor_indices(source_idx)
         ]
 
     def u_is_chokepoint(self, pos: Position) -> bool:
@@ -1148,6 +1199,9 @@ class Map:
                 if self.u_can_propagate_visible_supply_chain_label(target_tile, team):
                     queue.append(target_tile)
 
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
     def u_update_supply_chain_labels_for_team(self, team: Team) -> None:
         fresh_queue: deque[Tile] = deque()
         remembered_queue: deque[Tile] = deque()
@@ -1156,6 +1210,8 @@ class Map:
         for tile in self.tiles_in_vision:
             remembered_labels.append((tile, tile.get_supply_chain_label(team)))
             tile.set_supply_chain_label(team, SupplyChainLabel.NONE)
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
         for tile, _ in remembered_labels:
             source_label = self.u_get_supply_chain_source_label(tile, team)
@@ -1163,6 +1219,8 @@ class Map:
                 continue
             tile.set_supply_chain_label(team, source_label)
             fresh_queue.append(tile)
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
         self.u_propagate_supply_chain_labels_for_team(
             fresh_queue,
@@ -1181,6 +1239,8 @@ class Map:
             tile.set_supply_chain_label(team, remembered_label)
             if self.u_can_propagate_visible_supply_chain_label(tile, team):
                 remembered_queue.append(tile)
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
         self.u_propagate_supply_chain_labels_for_team(
             remembered_queue,
@@ -1206,11 +1266,15 @@ class Map:
             self.own_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
         for supply_link_tile in self.enemy_supply_links_in_vision:
             self.enemy_supply_link_target_indices_in_vision.update(
                 target.index for target in supply_link_tile.building.targets
             )
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
         self.u_update_supply_chain_labels()
 
@@ -1244,11 +1308,13 @@ class Map:
             ):
                 self.enemy_missing_supply_links.append(tile)
 
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
     def u_is_own_supply_link_occupied_by_other_builder(self, tile: Tile) -> bool:
         return bool(
             tile.building.team == self.own_team
-            and tile.building.entity_type
-            in {EntityType.CONVEYOR, EntityType.BRIDGE}
+            and tile.building.entity_type in {EntityType.CONVEYOR, EntityType.BRIDGE}
             and tile.bot.id is not None
             and tile.bot.team == self.own_team
             and tile.bot.entity_type == EntityType.BUILDER_BOT
@@ -1274,6 +1340,8 @@ class Map:
                 continue
             known_supply_indices.discard(tile.index)
             tile.last_patrolled_index = -1
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
     def u_enqueue_core_distance_index(
         self,
@@ -1285,19 +1353,39 @@ class Map:
         self.core_distance_enqueued_by_index[idx] = 1
         queue.append(idx)
 
+    def u_reset_own_core_distance_incremental_update(self) -> None:
+        self.core_distance_enqueued_by_index[:] = b"\x00" * len(
+            self.core_distance_enqueued_by_index
+        )
+        self.own_core_dist_incremental_queue.clear()
+        self.own_core_dist_incremental_queue_head = 0
+        self.own_core_dist_incremental_dirty_queue.clear()
+        self.own_core_dist_incremental_dirty_queue_head = 0
+        self.own_core_dist_incremental_seed_queue.clear()
+        self.own_core_dist_incremental_seed_queue_head = 0
+
+    def u_reset_own_core_distance_manhattan_initialization(self) -> None:
+        self.own_core_dist_manhattan_init_started = False
+        self.own_core_dist_manhattan_init_next_x = 0
+        self.own_core_dist_manhattan_init_next_y = 0
+
     def u_update_core_distance_field_incremental(
         self,
         source_indices: list[int] | tuple[int, ...],
         source_by_index: bytearray,
         distance_by_index,
         dirty_indices: list[int] | tuple[int, ...],
-    ) -> None:
+    ) -> bool:
         if not source_indices:
-            return
+            self.u_reset_own_core_distance_incremental_update()
+            return True
 
-        queue = self.distance_queue_buffer_by_index
-        queue.clear()
-        queue_head = 0
+        queue = self.own_core_dist_incremental_queue
+        queue_head = self.own_core_dist_incremental_queue_head
+        dirty_queue = self.own_core_dist_incremental_dirty_queue
+        dirty_queue_head = self.own_core_dist_incremental_dirty_queue_head
+        seed_queue = self.own_core_dist_incremental_seed_queue
+        seed_queue_head = self.own_core_dist_incremental_seed_queue_head
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
@@ -1305,20 +1393,54 @@ class Map:
         core_distance_passable_by_index = self.core_distance_passable_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
 
-        for idx in source_indices:
-            self.u_enqueue_core_distance_index(idx, queue)
+        if not queue and not dirty_queue and not seed_queue:
+            for idx in source_indices:
+                self.u_enqueue_core_distance_index(idx, queue)
 
-        for idx in dirty_indices:
-            self.u_enqueue_core_distance_index(idx, queue)
+        if dirty_indices:
+            dirty_queue.extend(dirty_indices)
+
+        while dirty_queue_head < len(dirty_queue):
+            if self.round_stopwatch.check_overtime_interval():
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = dirty_queue_head
+                self.own_core_dist_incremental_seed_queue_head = seed_queue_head
+                return False
+
+            idx = dirty_queue[dirty_queue_head]
+            dirty_queue_head += 1
+            seed_queue.append(idx)
             neighbor_base = idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[neighbor_idx]:
                     continue
-                self.u_enqueue_core_distance_index(neighbor_idx, queue)
+                seed_queue.append(neighbor_idx)
+
+        dirty_queue.clear()
+        self.own_core_dist_incremental_dirty_queue_head = 0
+
+        while seed_queue_head < len(seed_queue):
+            if self.round_stopwatch.check_overtime_interval():
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = 0
+                self.own_core_dist_incremental_seed_queue_head = seed_queue_head
+                return False
+
+            self.u_enqueue_core_distance_index(seed_queue[seed_queue_head], queue)
+            seed_queue_head += 1
+
+        seed_queue.clear()
+        self.own_core_dist_incremental_seed_queue_head = 0
 
         while queue_head < len(queue):
+            if self.round_stopwatch.check_overtime_interval():
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = 0
+                self.own_core_dist_incremental_seed_queue_head = 0
+                return False
+
             idx = queue[queue_head]
             queue_head += 1
             self.core_distance_enqueued_by_index[idx] = 0
@@ -1357,54 +1479,73 @@ class Map:
                     continue
                 self.u_enqueue_core_distance_index(neighbor_idx, queue)
 
-    def u_initialize_core_distance_field(
-        self,
-        source_indices: list[int] | tuple[int, ...],
-        distance_by_index,
-    ) -> None:
-        if not source_indices:
-            return
+        queue.clear()
+        self.own_core_dist_incremental_queue_head = 0
+        self.own_core_dist_incremental_dirty_queue_head = 0
+        self.own_core_dist_incremental_seed_queue_head = 0
+        return True
 
-        distance_by_index[:] = self.core_inf_distances_by_index
-        bucket_queues = self.core_distance_bucket_queues
-        for bucket in bucket_queues:
-            bucket.clear()
-        current_bucket, next_bucket, far_bucket = bucket_queues
-        pending_entries = 0
-        for source_idx in source_indices:
+    def u_reset_own_core_distance_initialization(self) -> None:
+        self.own_core_dist_initialized = False
+        self.own_core_dist_init_started = False
+        self.u_reset_own_core_distance_incremental_update()
+        self.u_reset_own_core_distance_manhattan_initialization()
+        self.own_core_dist_by_index[:] = self.core_inf_distances_by_index
+        self.own_core_dist_exact_by_index[:] = b"\x00" * len(
+            self.own_core_dist_exact_by_index
+        )
+        self.own_core_dist_init_heap.clear()
+
+    def u_start_own_core_distance_initialization(self) -> bool:
+        if not self.own_core_source_indices:
+            return False
+
+        self.u_reset_own_core_distance_initialization()
+        self.own_core_dist_init_started = True
+        distance_by_index = self.own_core_dist_by_index
+        frontier = self.own_core_dist_init_heap
+        for source_idx in self.own_core_source_indices:
             if distance_by_index[source_idx] == 0:
                 continue
             distance_by_index[source_idx] = 0
-            current_bucket.append(source_idx)
-            pending_entries += 1
+            heappush(frontier, (0, source_idx))
+        return bool(frontier)
 
+    def u_continue_own_core_distance_initialization(
+        self,
+        max_finalized_nodes: int,
+    ) -> bool:
+        if self.own_core_dist_initialized:
+            return True
+        if not self.own_core_source_indices:
+            return False
+        if (
+            not self.own_core_dist_init_started
+            and not self.u_start_own_core_distance_initialization()
+        ):
+            return False
+
+        distance_by_index = self.own_core_dist_by_index
+        exact_by_index = self.own_core_dist_exact_by_index
+        frontier = self.own_core_dist_init_heap
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
         active_mask_by_index = self.active_mask_by_index
         core_distance_passable_by_index = self.core_distance_passable_by_index
-        own_core_center_pos = self.own_core_center_pos
-        vision_radius_sq = 0
-        if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION and own_core_center_pos is not None:
-            vision_radius_sq = self.ct.get_vision_radius_sq()
-        current_dist = 0
+        finalized_nodes = 0
 
-        while pending_entries:
-            if not current_bucket:
-                current_dist += 1
-                current_bucket, next_bucket, far_bucket = (
-                    next_bucket,
-                    far_bucket,
-                    current_bucket,
-                )
-                far_bucket.clear()
+        while frontier and finalized_nodes < max_finalized_nodes:
+            current_dist, current_idx = heappop(frontier)
+            if (
+                exact_by_index[current_idx]
+                or current_dist != distance_by_index[current_idx]
+            ):
                 continue
 
-            current_idx = current_bucket.pop()
-            pending_entries -= 1
-            if current_dist != distance_by_index[current_idx]:
-                continue
+            exact_by_index[current_idx] = 1
+            finalized_nodes += 1
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
@@ -1412,50 +1553,89 @@ class Map:
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if (
                     not active_mask_by_index[neighbor_idx]
+                    or exact_by_index[neighbor_idx]
                     or not core_distance_passable_by_index[neighbor_idx]
                 ):
                     continue
-                if DONT_INIT_CORE_DISTANCES_OUTSIDE_VISION and own_core_center_pos is not None:
-                    neighbor_pos = self.tiles_by_index[neighbor_idx].position
-                    if (
-                        own_core_center_pos.distance_squared(neighbor_pos)
-                        > vision_radius_sq
-                    ):
-                        continue
 
-                next_dist = current_dist + neighbor_step_costs_by_index[
-                    neighbor_base + offset
-                ]
+                next_dist = (
+                    current_dist + neighbor_step_costs_by_index[neighbor_base + offset]
+                )
                 if next_dist >= distance_by_index[neighbor_idx]:
                     continue
 
                 distance_by_index[neighbor_idx] = next_dist
-                if next_dist == current_dist + 1:
-                    next_bucket.append(neighbor_idx)
-                else:
-                    far_bucket.append(neighbor_idx)
-                pending_entries += 1
+                heappush(frontier, (next_dist, neighbor_idx))
 
-    def u_initialize_own_core_distance_field_manhattan(self) -> None:
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+        if not frontier:
+            self.own_core_dist_initialized = True
+
+        return self.own_core_dist_initialized
+
+    def u_get_estimated_own_core_dist_by_index(self, idx: int) -> int:
         center = self.own_core_center_pos
         if center is None:
-            return
+            return INF_DIST
+
+        dx = abs(self.index_x_by_index[idx] - center.x) - 1
+        dy = abs(self.index_y_by_index[idx] - center.y) - 1
+        if dx < 0:
+            dx = 0
+        if dy < 0:
+            dy = 0
+        return dx + dy
+
+    def u_get_own_core_dist_by_index(self, idx: int) -> int:
+        value = self.own_core_dist_by_index[idx]
+        if self.own_core_dist_initialized or self.own_core_dist_exact_by_index[idx]:
+            return INF_DIST if value >= CORE_DIST_INF else value
+        return self.u_get_estimated_own_core_dist_by_index(idx)
+
+    def u_initialize_own_core_distance_field_manhattan(self) -> bool:
+        center = self.own_core_center_pos
+        if center is None:
+            self.u_reset_own_core_distance_manhattan_initialization()
+            return False
+
+        if not self.own_core_dist_manhattan_init_started:
+            distance_by_index = self.own_core_dist_by_index
+            distance_by_index[:] = self.core_inf_distances_by_index
+            self.own_core_dist_exact_by_index[:] = b"\x00" * len(
+                self.own_core_dist_exact_by_index
+            )
+            self.own_core_dist_init_started = False
+            self.own_core_dist_init_heap.clear()
+            self.u_reset_own_core_distance_incremental_update()
+            self.own_core_dist_manhattan_init_started = True
+            self.own_core_dist_manhattan_init_next_x = 0
+            self.own_core_dist_manhattan_init_next_y = 0
 
         distance_by_index = self.own_core_dist_by_index
-        distance_by_index[:] = self.core_inf_distances_by_index
+        x = self.own_core_dist_manhattan_init_next_x
+        y = self.own_core_dist_manhattan_init_next_y
 
-        center_x = center.x
-        center_y = center.y
-        for idx in self.u_iter_active_tile_indices():
-            x = self.index_x_by_index[idx]
-            y = self.index_y_by_index[idx]
-            dx = abs(x - center_x) - 1
-            dy = abs(y - center_y) - 1
-            if dx < 0:
-                dx = 0
-            if dy < 0:
-                dy = 0
-            distance_by_index[idx] = dx + dy
+        while x < self.width:
+            base_idx = x * self.INDEX_STRIDE
+
+            while y < self.height:
+                if self.round_stopwatch.check_overtime_interval():
+                    self.own_core_dist_manhattan_init_next_x = x
+                    self.own_core_dist_manhattan_init_next_y = y
+                    return False
+
+                distance_by_index[base_idx + y] = (
+                    self.u_get_estimated_own_core_dist_by_index(base_idx + y)
+                )
+                y += 1
+
+            x += 1
+            y = 0
+
+        self.u_reset_own_core_distance_manhattan_initialization()
+        return True
 
     def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
         current_idx = self.u_to_index(self.current_pos)
@@ -1511,6 +1691,9 @@ class Map:
                 dist_to_self_by_index[neighbor_idx] = current_dist + 1
                 queue.append(neighbor_idx)
 
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
     def u_calculate_shortest_path(
         self,
         source_pos: Position,
@@ -1533,7 +1716,6 @@ class Map:
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
         dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
-        own_core_dist_by_index = self.own_core_dist_by_index
         enemy_turret_target_by_index = self.enemy_turret_target_by_index
         bot_present_by_index = self.bot_present_by_index
         if source_pos == target_pos:
@@ -1549,6 +1731,9 @@ class Map:
             path = [tiles_by_index[current_idx]]
 
             while current_idx != source_idx:
+                if self.round_stopwatch.check_overtime_interval():
+                    break
+
                 next_dist_to_self = dist_to_self_by_index[current_idx] - 1
                 best_candidate_idx: int | None = None
                 best_candidate_score: tuple[int, int, int] | None = None
@@ -1559,8 +1744,7 @@ class Map:
                     adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
                     if (
                         not active_mask_by_index[adjacent_idx]
-                        or
-                        dist_to_self_epoch_by_index[adjacent_idx]
+                        or dist_to_self_epoch_by_index[adjacent_idx]
                         != self.dist_to_self_epoch
                         or dist_to_self_by_index[adjacent_idx] != next_dist_to_self
                     ):
@@ -1580,7 +1764,7 @@ class Map:
                         continue
                     adjacent_x, adjacent_y = self.u_index_to_xy(adjacent_idx)
                     candidate_score = (
-                        own_core_dist_by_index[adjacent_idx],
+                        self.u_get_own_core_dist_by_index(adjacent_idx),
                         adjacent_x,
                         adjacent_y,
                     )
@@ -1613,6 +1797,9 @@ class Map:
         queue_head = 0
 
         while queue_head < len(queue):
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
             current_idx = queue[queue_head]
             queue_head += 1
             neighbor_base = current_idx * max_neighbor_count
@@ -1657,10 +1844,133 @@ class Map:
                         path.append(tiles_by_index[previous_idx])
                         walk_idx = previous_idx
 
+                        if self.round_stopwatch.check_overtime_interval():
+                            break
+
                     path.reverse()
                     return path
 
                 queue.append(adjacent_idx)
+
+        return []
+
+    def u_calculate_shortest_path_to_frontier(
+        self,
+        source_pos: Position,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> list[Tile]:
+        if not self.u_is_in_bounds(source_pos):
+            return []
+
+        frontier_indices = self.frontier_expand_cached_unseen_indices
+        if not frontier_indices:
+            return []
+
+        source_tile = self.u_get_pos_tile(source_pos)
+        source_idx = source_tile.index
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        neighbor_count_by_index = self.neighbor_count_by_index
+        max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        seen_epoch_by_index = self.path_seen_epoch_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+
+        self.path_epoch += 1
+        path_epoch = self.path_epoch
+        seen_epoch_by_index[source_idx] = path_epoch
+        predecessor_by_index[source_idx] = source_idx
+        queue = self.path_queue_buffer_by_index
+        queue.clear()
+        queue.append(source_idx)
+        queue_head = 0
+
+        while queue_head < len(queue):
+            layer_end = len(queue)
+            best_target_idx: int | None = None
+            best_target_score: tuple[int, int, int] | None = None
+
+            while queue_head < layer_end:
+                if self.round_stopwatch.check_overtime_interval():
+                    return []
+
+                current_idx = queue[queue_head]
+                queue_head += 1
+                neighbor_base = current_idx * max_neighbor_count
+                neighbor_count = neighbor_count_by_index[current_idx]
+
+                for offset in range(neighbor_count):
+                    adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
+                    if (
+                        not active_mask_by_index[adjacent_idx]
+                        or seen_epoch_by_index[adjacent_idx] == path_epoch
+                    ):
+                        continue
+
+                    is_frontier = (
+                        adjacent_idx in frontier_indices
+                        and tiles_by_index[adjacent_idx].last_seen_turn == -1
+                    )
+
+                    if (
+                        avoid_enemy_turrets
+                        and enemy_turret_target_by_index[adjacent_idx]
+                    ):
+                        continue
+                    if (
+                        avoid_other_builder_bots
+                        and adjacent_idx != source_idx
+                        and bot_present_by_index[adjacent_idx]
+                    ):
+                        continue
+                    if (
+                        not is_frontier
+                        and not intrinsic_passable_by_index[adjacent_idx]
+                    ):
+                        continue
+
+                    predecessor_by_index[adjacent_idx] = current_idx
+                    seen_epoch_by_index[adjacent_idx] = path_epoch
+
+                    if is_frontier:
+                        candidate_score = (
+                            self.u_get_own_core_dist_by_index(adjacent_idx),
+                            index_x_by_index[adjacent_idx],
+                            index_y_by_index[adjacent_idx],
+                        )
+                        if (
+                            best_target_score is None
+                            or candidate_score < best_target_score
+                        ):
+                            best_target_score = candidate_score
+                            best_target_idx = adjacent_idx
+                        continue
+
+                    queue.append(adjacent_idx)
+
+            if best_target_idx is None:
+                continue
+
+            path = [tiles_by_index[best_target_idx]]
+            walk_idx = best_target_idx
+            while walk_idx != source_idx:
+                if self.round_stopwatch.check_overtime_interval():
+                    return []
+
+                previous_idx = predecessor_by_index[walk_idx]
+                if previous_idx == -1:
+                    return []
+                path.append(tiles_by_index[previous_idx])
+                walk_idx = previous_idx
+
+            path.reverse()
+            return path
 
         return []
 
@@ -1671,20 +1981,25 @@ class Map:
         sw.lap("Self distance field")
 
         dirty_indices = tuple(self.core_distance_dirty_indices)
+        has_pending_own_core_dist_incremental_update = bool(
+            self.own_core_dist_incremental_queue
+            or self.own_core_dist_incremental_dirty_queue
+            or self.own_core_dist_incremental_seed_queue
+        )
 
         if self.own_core_source_indices and (
             not self.own_core_dist_initialized
-            or (
-                dirty_indices
-                and not DISABLE_CORRECT_OWN_CORE_DISTANCE
-            )
+            or has_pending_own_core_dist_incremental_update
+            or (dirty_indices and not DISABLE_CORRECT_OWN_CORE_DISTANCE)
         ):
             if DISABLE_CORRECT_OWN_CORE_DISTANCE:
-                self.u_initialize_own_core_distance_field_manhattan()
+                if self.u_initialize_own_core_distance_field_manhattan():
+                    self.own_core_dist_initialized = True
             elif not self.own_core_dist_initialized:
-                self.u_initialize_core_distance_field(
-                    self.own_core_source_indices,
-                    self.own_core_dist_by_index,
+                if dirty_indices and self.own_core_dist_init_started:
+                    self.u_reset_own_core_distance_initialization()
+                self.u_continue_own_core_distance_initialization(
+                    OWN_CORE_DISTANCE_INIT_SETTLE_BUDGET
                 )
             else:
                 self.u_update_core_distance_field_incremental(
@@ -1693,7 +2008,6 @@ class Map:
                     self.own_core_dist_by_index,
                     dirty_indices,
                 )
-            self.own_core_dist_initialized = True
 
         sw.lap("Own core field")
 

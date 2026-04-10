@@ -1,6 +1,9 @@
 from collections.abc import Callable
 
 from cambc import Controller
+
+from lib.agent.time import RoundStopwatch
+
 from lib.map import Map
 from lib.map.tile import Tile
 
@@ -10,13 +13,16 @@ from lib.debug import Stopwatch
 class Agent:
     def __init__(self):
         self.ct: Controller | None = None
-        self.map = Map()
-        self.first_turn_initialized = False
+        self.round_stopwatch: RoundStopwatch | None = RoundStopwatch()
+        self.map: Map = Map(self.round_stopwatch)
+        self.first_turn_initialized: bool = False
 
         # Debugging
-        self.stopwatch = Stopwatch("Agent")
+        self.stopwatch: Stopwatch = Stopwatch("Agent")
 
     def u_run(self, ct: Controller) -> None:
+        self.round_stopwatch.start_round(ct)
+
         self.stopwatch.start()
 
         self.ct = ct
@@ -30,6 +36,8 @@ class Agent:
 
         self.map.u_update_vision()
         self.stopwatch.lap("Map vision")
+
+        self.round_stopwatch.start_bot()
 
         self.u_handler()
         self.stopwatch.lap("Handle agent")

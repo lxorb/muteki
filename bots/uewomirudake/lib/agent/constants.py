@@ -15,7 +15,9 @@ NS_PER_TURN: int = 2_000_000
 
 ### BOT LOGIC ###
 BRIDGE_PREFERRED_DIST: int = 6
+# TODO: Temporary fix for bots becoming unable to place supply chains.
 AVOID_EMPTY_ORE_BRIDGE_TARGETS: bool = False
+AVOID_OTHER_SUPPLY_LABEL_ORES: bool = False
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 MAX_CORE_ORE_DIRECT_DIST: int = 20
 PREVENT_SUPPLY_LINKS_TILL_HARVESTER: bool = True
@@ -114,7 +116,7 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
 }
 INITIAL_BB_ORDER: list[list[StrategyEntry]] = [
     # HARASSMENT_STRATEGY,
-    # HARASSMENT_STRATEGY,
+    HARASSMENT_STRATEGY,
     SCAVENGER_STRATEGY,
     SCAVENGER_STRATEGY,
     # SCAVENGER_STRATEGY,
@@ -139,6 +141,8 @@ surrendering early in submissions.
 import os
 import sys
 
+SURRENDER_AT_TURN: int = 1e6
+
 try:
     module_dir = os.path.join(os.getcwd(), "./bots/exclude")
     sys.path.insert(0, module_dir)
@@ -147,4 +151,4 @@ try:
 
     SURRENDER_AT_TURN: int = exclude.SURRENDER_AT_TURN
 except ImportError:
-    SURRENDER_AT_TURN: int = 1e6
+    pass

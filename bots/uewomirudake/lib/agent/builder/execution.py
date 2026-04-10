@@ -32,6 +32,11 @@ class BuilderExecutionMixin:
 
         self.last_turn_completed = False
         for idx in range(start_index, len(self.strategy)):
+            if self.round_stopwatch.check_overtime():
+                stopwatch.lap("Overtime")
+                stopwatch.log()
+                return False
+
             strategy_method, strategy_args = self.u_get_bound_method_and_args(
                 self.strategy[idx]
             )

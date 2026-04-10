@@ -14,14 +14,13 @@ sw = Stopwatch("main-stopwatch")
 
 initial_run = False
 
+
 class Player:
     def __init__(self):
         self.agent: Agent | None = None
 
     def run(self, ct: Controller) -> None:
         entity_type: EntityType = ct.get_entity_type()
-
-
 
         if self.agent is None:
             sw.start()
