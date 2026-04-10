@@ -195,6 +195,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = True,
         attack_enemy_passable: bool = True,
         resource: Environment = Environment.ORE_TITANIUM,
+        enforce_safe: bool = False,
     ) -> BuilderActionResult: ...
 
     def s_frontier_expand(self) -> BuilderActionResult: ...

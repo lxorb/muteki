@@ -54,6 +54,7 @@ SCAVENGER_STRATEGY = [
         True,
         True,
         Environment.ORE_TITANIUM,
+        True,
     ),
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]

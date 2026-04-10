@@ -380,6 +380,7 @@ class BuilderStrategyMethodsMixin:
         hold: bool = True,
         attack_enemy_passable: bool = True,
         resource: Environment = Environment.ORE_TITANIUM,
+        enforce_safe: bool = False,
     ):
         """
         Build a harvester on the safest high-priority visible ore tile.
@@ -388,12 +389,12 @@ class BuilderStrategyMethodsMixin:
         tiles in enemy attack range or next to orthogonally adjacent enemy
         buildings, prioritizes by cached distance to the own core and then the
         builder, and delegates the actual build, replacement, movement, hold,
-        and optional enemy-passable clearing to `u_build_at`. When the builder
-        is already standing on the ore, it first seeds a missing supply link or
-        steps off onto a nearby own walkable tile so the harvester can be
-        placed from range instead of getting stuck on a same-tile build.
+        and optional enemy-passable clearing to `u_build_at`. With
+        `enforce_safe=True`, the builder first tries to close any orthogonally
+        adjacent empty tiles around the target ore and otherwise moves onto the
+        ore tile before allowing the harvester build.
         """
-        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
+        from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ, MAX_CORE_ORE_DIRECT_DIST
         from .strategies import SCAVENGER_STRATEGY
 
         current_pos = self.map.current_pos
@@ -435,6 +436,32 @@ class BuilderStrategyMethodsMixin:
                 if adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES:
                     return True
             return False
+
+        def get_empty_orthogonally_adjacent_tiles(tile_index: int) -> list:
+            empty_adjacent_tiles = []
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile_index):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.building.id is None
+                    and adjacent_tile.environment != Environment.WALL
+                ):
+                    empty_adjacent_tiles.append(adjacent_tile)
+            return empty_adjacent_tiles
+
+        def can_use_tile(target_tile) -> bool:
+            if target_tile.building.id is None:
+                return True
+            if (
+                target_tile.building.team == own_team
+                and target_tile.building.entity_type
+                in {EntityType.ROAD, EntityType.BARRIER}
+            ):
+                return True
+            return (
+                attack_enemy_passable
+                and target_tile.building.team != own_team
+                and target_tile.is_passable
+            )
 
         def step_off_current_ore_tile() -> bool:
             candidate_entries: list[
@@ -497,6 +524,77 @@ class BuilderStrategyMethodsMixin:
                 self.ct.move(move_direction)
                 return True
             return hold
+
+        target_tile = None
+        target_key = None
+        for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
+            if self.round_stopwatch.check_overtime_interval():
+                return False
+            if tile.environment != resource:
+                continue
+            if not can_use_tile(tile):
+                continue
+            if tile.bot.id is not None and tile.position != current_pos:
+                continue
+            if tile.in_enemy_attack_range:
+                continue
+            if has_orthogonally_adjacent_enemy_building(tile.position):
+                continue
+            if (
+                max_core_ore_direct_dist is not None
+                and tile.own_core_dist > max_core_ore_direct_dist
+            ):
+                continue
+            key = (tile.dist_to_self, tile.own_core_dist)
+            if target_key is None or key < target_key:
+                target_key = key
+                target_tile = tile
+
+        if target_tile is None:
+            return False
+
+        if enforce_safe:
+            empty_adjacent_tiles = get_empty_orthogonally_adjacent_tiles(
+                target_tile.index
+            )
+            target_is_safe = (
+                not empty_adjacent_tiles
+                and not has_orthogonally_adjacent_enemy_building(target_tile.position)
+            )
+            if not target_is_safe:
+                road_candidates: list[tuple[tuple[int, int, int], object]] = []
+                for safe_order, adjacent_tile in enumerate(empty_adjacent_tiles):
+                    if (
+                        current_pos.distance_squared(adjacent_tile.position)
+                        > BUILDER_ACTION_RADIUS_SQ
+                    ):
+                        continue
+                    road_candidates.append(
+                        (
+                            (
+                                adjacent_tile.own_core_dist,
+                                adjacent_tile.dist_to_self,
+                                safe_order,
+                            ),
+                            adjacent_tile,
+                        )
+                    )
+
+                if road_candidates:
+                    _, road_target_tile = min(road_candidates)
+                    if self.u_build_at(
+                        road_target_tile.position,
+                        EntityType.ROAD,
+                        hold=hold,
+                        move_towards=move_towards,
+                        attack_enemy_passable=False,
+                    ):
+                        return True
+
+                if current_pos != target_tile.position:
+                    if not move_towards:
+                        return False
+                    return self.u_move_to(target_tile.position)
 
         if (
             current_tile.environment == resource
@@ -580,46 +678,6 @@ class BuilderStrategyMethodsMixin:
             and step_off_current_ore_tile()
         ):
             return True
-
-        def can_use_tile(target_tile) -> bool:
-            if target_tile.building.id is None:
-                return True
-            if (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type
-                in {EntityType.ROAD, EntityType.BARRIER}
-            ):
-                return True
-            return (
-                attack_enemy_passable
-                and target_tile.building.team != own_team
-                and target_tile.is_passable
-            )
-
-        target_tile = None
-        target_key = None
-        for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
-            if self.round_stopwatch.check_overtime_interval():
-                return False
-            if tile.environment != resource:
-                continue
-            if not can_use_tile(tile):
-                continue
-            if tile.bot.id is not None and tile.position != current_pos:
-                continue
-            if tile.in_enemy_attack_range:
-                continue
-            if has_orthogonally_adjacent_enemy_building(tile.position):
-                continue
-            if max_core_ore_direct_dist is not None and tile.own_core_dist > max_core_ore_direct_dist:
-                continue
-            key = (tile.dist_to_self, tile.own_core_dist)
-            if target_key is None or key < target_key:
-                target_key = key
-                target_tile = tile
-
-        if target_tile is None:
-            return False
 
         if self.u_build_at(
             target_tile.position,
