@@ -941,7 +941,9 @@ class DefaultAgent(ABC, Agent):
     height: int
     size: int
     position: int
-    neighbors: list[list[int]]
+    neighbors_manhattan: list[list[int]]
+    neighbors_chebyshev: list[list[int]]
+    neighbors_bridge: list[list[int]]
     core_pos: int
     core_tiles: list[int]
     turn_last_completed: bool | None
@@ -960,22 +962,70 @@ class DefaultAgent(ABC, Agent):
         self.size = self.width * self.height
         self.position = pos_to_idx(ct.get_position(), self.width)
 
-        self.neighbors = [[] for _ in range(self.size)]
-        for y in range(self.height):
-            for x in range(self.width):
-                idx = y * self.width + x
-                for dx in [-1, 0, 1]:
-                    for dy in [-1, 0, 1]:
-                        if dx == 0 and dy == 0:
-                            continue
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < self.width and 0 <= ny < self.height:
-                            self.neighbors[idx].append(ny * self.width + nx)
+        self.neighbors_manhattan = [[] for _ in range(self.size)]
+        self.neighbors_chebyshev = [[] for _ in range(self.size)]
+        self.neighbors_bridge = [[] for _ in range(self.size)]
+
+        _manhattan_offsets = (
+            (-1, 0), (1, 0), (0, -1), (0, 1),
+        )
+
+        _chebyshev_offsets = (
+            (-1, -1), (0, -1), (1, -1),
+            (-1,  0),          (1,  0),
+            (-1,  1), (0,  1), (1,  1),
+        )
+
+        # row widths by dy are 3, 5, 7, 7, 7, 5, 3
+        _bridge_offsets = tuple(
+            (dx, dy)
+            for dy, max_dx in (
+                (-3, 1),
+                (-2, 2),
+                (-1, 3),
+                ( 0, 3),
+                ( 1, 3),
+                ( 2, 2),
+                ( 3, 1),
+            )
+            for dx in range(-max_dx, max_dx + 1)
+            if dx != 0 or dy != 0
+        )
+
+        _w = self.width
+        _h = self.height
+
+        for y in range(_h):
+            row = y * _w
+            for x in range(_w):
+                idx = row + x
+
+                man = self.neighbors_manhattan[idx]
+                cheb = self.neighbors_chebyshev[idx]
+                bridge = self.neighbors_bridge[idx]
+
+                for dx, dy in _manhattan_offsets:
+                    nx = x + dx
+                    ny = y + dy
+                    if 0 <= nx < _w and 0 <= ny < _h:
+                        man.append(ny * _w + nx)
+
+                for dx, dy in _chebyshev_offsets:
+                    nx = x + dx
+                    ny = y + dy
+                    if 0 <= nx < _w and 0 <= ny < _h:
+                        cheb.append(ny * _w + nx)
+
+                for dx, dy in _bridge_offsets:
+                    nx = x + dx
+                    ny = y + dy
+                    if 0 <= nx < _w and 0 <= ny < _h:
+                        bridge.append(ny * _w + nx)
 
         _core = ct.get_nearby_buildings(1)
         _core = ct.get_position(_core[0])
         self.core_pos = pos_to_idx(_core, self.width)
-        self.core_tiles = self.neighbors[self.core_pos]
+        self.core_tiles = self.neighbors_chebyshev[self.core_pos]
         self.turn_last_completed = None
 
         _r = ct.get_global_resources() # Todo: replace through attributes for each resource no object churn
@@ -1013,13 +1063,13 @@ class DefaultAgent(ABC, Agent):
         pass
 
 
-TILE_WALK: float = 10
-TILE_EMPTY: float = 11
-TILE_UNKNOWN: float = 12
-TILE_BLOCK: float = 10_000_000
+# Todo: rename to WALK_PASS, etc
+WALK_PASS: float = 10
+WALK_EMPTY: float = 11
+WALK_UNKNOWN: float = 12
+WALK_BLOCK: float = 10_000_000
 
-# Direction lookup dictionary for (dx, dy) -> Direction
-_DIRECTION_MAP: dict[tuple[int, int], Direction] = {
+_CHEBYSHEV_DICT: dict[tuple[int, int], Direction] = {
     (0, -1): Direction.NORTH,
     (0, 1): Direction.SOUTH,
     (1, 0): Direction.EAST,
@@ -1056,7 +1106,7 @@ class DStarLite:
         self.height = agent.height
         self.size = agent.size
 
-        self.neighbors = agent.neighbors
+        self.neighbors = agent.neighbors_chebyshev
 
         self.reset()
 
@@ -1066,8 +1116,8 @@ class DStarLite:
 
     def reset(self) -> None:
         # D* Lite state using lists for performance
-        self.g = [TILE_BLOCK] * self.size
-        self.rhs = [TILE_BLOCK] * self.size
+        self.g = [WALK_BLOCK] * self.size
+        self.rhs = [WALK_BLOCK] * self.size
         self.U = []  # Flattened: (k1, k2, idx)
         self.km = 0.0
 
@@ -1108,12 +1158,12 @@ class DStarLite:
         if u_idx == self.s_goal_idx:
             return 0.0
 
-        min_rhs = TILE_BLOCK
+        min_rhs = WALK_BLOCK
         map_walk = self.agent.map_walk
         g = self.g
         for s_prime_idx in self.neighbors[u_idx]:
             cost = map_walk[s_prime_idx]
-            if cost < TILE_BLOCK:
+            if cost < WALK_BLOCK:
                 candidate = cost + g[s_prime_idx]
                 if candidate < min_rhs:
                     min_rhs = candidate
@@ -1199,7 +1249,7 @@ class DStarLite:
                 for s_idx in neighbors[u_idx]:
                     self._update_vertex(s_idx)
             else:
-                g[u_idx] = TILE_BLOCK
+                g[u_idx] = WALK_BLOCK
                 self._update_vertex(u_idx)
                 for s_idx in neighbors[u_idx]:
                     self._update_vertex(s_idx)
@@ -1214,8 +1264,8 @@ class DStarLite:
         self.km = 0.0
 
         # Fast full reset using list multiplication
-        self.g = [TILE_BLOCK] * self.size
-        self.rhs = [TILE_BLOCK] * self.size
+        self.g = [WALK_BLOCK] * self.size
+        self.rhs = [WALK_BLOCK] * self.size
         self.in_queue = [None] * self.size
         self.U.clear()
         self.changed_cells.clear()
@@ -1258,7 +1308,7 @@ class DStarLite:
             print(f'd star lite replan() took: {(end - start) / 1_000_000:.4f} ms')
             return
 
-        if self.agent.map_walk[self.s_goal_idx] >= TILE_BLOCK:
+        if self.agent.map_walk[self.s_goal_idx] >= WALK_BLOCK:
             self.changed_cells.clear()
             end = time.perf_counter_ns()
             print(f'd star lite replan() took: {(end - start) / 1_000_000:.4f} ms')
@@ -1292,12 +1342,12 @@ class DStarLite:
             print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
-        if self.rhs[self.s_start_idx] >= TILE_BLOCK or self.agent.map_walk[self.s_goal_idx] >= TILE_BLOCK:
+        if self.rhs[self.s_start_idx] >= WALK_BLOCK or self.agent.map_walk[self.s_goal_idx] >= WALK_BLOCK:
             end = time.perf_counter_ns()
             print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
             return Direction.CENTRE
 
-        best_cost = TILE_BLOCK
+        best_cost = WALK_BLOCK
         best_dir = Direction.CENTRE
 
         # Still need current Position to get coordinates for Direction calculation
@@ -1311,7 +1361,7 @@ class DStarLite:
 
         for neighbor_idx in self.neighbors[self.s_start_idx]:
             cost = map_walk[neighbor_idx]
-            if cost < TILE_BLOCK:
+            if cost < WALK_BLOCK:
                 neighbor_cost = min(g[neighbor_idx], rhs[neighbor_idx])
                 total = cost + neighbor_cost
                 if total < best_cost:
@@ -1322,7 +1372,7 @@ class DStarLite:
                     dx, dy = nx - curr_x, ny - curr_y
 
                     # Use dictionary lookup for direction
-                    best_dir = _DIRECTION_MAP.get((dx, dy), Direction.CENTRE)
+                    best_dir = _CHEBYSHEV_DICT.get((dx, dy), Direction.CENTRE)
 
         end = time.perf_counter_ns()
         print(f'd star lite get_next_direction() took: {(end - start) / 1_000_000:.4f} ms')
@@ -1335,10 +1385,33 @@ class DStarLite:
             end = time.perf_counter_ns()
             print(f'd star lite has_path() took: {(end - start) / 1_000_000:.4f} ms')
             return False
-        ret = self.rhs[self.s_start_idx] < TILE_BLOCK
+        ret = self.rhs[self.s_start_idx] < WALK_BLOCK
         end = time.perf_counter_ns()
         print(f'd star lite has_path() took: {(end - start) / 1_000_000:.4f} ms')
         return ret
+
+
+TRANS_UNKNOWN: float = 12
+
+# manhattan direction lookup dictionary for (dx, dy) -> Direction
+_MANHATTAN_DICT: dict[tuple[int, int], Direction] = {
+    (0, -1): Direction.NORTH,
+    (0, 1): Direction.SOUTH,
+    (1, 0): Direction.EAST,
+    (-1, 0): Direction.WEST,
+}
+
+
+class LPAStar:
+    agent: 'BuilderAgent'
+    def __init__(self, agent: 'BuilderAgent'):
+        time_init_start = time.perf_counter_ns()
+
+        self.agent = agent
+
+        time_init_end = time.perf_counter_ns()
+
+        print(f'd star lite __init__() took: {(time_init_end - time_init_start) / 1_000_000:.4f} ms')
 
 
 class Action(ABC):
@@ -1363,7 +1436,7 @@ class Explore(Action):
                 self.goal == -1 or
                 20 < agent.round - self.since or
                 agent.position == self.goal or
-                agent.map_walk[self.goal] == TILE_BLOCK
+                agent.map_walk[self.goal] == WALK_BLOCK
         ):
             # Todo: maybe frame the new position to be in medium range from the current position
             # such that it can be reached realistically
@@ -1405,7 +1478,6 @@ class RepairHarvester(Action):
         return False
 
 
-DIST_INF = 10_000_000
 
 ORE_NOTHING = 0
 ORE_TI = 1
@@ -1444,7 +1516,8 @@ class BuilderAgent(DefaultAgent):
     core_enemy_pos: int
     core_enemy_tiles: list[int]
     map_walk: array.array
-    map_dist: array.array
+    map_ti_trans: array.array
+    map_connected: array.array
     map_ore: array.array
     ti_finished: set[int]
     ti_pending: set[int]
@@ -1462,8 +1535,9 @@ class BuilderAgent(DefaultAgent):
         self.core_enemy_pos = -1
         self.core_enemy_tiles = []
 
-        self.map_walk = array.array('d', [TILE_UNKNOWN] * self.size)
-        self.map_dist = array.array('i', [DIST_INF] * self.size)  # Todo: distance map
+        self.map_walk = array.array('d', [WALK_UNKNOWN] * self.size)
+        self.map_ti_trans = array.array('d', [TRANS_UNKNOWN] * self.size)
+        self.map_connected = array.array('b', [False] * self.size)
         self.map_ore = array.array('i', [ORE_NOTHING] * self.size)
 
         self.ti_finished = set()
@@ -1520,8 +1594,8 @@ class BuilderAgent(DefaultAgent):
         position = self.position
         print(f'move from {idx_to_pos(position, self.width)} to {idx_to_pos(target_idx, self.width)}')
 
-        if self.map_walk[target_idx] == TILE_BLOCK:
-            self.map_walk[target_idx] = TILE_UNKNOWN
+        if self.map_walk[target_idx] == WALK_BLOCK:
+            self.map_walk[target_idx] = WALK_UNKNOWN
             self.dstar.update_cell(target_idx)
 
         direction = self.greedy_best_first_search(target_idx)
@@ -1558,7 +1632,7 @@ class BuilderAgent(DefaultAgent):
             return Direction.CENTRE
 
         map_walk  = self.map_walk       # array.array – agent attribute confirmed
-        neighbors = self.neighbors      # list[list[int]] – precomputed by DefaultAgent.__init__
+        neighbors = self.neighbors_chebyshev      # list[list[int]] – precomputed by DefaultAgent.__init__
         width     = self.width
 
         tx = target_idx % width
@@ -1570,7 +1644,7 @@ class BuilderAgent(DefaultAgent):
         visited: set[int] = {start}
 
         for nb in neighbors[start]:
-            if map_walk[nb] < TILE_BLOCK:
+            if map_walk[nb] < WALK_BLOCK:
                 visited.add(nb)
                 nx = nb % width
                 ny = nb // width
@@ -1591,10 +1665,10 @@ class BuilderAgent(DefaultAgent):
 
                 timer_end = time.perf_counter_ns()
                 print(f'greedy_bfs() took: {(timer_end - timer_start) / 1_000_000:.4f} ms')
-                return _DIRECTION_MAP.get((fnx - sx, fny - sy), Direction.CENTRE)
+                return _CHEBYSHEV_DICT.get((fnx - sx, fny - sy), Direction.CENTRE)
 
             for nb in neighbors[idx]:
-                if nb not in visited and map_walk[nb] < TILE_BLOCK:
+                if nb not in visited and map_walk[nb] < WALK_BLOCK:
                     visited.add(nb)
                     nx = nb % width
                     ny = nb // width
@@ -1608,7 +1682,7 @@ class BuilderAgent(DefaultAgent):
     def write_marker(self) -> None:
         ct = self.ct
 
-        neighbors = self.neighbors[self.position]
+        neighbors = self.neighbors_chebyshev[self.position]
         pos = None
         for idx in neighbors:
             neighbor = idx_to_pos(idx, self.width)
@@ -1658,7 +1732,7 @@ class BuilderAgent(DefaultAgent):
                 (marker_value >> M_ENEMY_CORE_SET[1]) & M_ENEMY_CORE_SET[0]
         ):
             self.core_enemy_pos = (marker_value >> M_ENEMY_CORE_POS[1]) & M_ENEMY_CORE_POS[0]
-            self.core_enemy_tiles = self.neighbors[self.core_enemy_pos]
+            self.core_enemy_tiles = self.neighbors_chebyshev[self.core_enemy_pos]
             print(f'updated enemy core: {idx_to_pos(self.core_enemy_pos, self.width)}')
 
         # self.dummy1 = (packed >> MARKER_DUMMY1[1]) & MARKER_DUMMY1[0]
@@ -1685,7 +1759,9 @@ class BuilderAgent(DefaultAgent):
 
         enemy_core_pos = self.core_enemy_pos
 
-        neighbors = self.neighbors
+        neighbors = self.neighbors_chebyshev
+
+        # Todo: reset map_walk tiles where a bb was on last turn to walk again
 
         for pos in ct.get_nearby_tiles(): # do much more in this loop because it has fewer iterations
             idx = pos.y * width + pos.x
@@ -1700,17 +1776,17 @@ class BuilderAgent(DefaultAgent):
 
             # movement related:
             if passable:
-                walk = TILE_WALK
+                walk = WALK_PASS
             elif bb is not None:
-                walk = TILE_BLOCK
+                walk = WALK_BLOCK
             elif empty:
-                walk = TILE_EMPTY
+                walk = WALK_EMPTY
             elif env is Environment.WALL:
-                walk = TILE_BLOCK
+                walk = WALK_BLOCK
             elif building_id is not None:
-                walk = TILE_BLOCK
+                walk = WALK_BLOCK
             else:
-                walk = TILE_UNKNOWN
+                walk = WALK_UNKNOWN
 
             if walk != map_walk[idx]:
                 dstar_update(idx)
