@@ -1025,7 +1025,8 @@ class DefaultAgent(ABC, Agent):
         _core = ct.get_nearby_buildings(1)
         _core = ct.get_position(_core[0])
         self.core_pos = pos_to_idx(_core, self.width)
-        self.core_tiles = self.neighbors_chebyshev[self.core_pos]
+        # 3x3 core footprint
+        self.core_tiles = [self.core_pos] + self.neighbors_chebyshev[self.core_pos]
         self.turn_last_completed = None
 
         _r = ct.get_global_resources() # Todo: replace through attributes for each resource no object churn
@@ -1393,6 +1394,7 @@ class DStarLite:
 
 TRANS_PASS: float = 1.0
 TRANS_EMPTY: float = 3.0
+TRANS_BRIDGE: float = 20.0
 TRANS_UNKNOWN: float = 4.0
 TRANS_BLOCK: float = 10_000_000.0
 
@@ -1454,7 +1456,8 @@ class LPAStar:
         if self.s_source_idx == -1 or not self.U:
             return
 
-        # Re-key all vertices in the priority queue because the heuristic changed
+        # Re-key all vertices in the priority queue because the heuristic changed.
+        # We must collect the valid nodes first using the old in_queue for staleness check.
         old_U = self.U
         self.U = []
         nodes = set()
@@ -1463,6 +1466,7 @@ class LPAStar:
             if in_queue[u_idx] == (k1, k2):
                 nodes.add(u_idx)
 
+        # Then clear in_queue before re-pushing with new keys.
         self.in_queue = [None] * self.size
         for u_idx in nodes:
             self._push_vertex(u_idx, self._calculate_key(u_idx))
@@ -1522,7 +1526,12 @@ class LPAStar:
         # If u is empty, we can build a new connection
         u_trans = self.agent.map_ti_trans[u_idx]
         if u_trans == TRANS_EMPTY:
-            return TRANS_EMPTY
+            # Check if v is a bridge neighbor
+            # We can use manhattan neighbors to check if it's a bridge move.
+            # (assuming u and v are neighbors in either manhattan or bridge lists)
+            if v_idx in self.agent.neighbors_manhattan[u_idx]:
+                return TRANS_EMPTY
+            return TRANS_BRIDGE
         elif u_trans == TRANS_UNKNOWN:
             return TRANS_UNKNOWN
             
@@ -1537,6 +1546,7 @@ class LPAStar:
 
     def _update_vertex(self, u_idx: int) -> None:
         """Update a vertex's rhs value and its position in the priority queue."""
+        # Note: _calculate_rhs correctly guards core-connected tiles with rhs = 0.0.
         self.rhs[u_idx] = self._calculate_rhs(u_idx)
 
         g_val = self.g[u_idx]
@@ -1573,14 +1583,15 @@ class LPAStar:
 
             if g[u_idx] > rhs[u_idx]:
                 g[u_idx] = rhs[u_idx]
-                # Predecessors of u_idx are tiles that can reach u_idx.
-                # In Manhattan and Bridge offsets, neighbor relations are symmetric.
+                # Predecessors of u_idx are tiles v such that cost(v, u_idx) might have changed.
+                # In this grid, any neighbor can potentially point to u_idx.
                 for s_idx in self.agent.neighbors_manhattan[u_idx]:
                     self._update_vertex(s_idx)
                 for s_idx in self.agent.neighbors_bridge[u_idx]:
                     self._update_vertex(s_idx)
             else:
                 g[u_idx] = TRANS_BLOCK
+                # When g[u_idx] increases, we must update u_idx itself and all its predecessors.
                 self._update_vertex(u_idx)
                 for s_idx in self.agent.neighbors_manhattan[u_idx]:
                     self._update_vertex(s_idx)
@@ -1590,6 +1601,7 @@ class LPAStar:
     def initialize(self, source_idx: int) -> None:
         """Initial compute of the shortest path from the goal (core-connected network) to the source (harvester)."""
         self.reset()
+        # s_source_idx must be set before _calculate_key is called (via _push_vertex).
         self.s_source_idx = source_idx
 
         # All core-connected tiles are starts
@@ -1610,7 +1622,8 @@ class LPAStar:
         
         if not self.changed_cells:
             # If source changed but no cells changed, we might still need to compute
-            if self.rhs[self.s_source_idx] != self.g[self.s_source_idx] or self.U:
+            # if the source is not yet consistent.
+            if self.rhs[self.s_source_idx] != self.g[self.s_source_idx]:
                 self._compute_shortest_path()
             return
 
@@ -1638,7 +1651,9 @@ class LPAStar:
 
     def get_next_direction(self, from_idx: int) -> Direction:
         """Follow the gradient back to the core-connected network."""
-        if self.g[from_idx] >= TRANS_BLOCK:
+        g = self.g
+        rhs = self.rhs
+        if min(g[from_idx], rhs[from_idx]) >= TRANS_BLOCK:
             return Direction.CENTRE
 
         best_val = TRANS_BLOCK
@@ -1648,18 +1663,21 @@ class LPAStar:
         # Manhattan steps
         for nb in self.agent.neighbors_manhattan[from_idx]:
             cost = self._get_edge_cost(from_idx, nb)
-            val = cost + self.g[nb]
+            if cost >= TRANS_BLOCK:
+                continue
+            val = cost + min(g[nb], rhs[nb])
             if val < best_val:
                 best_val = val
                 nx, ny = nb % self.width, nb // self.width
                 dx, dy = nx - curr_pos.x, ny - curr_pos.y
                 best_dir = _MANHATTAN_DICT.get((dx, dy), Direction.CENTRE)
         
-        # Bridge steps (currently returns CENTRE as it's not a single step move)
-        # Todo: Return target position or special action for bridges
+        # Bridge steps
         for nb in self.agent.neighbors_bridge[from_idx]:
             cost = self._get_edge_cost(from_idx, nb)
-            val = cost + self.g[nb]
+            if cost >= TRANS_BLOCK:
+                continue
+            val = cost + min(g[nb], rhs[nb])
             if val < best_val:
                 best_val = val
                 best_dir = Direction.CENTRE # Placeholder for bridge
@@ -1670,7 +1688,7 @@ class LPAStar:
         """Check if a valid path exists to the source."""
         if self.s_source_idx == -1:
             return False
-        return self.g[self.s_source_idx] < TRANS_BLOCK
+        return min(self.g[self.s_source_idx], self.rhs[self.s_source_idx]) < TRANS_BLOCK
 
 
 class Action(ABC):
@@ -2002,7 +2020,7 @@ class BuilderAgent(DefaultAgent):
                 (marker_value >> M_ENEMY_CORE_SET[1]) & M_ENEMY_CORE_SET[0]
         ):
             self.core_enemy_pos = (marker_value >> M_ENEMY_CORE_POS[1]) & M_ENEMY_CORE_POS[0]
-            self.core_enemy_tiles = self.neighbors_chebyshev[self.core_enemy_pos]
+            self.core_enemy_tiles = [self.core_enemy_pos] + self.neighbors_chebyshev[self.core_enemy_pos]
             print(f'updated enemy core: {idx_to_pos(self.core_enemy_pos, self.width)}')
 
         # self.dummy1 = (packed >> MARKER_DUMMY1[1]) & MARKER_DUMMY1[0]
@@ -2076,6 +2094,7 @@ class BuilderAgent(DefaultAgent):
                     target_pos = ct.get_bridge_target(building_id)
                     new_target = pos_to_idx(target_pos, width)
             
+            pointer_changed = False
             if old_target != new_target:
                 if old_target != -1:
                     if old_target in rev_pointer:
@@ -2087,7 +2106,7 @@ class BuilderAgent(DefaultAgent):
                         rev_pointer[new_target] = set()
                     rev_pointer[new_target].add(idx)
                 map_ti_pointer[idx] = new_target
-                lpa_update(idx)
+                pointer_changed = True
 
             # node-based trans costs:
             if empty:
@@ -2095,11 +2114,11 @@ class BuilderAgent(DefaultAgent):
             elif building_type in (EntityType.CONVEYOR, EntityType.BRIDGE) and building_team == our_team:
                 trans = TRANS_PASS
             elif building_type == EntityType.CORE and building_team == our_team:
-                trans = 0.0
+                trans = TRANS_PASS
             else:
                 trans = TRANS_BLOCK
 
-            if trans != map_ti_trans[idx]:
+            if pointer_changed or trans != map_ti_trans[idx]:
                 lpa_update(idx)
                 map_ti_trans[idx] = trans
 
@@ -2126,32 +2145,32 @@ class BuilderAgent(DefaultAgent):
             ):
                 # we query the buildings pos because the core is at idx but its center position can be different.
                 self.core_enemy_pos = pos_to_idx(ct.get_position(building_id), width)
-                self.core_enemy_tiles = neighbors[self.core_enemy_pos]
+                self.core_enemy_tiles = [self.core_enemy_pos] + neighbors[self.core_enemy_pos]
 
         # Recalculate core-connectivity (BFS)
-        new_conn = {}
-        core_seeds = [self.core_pos] + self.core_tiles
+        old_conn = self.dict_ti_conn
+        self.dict_ti_conn = {}
+        core_seeds = self.core_tiles
         queue = deque()
         for s_idx in core_seeds:
-            if s_idx not in new_conn:
-                new_conn[s_idx] = True
+            if s_idx not in self.dict_ti_conn:
+                self.dict_ti_conn[s_idx] = True
+                lpa_update(s_idx) # Ensure core tiles are updated if they were not before
                 queue.append(s_idx)
         
         while queue:
             u = queue.popleft()
             if u in rev_pointer:
                 for v in rev_pointer[u]:
-                    if v not in new_conn:
-                        new_conn[v] = True
+                    if v not in self.dict_ti_conn:
+                        self.dict_ti_conn[v] = True
                         lpa_update(v)
                         queue.append(v)
         
         # Check for tiles that lost connectivity
-        for i in self.dict_ti_conn:
-            if i not in new_conn:
+        for i in old_conn:
+            if i not in self.dict_ti_conn:
                 lpa_update(i)
-        
-        self.dict_ti_conn = new_conn
 
 
 BB_COUNT_MAX = 3
