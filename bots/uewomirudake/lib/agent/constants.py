@@ -138,17 +138,24 @@ The following code automatically prevents
 surrendering early in submissions.
 """
 
-import os
 import sys
+from pathlib import Path
 
 SURRENDER_AT_TURN: int = 1e6
 
 try:
-    module_dir = os.path.join(os.getcwd(), "./bots/exclude")
-    sys.path.insert(0, module_dir)
+    exclude_module_dir: str | None = None
+    for parent in Path(__file__).resolve().parents:
+        candidate_dir = parent / "bots" / "exclude"
+        if (candidate_dir / "exclude.py").exists():
+            exclude_module_dir = str(candidate_dir)
+            break
 
-    import exclude
+    if exclude_module_dir is not None:
+        sys.path.insert(0, exclude_module_dir)
 
-    SURRENDER_AT_TURN: int = exclude.SURRENDER_AT_TURN
+        import exclude
+
+        SURRENDER_AT_TURN = exclude.SURRENDER_AT_TURN
 except ImportError:
     pass

@@ -29,7 +29,7 @@ class CoreAgent(Agent):
 
     def u_handler(self):
         if self.ct.get_current_round() >= SURRENDER_AT_TURN:
-            self.ct.self_destruct()
+            self.ct.resign()
             return True
         self.u_convert_axionite()
         self.u_spawn_initial_bb()
