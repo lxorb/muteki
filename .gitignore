@@ -47,3 +47,4 @@ replay_*.json
 # local test bot
 /src/bots/test_bot.py
 /bots/test_bot/
+/I have this grid based game where i have a player.md
