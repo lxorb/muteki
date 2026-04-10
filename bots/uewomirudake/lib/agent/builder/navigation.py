@@ -692,10 +692,12 @@ class BuilderNavigationMixin:
         If exactly one own supplier or harvester currently feeds this tile, do
         not face back toward that feeder. Among the remaining directions,
         prefer facings that can cover the enemy core, then more enemy turrets,
-        then more own conveyors or bridges, then more enemy buildings.
+        then more enemy builder bots, then more own conveyors or bridges, then
+        more enemy buildings.
         """
         feeder_directions: list[Direction] = []
         enemy_turret_tiles = []
+        enemy_builder_tiles = []
         own_supplier_tiles = []
         enemy_building_tiles = []
 
@@ -733,6 +735,13 @@ class BuilderNavigationMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
+        for tile in self.map.tiles_in_vision:
+            if tile.bot.id is not None and tile.bot.team != self.map.own_team:
+                enemy_builder_tiles.append(tile)
+
+            if self.round_stopwatch.check_overtime():
+                break
+
         blocked_direction = (
             feeder_directions[0] if len(feeder_directions) == 1 else None
         )
@@ -755,6 +764,7 @@ class BuilderNavigationMixin:
                     direction,
                     enemy_core_tiles,
                     enemy_turret_tiles,
+                    enemy_builder_tiles,
                     own_supplier_tiles,
                     enemy_building_tiles,
                     direction_order,
@@ -775,6 +785,7 @@ class BuilderNavigationMixin:
         direction: Direction,
         enemy_core_tiles,
         enemy_turret_tiles,
+        enemy_builder_tiles,
         own_supplier_tiles,
         enemy_building_tiles,
         direction_order: dict[Direction, int],
@@ -801,6 +812,18 @@ class BuilderNavigationMixin:
                 GameConstants.SENTINEL_VISION_RADIUS_SQ,
             ):
                 enemy_turret_count += 1
+            if self.round_stopwatch.check_overtime():
+                break
+
+        enemy_builder_count = 0
+        for target_tile in enemy_builder_tiles:
+            if self.map.u_sentinel_covers_target(
+                pos,
+                direction,
+                target_tile.position,
+                GameConstants.SENTINEL_VISION_RADIUS_SQ,
+            ):
+                enemy_builder_count += 1
             if self.round_stopwatch.check_overtime():
                 break
 
@@ -832,6 +855,7 @@ class BuilderNavigationMixin:
             (
                 0 if can_target_enemy_core else 1,
                 -enemy_turret_count,
+                -enemy_builder_count,
                 -own_supplier_count,
                 -enemy_building_count,
                 direction_order[direction],
