@@ -611,77 +611,92 @@ class Map:
         if self.symmetry_mode is not None:
             return
 
-        if not self.newly_seen_tiles_in_vision:
+        newly_seen_tiles = self.newly_seen_tiles_in_vision
+        if not newly_seen_tiles:
             return
 
-        rotation_possible = SymmetryMode.ROTATION in self.symmetry_mode_candidates
-        mirror_x_possible = SymmetryMode.MIRROR_X in self.symmetry_mode_candidates
-        mirror_y_possible = SymmetryMode.MIRROR_Y in self.symmetry_mode_candidates
+        symmetry_mode_candidates = self.symmetry_mode_candidates
+        rotation_possible = SymmetryMode.ROTATION in symmetry_mode_candidates
+        mirror_x_possible = SymmetryMode.MIRROR_X in symmetry_mode_candidates
+        mirror_y_possible = SymmetryMode.MIRROR_Y in symmetry_mode_candidates
+        original_rotation_possible = rotation_possible
+        original_mirror_x_possible = mirror_x_possible
+        original_mirror_y_possible = mirror_y_possible
 
-        for tile in self.newly_seen_tiles_in_vision:
-            x = tile.position.x
-            y = tile.position.y
+        possible_count = (
+            int(rotation_possible) + int(mirror_x_possible) + int(mirror_y_possible)
+        )
+        width_minus_1 = self.width - 1
+        height_minus_1 = self.height - 1
+        index_stride = self.INDEX_STRIDE
+        tiles_by_index = self.tiles_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+        core_entity_type = EntityType.CORE
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+
+        for tile in newly_seen_tiles:
+            tile_index = tile.index
+            x = index_x_by_index[tile_index]
+            y = index_y_by_index[tile_index]
             tile_environment = tile.environment
-            tile_is_core = tile.building.entity_type == EntityType.CORE
-
-            rotation_tile = None
-            mirror_x_tile = None
-            mirror_y_tile = None
+            tile_is_core = tile.building.entity_type == core_entity_type
             has_known_symmetric_tile = False
 
             if rotation_possible:
-                rotation_tile = self.u_get_pos_tile(
-                    Position(self.width - 1 - x, self.height - 1 - y)
-                )
-                has_known_symmetric_tile = rotation_tile.environment is not None
+                rotation_idx = (width_minus_1 - x) * index_stride + (height_minus_1 - y)
+                rotation_tile = tiles_by_index[rotation_idx]
+                rotation_environment = rotation_tile.environment
+                if rotation_environment is not None:
+                    has_known_symmetric_tile = True
+                    if tile_environment != rotation_environment or (
+                        tile_is_core
+                        != (rotation_tile.building.entity_type == core_entity_type)
+                    ):
+                        rotation_possible = False
+                        possible_count -= 1
 
             if mirror_x_possible:
-                mirror_x_tile = self.u_get_pos_tile(Position(x, self.height - 1 - y))
-                has_known_symmetric_tile = (
-                    has_known_symmetric_tile or mirror_x_tile.environment is not None
-                )
+                mirror_x_idx = x * index_stride + (height_minus_1 - y)
+                mirror_x_tile = tiles_by_index[mirror_x_idx]
+                mirror_x_environment = mirror_x_tile.environment
+                if mirror_x_environment is not None:
+                    has_known_symmetric_tile = True
+                    if tile_environment != mirror_x_environment or (
+                        tile_is_core
+                        != (mirror_x_tile.building.entity_type == core_entity_type)
+                    ):
+                        mirror_x_possible = False
+                        possible_count -= 1
 
             if mirror_y_possible:
-                mirror_y_tile = self.u_get_pos_tile(Position(self.width - 1 - x, y))
-                has_known_symmetric_tile = (
-                    has_known_symmetric_tile or mirror_y_tile.environment is not None
-                )
+                mirror_y_idx = (width_minus_1 - x) * index_stride + y
+                mirror_y_tile = tiles_by_index[mirror_y_idx]
+                mirror_y_environment = mirror_y_tile.environment
+                if mirror_y_environment is not None:
+                    has_known_symmetric_tile = True
+                    if tile_environment != mirror_y_environment or (
+                        tile_is_core
+                        != (mirror_y_tile.building.entity_type == core_entity_type)
+                    ):
+                        mirror_y_possible = False
+                        possible_count -= 1
 
             if not has_known_symmetric_tile:
                 continue
 
-            if rotation_possible:
-                if rotation_tile.environment is not None and (
-                    tile_environment != rotation_tile.environment
-                    or tile_is_core
-                    != (rotation_tile.building.entity_type == EntityType.CORE)
-                ):
-                    rotation_possible = False
-
-            if mirror_x_possible:
-                if mirror_x_tile.environment is not None and (
-                    tile_environment != mirror_x_tile.environment
-                    or tile_is_core
-                    != (mirror_x_tile.building.entity_type == EntityType.CORE)
-                ):
-                    mirror_x_possible = False
-
-            if mirror_y_possible:
-                if mirror_y_tile.environment is not None and (
-                    tile_environment != mirror_y_tile.environment
-                    or tile_is_core
-                    != (mirror_y_tile.building.entity_type == EntityType.CORE)
-                ):
-                    mirror_y_possible = False
-
-            if (
-                int(rotation_possible) + int(mirror_x_possible) + int(mirror_y_possible)
-                <= 1
-            ):
+            if possible_count <= 1:
                 break
 
-            if self.round_stopwatch.check_overtime_interval():
+            if check_overtime_interval():
                 break
+
+        if (
+            rotation_possible == original_rotation_possible
+            and mirror_x_possible == original_mirror_x_possible
+            and mirror_y_possible == original_mirror_y_possible
+        ):
+            return
 
         new_symmetry_mode_candidates = []
         if rotation_possible:
@@ -691,12 +706,9 @@ class Map:
         if mirror_y_possible:
             new_symmetry_mode_candidates.append(SymmetryMode.MIRROR_Y)
 
-        if new_symmetry_mode_candidates == self.symmetry_mode_candidates:
-            return
-
         self.symmetry_mode_candidates = new_symmetry_mode_candidates
-        if len(self.symmetry_mode_candidates) == 1:
-            self.symmetry_mode = self.symmetry_mode_candidates[0]
+        if possible_count == 1:
+            self.symmetry_mode = new_symmetry_mode_candidates[0]
 
         self.enemy_core_center_pos_candidates = [
             (mode, symmetric_location)
