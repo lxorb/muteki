@@ -1,5 +1,5 @@
-import time
 import itertools
+import time
 
 
 class Stopwatch:
@@ -35,8 +35,8 @@ class Stopwatch:
         """
         print(f"{self.name} - Time elapsed")
         for t1, t2 in itertools.pairwise(self.lap_times):
-            elapsed = ((t2[0] - t1[0]) // 100000) / 10
-            print(f"|- {t2[1]}: {elapsed} ms")
+            elapsed = (t2[0] - t1[0]) / 1_000_000
+            print(f"|- {t2[1]}: {elapsed:.2f} ms")
 
-        total_elapsed = ((self.lap_times[-1][0] - self.lap_times[0][0]) // 100000) / 10
-        print(f"Σ = {total_elapsed} ms")
+        total_elapsed = (self.lap_times[-1][0] - self.lap_times[0][0]) / 1_000_000
+        print(f"Σ = {total_elapsed:.2f} ms")

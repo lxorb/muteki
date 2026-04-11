@@ -422,12 +422,9 @@ class Map:
         self.stopwatch.start()
 
         self._reset_turn_state()
-        self.stopwatch.lap("Reset turn state")
-
         self.tiles_in_vision = [
             self.u_get_pos_tile(pos) for pos in self.ct.get_nearby_tiles()
         ]
-        self.stopwatch.lap("Nearby tiles")
 
         for unit_id in self.ct.get_nearby_units():
             if self.ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
@@ -435,13 +432,12 @@ class Map:
             pos = self.ct.get_position(unit_id)
             if self.u_is_in_bounds(pos):
                 self.visible_builder_bot_ids_by_index[self.u_to_index(pos)] = unit_id
-        self.stopwatch.lap("Nearby units")
 
         for building_id in self.ct.get_nearby_buildings():
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
                 self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
-        self.stopwatch.lap("Nearby buildings")
+        self.stopwatch.lap("Reset + nearby queries")
 
         processed_tiles_in_vision = []
         for tile in self.tiles_in_vision:
@@ -456,8 +452,6 @@ class Map:
         self.stopwatch.lap("Tile attributes")
 
         self.u_update_visible_map_caches()
-
-        self.stopwatch.lap("Visible caches")
 
         if self.own_core_center_pos is None:
             self.u_calc_core_center_positions()
@@ -500,6 +494,7 @@ class Map:
 
     def u_update_visible_map_caches(self) -> None:
         self.u_update_symmetry_from_visible_tiles()
+        self.stopwatch.lap("Visible caches: symmetry")
 
         known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
         known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
@@ -570,13 +565,17 @@ class Map:
             if self.round_stopwatch.check_overtime_interval():
                 break
 
+        self.stopwatch.lap("Visible caches: classify")
+
         self.known_accessible_titanium_indices = sorted(
             known_accessible_titanium_indices
         )
         self.known_accessible_axionite_indices = sorted(
             known_accessible_axionite_indices
         )
+        self.stopwatch.lap("Visible caches: accessible ore")
         self.u_update_frontier_expand_cache()
+        self.stopwatch.lap("Visible caches: frontier")
 
     def u_update_frontier_expand_cache(self) -> None:
         pending_indices = self.frontier_expand_pending_indices
