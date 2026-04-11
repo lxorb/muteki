@@ -7,6 +7,17 @@ from lib.map.types import SupplyChainLabel
 
 
 class BuilderStrategyMethodsMixin:
+    def s_heal_self(self):
+        """
+        Heal this builder when its HP drops to the low-health threshold.
+        """
+        current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        if current_tile.bot.id is None or current_tile.bot.hp is None:
+            return False
+        if current_tile.bot.hp > 16:
+            return False
+        return bool(self.u_heal_at(current_tile.position, move_towards=False))
+
     def s_convert_to_defender(self):
         from lib.agent.constants import HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER
 

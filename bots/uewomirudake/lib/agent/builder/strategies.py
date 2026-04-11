@@ -4,6 +4,7 @@ from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
 INITRES_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
@@ -30,6 +31,7 @@ INITRES_STRATEGY = [
 ]
 
 SCAVENGER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
@@ -60,6 +62,7 @@ SCAVENGER_STRATEGY = [
 ]
 
 HARASSMENT_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester, True, True, True),
     (BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
     (BuilderStrategyMethodsMixin.s_block_titanium, True),
@@ -71,6 +74,7 @@ HARASSMENT_STRATEGY = [
 
 # TODO
 FOUNDRY_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (BuilderStrategyMethodsMixin.s_insert_core_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_build_core_foundry, True, True),
@@ -104,6 +108,7 @@ FOUNDRY_STRATEGY = [
 ]
 
 DEFENDER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),

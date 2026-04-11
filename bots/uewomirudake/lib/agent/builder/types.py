@@ -153,6 +153,8 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
+    def s_heal_self(self) -> BuilderActionResult: ...
+
     def s_convert_to_defender(self) -> BuilderActionResult: ...
 
     def s_insert_core_splitter(
