@@ -431,6 +431,15 @@ class BuilderStrategyMethodsMixin:
         current_tile = self.map.u_get_pos_tile(current_pos)
         tiles_by_index = self.map.tiles_by_index
 
+        def clear_pending_harvester_target() -> None:
+            if self.pending_harvester_target_resource == resource:
+                self.pending_harvester_target_index = None
+                self.pending_harvester_target_resource = None
+
+        def remember_pending_harvester_target(tile_index: int) -> None:
+            self.pending_harvester_target_index = tile_index
+            self.pending_harvester_target_resource = resource
+
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_cardinal_positions(
                 pos,
@@ -639,6 +648,109 @@ class BuilderStrategyMethodsMixin:
                 return True
             return hold
 
+        def is_valid_harvester_target(target_tile) -> bool:
+            if target_tile.environment != resource:
+                return False
+            if not can_use_tile(target_tile):
+                return False
+            if target_tile.bot.id is not None and target_tile.position != current_pos:
+                return False
+            if target_tile.in_enemy_attack_range:
+                return False
+            if has_orthogonally_adjacent_enemy_building(target_tile.position):
+                return False
+            return not (
+                max_core_ore_direct_dist is not None
+                and target_tile.own_core_dist > max_core_ore_direct_dist
+            )
+
+        def try_progress_harvester_target(
+            target_tile,
+            require_surround: bool,
+        ) -> bool:
+            if require_surround:
+                empty_adjacent_tiles = get_empty_orthogonally_adjacent_tiles(
+                    target_tile.index
+                )
+                if empty_adjacent_tiles:
+                    surround_candidates: list[tuple[tuple[int, int, int], object]] = []
+                    for safe_order, adjacent_tile in enumerate(empty_adjacent_tiles):
+                        if (
+                            current_pos.distance_squared(adjacent_tile.position)
+                            > BUILDER_ACTION_RADIUS_SQ
+                        ):
+                            continue
+                        surround_candidates.append(
+                            (
+                                (
+                                    adjacent_tile.own_core_dist,
+                                    adjacent_tile.dist_to_self,
+                                    safe_order,
+                                ),
+                                adjacent_tile,
+                            )
+                        )
+
+                    if surround_candidates:
+                        _, surround_tile = min(surround_candidates)
+                        facing_direction = self.u_best_conveyor_orientation(
+                            surround_tile.position,
+                            resource,
+                            surround_target_pos=target_tile.position,
+                        )
+                        if facing_direction is not None and self.u_build_at(
+                            surround_tile.position,
+                            SURROUND_HARVESTER_ENTITY_TYPE,
+                            hold=hold,
+                            move_towards=move_towards,
+                            attack_enemy_passable=False,
+                            facing_direction=facing_direction,
+                        ):
+                            remember_pending_harvester_target(target_tile.index)
+                            return True
+
+                    if current_pos != target_tile.position:
+                        if not move_towards:
+                            return False
+                        moved = self.u_move_to(target_tile.position)
+                        if moved:
+                            remember_pending_harvester_target(target_tile.index)
+                        return moved
+
+            if self.u_build_at(
+                target_tile.position,
+                EntityType.HARVESTER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=attack_enemy_passable,
+            ):
+                if self.last_built_entity_type == EntityType.HARVESTER:
+                    clear_pending_harvester_target()
+                    self.harvesters_built += 1
+                    if can_still_move():
+                        discontinued_tile = get_discontinued_adjacent_supply_tile(
+                            target_tile
+                        )
+                        if discontinued_tile is not None:
+                            move_towards_tile(discontinued_tile)
+                else:
+                    remember_pending_harvester_target(target_tile.index)
+                return True
+
+            return False
+
+        pending_target_idx: int | None = None
+        if self.pending_harvester_target_resource == resource:
+            pending_target_idx = self.pending_harvester_target_index
+        if pending_target_idx is not None:
+            pending_target_tile = tiles_by_index[pending_target_idx]
+            if is_valid_harvester_target(pending_target_tile):
+                return try_progress_harvester_target(
+                    pending_target_tile,
+                    require_surround=True,
+                )
+            clear_pending_harvester_target()
+
         target_tile = None
         target_key = None
         for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
@@ -709,12 +821,16 @@ class BuilderStrategyMethodsMixin:
                         attack_enemy_passable=False,
                         facing_direction=facing_direction,
                     ):
+                        remember_pending_harvester_target(target_tile.index)
                         return True
 
                 if current_pos != target_tile.position:
                     if not move_towards:
                         return False
-                    return self.u_move_to(target_tile.position)
+                    moved = self.u_move_to(target_tile.position)
+                    if moved:
+                        remember_pending_harvester_target(target_tile.index)
+                    return moved
 
         if (
             current_tile.environment == resource
@@ -772,6 +888,7 @@ class BuilderStrategyMethodsMixin:
                         attack_enemy_passable=False,
                         facing_direction=supplier_target,
                     ):
+                        remember_pending_harvester_target(current_tile.index)
                         return True
                 elif supplier_type == EntityType.BRIDGE:
                     if self.u_build_at(
@@ -782,6 +899,7 @@ class BuilderStrategyMethodsMixin:
                         attack_enemy_passable=False,
                         target_pos=supplier_target,
                     ):
+                        remember_pending_harvester_target(current_tile.index)
                         next_direction = self.map.u_get_direction_between(
                             current_pos,
                             target_tile.position,
@@ -797,26 +915,13 @@ class BuilderStrategyMethodsMixin:
             and has_orthogonally_adjacent_supply_link(current_tile.index)
             and step_off_current_ore_tile()
         ):
+            remember_pending_harvester_target(current_tile.index)
             return True
 
-        if self.u_build_at(
-            target_tile.position,
-            EntityType.HARVESTER,
-            hold=hold,
-            move_towards=move_towards,
-            attack_enemy_passable=attack_enemy_passable,
-        ):
-            if self.last_built_entity_type == EntityType.HARVESTER:
-                self.harvesters_built += 1
-                if can_still_move():
-                    discontinued_tile = get_discontinued_adjacent_supply_tile(
-                        target_tile
-                    )
-                    if discontinued_tile is not None:
-                        move_towards_tile(discontinued_tile)
-            return True
-
-        return False
+        return try_progress_harvester_target(
+            target_tile,
+            require_surround=enforce_safe,
+        )
 
     def s_frontier_expand(self):
         """

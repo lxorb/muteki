@@ -25,6 +25,8 @@ class BuilderCommonSelf(Protocol):
     last_turn_completed: bool
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
+    pending_harvester_target_index: int | None
+    pending_harvester_target_resource: Environment | None
     harvesters_built: int
     last_built_entity_type: EntityType | None
 
