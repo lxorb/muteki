@@ -220,6 +220,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = True,
     ) -> BuilderActionResult: ...
 
+    def s_fix_harvester(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_destroy_hijacked_supplier(
         self,
         move_towards: bool = True,

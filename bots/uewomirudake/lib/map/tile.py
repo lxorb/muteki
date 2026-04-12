@@ -66,6 +66,8 @@ class TileBuilding:
     vision_radius_sq: int | None
     last_resource_onit_turn: int | None
     last_titanium_onit_turn: int | None
+    last_raw_axionite_onit_turn: int | None
+    last_refined_axionite_onit_turn: int | None
 
 
 class Tile:
@@ -84,6 +86,8 @@ class Tile:
             None,
             [],
             [],
+            None,
+            None,
             None,
             None,
             None,
@@ -247,6 +251,8 @@ class Tile:
             None,
             self.building.last_resource_onit_turn,
             self.building.last_titanium_onit_turn,
+            self.building.last_raw_axionite_onit_turn,
+            self.building.last_refined_axionite_onit_turn,
         )
         self.u_refresh_intrinsic_passability()
 
@@ -360,6 +366,12 @@ class Tile:
                 self.building.last_resource_onit_turn = self.map.current_round
                 if stored_resource == ResourceType.TITANIUM:
                     self.building.last_titanium_onit_turn = self.map.current_round
+                elif stored_resource == ResourceType.RAW_AXIONITE:
+                    self.building.last_raw_axionite_onit_turn = self.map.current_round
+                elif stored_resource == ResourceType.REFINED_AXIONITE:
+                    self.building.last_refined_axionite_onit_turn = (
+                        self.map.current_round
+                    )
 
     def u_tracks_building_targets(self) -> bool:
         if self.building.entity_type in RESOURCE_TARGET_TYPES:

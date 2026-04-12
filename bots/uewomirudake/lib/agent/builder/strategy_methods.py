@@ -1096,6 +1096,141 @@ class BuilderStrategyMethodsMixin:
             )
         return False
 
+    def s_fix_harvester(self, move_towards: bool = True, hold: bool = True):
+        """
+        Rebuild a harvester-adjacent supplier when every adjacent supplier points
+        directly back into the harvester.
+
+        For each visible own harvester, consider only orthogonally adjacent own
+        supply-link tiles. If there is at least one such tile and all of them
+        target the harvester directly, choose the adjacent supplier with the
+        lowest own-core distance and rebuild it using the standard transport
+        supplier planner for the harvester's resource type.
+        """
+        current_pos = self.map.current_pos
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+        tiles_by_index = self.map.tiles_by_index
+
+        target_tile = None
+        target_supplier_type = None
+        target_supplier_target = None
+        target_key = None
+
+        for harvester_tile in dict.fromkeys(self.map.own_harvesters_in_vision):
+            if harvester_tile.last_seen_turn != current_round:
+                continue
+            if harvester_tile.building.team != own_team:
+                continue
+
+            resource = harvester_tile.environment
+            if resource not in {Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}:
+                continue
+
+            adjacent_supply_tiles = []
+            all_adjacent_supply_tiles_point_at_harvester = True
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                harvester_tile.index
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.building.team != own_team
+                    or adjacent_tile.building.entity_type not in SUPPLY_LINK_TYPES
+                ):
+                    continue
+
+                adjacent_supply_tiles.append(adjacent_tile)
+                if not any(
+                    target.index == harvester_tile.index
+                    for target in adjacent_tile.building.targets
+                ):
+                    all_adjacent_supply_tiles_point_at_harvester = False
+                    break
+
+            if (
+                not adjacent_supply_tiles
+                or not all_adjacent_supply_tiles_point_at_harvester
+            ):
+                continue
+
+            rebuild_tile = min(
+                adjacent_supply_tiles,
+                key=lambda tile: (
+                    tile.own_core_dist,
+                    tile.position.x,
+                    tile.position.y,
+                ),
+            )
+            if rebuild_tile.is_enemy_turret_target_tile:
+                continue
+            if rebuild_tile.bot.id is not None and rebuild_tile.position != current_pos:
+                continue
+
+            supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
+                rebuild_tile.position,
+                resource,
+            )
+            if supplier_type is None:
+                continue
+
+            key = (
+                0 if rebuild_tile.position == current_pos else 1,
+                rebuild_tile.dist_to_self,
+                rebuild_tile.own_core_dist,
+                rebuild_tile.index,
+            )
+            if target_key is None or key < target_key:
+                target_key = key
+                target_tile = rebuild_tile
+                target_supplier_type = supplier_type
+                target_supplier_target = supplier_target
+
+        if target_tile is None or target_supplier_type is None:
+            return False
+
+        if current_pos.distance_squared(target_tile.position) > BUILDER_ACTION_RADIUS_SQ:
+            if not move_towards:
+                return False
+            return self.u_move_to(target_tile.position)
+
+        titanium_cost, axionite_cost = getattr(
+            self.ct, f"get_{target_supplier_type.value}_cost"
+        )()
+        if self.map.titanium < titanium_cost or self.map.axionite < axionite_cost:
+            return hold
+
+        if self.ct.get_action_cooldown() != 0 or not self.ct.can_destroy(
+            target_tile.position
+        ):
+            return False
+
+        self.ct.destroy(target_tile.position)
+        target_tile.clear_building()
+
+        if target_supplier_type == EntityType.CONVEYOR:
+            return bool(
+                self.u_build_at(
+                    target_tile.position,
+                    target_supplier_type,
+                    hold=False,
+                    move_towards=False,
+                    attack_enemy_passable=False,
+                    facing_direction=target_supplier_target,
+                )
+            )
+        if target_supplier_type == EntityType.BRIDGE:
+            return bool(
+                self.u_build_at(
+                    target_tile.position,
+                    target_supplier_type,
+                    hold=False,
+                    move_towards=False,
+                    attack_enemy_passable=False,
+                    target_pos=target_supplier_target,
+                )
+            )
+        return False
+
     def s_destroy_hijacked_supplier(self, move_towards: bool = True):
         """
         Destroy the closest visible own harvester or supply-link tile that
