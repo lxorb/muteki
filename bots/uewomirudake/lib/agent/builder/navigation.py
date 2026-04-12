@@ -1325,10 +1325,7 @@ class BuilderNavigationMixin:
                     next_tile.position
                 ):
                     adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-                    if adjacent_tile.environment in {
-                        Environment.ORE_TITANIUM,
-                        Environment.ORE_AXIONITE,
-                    }:
+                    if adjacent_tile.environment == Environment.ORE_TITANIUM:
                         adjacent_resource_tiles.append(adjacent_tile)
 
                 if adjacent_resource_tiles:
