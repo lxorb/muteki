@@ -1907,12 +1907,13 @@ class BuilderStrategyMethodsMixin:
         Harassment step for advancing toward the enemy core.
 
         If the exact enemy core position is not known yet, move toward the
-        nearest remaining symmetry candidate instead.
+        nearest remaining symmetry candidate instead, using a single A* path
+        search.
         """
         enemy_core_center_pos = self.map.enemy_core_center_pos
 
         if enemy_core_center_pos is not None:
-            return bool(self.u_move_to(enemy_core_center_pos))
+            return bool(self.u_move_to_astar(enemy_core_center_pos))
 
         if (
             not self.map.enemy_core_center_pos_candidates
@@ -1920,21 +1921,18 @@ class BuilderStrategyMethodsMixin:
         ):
             return False
 
-        candidate_positions = {
-            pos for _, pos in self.map.enemy_core_center_pos_candidates
-        }
-        if not candidate_positions:
-            return False
-
-        for candidate_pos in sorted(
-            candidate_positions,
+        target_pos = min(
+            {
+                pos for _, pos in self.map.enemy_core_center_pos_candidates
+            },
             key=lambda pos: (
                 self.map.u_get_estimated_dist_to_self(pos),
                 pos.x,
                 pos.y,
             ),
-        ):
-            if self.u_move_to(candidate_pos):
-                return True
+            default=None,
+        )
+        if target_pos is None:
+            return False
 
-        return False
+        return bool(self.u_move_to_astar(target_pos))

@@ -127,6 +127,13 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         build_new_roads: bool = False,
     ) -> bool: ...
 
+    def u_move_to_astar(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = False,
+    ) -> bool: ...
+
     def u_attack_passable(
         self,
         pos: Position,

@@ -107,6 +107,7 @@ class Map:
         self.own_core_dist_manhattan_init_next_y = 0
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
+        self.path_heap_buffer: list[tuple[int, int, int, int, int, int]] = []
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.own_supply_link_target_indices_in_vision: set[int] = set()
@@ -115,6 +116,7 @@ class Map:
         self.enemy_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.path_seen_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.path_predecessor_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
+        self.path_cost_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.path_epoch = 0
         self.tiles_by_index: list[Tile] = [
             Tile(Position(x, y), self)
@@ -1862,6 +1864,144 @@ class Map:
                     return path
 
                 queue.append(adjacent_idx)
+
+        return []
+
+    def u_calculate_shortest_path_astar(
+        self,
+        source_pos: Position,
+        target_pos: Position,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> list[Tile]:
+        if not self.u_is_in_bounds(source_pos) or not self.u_is_in_bounds(target_pos):
+            return []
+
+        source_tile = self.u_get_pos_tile(source_pos)
+        target_tile = self.u_get_pos_tile(target_pos)
+        source_idx = source_tile.index
+        target_idx = target_tile.index
+        if source_idx == target_idx:
+            return [source_tile]
+
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        neighbor_count_by_index = self.neighbor_count_by_index
+        max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        active_mask_by_index = self.active_mask_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        seen_epoch_by_index = self.path_seen_epoch_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        path_cost_by_index = self.path_cost_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+
+        target_x = index_x_by_index[target_idx]
+        target_y = index_y_by_index[target_idx]
+
+        def heuristic(idx: int) -> int:
+            dx = abs(index_x_by_index[idx] - target_x)
+            dy = abs(index_y_by_index[idx] - target_y)
+            return dx if dx >= dy else dy
+
+        self.path_epoch += 1
+        path_epoch = self.path_epoch
+        frontier = self.path_heap_buffer
+        frontier.clear()
+
+        seen_epoch_by_index[source_idx] = path_epoch
+        predecessor_by_index[source_idx] = source_idx
+        path_cost_by_index[source_idx] = 0
+        heappush(
+            frontier,
+            (
+                heuristic(source_idx),
+                0,
+                self.u_get_own_core_dist_by_index(source_idx),
+                index_x_by_index[source_idx],
+                index_y_by_index[source_idx],
+                source_idx,
+            ),
+        )
+
+        while frontier:
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+            _, current_cost, _, _, _, current_idx = heappop(frontier)
+            if (
+                seen_epoch_by_index[current_idx] != path_epoch
+                or path_cost_by_index[current_idx] != current_cost
+            ):
+                continue
+
+            if current_idx == target_idx:
+                path = [target_tile]
+                walk_idx = current_idx
+
+                while walk_idx != source_idx:
+                    previous_idx = predecessor_by_index[walk_idx]
+                    if previous_idx == -1:
+                        break
+                    path.append(tiles_by_index[previous_idx])
+                    walk_idx = previous_idx
+
+                    if self.round_stopwatch.check_overtime_interval():
+                        break
+
+                path.reverse()
+                return path
+
+            neighbor_base = current_idx * max_neighbor_count
+            neighbor_count = neighbor_count_by_index[current_idx]
+            next_cost = current_cost + 1
+
+            for offset in range(neighbor_count):
+                adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[adjacent_idx]:
+                    continue
+                if (
+                    avoid_enemy_turrets
+                    and adjacent_idx != target_idx
+                    and enemy_turret_target_by_index[adjacent_idx]
+                ):
+                    continue
+                if (
+                    avoid_other_builder_bots
+                    and adjacent_idx != source_idx
+                    and adjacent_idx != target_idx
+                    and bot_present_by_index[adjacent_idx]
+                ):
+                    continue
+                if (
+                    adjacent_idx != target_idx
+                    and not intrinsic_passable_by_index[adjacent_idx]
+                ):
+                    continue
+                if (
+                    seen_epoch_by_index[adjacent_idx] == path_epoch
+                    and next_cost >= path_cost_by_index[adjacent_idx]
+                ):
+                    continue
+
+                predecessor_by_index[adjacent_idx] = current_idx
+                seen_epoch_by_index[adjacent_idx] = path_epoch
+                path_cost_by_index[adjacent_idx] = next_cost
+                adjacent_x = index_x_by_index[adjacent_idx]
+                adjacent_y = index_y_by_index[adjacent_idx]
+                heappush(
+                    frontier,
+                    (
+                        next_cost + heuristic(adjacent_idx),
+                        next_cost,
+                        self.u_get_own_core_dist_by_index(adjacent_idx),
+                        adjacent_x,
+                        adjacent_y,
+                        adjacent_idx,
+                    ),
+                )
 
         return []
 

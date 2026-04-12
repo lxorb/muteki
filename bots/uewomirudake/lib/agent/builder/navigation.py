@@ -1461,6 +1461,82 @@ class BuilderNavigationMixin:
 
         return False
 
+    def u_move_to_astar(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = True,
+    ) -> bool:
+        current_pos = self.map.current_pos
+        if current_pos == pos:
+            return False
+
+        shortest_path = self.map.u_calculate_shortest_path_astar(
+            current_pos,
+            pos,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+        )
+        if len(shortest_path) >= 2:
+            next_tile = shortest_path[1]
+            next_direction = self.map.u_get_direction_between(
+                current_pos,
+                next_tile.position,
+            )
+            if next_direction is not None and self.ct.can_move(next_direction):
+                self.ct.move(next_direction)
+                return True
+            if build_new_roads and self.ct.can_build_road(next_tile.position):
+                adjacent_resource_tiles = []
+                for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                    next_tile.position
+                ):
+                    adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                    if adjacent_tile.environment == Environment.ORE_TITANIUM:
+                        adjacent_resource_tiles.append(adjacent_tile)
+
+                if adjacent_resource_tiles:
+                    resource_candidates: list[Environment] = []
+                    for adjacent_tile in adjacent_resource_tiles:
+                        if (
+                            adjacent_tile.building.team == self.map.own_team
+                            and adjacent_tile.building.entity_type
+                            == EntityType.HARVESTER
+                            and adjacent_tile.environment not in resource_candidates
+                        ):
+                            resource_candidates.append(adjacent_tile.environment)
+                    for adjacent_tile in adjacent_resource_tiles:
+                        if adjacent_tile.environment not in resource_candidates:
+                            resource_candidates.append(adjacent_tile.environment)
+
+                    for resource in resource_candidates:
+                        facing_direction = self.u_best_conveyor_orientation(
+                            next_tile.position,
+                            resource,
+                        )
+                        if facing_direction is None:
+                            continue
+                        if self.ct.can_build_conveyor(
+                            next_tile.position,
+                            facing_direction,
+                        ):
+                            self.ct.build_conveyor(
+                                next_tile.position,
+                                facing_direction,
+                            )
+                            if next_direction is not None and self.ct.can_move(
+                                next_direction
+                            ):
+                                self.ct.move(next_direction)
+                            return True
+                    return False
+
+                self.ct.build_road(next_tile.position)
+                if next_direction is not None and self.ct.can_move(next_direction):
+                    self.ct.move(next_direction)
+                return True
+
+        return False
+
     def u_attack_passable(
         self,
         pos: Position,
