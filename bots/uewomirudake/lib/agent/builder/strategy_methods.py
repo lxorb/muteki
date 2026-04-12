@@ -38,6 +38,35 @@ _ENEMY_CORE_PATROL_OFFSETS = (
 
 
 class BuilderStrategyMethodsMixin:
+    def u_get_harvester_adjacent_supplier_build_plan(
+        self,
+        harvester_tile,
+        target_tile,
+        resource: Environment,
+    ) -> tuple[EntityType | None, Direction | Position | None]:
+        """
+        Return the supplier plan for a tile directly adjacent to `harvester_tile`.
+
+        Exactly one adjacent tile, chosen by
+        `map.u_get_harvester_best_supply_tile(...)`, is allowed to become the
+        transport lane. Every other adjacent tile becomes a defensive conveyor
+        that points back into the harvester.
+        """
+        best_supply_idx = self.map.u_get_harvester_best_supply_tile(harvester_tile.index)
+        if target_tile.index == best_supply_idx:
+            return self.u_get_transport_supplier_build_plan(
+                target_tile.position,
+                resource,
+            )
+
+        facing_direction = self.map.u_get_direction_between(
+            target_tile.position,
+            harvester_tile.position,
+        )
+        if facing_direction is None:
+            return (None, None)
+        return (EntityType.CONVEYOR, facing_direction)
+
     def s_heal_self(self):
         """
         Heal this builder when its HP drops to the low-health threshold.
@@ -346,32 +375,12 @@ class BuilderStrategyMethodsMixin:
             if best_empty_tile is None:
                 continue
 
-            if force_point_at_harvester:
-                facing_direction = self.map.u_get_direction_between(
-                    best_empty_tile.position,
-                    harvester_tile.position,
+            supplier_type, supplier_target = (
+                self.u_get_harvester_adjacent_supplier_build_plan(
+                    harvester_tile,
+                    best_empty_tile,
+                    resource,
                 )
-                if facing_direction is None:
-                    continue
-                candidate_entries.append(
-                    (
-                        (
-                            best_empty_tile.dist_to_self,
-                            best_empty_tile.own_core_dist,
-                            harvester_order,
-                            0,
-                            best_empty_tile.index,
-                        ),
-                        best_empty_tile.position,
-                        EntityType.CONVEYOR,
-                        facing_direction,
-                    )
-                )
-                continue
-
-            supplier_type, supplier_target = self.u_get_supplier_build_plan(
-                best_empty_tile.position,
-                resource,
             )
             if supplier_type is None or supplier_target is None:
                 continue
@@ -382,7 +391,7 @@ class BuilderStrategyMethodsMixin:
                         best_empty_tile.dist_to_self,
                         best_empty_tile.own_core_dist,
                         harvester_order,
-                        1,
+                        0 if force_point_at_harvester else 1,
                         best_empty_tile.index,
                     ),
                     best_empty_tile.position,
@@ -533,7 +542,7 @@ class BuilderStrategyMethodsMixin:
                 target_tile.position,
                 resource,
             )
-            if supplier_type is None:
+            if supplier_type is None or supplier_target is None:
                 continue
             if supplier_type == EntityType.CONVEYOR:
                 if self.u_build_at(
@@ -645,6 +654,30 @@ class BuilderStrategyMethodsMixin:
                 ):
                     empty_adjacent_tiles.append(adjacent_tile)
             return empty_adjacent_tiles
+
+        def get_harvester_safety_build_plan(
+            harvester_tile,
+            adjacent_tile,
+        ) -> tuple[EntityType | None, Direction | Position | None]:
+            supplier_type, supplier_target = (
+                self.u_get_harvester_adjacent_supplier_build_plan(
+                    harvester_tile,
+                    adjacent_tile,
+                    resource,
+                )
+            )
+            if supplier_type != EntityType.CONVEYOR:
+                return (supplier_type, supplier_target)
+            if adjacent_tile.environment != Environment.ORE_TITANIUM:
+                return (supplier_type, supplier_target)
+
+            harvester_direction = self.map.u_get_direction_between(
+                adjacent_tile.position,
+                harvester_tile.position,
+            )
+            if harvester_direction is not None and supplier_target == harvester_direction:
+                return (EntityType.BARRIER, None)
+            return (supplier_type, supplier_target)
 
         def can_use_tile(target_tile) -> bool:
             if target_tile.building.id is None:
@@ -874,21 +907,42 @@ class BuilderStrategyMethodsMixin:
 
                     if surround_candidates:
                         _, surround_tile = min(surround_candidates)
-                        facing_direction = self.u_best_conveyor_orientation(
-                            surround_tile.position,
-                            resource,
-                            surround_target_pos=target_tile.position,
+                        supplier_type, supplier_target = get_harvester_safety_build_plan(
+                            target_tile,
+                            surround_tile,
                         )
-                        if facing_direction is not None and self.u_build_at(
-                            surround_tile.position,
-                            SURROUND_HARVESTER_ENTITY_TYPE,
-                            hold=hold,
-                            move_towards=move_towards,
-                            attack_enemy_passable=False,
-                            facing_direction=facing_direction,
-                        ):
-                            remember_pending_harvester_target(target_tile.index)
-                            return True
+                        if supplier_type == EntityType.CONVEYOR:
+                            if self.u_build_at(
+                                surround_tile.position,
+                                supplier_type,
+                                hold=hold,
+                                move_towards=move_towards,
+                                attack_enemy_passable=False,
+                                facing_direction=supplier_target,
+                            ):
+                                remember_pending_harvester_target(target_tile.index)
+                                return True
+                        elif supplier_type == EntityType.BRIDGE:
+                            if self.u_build_at(
+                                surround_tile.position,
+                                supplier_type,
+                                hold=hold,
+                                move_towards=move_towards,
+                                attack_enemy_passable=False,
+                                target_pos=supplier_target,
+                            ):
+                                remember_pending_harvester_target(target_tile.index)
+                                return True
+                        elif supplier_type == EntityType.BARRIER:
+                            if self.u_build_at(
+                                surround_tile.position,
+                                supplier_type,
+                                hold=hold,
+                                move_towards=move_towards,
+                                attack_enemy_passable=False,
+                            ):
+                                remember_pending_harvester_target(target_tile.index)
+                                return True
 
                     if current_pos != target_tile.position:
                         if not move_towards:
@@ -989,21 +1043,42 @@ class BuilderStrategyMethodsMixin:
 
                 if road_candidates:
                     _, road_target_tile = min(road_candidates)
-                    facing_direction = self.u_best_conveyor_orientation(
-                        road_target_tile.position,
-                        resource,
-                        surround_target_pos=target_tile.position,
+                    supplier_type, supplier_target = get_harvester_safety_build_plan(
+                        target_tile,
+                        road_target_tile,
                     )
-                    if facing_direction is not None and self.u_build_at(
-                        road_target_tile.position,
-                        SURROUND_HARVESTER_ENTITY_TYPE,
-                        hold=hold,
-                        move_towards=move_towards,
-                        attack_enemy_passable=False,
-                        facing_direction=facing_direction,
-                    ):
-                        remember_pending_harvester_target(target_tile.index)
-                        return True
+                    if supplier_type == EntityType.CONVEYOR:
+                        if self.u_build_at(
+                            road_target_tile.position,
+                            supplier_type,
+                            hold=hold,
+                            move_towards=move_towards,
+                            attack_enemy_passable=False,
+                            facing_direction=supplier_target,
+                        ):
+                            remember_pending_harvester_target(target_tile.index)
+                            return True
+                    elif supplier_type == EntityType.BRIDGE:
+                        if self.u_build_at(
+                            road_target_tile.position,
+                            supplier_type,
+                            hold=hold,
+                            move_towards=move_towards,
+                            attack_enemy_passable=False,
+                            target_pos=supplier_target,
+                        ):
+                            remember_pending_harvester_target(target_tile.index)
+                            return True
+                    elif supplier_type == EntityType.BARRIER:
+                        if self.u_build_at(
+                            road_target_tile.position,
+                            supplier_type,
+                            hold=hold,
+                            move_towards=move_towards,
+                            attack_enemy_passable=False,
+                        ):
+                            remember_pending_harvester_target(target_tile.index)
+                            return True
 
                 if current_pos != target_tile.position:
                     if not move_towards:
@@ -1018,10 +1093,8 @@ class BuilderStrategyMethodsMixin:
             and not has_orthogonally_adjacent_supply_link(current_tile.index)
         ):
             replaceable_building_types = {EntityType.ROAD, EntityType.BARRIER}
-            supplier_plan_by_index: dict[
-                int, tuple[EntityType | None, Direction | Position | None]
-            ] = {}
             candidate_entries: list[tuple[tuple[int, int, int], int]] = []
+            harvester_tile = current_tile
 
             for safe_order, adjacent_idx in enumerate(
                 self.map.u_iter_cardinal_neighbor_indices(current_tile.index)
@@ -1037,11 +1110,10 @@ class BuilderStrategyMethodsMixin:
                 ):
                     continue
 
-                supplier_plan_by_index[adjacent_idx] = self.u_get_supplier_build_plan(
-                    adjacent_tile.position,
-                    resource,
+                supplier_type, _ = get_harvester_safety_build_plan(
+                    harvester_tile,
+                    adjacent_tile,
                 )
-                supplier_type, _ = supplier_plan_by_index[adjacent_idx]
                 if supplier_type is None:
                     continue
 
@@ -1059,7 +1131,10 @@ class BuilderStrategyMethodsMixin:
             if candidate_entries:
                 _, target_idx = min(candidate_entries)
                 target_tile = tiles_by_index[target_idx]
-                supplier_type, supplier_target = supplier_plan_by_index[target_idx]
+                supplier_type, supplier_target = get_harvester_safety_build_plan(
+                    harvester_tile,
+                    target_tile,
+                )
                 if supplier_type == EntityType.CONVEYOR:
                     if self.u_build_at(
                         target_tile.position,
@@ -1089,6 +1164,16 @@ class BuilderStrategyMethodsMixin:
                             next_direction
                         ):
                             self.ct.move(next_direction)
+                        return True
+                elif supplier_type == EntityType.BARRIER:
+                    if self.u_build_at(
+                        target_tile.position,
+                        supplier_type,
+                        hold=hold,
+                        move_towards=move_towards,
+                        attack_enemy_passable=False,
+                    ):
+                        remember_pending_harvester_target(current_tile.index)
                         return True
 
         if (
@@ -1273,14 +1358,8 @@ class BuilderStrategyMethodsMixin:
 
     def s_fix_harvester(self, move_towards: bool = True, hold: bool = True):
         """
-        Rebuild a harvester-adjacent supplier when every adjacent supplier points
-        directly back into the harvester.
-
-        For each visible own harvester, consider only orthogonally adjacent own
-        supply-link tiles. If there is at least one such tile and all of them
-        target the harvester directly, choose the adjacent supplier with the
-        lowest own-core distance and rebuild it using the standard transport
-        supplier planner for the harvester's resource type.
+        Rebuild the harvester's designated best supply tile when it currently
+        points back into the harvester instead of transporting outward.
         """
         current_pos = self.map.current_pos
         current_round = self.map.current_round
@@ -1302,50 +1381,35 @@ class BuilderStrategyMethodsMixin:
             if resource not in {Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}:
                 continue
 
-            adjacent_supply_tiles = []
-            all_adjacent_supply_tiles_point_at_harvester = True
-            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+            best_supply_idx = self.map.u_get_harvester_best_supply_tile(
                 harvester_tile.index
-            ):
-                adjacent_tile = tiles_by_index[adjacent_idx]
-                if (
-                    adjacent_tile.building.team != own_team
-                    or adjacent_tile.building.entity_type not in SUPPLY_LINK_TYPES
-                ):
-                    continue
-
-                adjacent_supply_tiles.append(adjacent_tile)
-                if not any(
-                    target.index == harvester_tile.index
-                    for target in adjacent_tile.building.targets
-                ):
-                    all_adjacent_supply_tiles_point_at_harvester = False
-                    break
-
-            if (
-                not adjacent_supply_tiles
-                or not all_adjacent_supply_tiles_point_at_harvester
-            ):
+            )
+            if best_supply_idx is None:
                 continue
 
-            rebuild_tile = min(
-                adjacent_supply_tiles,
-                key=lambda tile: (
-                    tile.own_core_dist,
-                    tile.position.x,
-                    tile.position.y,
-                ),
+            rebuild_tile = tiles_by_index[best_supply_idx]
+            if (
+                rebuild_tile.building.team != own_team
+                or rebuild_tile.building.entity_type not in SUPPLY_LINK_TYPES
+            ):
+                continue
+            if not any(
+                target.index == harvester_tile.index
+                for target in rebuild_tile.building.targets
+            ):
+                continue
+            supplier_type, supplier_target = (
+                self.u_get_harvester_adjacent_supplier_build_plan(
+                    harvester_tile,
+                    rebuild_tile,
+                    resource,
+                )
             )
+            if supplier_type is None:
+                continue
             if rebuild_tile.is_enemy_turret_target_tile:
                 continue
             if rebuild_tile.bot.id is not None and rebuild_tile.position != current_pos:
-                continue
-
-            supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
-                rebuild_tile.position,
-                resource,
-            )
-            if supplier_type is None:
                 continue
 
             key = (
