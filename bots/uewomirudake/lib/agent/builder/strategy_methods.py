@@ -232,12 +232,20 @@ class BuilderStrategyMethodsMixin:
             return False
 
         for target_tile in empty_adjacent_tiles:
+            facing_direction = self.u_best_conveyor_orientation(
+                target_tile.position,
+                resource,
+                surround_target_pos=current_pos,
+            )
+            if facing_direction is None:
+                continue
             if self.u_build_at(
                 target_tile.position,
                 SURROUND_HARVESTER_ENTITY_TYPE,
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=False,
+                facing_direction=facing_direction,
             ):
                 return True
 
@@ -588,12 +596,18 @@ class BuilderStrategyMethodsMixin:
 
                 if road_candidates:
                     _, road_target_tile = min(road_candidates)
-                    if self.u_build_at(
+                    facing_direction = self.u_best_conveyor_orientation(
+                        road_target_tile.position,
+                        resource,
+                        surround_target_pos=target_tile.position,
+                    )
+                    if facing_direction is not None and self.u_build_at(
                         road_target_tile.position,
                         SURROUND_HARVESTER_ENTITY_TYPE,
                         hold=hold,
                         move_towards=move_towards,
                         attack_enemy_passable=False,
+                        facing_direction=facing_direction,
                     ):
                         return True
 

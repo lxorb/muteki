@@ -1003,10 +1003,59 @@ class BuilderNavigationMixin:
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        surround_target_pos: Position | None = None,
     ) -> Direction | None:
         """
         Return the best cardinal output direction for a conveyor at this tile.
         """
+        own_team = self.map.own_team
+
+        adjacent_resource_tiles = []
+        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(pos):
+            adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+            if adjacent_tile.environment == resource:
+                adjacent_resource_tiles.append(adjacent_tile)
+
+        if adjacent_resource_tiles:
+            def has_adjacent_own_conveyor(tile) -> bool:
+                for neighbor_pos in self.map.u_iter_adjacent_cardinal_positions(
+                    tile.position
+                ):
+                    neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
+                    if (
+                        neighbor_tile.building.team == own_team
+                        and neighbor_tile.building.entity_type == EntityType.CONVEYOR
+                    ):
+                        return True
+                return False
+
+            if all(
+                has_adjacent_own_conveyor(resource_tile)
+                for resource_tile in adjacent_resource_tiles
+            ):
+                adjacent_harvesters = [
+                    resource_tile
+                    for resource_tile in adjacent_resource_tiles
+                    if (
+                        resource_tile.building.team == own_team
+                        and resource_tile.building.entity_type == EntityType.HARVESTER
+                    )
+                ]
+                if adjacent_harvesters:
+                    target_tile = min(
+                        adjacent_harvesters,
+                        key=lambda tile: (tile.position.x, tile.position.y),
+                    )
+                    return self.map.u_get_direction_between(pos, target_tile.position)
+
+                if surround_target_pos is not None:
+                    for resource_tile in adjacent_resource_tiles:
+                        if resource_tile.position == surround_target_pos:
+                            return self.map.u_get_direction_between(
+                                pos,
+                                surround_target_pos,
+                            )
+
         current_pos = self.map.current_pos
         source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
         candidate_tiles: list[tuple[Direction, object, int]] = []
@@ -1271,6 +1320,53 @@ class BuilderNavigationMixin:
                 self.ct.move(next_direction)
                 return True
             if build_new_roads and self.ct.can_build_road(next_tile.position):
+                adjacent_resource_tiles = []
+                for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                    next_tile.position
+                ):
+                    adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                    if adjacent_tile.environment in {
+                        Environment.ORE_TITANIUM,
+                        Environment.ORE_AXIONITE,
+                    }:
+                        adjacent_resource_tiles.append(adjacent_tile)
+
+                if adjacent_resource_tiles:
+                    resource_candidates: list[Environment] = []
+                    for adjacent_tile in adjacent_resource_tiles:
+                        if (
+                            adjacent_tile.building.team == self.map.own_team
+                            and adjacent_tile.building.entity_type
+                            == EntityType.HARVESTER
+                            and adjacent_tile.environment not in resource_candidates
+                        ):
+                            resource_candidates.append(adjacent_tile.environment)
+                    for adjacent_tile in adjacent_resource_tiles:
+                        if adjacent_tile.environment not in resource_candidates:
+                            resource_candidates.append(adjacent_tile.environment)
+
+                    for resource in resource_candidates:
+                        facing_direction = self.u_best_conveyor_orientation(
+                            next_tile.position,
+                            resource,
+                        )
+                        if facing_direction is None:
+                            continue
+                        if self.ct.can_build_conveyor(
+                            next_tile.position,
+                            facing_direction,
+                        ):
+                            self.ct.build_conveyor(
+                                next_tile.position,
+                                facing_direction,
+                            )
+                            if next_direction is not None and self.ct.can_move(
+                                next_direction
+                            ):
+                                self.ct.move(next_direction)
+                            return True
+                    return False
+
                 self.ct.build_road(next_tile.position)
                 if next_direction is not None and self.ct.can_move(next_direction):
                     self.ct.move(next_direction)

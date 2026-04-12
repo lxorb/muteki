@@ -98,6 +98,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        surround_target_pos: Position | None = None,
     ) -> Direction | None: ...
 
     def u_best_bridge_target(
