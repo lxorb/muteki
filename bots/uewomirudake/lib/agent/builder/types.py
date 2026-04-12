@@ -14,7 +14,6 @@ StrategyEntry: TypeAlias = (
 )
 TilePredicate: TypeAlias = Callable[[Tile], bool]
 TileCriterion: TypeAlias = Callable[[Tile], object]
-DirectionScore: TypeAlias = tuple[tuple[int, ...], Direction]
 SupplierBuildPlan: TypeAlias = tuple[EntityType | None, Direction | Position | None]
 
 
@@ -75,17 +74,6 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
     ) -> bool: ...
 
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
-
-    def u_get_sentinel_direction_score(
-        self,
-        pos: Position,
-        direction: Direction,
-        enemy_core_tiles: list[Tile],
-        enemy_turret_tiles: list[Tile],
-        own_supplier_tiles: list[Tile],
-        enemy_building_tiles: list[Tile],
-        direction_order: dict[Direction, int],
-    ) -> DirectionScore: ...
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction: ...
 
