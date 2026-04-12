@@ -689,7 +689,8 @@ class BuilderNavigationMixin:
         """
         Choose the sentinel facing by hard-priority targeting rules.
 
-        1. Never face in a cardinal feeder direction.
+        1. Never face in a cardinal feeder direction or directly at an
+           orthogonally adjacent enemy harvester.
         2. If any direction can target the enemy core, keep only those.
         3. If any remaining direction can target enemy turrets, keep only
            those.
@@ -725,6 +726,19 @@ class BuilderNavigationMixin:
                     abs(delta) for delta in feeder_direction.delta()
                 ) == 1:
                     blocked_directions.add(feeder_direction)
+
+        for harvester_tile in self.map.enemy_harvesters_in_vision:
+            harvester_direction = self.map.u_get_direction_between(
+                pos,
+                harvester_tile.position,
+            )
+            if harvester_direction is None:
+                continue
+            if pos.distance_squared(harvester_tile.position) != 1:
+                continue
+            if sum(abs(delta) for delta in harvester_direction.delta()) != 1:
+                continue
+            blocked_directions.add(harvester_direction)
 
         for building_tile in self.map.enemy_buildings_in_vision:
             building_type = building_tile.building.entity_type
