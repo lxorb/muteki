@@ -205,7 +205,10 @@ class BuilderStrategyMethodsMixin:
         hold: bool = True,
         resource: Environment = Environment.ORE_TITANIUM,
     ):
-        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
+        from lib.agent.constants import (
+            MAX_CORE_ORE_DIRECT_DIST,
+            SURROUND_HARVESTER_ENTITY_TYPE,
+        )
         from .strategies import SCAVENGER_STRATEGY
 
         current_pos = self.map.current_pos
@@ -235,7 +238,7 @@ class BuilderStrategyMethodsMixin:
         for target_tile in empty_adjacent_tiles:
             if self.u_build_at(
                 target_tile.position,
-                EntityType.ROAD,
+                SURROUND_HARVESTER_ENTITY_TYPE,
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=False,
@@ -405,7 +408,11 @@ class BuilderStrategyMethodsMixin:
         adjacent empty tiles around the target ore and otherwise moves onto the
         ore tile before allowing the harvester build.
         """
-        from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ, MAX_CORE_ORE_DIRECT_DIST
+        from lib.agent.constants import (
+            BUILDER_ACTION_RADIUS_SQ,
+            MAX_CORE_ORE_DIRECT_DIST,
+            SURROUND_HARVESTER_ENTITY_TYPE,
+        )
         from .strategies import SCAVENGER_STRATEGY
 
         current_pos = self.map.current_pos
@@ -595,7 +602,7 @@ class BuilderStrategyMethodsMixin:
                     _, road_target_tile = min(road_candidates)
                     if self.u_build_at(
                         road_target_tile.position,
-                        EntityType.ROAD,
+                        SURROUND_HARVESTER_ENTITY_TYPE,
                         hold=hold,
                         move_towards=move_towards,
                         attack_enemy_passable=False,
@@ -770,7 +777,9 @@ class BuilderStrategyMethodsMixin:
         ):
             if tile.building.team != own_team:
                 continue
-            if tile.building.entity_type not in SUPPLY_LINK_TYPES | {EntityType.HARVESTER}:
+            if tile.building.entity_type not in SUPPLY_LINK_TYPES | {
+                EntityType.HARVESTER
+            }:
                 continue
             if not points_at_enemy_turret(tile):
                 continue
@@ -871,14 +880,16 @@ class BuilderStrategyMethodsMixin:
             return False
 
         sentinel_direction = self.u_get_sentinel_orientation(target_tile.position)
-        return bool(self.u_build_at(
-            target_tile.position,
-            EntityType.SENTINEL,
-            hold=hold,
-            move_towards=move_towards,
-            attack_enemy_passable=attack_enemy_passable,
-            facing_direction=sentinel_direction,
-        ))
+        return bool(
+            self.u_build_at(
+                target_tile.position,
+                EntityType.SENTINEL,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=attack_enemy_passable,
+                facing_direction=sentinel_direction,
+            )
+        )
 
     def s_block_enemy_supply_chain(self, move_towards: bool = True, hold: bool = True):
         """
@@ -909,13 +920,15 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        return bool(self.u_build_at(
-            target_tile.position,
-            EntityType.BARRIER,
-            hold=hold,
-            move_towards=move_towards,
-            attack_enemy_passable=True,
-        ))
+        return bool(
+            self.u_build_at(
+                target_tile.position,
+                EntityType.BARRIER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=True,
+            )
+        )
 
     def s_block_titanium(
         self,
@@ -953,13 +966,15 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        return bool(self.u_build_at(
-            target_tile.position,
-            EntityType.BARRIER,
-            hold=hold,
-            move_towards=move_towards,
-            attack_enemy_passable=False,
-        ))
+        return bool(
+            self.u_build_at(
+                target_tile.position,
+                EntityType.BARRIER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+            )
+        )
 
     def s_insert_core_splitter(self, move_towards: bool = True, hold: bool = True):
         """
@@ -1253,11 +1268,13 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        return bool(self.u_attack_passable(
-            target_tile.position,
-            move_towards=move_towards,
-            destroy_condition=lambda _: True,
-        ))
+        return bool(
+            self.u_attack_passable(
+                target_tile.position,
+                move_towards=move_towards,
+                destroy_condition=lambda _: True,
+            )
+        )
 
     def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
         """
@@ -1284,7 +1301,9 @@ class BuilderStrategyMethodsMixin:
                 continue
             if tile.building.entity_type not in SUPPLY_LINK_TYPES:
                 continue
-            if not any(target.position == enemy_core_pos for target in tile.building.targets):
+            if not any(
+                target.position == enemy_core_pos for target in tile.building.targets
+            ):
                 continue
             if tile.in_enemy_launcher_pickup_zone:
                 continue
@@ -1297,13 +1316,16 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        return bool(self.u_attack_passable(
-            target_tile.position,
-            move_towards=move_towards,
-            destroy_condition=lambda pos: (
-                self.map.u_get_pos_tile(pos).in_enemy_bot_action_range_turn != current_round
-            ),
-        ))
+        return bool(
+            self.u_attack_passable(
+                target_tile.position,
+                move_towards=move_towards,
+                destroy_condition=lambda pos: (
+                    self.map.u_get_pos_tile(pos).in_enemy_bot_action_range_turn
+                    != current_round
+                ),
+            )
+        )
 
     def s_heal_own_building(self, move_towards: bool = True, hold: bool = True):
         """
@@ -1352,8 +1374,11 @@ class BuilderStrategyMethodsMixin:
         target_tile = min(
             dict.fromkeys(candidate_tiles),
             key=lambda tile: (
-                0 if tile.building.entity_type == EntityType.CORE
-                else 1 if has_damaged_own_builder(tile) else 2,
+                (
+                    0
+                    if tile.building.entity_type == EntityType.CORE
+                    else 1 if has_damaged_own_builder(tile) else 2
+                ),
                 building_type_rank.get(tile.building.entity_type, 99),
                 tile.dist_to_self,
                 tile.own_core_dist,
