@@ -221,6 +221,17 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         move_towards: bool = True,
     ) -> BuilderActionResult: ...
 
+    def s_attack_key_enemy_supply_chain(
+        self,
+        move_towards: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_build_enemy_supplied_sentinel(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_attack_enemy_core_supply_link(
         self,
         move_towards: bool = True,

@@ -2,7 +2,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from cambc import Direction, EntityType, Environment, Position, Team
+from cambc import Direction, EntityType, Environment, Position, ResourceType, Team
 from lib.map.constants import (
     CORE_DIST_INF,
     INF_DIST,
@@ -31,6 +31,7 @@ VISION_RADIUS_ENTITY_TYPES = {
 }
 STORED_RESOURCE_TRACKED_ENTITY_TYPES = {
     EntityType.CONVEYOR,
+    EntityType.SPLITTER,
     EntityType.ARMOURED_CONVEYOR,
     EntityType.BRIDGE,
 }
@@ -64,6 +65,7 @@ class TileBuilding:
     direction: Direction | None
     vision_radius_sq: int | None
     last_resource_onit_turn: int | None
+    last_titanium_onit_turn: int | None
 
 
 class Tile:
@@ -82,6 +84,7 @@ class Tile:
             None,
             [],
             [],
+            None,
             None,
             None,
             None,
@@ -238,6 +241,7 @@ class Tile:
             None,
             None,
             self.building.last_resource_onit_turn,
+            self.building.last_titanium_onit_turn,
         )
         self.u_refresh_intrinsic_passability()
 
@@ -349,6 +353,8 @@ class Tile:
             stored_resource = ct.get_stored_resource(self.building.id)
             if stored_resource is not None:
                 self.building.last_resource_onit_turn = self.map.current_round
+                if stored_resource == ResourceType.TITANIUM:
+                    self.building.last_titanium_onit_turn = self.map.current_round
 
     def u_tracks_building_targets(self) -> bool:
         if self.building.entity_type in RESOURCE_TARGET_TYPES:

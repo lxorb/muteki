@@ -1,3 +1,4 @@
+import math
 from collections.abc import Callable
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
@@ -1385,6 +1386,17 @@ class BuilderNavigationMixin:
             if target_tile.building.id is None:
                 return False
             if not self.ct.can_fire(current_pos):
+                return False
+
+            current_titanium, _ = self.ct.get_global_resources()
+            conveyor_titanium_cost, _ = self.ct.get_conveyor_cost()
+            attack_titanium_cost = int(
+                math.ceil(
+                    GameConstants.BUILDER_BOT_ATTACK_COST[0]
+                    * max(0.0001, self.ct.get_scale_percent() / 100.0)
+                )
+            )
+            if current_titanium - attack_titanium_cost < conveyor_titanium_cost:
                 return False
 
             would_destroy = (
