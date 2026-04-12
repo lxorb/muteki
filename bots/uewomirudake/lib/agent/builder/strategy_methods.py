@@ -861,6 +861,109 @@ class BuilderStrategyMethodsMixin:
             return False
         return move_along_frontier_path(avoid_enemy_turrets=False)
 
+    def s_fix_conveyor(self, move_towards: bool = True, hold: bool = True):
+        """
+        Replace titanium-carrying own conveyors that currently feed a harvester.
+
+        Targets visible own conveyors that have titanium on them this turn and
+        point directly at an own harvester, then destroys and rebuilds that
+        tile immediately using the normal titanium transport supplier planner to
+        remove the bottleneck.
+        """
+        current_pos = self.map.current_pos
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+
+        target_tile = None
+        target_supplier_type = None
+        target_supplier_target = None
+        target_key = None
+
+        for tile in dict.fromkeys(self.map.own_supply_links_in_vision):
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team != own_team:
+                continue
+            if tile.building.entity_type != EntityType.CONVEYOR:
+                continue
+            if tile.building.last_titanium_onit_turn != current_round:
+                continue
+            if tile.is_enemy_turret_target_tile:
+                continue
+            if tile.bot.id is not None and tile.position != current_pos:
+                continue
+            if not any(
+                target.building.team == own_team
+                and target.building.entity_type == EntityType.HARVESTER
+                for target in tile.building.targets
+            ):
+                continue
+
+            supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
+                tile.position,
+                Environment.ORE_TITANIUM,
+            )
+            if supplier_type is None:
+                continue
+
+            key = (
+                0 if tile.position == current_pos else 1,
+                tile.dist_to_self,
+                tile.own_core_dist,
+                tile.index,
+            )
+            if target_key is None or key < target_key:
+                target_key = key
+                target_tile = tile
+                target_supplier_type = supplier_type
+                target_supplier_target = supplier_target
+
+        if target_tile is None or target_supplier_type is None:
+            return False
+
+        if current_pos.distance_squared(target_tile.position) > BUILDER_ACTION_RADIUS_SQ:
+            if not move_towards:
+                return False
+            return self.u_move_to(target_tile.position)
+
+        titanium_cost, axionite_cost = getattr(
+            self.ct, f"get_{target_supplier_type.value}_cost"
+        )()
+        if self.map.titanium < titanium_cost or self.map.axionite < axionite_cost:
+            return hold
+
+        if self.ct.get_action_cooldown() != 0 or not self.ct.can_destroy(
+            target_tile.position
+        ):
+            return False
+
+        self.ct.destroy(target_tile.position)
+        target_tile.clear_building()
+
+        if target_supplier_type == EntityType.CONVEYOR:
+            return bool(
+                self.u_build_at(
+                    target_tile.position,
+                    target_supplier_type,
+                    hold=False,
+                    move_towards=False,
+                    attack_enemy_passable=False,
+                    facing_direction=target_supplier_target,
+                )
+            )
+        if target_supplier_type == EntityType.BRIDGE:
+            return bool(
+                self.u_build_at(
+                    target_tile.position,
+                    target_supplier_type,
+                    hold=False,
+                    move_towards=False,
+                    attack_enemy_passable=False,
+                    target_pos=target_supplier_target,
+                )
+            )
+        return False
+
     def s_destroy_hijacked_supplier(self, move_towards: bool = True):
         """
         Destroy the closest visible own harvester or supply-link tile that
@@ -903,9 +1006,9 @@ class BuilderStrategyMethodsMixin:
             target_pos
         ) <= GameConstants.ACTION_RADIUS_SQ and self.ct.can_destroy(target_pos):
             self.ct.destroy(target_pos)
-            return True
+            return False
         if move_towards and self.u_move_to(target_pos):
-            return True
+            return False
 
         return False
 

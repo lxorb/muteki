@@ -1000,11 +1000,86 @@ class BuilderNavigationMixin:
             return (EntityType.BRIDGE, bridge_target)
         return (EntityType.CONVEYOR, conveyor_direction)
 
+    def u_get_transport_supplier_build_plan(
+        self,
+        pos: Position,
+        resource: Environment = Environment.ORE_TITANIUM,
+    ) -> tuple[EntityType | None, Direction | Position | None]:
+        """
+        Return the normal transport-oriented supplier plan for `resource` at `pos`.
+
+        Unlike the surround-aware supplier planning, this never intentionally
+        points a conveyor into an adjacent resource tile or harvester. It only
+        considers transport-oriented conveyor directions plus the normal bridge
+        candidate logic.
+        """
+        foundry_pos = self.u_get_core_foundry_plan()
+        if (
+            resource == Environment.ORE_AXIONITE
+            and foundry_pos is not None
+            and pos == foundry_pos
+        ):
+            return (None, None)
+        if self.u_is_supply_tile_forbidden(pos, resource):
+            return (None, None)
+
+        conveyor_direction = self.u_best_conveyor_orientation(
+            pos,
+            resource,
+            allow_adjacent_resource_sink=False,
+        )
+        bridge_target = self.u_best_bridge_target(pos, resource)
+
+        if conveyor_direction is None and bridge_target is None:
+            return (None, None)
+        if conveyor_direction is None:
+            return (EntityType.BRIDGE, bridge_target)
+        if bridge_target is None:
+            return (EntityType.CONVEYOR, conveyor_direction)
+
+        source_tile = self.map.u_get_pos_tile(pos)
+        conveyor_target_pos = pos.add(conveyor_direction)
+        if self.u_is_axionite_foundry_target(
+            conveyor_target_pos,
+            resource,
+        ):
+            return (EntityType.CONVEYOR, conveyor_direction)
+        if self.u_is_axionite_foundry_target(
+            bridge_target,
+            resource,
+        ):
+            return (EntityType.BRIDGE, bridge_target)
+        if self.u_can_wrap_axionite_chain_around_core(
+            pos,
+            conveyor_target_pos,
+            resource,
+        ) or self.u_can_wrap_axionite_chain_around_core(
+            pos,
+            bridge_target,
+            resource,
+        ):
+            foundry_pos = self.u_get_core_foundry_plan()
+            if foundry_pos is not None:
+                if bridge_target.distance_squared(
+                    foundry_pos
+                ) < conveyor_target_pos.distance_squared(foundry_pos):
+                    return (EntityType.BRIDGE, bridge_target)
+            return (EntityType.CONVEYOR, conveyor_direction)
+
+        bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
+        bridge_dist_covered = (
+            source_tile.own_core_dist - bridge_target_tile.own_core_dist
+        )
+        if bridge_dist_covered >= BRIDGE_PREFERRED_DIST:
+            return (EntityType.BRIDGE, bridge_target)
+        return (EntityType.CONVEYOR, conveyor_direction)
+
     def u_best_conveyor_orientation(
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
         surround_target_pos: Position | None = None,
+        allow_adjacent_resource_sink: bool = True,
     ) -> Direction | None:
         """
         Return the best cardinal output direction for a conveyor at this tile.
@@ -1017,7 +1092,7 @@ class BuilderNavigationMixin:
             if adjacent_tile.environment == resource:
                 adjacent_resource_tiles.append(adjacent_tile)
 
-        if adjacent_resource_tiles:
+        if allow_adjacent_resource_sink and adjacent_resource_tiles:
             def has_adjacent_own_conveyor(tile) -> bool:
                 for neighbor_pos in self.map.u_iter_adjacent_cardinal_positions(
                     tile.position

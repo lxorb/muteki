@@ -83,6 +83,19 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         resource: Environment = Environment.ORE_TITANIUM,
     ) -> SupplierBuildPlan: ...
 
+    def u_get_transport_supplier_build_plan(
+        self,
+        pos: Position,
+        resource: Environment = Environment.ORE_TITANIUM,
+    ) -> SupplierBuildPlan: ...
+
+    def u_get_surround_supplier_build_plan(
+        self,
+        pos: Position,
+        surround_target_pos: Position,
+        resource: Environment = Environment.ORE_TITANIUM,
+    ) -> SupplierBuildPlan: ...
+
     def u_get_supply_chain_label_for_resource(
         self,
         resource: Environment,
@@ -99,6 +112,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
         surround_target_pos: Position | None = None,
+        allow_adjacent_resource_sink: bool = True,
     ) -> Direction | None: ...
 
     def u_best_bridge_target(
@@ -190,6 +204,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     ) -> BuilderActionResult: ...
 
     def s_frontier_expand(self) -> BuilderActionResult: ...
+
+    def s_fix_conveyor(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
 
     def s_destroy_hijacked_supplier(
         self,

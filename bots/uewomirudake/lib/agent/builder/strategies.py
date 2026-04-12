@@ -41,6 +41,7 @@ SCAVENGER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
+    (BuilderStrategyMethodsMixin.s_fix_conveyor, True, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (BuilderStrategyMethodsMixin.s_build_harvester_supply_link, True, True),
     # (
@@ -119,6 +120,7 @@ FOUNDRY_STRATEGY = [
 DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
+    (BuilderStrategyMethodsMixin.s_fix_conveyor, True, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (
