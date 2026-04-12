@@ -196,6 +196,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         resource: Environment = Environment.ORE_TITANIUM,
     ) -> BuilderActionResult: ...
 
+    def s_protect_own_harvester(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_build_missing_supply_link(
         self,
         move_towards: bool = True,
@@ -230,6 +236,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_destroy_hijacked_supplier(
         self,
         move_towards: bool = True,
+        rebuild: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_sentinel_next_to_enemy_harvester(

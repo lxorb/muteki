@@ -270,6 +270,162 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
+    def s_protect_own_harvester(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        tiles_by_index = self.map.tiles_by_index
+        candidate_entries: list[
+            tuple[
+                tuple[int, int, int, int, int],
+                Position,
+                EntityType,
+                Direction | Position,
+            ]
+        ] = []
+
+        for harvester_order, harvester_tile in enumerate(self.map.own_harvesters_in_vision):
+            if harvester_tile.last_seen_turn != current_round:
+                continue
+
+            resource = harvester_tile.environment
+            if resource not in {Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}:
+                continue
+
+            preferred_idx = self.map.u_get_harvester_best_supply_tile(
+                harvester_tile.index
+            )
+            force_point_at_harvester = False
+            best_empty_tile = None
+            best_empty_key = None
+
+            for safe_order, adjacent_idx in enumerate(
+                self.map.u_iter_cardinal_neighbor_indices(harvester_tile.index)
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                building = adjacent_tile.building
+                building_type = building.entity_type
+
+                if (
+                    building.team == own_team
+                    and building_type == EntityType.BRIDGE
+                ):
+                    force_point_at_harvester = True
+
+                if (
+                    building.team == own_team
+                    and building_type == EntityType.CONVEYOR
+                    and not any(
+                        target.index == harvester_tile.index
+                        for target in building.targets
+                    )
+                ):
+                    force_point_at_harvester = True
+
+                if adjacent_tile.environment == Environment.WALL:
+                    continue
+                if adjacent_tile.is_enemy_turret_target_tile:
+                    continue
+                if adjacent_tile.building.id is not None:
+                    continue
+
+                empty_key = (
+                    0 if adjacent_idx == preferred_idx else 1,
+                    adjacent_tile.own_core_dist,
+                    adjacent_tile.dist_to_self,
+                    safe_order,
+                    adjacent_idx,
+                )
+                if best_empty_key is None or empty_key < best_empty_key:
+                    best_empty_key = empty_key
+                    best_empty_tile = adjacent_tile
+
+            if best_empty_tile is None:
+                continue
+
+            if force_point_at_harvester:
+                facing_direction = self.map.u_get_direction_between(
+                    best_empty_tile.position,
+                    harvester_tile.position,
+                )
+                if facing_direction is None:
+                    continue
+                candidate_entries.append(
+                    (
+                        (
+                            best_empty_tile.dist_to_self,
+                            best_empty_tile.own_core_dist,
+                            harvester_order,
+                            0,
+                            best_empty_tile.index,
+                        ),
+                        best_empty_tile.position,
+                        EntityType.CONVEYOR,
+                        facing_direction,
+                    )
+                )
+                continue
+
+            supplier_type, supplier_target = self.u_get_supplier_build_plan(
+                best_empty_tile.position,
+                resource,
+            )
+            if supplier_type is None or supplier_target is None:
+                continue
+
+            candidate_entries.append(
+                (
+                    (
+                        best_empty_tile.dist_to_self,
+                        best_empty_tile.own_core_dist,
+                        harvester_order,
+                        1,
+                        best_empty_tile.index,
+                    ),
+                    best_empty_tile.position,
+                    supplier_type,
+                    supplier_target,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        heapify(candidate_entries)
+        while candidate_entries:
+            _, target_pos, supplier_type, supplier_target = heappop(candidate_entries)
+            if supplier_type == EntityType.CONVEYOR:
+                if self.u_build_at(
+                    target_pos,
+                    supplier_type,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=False,
+                    facing_direction=supplier_target,
+                ):
+                    return True
+            elif supplier_type == EntityType.BRIDGE:
+                if self.u_build_at(
+                    target_pos,
+                    supplier_type,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=False,
+                    target_pos=supplier_target,
+                ):
+                    return True
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return False
+
     def s_build_missing_supply_link(
         self,
         move_towards: bool = True,
@@ -1250,13 +1406,28 @@ class BuilderStrategyMethodsMixin:
             )
         return False
 
-    def s_destroy_hijacked_supplier(self, move_towards: bool = True):
+    def s_destroy_hijacked_supplier(
+        self,
+        move_towards: bool = True,
+        rebuild: bool = True,
+    ):
         """
         Destroy the closest visible own harvester or supply-link tile that
         feeds an enemy turret.
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
+
+        def infer_resource(tile) -> Environment:
+            supply_chain_label = tile.own_supply_chain_label
+            if (
+                supply_chain_label & SupplyChainLabel.AXIONITE
+                and not (supply_chain_label & SupplyChainLabel.TITANIUM)
+            ):
+                return Environment.ORE_AXIONITE
+            if tile.environment == Environment.ORE_AXIONITE:
+                return Environment.ORE_AXIONITE
+            return Environment.ORE_TITANIUM
 
         def points_at_enemy_turret(source_tile) -> bool:
             return any(
@@ -1292,6 +1463,35 @@ class BuilderStrategyMethodsMixin:
             target_pos
         ) <= GameConstants.ACTION_RADIUS_SQ and self.ct.can_destroy(target_pos):
             self.ct.destroy(target_pos)
+            target_tile.clear_building()
+
+            if rebuild:
+                resource = infer_resource(target_tile)
+                supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
+                    target_pos,
+                    resource,
+                )
+                if supplier_type == EntityType.CONVEYOR:
+                    if self.u_build_at(
+                        target_pos,
+                        supplier_type,
+                        hold=False,
+                        move_towards=False,
+                        attack_enemy_passable=False,
+                        facing_direction=supplier_target,
+                    ):
+                        return True
+                elif supplier_type == EntityType.BRIDGE:
+                    if self.u_build_at(
+                        target_pos,
+                        supplier_type,
+                        hold=False,
+                        move_towards=False,
+                        attack_enemy_passable=False,
+                        target_pos=supplier_target,
+                    ):
+                        return True
+
             return False
         if move_towards and self.u_move_to(target_pos):
             return False
