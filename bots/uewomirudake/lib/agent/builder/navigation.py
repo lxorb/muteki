@@ -6,9 +6,10 @@ from cambc import Direction, EntityType, Environment, GameConstants, Position
 from lib.agent.constants import (
     AVOID_EMPTY_ORE_BRIDGE_TARGETS,
     AVOID_OTHER_SUPPLY_LABEL_ORES,
+    ATTACK_TURRET_FEEDER_TYPES,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
-    ATTACK_TURRET_FEEDER_TYPES,
+    DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     DIRECTIONAL_BUILDING_TYPES,
     ENEMY_TURRET_TYPES,
     FOUNDRY_WAIT_RADIUS_SQ,
@@ -985,6 +986,12 @@ class BuilderNavigationMixin:
                         and resource_tile.building.entity_type == EntityType.HARVESTER
                     )
                 ]
+                if (
+                    adjacent_harvesters
+                    and not DISABLE_CONVEYORS_POINTING_AT_HARVESTERS
+                ):
+                    if pos in self.map.own_supply_link_target_indices_in_vision:
+                        adjacent_harvesters = []
                 if adjacent_harvesters:
                     target_tile = min(
                         adjacent_harvesters,
@@ -1550,6 +1557,18 @@ class BuilderNavigationMixin:
                     build_method(pos, facing_direction)
                     self.last_built_entity_type = building_type
                     if building_type == EntityType.CONVEYOR:
+                        output_pos = pos.add(facing_direction)
+                        if self.map.u_is_in_bounds(output_pos):
+                            output_tile = self.map.u_get_pos_tile(output_pos)
+                            if (
+                                output_tile.building.team == self.map.own_team
+                                and output_tile.building.entity_type
+                                == EntityType.CONVEYOR
+                                and output_tile.conveyor_targets_harvester
+                                and self.ct.can_destroy(output_pos)
+                            ):
+                                self.ct.destroy(output_pos)
+                                output_tile.clear_building()
                         next_direction = self.map.u_get_direction_between(
                             current_pos,
                             pos,

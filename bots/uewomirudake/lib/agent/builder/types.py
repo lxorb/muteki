@@ -182,6 +182,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = True,
     ) -> BuilderActionResult: ...
 
+    # DEPRECATED: kept only for legacy strategy compatibility.
     def s_build_harvester_supply_link(
         self,
         move_towards: bool = True,
@@ -211,6 +212,16 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     ) -> BuilderActionResult: ...
 
     def s_build_harvester(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        attack_enemy_passable: bool = True,
+        resource: Environment = Environment.ORE_TITANIUM,
+        enforce_safe: bool = False,
+        require_connected: bool = False,
+    ) -> BuilderActionResult: ...
+
+    def s_build_connected_harvester(
         self,
         move_towards: bool = True,
         hold: bool = True,
