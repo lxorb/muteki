@@ -53,6 +53,7 @@ class Map:
     MAX_BUILDER_ACTION_TARGET_COUNT = len(BUILDER_ACTION_OFFSETS)
     MAX_CORE_FOOTPRINT_TARGET_COUNT = 9
     DIRECTION_SLOT_COUNT = len(DIRECTIONS)
+    MARKER_ENTITY_TYPE = getattr(EntityType, "MARKER", None)
 
     def __init__(self, round_stopwatch: RoundStopwatch):
         self.ct: Controller | None = None
@@ -834,6 +835,12 @@ class Map:
                 self.visible_builder_bot_ids_by_index[self.u_to_index(pos)] = unit_id
 
         for building_id in self.ct.get_nearby_buildings():
+            if (
+                self.MARKER_ENTITY_TYPE is not None
+                and self.ct.get_entity_type(building_id) == self.MARKER_ENTITY_TYPE
+                and self.ct.get_team(building_id) == self.enemy_team
+            ):
+                continue
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
                 self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
