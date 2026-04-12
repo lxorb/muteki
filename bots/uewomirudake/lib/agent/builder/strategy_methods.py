@@ -17,6 +17,25 @@ from lib.agent.constants import (
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
+_ENEMY_CORE_PATROL_OFFSETS = (
+    (-2, -2),
+    (-1, -2),
+    (0, -2),
+    (1, -2),
+    (2, -2),
+    (2, -1),
+    (2, 0),
+    (2, 1),
+    (2, 2),
+    (1, 2),
+    (0, 2),
+    (-1, 2),
+    (-2, 2),
+    (-2, 1),
+    (-2, 0),
+    (-2, -1),
+)
+
 
 class BuilderStrategyMethodsMixin:
     def s_heal_self(self):
@@ -2091,6 +2110,10 @@ class BuilderStrategyMethodsMixin:
             target_tile = tiles_by_index[target_idx]
             if target_tile.position == current_pos:
                 if move_towards and step_off_current_build_tile(target_tile):
+                    print(
+                        "Build enemy supplied sentinel: step off",
+                        target_tile.position,
+                    )
                     return True
                 continue
 
@@ -2103,6 +2126,26 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=False,
                 facing_direction=sentinel_direction,
             ):
+                if self.last_built_entity_type == EntityType.SENTINEL:
+                    print(
+                        "Build enemy supplied sentinel: built at",
+                        target_tile.position,
+                        "facing",
+                        sentinel_direction,
+                    )
+                elif (
+                    current_pos.distance_squared(target_tile.position)
+                    > BUILDER_ACTION_RADIUS_SQ
+                ):
+                    print(
+                        "Build enemy supplied sentinel: move toward",
+                        target_tile.position,
+                    )
+                else:
+                    print(
+                        "Build enemy supplied sentinel: hold for",
+                        target_tile.position,
+                    )
                 return True
 
             if self.round_stopwatch.check_overtime():
@@ -2203,3 +2246,59 @@ class BuilderStrategyMethodsMixin:
             return False
 
         return bool(self.u_move_to_astar(target_pos))
+
+    def s_patrol_enemy_core(self):
+        enemy_core_center_pos = self.map.enemy_core_center_pos
+        if enemy_core_center_pos is None:
+            return False
+
+        waypoint_indices: list[int] = []
+        active_mask_by_index = self.map.active_mask_by_index
+        intrinsic_passable_by_index = self.map.intrinsic_passable_by_index
+        tiles_by_index = self.map.tiles_by_index
+        center_x = enemy_core_center_pos.x
+        center_y = enemy_core_center_pos.y
+        map_width = self.map.width
+        map_height = self.map.height
+
+        for dx, dy in _ENEMY_CORE_PATROL_OFFSETS:
+            x = center_x + dx
+            y = center_y + dy
+            if x < 0 or y < 0 or x >= map_width or y >= map_height:
+                continue
+            waypoint_idx = self.map.u_to_index_xy(x, y)
+            if (
+                not active_mask_by_index[waypoint_idx]
+                or not intrinsic_passable_by_index[waypoint_idx]
+            ):
+                continue
+            waypoint_indices.append(waypoint_idx)
+
+        if not waypoint_indices:
+            return False
+
+        current_idx = self.map.u_to_index(self.map.current_pos)
+        waypoint_count = len(waypoint_indices)
+
+        if current_idx in waypoint_indices:
+            next_patrol_index = (
+                waypoint_indices.index(current_idx) + 1
+            ) % waypoint_count
+        else:
+            next_patrol_index = min(
+                range(waypoint_count),
+                key=lambda idx: (
+                    self.map.u_get_estimated_dist_to_self_by_index(
+                        waypoint_indices[idx]
+                    ),
+                    self.map.u_get_own_core_dist_by_index(waypoint_indices[idx]),
+                    idx,
+                ),
+            )
+
+        self.enemy_core_patrol_index = next_patrol_index
+        return bool(
+            self.u_move_to_astar(
+                tiles_by_index[waypoint_indices[next_patrol_index]].position
+            )
+        )

@@ -686,170 +686,24 @@ class BuilderNavigationMixin:
         )
 
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
-        """
-        Choose the sentinel facing by hard-priority targeting rules.
-
-        1. Never face in a cardinal feeder direction or directly at an
-           orthogonally adjacent enemy harvester.
-        2. If any direction can target the enemy core, keep only those.
-        3. If any remaining direction can target enemy turrets, keep only
-           those.
-        4. If any remaining direction can target enemy supply links, choose the
-           direction that can target the most.
-        5. Otherwise choose the direction that can target the most own supply
-           links adjacent to own harvesters.
-        """
-        own_team = self.map.own_team
-        blocked_directions: set[Direction] = set()
-        enemy_turret_tiles = []
-        enemy_supply_tiles = []
-        own_harvester_adjacent_supply_tiles_by_index = {}
-
-        enemy_core_tiles = []
-        if self.map.enemy_core_center_pos is not None:
-            enemy_core_tiles = self.map.u_get_core_footprint_positions(
-                self.map.enemy_core_center_pos
-            )
-
-        for building_tile in self.map.own_buildings_in_vision:
-            building_type = building_tile.building.entity_type
-
-            if building_type in ATTACK_TURRET_FEEDER_TYPES and any(
-                target_tile.position == pos
-                for target_tile in building_tile.building.targets
-            ):
-                feeder_direction = self.map.u_get_direction_between(
-                    building_tile.position,
-                    pos,
-                )
-                if feeder_direction is not None and sum(
-                    abs(delta) for delta in feeder_direction.delta()
-                ) == 1:
-                    blocked_directions.add(feeder_direction)
-
-        for harvester_tile in self.map.enemy_harvesters_in_vision:
-            harvester_direction = self.map.u_get_direction_between(
-                pos,
-                harvester_tile.position,
-            )
-            if harvester_direction is None:
-                continue
-            if pos.distance_squared(harvester_tile.position) != 1:
-                continue
-            if sum(abs(delta) for delta in harvester_direction.delta()) != 1:
-                continue
-            blocked_directions.add(harvester_direction)
-
-        for building_tile in self.map.enemy_buildings_in_vision:
-            building_type = building_tile.building.entity_type
-            if building_type in ENEMY_TURRET_TYPES:
-                enemy_turret_tiles.append(building_tile)
-            if building_type in SUPPLY_LINK_TYPES:
-                enemy_supply_tiles.append(building_tile)
-
-        for harvester_tile in self.map.own_harvesters_in_vision:
-            for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
-                harvester_tile.position
-            ):
-                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-                if (
-                    adjacent_tile.building.team == own_team
-                    and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
-                ):
-                    own_harvester_adjacent_supply_tiles_by_index[adjacent_tile.index] = (
-                        adjacent_tile
-                    )
-
-        candidate_directions = [
-            direction
-            for direction in Direction
-            if direction != Direction.CENTRE and direction not in blocked_directions
-        ]
-        if not candidate_directions:
-            candidate_directions = [
-                direction for direction in Direction if direction != Direction.CENTRE
-            ]
-
-        direction_order = {
-            direction: idx
-            for idx, direction in enumerate(Direction)
-            if direction != Direction.CENTRE
-        }
-
-        def get_cover_counts(
-            directions: list[Direction],
-            target_tiles,
-        ) -> dict[Direction, int]:
-            counts: dict[Direction, int] = {}
-            for direction in directions:
-                count = 0
-                for target_tile in target_tiles:
-                    if self.map.u_sentinel_covers_target(
-                        pos,
-                        direction,
-                        target_tile.position,
-                        GameConstants.SENTINEL_VISION_RADIUS_SQ,
-                    ):
-                        count += 1
-                counts[direction] = count
-            return counts
-
-        enemy_core_cover_counts = get_cover_counts(
-            candidate_directions,
-            enemy_core_tiles,
-        )
-        if any(enemy_core_cover_counts[direction] > 0 for direction in candidate_directions):
-            candidate_directions = [
-                direction
-                for direction in candidate_directions
-                if enemy_core_cover_counts[direction] > 0
-            ]
-            if len(candidate_directions) == 1:
-                return candidate_directions[0]
-
-        enemy_turret_cover_counts = get_cover_counts(
-            candidate_directions,
-            enemy_turret_tiles,
-        )
-        if any(
-            enemy_turret_cover_counts[direction] > 0
-            for direction in candidate_directions
-        ):
-            candidate_directions = [
-                direction
-                for direction in candidate_directions
-                if enemy_turret_cover_counts[direction] > 0
-            ]
-            if len(candidate_directions) == 1:
-                return candidate_directions[0]
-
-        enemy_supply_cover_counts = get_cover_counts(
-            candidate_directions,
-            enemy_supply_tiles,
-        )
-        if any(
-            enemy_supply_cover_counts[direction] > 0
-            for direction in candidate_directions
-        ):
-            return min(
-                candidate_directions,
-                key=lambda direction: (
-                    -enemy_supply_cover_counts[direction],
-                    direction_order[direction],
+        enemy_core_center_pos = self.map.enemy_core_center_pos
+        if enemy_core_center_pos is None and self.map.enemy_core_center_pos_candidates:
+            enemy_core_center_pos = min(
+                (candidate_pos for _, candidate_pos in self.map.enemy_core_center_pos_candidates),
+                key=lambda candidate_pos: (
+                    pos.distance_squared(candidate_pos),
+                    candidate_pos.x,
+                    candidate_pos.y,
                 ),
             )
 
-        own_harvester_adjacent_supply_cover_counts = get_cover_counts(
-            candidate_directions,
-            own_harvester_adjacent_supply_tiles_by_index.values(),
-        )
-        return min(
-            candidate_directions,
-            key=lambda direction: (
-                -own_harvester_adjacent_supply_cover_counts[direction],
-                direction_order[direction],
-            ),
-        )
+        if enemy_core_center_pos is None:
+            return Direction.NORTH
+
+        direction = self.map.u_get_direction_between(pos, enemy_core_center_pos)
+        if direction is None or direction == Direction.CENTRE:
+            return Direction.NORTH
+        return direction
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction:
         """

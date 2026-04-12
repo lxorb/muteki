@@ -26,6 +26,7 @@ class BuilderAgent(
     pending_missing_supply_link_resource: Environment | None
     pending_harvester_target_index: int | None
     pending_harvester_target_resource: Environment | None
+    enemy_core_patrol_index: int
     harvesters_built: int
     last_built_entity_type: EntityType | None
 
@@ -40,6 +41,7 @@ class BuilderAgent(
         self.pending_missing_supply_link_resource = None
         self.pending_harvester_target_index = None
         self.pending_harvester_target_resource = None
+        self.enemy_core_patrol_index = 0
         self.harvesters_built = 0
         self.last_built_entity_type = None
 
