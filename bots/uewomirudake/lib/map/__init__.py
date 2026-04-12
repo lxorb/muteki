@@ -110,6 +110,7 @@ class Map:
         self.path_heap_buffer: list[tuple[int, int, int, int, int, int]] = []
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
+        self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_supply_link_target_indices_in_vision: set[int] = set()
         self.enemy_supply_link_target_indices_in_vision: set[int] = set()
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -503,6 +504,13 @@ class Map:
 
         for tile in self.tiles_in_vision:
             building = tile.building
+            self.conveyor_targets_harvester_by_index[tile.index] = 0
+
+            if building.entity_type == EntityType.CONVEYOR:
+                for target_tile in building.targets:
+                    if target_tile.building.entity_type == EntityType.HARVESTER:
+                        self.conveyor_targets_harvester_by_index[tile.index] = 1
+                        break
 
             if tile.bot.id is not None and tile.bot.team != self.own_team:
                 self.has_enemy_bot_in_vision = True

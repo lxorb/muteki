@@ -1632,6 +1632,12 @@ class BuilderNavigationMixin:
                 and target_tile.building.team == self.map.own_team
             )
             or (
+                building_type == EntityType.HARVESTER
+                and target_tile.building.entity_type == EntityType.CONVEYOR
+                and target_tile.building.team == self.map.own_team
+                and target_tile.conveyor_targets_harvester
+            )
+            or (
                 target_tile.building.entity_type == EntityType.BARRIER
                 and building_type != EntityType.BARRIER
             )
@@ -1658,6 +1664,15 @@ class BuilderNavigationMixin:
                 and target_tile.building.entity_type
                 in {EntityType.ROAD, EntityType.BARRIER}
                 and target_tile.building.entity_type != building_type
+                and self.ct.can_destroy(pos)
+            ):
+                self.ct.destroy(pos)
+                destroyed_replaceable_blocker = True
+            elif (
+                building_type == EntityType.HARVESTER
+                and target_tile.building.team == self.map.own_team
+                and target_tile.building.entity_type == EntityType.CONVEYOR
+                and target_tile.conveyor_targets_harvester
                 and self.ct.can_destroy(pos)
             ):
                 self.ct.destroy(pos)

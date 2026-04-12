@@ -480,6 +480,12 @@ class BuilderStrategyMethodsMixin:
                 in {EntityType.ROAD, EntityType.BARRIER}
             ):
                 return True
+            if (
+                target_tile.building.team == own_team
+                and target_tile.building.entity_type == EntityType.CONVEYOR
+                and target_tile.conveyor_targets_harvester
+            ):
+                return True
             return (
                 attack_enemy_passable
                 and target_tile.building.team != own_team
@@ -979,6 +985,25 @@ class BuilderStrategyMethodsMixin:
         current_round = self.map.current_round
         own_team = self.map.own_team
 
+        def has_other_supplier_pointing_at(tile) -> bool:
+            for other_tile in self.map.own_supply_links_in_vision:
+                if other_tile.index == tile.index:
+                    continue
+                if other_tile.last_seen_turn != current_round:
+                    continue
+                if other_tile.building.team != own_team:
+                    continue
+                if other_tile.building.entity_type not in {
+                    EntityType.CONVEYOR,
+                    EntityType.BRIDGE,
+                    EntityType.SPLITTER,
+                }:
+                    continue
+                for target in other_tile.building.targets:
+                    if target.index == tile.index:
+                        return True
+            return False
+
         target_tile = None
         target_supplier_type = None
         target_supplier_target = None
@@ -1002,6 +1027,8 @@ class BuilderStrategyMethodsMixin:
                 and target.building.entity_type == EntityType.HARVESTER
                 for target in tile.building.targets
             ):
+                continue
+            if not has_other_supplier_pointing_at(tile):
                 continue
 
             supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(

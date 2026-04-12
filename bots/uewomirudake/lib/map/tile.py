@@ -181,6 +181,10 @@ class Tile:
     def is_enemy_turret_target_tile(self) -> int:
         return self.in_enemy_attack_range or self.in_enemy_launcher_pickup_zone
 
+    @property
+    def conveyor_targets_harvester(self) -> bool:
+        return bool(self.map.conveyor_targets_harvester_by_index[self.index])
+
     def u_get_resource_targets(self) -> list["Tile"]:
         if self.building.entity_type in RESOURCE_TARGET_TYPES:
             return list(self.building.targets)
@@ -229,6 +233,7 @@ class Tile:
                 self.building.team,
                 -1,
             )
+        self.map.conveyor_targets_harvester_by_index[self.index] = 0
         self.building = TileBuilding(
             None,
             None,
