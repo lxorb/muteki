@@ -1,18 +1,19 @@
 from cambc import Direction
 
 from lib.agent import Agent
-from lib.agent.builder.types import StrategyEntry
-from lib.agent.constants import (
+from lib.agent.builder.strategies import (
     BUILDER_STRATEGY_BY_TILE,
     DISABLE_HARASSMENT,
-    FOUNDRY_STRATEGY,
     FURTHER_BB_MIN_TITANIUM,
     FURTHER_BB_ROTATION,
     FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN,
-    HARASSMENT_STRATEGY,
     INITIAL_BB_ORDER,
     MAX_BOTS,
     START_FOUNDRY_TURN,
+)
+from lib.agent.constants import (
+    FOUNDRY_STRATEGY_ID,
+    HARASSMENT_STRATEGY_ID,
     SURRENDER_AT_TURN,
 )
 
@@ -22,7 +23,7 @@ class CoreAgent(Agent):
         super().__init__()
         self.spawn_tile_counts: dict[Direction, int] = dict.fromkeys(Direction, 0)
         self.spawn_bb_count = 0
-        self.builder_bot_order: list[list[StrategyEntry]] = list(INITIAL_BB_ORDER)
+        self.builder_bot_order: list[str] = list(INITIAL_BB_ORDER)
         self.spawning_order_pos = 0
         self.further_spawn_count = 0
         self.further_spawn_rotation_pos = 0
@@ -55,11 +56,11 @@ class CoreAgent(Agent):
         for offset in range(rotation_length):
             rotation_idx = (self.further_spawn_rotation_pos + offset) % rotation_length
             builder_bot_strategy = FURTHER_BB_ROTATION[rotation_idx]
-            if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY:
+            if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
                 continue
             if (
                 self.map.current_round < START_FOUNDRY_TURN
-                and builder_bot_strategy == FOUNDRY_STRATEGY
+                and builder_bot_strategy == FOUNDRY_STRATEGY_ID
             ):
                 continue
             if not self.u_spawn_builder(builder_bot_strategy):
@@ -83,7 +84,7 @@ class CoreAgent(Agent):
 
         while self.spawning_order_pos < len(self.builder_bot_order):
             builder_bot_strategy = self.builder_bot_order[self.spawning_order_pos]
-            if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY:
+            if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
                 self.spawning_order_pos += 1
                 continue
 
@@ -97,7 +98,7 @@ class CoreAgent(Agent):
 
     def u_get_builder_spawn_candidates(
         self,
-        builder_bot_strategy: list[StrategyEntry],
+        builder_bot_strategy: str,
     ) -> list[tuple[int, int, int, Direction]]:
         core_center_pos = self.map.own_core_center_pos
         if core_center_pos is None:
@@ -133,10 +134,10 @@ class CoreAgent(Agent):
 
         return candidate_spawns
 
-    def u_spawn_builder(self, builder_bot_strategy: list[StrategyEntry]) -> bool:
+    def u_spawn_builder(self, builder_bot_strategy: str) -> bool:
         if self.spawn_bb_count >= MAX_BOTS:
             return False
-        if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY:
+        if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
             return False
 
         core_center_pos = self.map.own_core_center_pos

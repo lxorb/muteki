@@ -2,6 +2,18 @@ from heapq import heapify, heappop
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
+from lib.agent.constants import (
+    BUILDER_ACTION_RADIUS_SQ,
+    BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN,
+    DEFENDER_STRATEGY_ID,
+    FOUNDRY_WAIT_RADIUS_SQ,
+    HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
+    MAX_CORE_ORE_DIRECT_DIST,
+    MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST,
+    PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
+    SCAVENGER_STRATEGY_ID,
+    SURROUND_HARVESTER_ENTITY_TYPE,
+)
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -19,17 +31,13 @@ class BuilderStrategyMethodsMixin:
         return bool(self.u_heal_at(current_tile.position, move_towards=False))
 
     def s_convert_to_defender(self):
-        from lib.agent.constants import HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER
-
         if self.harvesters_built < HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER:
             return False
 
-        from .strategies import DEFENDER_STRATEGY
-
-        if self.strategy == DEFENDER_STRATEGY:
+        if self.strategy == DEFENDER_STRATEGY_ID:
             return False
 
-        self.strategy = list(DEFENDER_STRATEGY)
+        self.strategy = DEFENDER_STRATEGY_ID
         self.last_strategy_index = -1
         self.last_turn_completed = True
         return True
@@ -50,19 +58,13 @@ class BuilderStrategyMethodsMixin:
         to the builder and the own core. The supplier type and target are
         chosen by `u_get_supplier_build_plan(...)`.
         """
-        from lib.agent.constants import (
-            MAX_CORE_ORE_DIRECT_DIST,
-            PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
-        )
-        from .strategies import SCAVENGER_STRATEGY
-
         if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
             return False
 
         own_team = self.map.own_team
         attack_enemy_passable = False
         max_core_ore_direct_dist = (
-            MAX_CORE_ORE_DIRECT_DIST if self.strategy == SCAVENGER_STRATEGY else None
+            MAX_CORE_ORE_DIRECT_DIST if self.strategy == SCAVENGER_STRATEGY_ID else None
         )
         supply_chain_label = self.u_get_supply_chain_label_for_resource(resource)
         if supply_chain_label == SupplyChainLabel.NONE:
@@ -205,18 +207,12 @@ class BuilderStrategyMethodsMixin:
         hold: bool = True,
         resource: Environment = Environment.ORE_TITANIUM,
     ):
-        from lib.agent.constants import (
-            MAX_CORE_ORE_DIRECT_DIST,
-            SURROUND_HARVESTER_ENTITY_TYPE,
-        )
-        from .strategies import SCAVENGER_STRATEGY
-
         current_pos = self.map.current_pos
         current_tile = self.map.u_get_pos_tile(current_pos)
         if current_tile.environment != resource:
             return False
         if (
-            self.strategy == SCAVENGER_STRATEGY
+            self.strategy == SCAVENGER_STRATEGY_ID
             and current_tile.own_core_dist > MAX_CORE_ORE_DIRECT_DIST
         ):
             return False
@@ -263,8 +259,6 @@ class BuilderStrategyMethodsMixin:
         the builder, and relies on the supplier-plan helper to choose whether
         the tile should become a conveyor or a bridge plus its optimal target.
         """
-        from lib.agent.constants import PREVENT_SUPPLY_LINKS_TILL_HARVESTER
-
         if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
             return False
 
@@ -408,12 +402,6 @@ class BuilderStrategyMethodsMixin:
         adjacent empty tiles around the target ore and otherwise moves onto the
         ore tile before allowing the harvester build.
         """
-        from lib.agent.constants import (
-            BUILDER_ACTION_RADIUS_SQ,
-            MAX_CORE_ORE_DIRECT_DIST,
-            SURROUND_HARVESTER_ENTITY_TYPE,
-        )
-        from .strategies import SCAVENGER_STRATEGY
 
         current_pos = self.map.current_pos
         if (
@@ -422,7 +410,7 @@ class BuilderStrategyMethodsMixin:
         ):
             return False
         max_core_ore_direct_dist = (
-            MAX_CORE_ORE_DIRECT_DIST if self.strategy == SCAVENGER_STRATEGY else None
+            MAX_CORE_ORE_DIRECT_DIST if self.strategy == SCAVENGER_STRATEGY_ID else None
         )
 
         own_team = self.map.own_team
@@ -943,8 +931,6 @@ class BuilderStrategyMethodsMixin:
         distance, and delegates build, movement, and hold handling to
         `u_build_at`.
         """
-        from lib.agent.constants import MAX_CORE_ORE_DIRECT_DIST
-
         current_pos = self.map.current_pos
 
         target_tile = None
@@ -982,8 +968,6 @@ class BuilderStrategyMethodsMixin:
         wait near the foundry until a valid routed splitter slot becomes
         available.
         """
-        from lib.agent.constants import FOUNDRY_WAIT_RADIUS_SQ
-
         foundry_pos = self.u_get_core_foundry_plan()
         if foundry_pos is None:
             return False
@@ -1045,12 +1029,6 @@ class BuilderStrategyMethodsMixin:
         """
         Build or confirm the planned core-side foundry before splitter work.
         """
-        from lib.agent.constants import (
-            BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN,
-            FOUNDRY_WAIT_RADIUS_SQ,
-            MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST,
-        )
-
         foundry_pos = self.u_get_core_foundry_plan()
         if foundry_pos is None:
             return False

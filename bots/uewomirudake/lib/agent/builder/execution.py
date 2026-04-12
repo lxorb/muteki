@@ -1,3 +1,4 @@
+from lib.agent.builder.strategies import STRATEGIES
 from lib.debug import Stopwatch
 
 
@@ -20,25 +21,27 @@ class BuilderExecutionMixin:
         stopwatch = Stopwatch("Builder strats")
         stopwatch.start()
 
+        strategy_steps = STRATEGIES.get(self.strategy, [])
+
         if self.last_turn_completed:
             self.last_strategy_index = -1
             start_index = 0
         else:
             start_index = self.last_strategy_index + 1
-            if start_index >= len(self.strategy):
+            if start_index >= len(strategy_steps):
                 start_index = 0
 
         stopwatch.lap("Init logic")
 
         self.last_turn_completed = False
-        for idx in range(start_index, len(self.strategy)):
+        for idx in range(start_index, len(strategy_steps)):
             if self.round_stopwatch.check_overtime():
                 stopwatch.lap("Overtime")
                 stopwatch.log()
                 return False
 
             strategy_method, strategy_args = self.u_get_bound_method_and_args(
-                self.strategy[idx]
+                strategy_steps[idx]
             )
             acted = bool(strategy_method(*strategy_args))
             self.last_strategy_index = idx

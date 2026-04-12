@@ -1,17 +1,15 @@
 from cambc import EntityType
 
-from lib.agent.builder.strategies import (
-    DEFENDER_STRATEGY,
-    FOUNDRY_STRATEGY,
-    HARASSMENT_STRATEGY,
-    INITRES_STRATEGY,
-    SCAVENGER_STRATEGY,
-)
-from lib.agent.builder.types import StrategyEntry
-
 ### GAME CONSTANTS ###
 BUILDER_ACTION_RADIUS_SQ: int = 2
 NS_PER_TURN: int = 2_000_000
+
+### STRATEGY NAMES ###
+INITRES_STRATEGY_ID: str = "initres"
+SCAVENGER_STRATEGY_ID: str = "scavenger"
+HARASSMENT_STRATEGY_ID: str = "harassment"
+FOUNDRY_STRATEGY_ID: str = "foundry"
+DEFENDER_STRATEGY_ID: str = "defender"
 
 ### BOT LOGIC ###
 BRIDGE_PREFERRED_DIST: int = 6
@@ -103,36 +101,6 @@ LAUNCHER_THROWABLE_PRIORITY_RANK = {
     target_type: idx for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
 }
 
-### CORE LOGIC ###
-BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], list[StrategyEntry]] = {
-    (-1, -1): SCAVENGER_STRATEGY,
-    (0, -1): FOUNDRY_STRATEGY,
-    (1, -1): HARASSMENT_STRATEGY,
-    (-1, 0): INITRES_STRATEGY,
-    (0, 0): HARASSMENT_STRATEGY,
-    (1, 0): HARASSMENT_STRATEGY,
-    (-1, 1): HARASSMENT_STRATEGY,
-    (0, 1): HARASSMENT_STRATEGY,
-    (1, 1): SCAVENGER_STRATEGY,
-}
-INITIAL_BB_ORDER: list[list[StrategyEntry]] = [
-    # HARASSMENT_STRATEGY,
-    HARASSMENT_STRATEGY,
-    SCAVENGER_STRATEGY,
-    SCAVENGER_STRATEGY,
-    SCAVENGER_STRATEGY,
-    # SCAVENGER_STRATEGY,
-    # FOUNDRY_STRATEGY,
-]
-FURTHER_BB_ROTATION: list[list[StrategyEntry]] = [
-    # FOUNDRY_STRATEGY,
-    SCAVENGER_STRATEGY,
-]
-FURTHER_BB_MIN_TITANIUM: int = 300
-FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN: int = 50
-MAX_BOTS: int = 999
-DISABLE_HARASSMENT: bool = False
-START_FOUNDRY_TURN: int = 150
 
 """
 The following code automatically prevents
