@@ -1905,13 +1905,36 @@ class BuilderStrategyMethodsMixin:
     def s_move_toward_enemy_core(self):
         """
         Harassment step for advancing toward the enemy core.
+
+        If the exact enemy core position is not known yet, move toward the
+        nearest remaining symmetry candidate instead.
         """
         enemy_core_center_pos = self.map.enemy_core_center_pos
 
-        if not enemy_core_center_pos:
+        if enemy_core_center_pos is not None:
+            return bool(self.u_move_to(enemy_core_center_pos))
+
+        if (
+            not self.map.enemy_core_center_pos_candidates
+            and not self.map.u_calc_core_center_positions()
+        ):
             return False
 
-        if self.u_move_to(self.map.enemy_core_center_pos):
-            return True
+        candidate_positions = {
+            pos for _, pos in self.map.enemy_core_center_pos_candidates
+        }
+        if not candidate_positions:
+            return False
+
+        for candidate_pos in sorted(
+            candidate_positions,
+            key=lambda pos: (
+                self.map.u_get_estimated_dist_to_self(pos),
+                pos.x,
+                pos.y,
+            ),
+        ):
+            if self.u_move_to(candidate_pos):
+                return True
 
         return False
