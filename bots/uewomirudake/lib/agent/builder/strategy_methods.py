@@ -477,6 +477,106 @@ class BuilderStrategyMethodsMixin:
                 and target_tile.is_passable
             )
 
+        def can_still_move() -> bool:
+            for direction in Direction:
+                if direction != Direction.CENTRE and self.ct.can_move(direction):
+                    return True
+            return False
+
+        def get_discontinued_adjacent_supply_tile(harvester_tile):
+            candidate_tile = None
+            candidate_key = None
+
+            for safe_order, adjacent_idx in enumerate(
+                self.map.u_iter_cardinal_neighbor_indices(harvester_tile.index)
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.building.team != own_team:
+                    continue
+                if adjacent_tile.building.entity_type not in {
+                    EntityType.CONVEYOR,
+                    EntityType.BRIDGE,
+                }:
+                    continue
+
+                is_connected = False
+                for output_tile in adjacent_tile.building.targets:
+                    output_type = output_tile.building.entity_type
+                    if output_tile.index == harvester_tile.index:
+                        is_connected = True
+                        break
+                    if (
+                        output_type in SUPPLY_LINK_TYPES
+                        or output_type == EntityType.HARVESTER
+                    ):
+                        is_connected = True
+                        break
+
+                if is_connected:
+                    continue
+
+                key = (
+                    0 if adjacent_tile.position == current_pos else 1,
+                    current_pos.distance_squared(adjacent_tile.position),
+                    safe_order,
+                    adjacent_tile.index,
+                )
+                if candidate_key is None or key < candidate_key:
+                    candidate_key = key
+                    candidate_tile = adjacent_tile
+
+            return candidate_tile
+
+        def move_towards_tile(target_tile) -> bool:
+            if target_tile is None:
+                return False
+            if current_pos == target_tile.position:
+                return True
+
+            move_direction = self.map.u_get_direction_between(
+                current_pos,
+                target_tile.position,
+            )
+            if move_direction is not None and self.ct.can_move(move_direction):
+                self.ct.move(move_direction)
+                return True
+
+            current_distance_sq = current_pos.distance_squared(target_tile.position)
+            best_direction = None
+            best_key = None
+
+            for direction_order, direction in enumerate(Direction):
+                if direction == Direction.CENTRE or not self.ct.can_move(direction):
+                    continue
+
+                next_idx = self.map.u_get_neighbor_index_by_direction(
+                    current_tile.index,
+                    direction,
+                )
+                if next_idx is None:
+                    continue
+
+                next_tile = tiles_by_index[next_idx]
+                next_distance_sq = next_tile.position.distance_squared(
+                    target_tile.position
+                )
+                if next_distance_sq >= current_distance_sq:
+                    continue
+
+                key = (
+                    next_distance_sq,
+                    direction_order,
+                )
+                if best_key is None or key < best_key:
+                    best_key = key
+                    best_direction = direction
+
+            if best_direction is None:
+                return False
+
+            self.ct.move(best_direction)
+            return True
+
         def step_off_current_ore_tile() -> bool:
             candidate_entries: list[
                 tuple[tuple[int, int, int, int, int], Direction]
@@ -708,6 +808,12 @@ class BuilderStrategyMethodsMixin:
         ):
             if self.last_built_entity_type == EntityType.HARVESTER:
                 self.harvesters_built += 1
+                if can_still_move():
+                    discontinued_tile = get_discontinued_adjacent_supply_tile(
+                        target_tile
+                    )
+                    if discontinued_tile is not None:
+                        move_towards_tile(discontinued_tile)
             return True
 
         return False
