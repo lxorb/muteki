@@ -67,7 +67,15 @@ class BuilderAgent(
     def u_handler(self):
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
+        if self.map.is_map_known:
+            print(f"Inferred map: {self.map.known_map_path}")
+        if self.map.map_json_fully_loaded:
+            print(
+                "Finished loading parsed map data into map object. "
+                f"Map updating took {self.map.map_update_time_mus / 1000:.3f} ms."
+            )
         print(f"Builder strategy: {self.u_get_strategy_name()}")
 
         handled = self.u_execute_strategy()
+        self.map.u_update_map()
         return handled

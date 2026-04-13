@@ -3,6 +3,8 @@ from collections import deque
 from collections.abc import Iterable
 from enum import Enum
 from heapq import heappop, heappush
+import json
+from pathlib import Path
 
 from cambc import (
     Controller,
@@ -14,7 +16,7 @@ from cambc import (
     Team,
 )
 
-from lib.agent.time import RoundStopwatch
+from lib.agent.time import ALLOCATED_MAP_AND_BOT_TIME_MUS, RoundStopwatch
 
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
@@ -35,6 +37,35 @@ from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel
 
 from lib.debug import Stopwatch
+
+
+PARSED_TILE_TYPE_INACTIVE = 0
+PARSED_TILE_TYPE_EMPTY = 1
+PARSED_TILE_TYPE_WALL = 2
+PARSED_TILE_TYPE_TITANIUM = 3
+PARSED_TILE_TYPE_AXIONITE = 4
+PARSED_TILE_TYPE_CORE = 5
+
+MAP_UPDATE_MIN_REMAINING_MUS = 100
+
+_BOT_ROOT = Path(__file__).resolve().parents[2]
+_PARSED_MAPS_ROOT = _BOT_ROOT / "parsed_maps"
+_FAST_MAP_INFERENCE_PATH = _BOT_ROOT / "fast_map_inference.json"
+
+try:
+    FAST_MAP_INFERENCE_BY_KEY: dict[str, list[str]] = json.loads(
+        _FAST_MAP_INFERENCE_PATH.read_text(encoding="utf-8")
+    )
+except FileNotFoundError:
+    FAST_MAP_INFERENCE_BY_KEY = {}
+
+
+def u_format_fast_inference_key(
+    width: int,
+    height: int,
+    core_center: Position,
+) -> str:
+    return f"({width}, {height}, ({core_center.x}, {core_center.y}))"
 
 
 class SymmetryMode(Enum):
@@ -219,6 +250,15 @@ class Map:
         self.enemy_core_center_pos_candidates: list[tuple[SymmetryMode, Position]] = []
         self.known_accessible_titanium_indices: list[int] = []
         self.known_accessible_axionite_indices: list[int] = []
+        self.is_map_known: bool = False
+        self.known_map_path: str | None = None
+        self.parsed_map_tile_type_by_index: list[int] | None = None
+        self.parsed_map_own_core_dist_by_index: list[int] | None = None
+        self.parsed_titanium_indices: list[int] = []
+        self.parsed_axionite_indices: list[int] = []
+        self.parsed_map_next_update_index: int = 0
+        self.map_json_fully_loaded: bool = False
+        self.map_update_time_mus: int = 0
 
         self.has_built_foundry: bool = False
         self.built_foundry_index: int = -1
@@ -863,6 +903,8 @@ class Map:
         if self.own_core_center_pos is None:
             self.u_calc_core_center_positions()
 
+        self.u_infer_map()
+
         self.stopwatch.lap("Core positions")
 
         self.u_update_supply_information()
@@ -898,6 +940,23 @@ class Map:
             if 0 <= (target_x := source_x + dx) < self.width
             and 0 <= (target_y := source_y + dy) < self.height
         )
+
+    def u_order_known_resource_indices(
+        self,
+        resource_indices: set[int],
+        parsed_order: list[int],
+    ) -> list[int]:
+        if not parsed_order:
+            return sorted(resource_indices)
+
+        ordered_indices = [idx for idx in parsed_order if idx in resource_indices]
+        ordered_index_set = set(ordered_indices)
+        if len(ordered_index_set) == len(resource_indices):
+            return ordered_indices
+
+        remaining_indices = sorted(resource_indices - ordered_index_set)
+        ordered_indices.extend(remaining_indices)
+        return ordered_indices
 
     def u_update_visible_map_caches(self) -> None:
         self.u_update_symmetry_from_visible_tiles()
@@ -981,11 +1040,13 @@ class Map:
 
         self.stopwatch.lap("Visible caches: classify")
 
-        self.known_accessible_titanium_indices = sorted(
-            known_accessible_titanium_indices
+        self.known_accessible_titanium_indices = self.u_order_known_resource_indices(
+            known_accessible_titanium_indices,
+            self.parsed_titanium_indices,
         )
-        self.known_accessible_axionite_indices = sorted(
-            known_accessible_axionite_indices
+        self.known_accessible_axionite_indices = self.u_order_known_resource_indices(
+            known_accessible_axionite_indices,
+            self.parsed_axionite_indices,
         )
         self.stopwatch.lap("Visible caches: accessible ore")
         self.u_update_frontier_expand_cache()
@@ -1287,6 +1348,202 @@ class Map:
                     self.enemy_core_source_by_index,
                 )
         return True
+
+    def u_get_parsed_map_json_path(self, map_path: str) -> Path:
+        relative_map_path = Path(map_path)
+        if relative_map_path.parts and relative_map_path.parts[0] == "maps":
+            relative_map_path = Path(*relative_map_path.parts[1:])
+        return (_PARSED_MAPS_ROOT / relative_map_path).with_suffix(".json")
+
+    def u_infer_symmetry_mode_from_core_positions(
+        self,
+        own_core_pos: Position,
+        enemy_core_pos: Position,
+    ) -> SymmetryMode | None:
+        if enemy_core_pos == Position(
+            self.width - 1 - own_core_pos.x,
+            self.height - 1 - own_core_pos.y,
+        ):
+            return SymmetryMode.ROTATION
+        if enemy_core_pos == Position(
+            own_core_pos.x,
+            self.height - 1 - own_core_pos.y,
+        ):
+            return SymmetryMode.MIRROR_X
+        if enemy_core_pos == Position(
+            self.width - 1 - own_core_pos.x,
+            own_core_pos.y,
+        ):
+            return SymmetryMode.MIRROR_Y
+        return None
+
+    def u_apply_parsed_resource_order_to_known_resources(self) -> None:
+        titanium_indices = set(self.parsed_titanium_indices)
+        axionite_indices = set(self.parsed_axionite_indices)
+
+        for tile in self.tiles_in_vision:
+            building = tile.building
+            if tile.environment == Environment.ORE_TITANIUM:
+                if building.id is None or (
+                    building.team == self.own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    titanium_indices.add(tile.index)
+                else:
+                    titanium_indices.discard(tile.index)
+            else:
+                titanium_indices.discard(tile.index)
+
+            if tile.environment == Environment.ORE_AXIONITE:
+                if building.id is None or (
+                    building.team == self.own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    axionite_indices.add(tile.index)
+                else:
+                    axionite_indices.discard(tile.index)
+            else:
+                axionite_indices.discard(tile.index)
+
+        self.known_accessible_titanium_indices = self.u_order_known_resource_indices(
+            titanium_indices,
+            self.parsed_titanium_indices,
+        )
+        self.known_accessible_axionite_indices = self.u_order_known_resource_indices(
+            axionite_indices,
+            self.parsed_axionite_indices,
+        )
+
+    def u_infer_map(self) -> None:
+        if self.is_map_known or self.own_core_center_pos is None:
+            return
+
+        key = u_format_fast_inference_key(
+            self.width,
+            self.height,
+            self.own_core_center_pos,
+        )
+        candidate_maps = FAST_MAP_INFERENCE_BY_KEY.get(key, [])
+        if not candidate_maps:
+            return
+        if len(candidate_maps) > 1:
+            print(f"Map inference ambiguous for {key}: {candidate_maps}")
+            return
+
+        inferred_map_path = candidate_maps[0]
+        parsed_map_path = self.u_get_parsed_map_json_path(inferred_map_path)
+        if not parsed_map_path.exists():
+            print(
+                f"Parsed map json missing for inferred map {inferred_map_path}: {parsed_map_path}"
+            )
+            return
+
+        parsed_map_data = json.loads(parsed_map_path.read_text(encoding="utf-8"))
+        if self.own_team == Team.A:
+            own_resource_titanium_key = "titanium_by_core_a_dist"
+            own_resource_axionite_key = "axionite_by_core_a_dist"
+            enemy_core_center_key = "core_b_center"
+        else:
+            own_resource_titanium_key = "titanium_by_core_b_dist"
+            own_resource_axionite_key = "axionite_by_core_b_dist"
+            enemy_core_center_key = "core_a_center"
+
+        enemy_core_center = parsed_map_data[enemy_core_center_key]
+        enemy_core_pos = Position(enemy_core_center["x"], enemy_core_center["y"])
+        symmetry_mode = self.u_infer_symmetry_mode_from_core_positions(
+            self.own_core_center_pos,
+            enemy_core_pos,
+        )
+
+        self.is_map_known = True
+        self.known_map_path = inferred_map_path
+        self.parsed_map_tile_type_by_index = parsed_map_data["tile_type_by_index"]
+        self.parsed_map_own_core_dist_by_index = parsed_map_data[
+            "core_a_dist_by_index" if self.own_team == Team.A else "core_b_dist_by_index"
+        ]
+        self.parsed_titanium_indices = parsed_map_data[own_resource_titanium_key]
+        self.parsed_axionite_indices = parsed_map_data[own_resource_axionite_key]
+        self.parsed_map_next_update_index = 0
+        self.map_json_fully_loaded = False
+        self.map_update_time_mus = 0
+        self.enemy_core_center_pos = enemy_core_pos
+        self.enemy_core_source_indices = self.u_cache_core_source_indices(
+            self.enemy_core_center_pos,
+            self.enemy_core_source_by_index,
+        )
+        if symmetry_mode is not None:
+            self.symmetry_mode = symmetry_mode
+            self.symmetry_mode_candidates = [symmetry_mode]
+            self.enemy_core_center_pos_candidates = [
+                (symmetry_mode, self.enemy_core_center_pos)
+            ]
+
+        self.u_apply_parsed_resource_order_to_known_resources()
+
+    def u_get_environment_for_parsed_tile_type(
+        self,
+        tile_type: int,
+    ) -> Environment | None:
+        if tile_type == PARSED_TILE_TYPE_WALL:
+            return Environment.WALL
+        if tile_type == PARSED_TILE_TYPE_TITANIUM:
+            return Environment.ORE_TITANIUM
+        if tile_type == PARSED_TILE_TYPE_AXIONITE:
+            return Environment.ORE_AXIONITE
+        if tile_type in {
+            PARSED_TILE_TYPE_EMPTY,
+            PARSED_TILE_TYPE_CORE,
+        }:
+            return Environment.EMPTY
+        return None
+
+    def u_update_map(self) -> None:
+        if (
+            not self.is_map_known
+            or self.map_json_fully_loaded
+            or self.parsed_map_tile_type_by_index is None
+            or self.parsed_map_own_core_dist_by_index is None
+            or self.ct is None
+        ):
+            return
+
+        start_cpu_time = self.ct.get_cpu_time_elapsed()
+        while self.parsed_map_next_update_index < self.INITIAL_MAP_SIZE:
+            idx = self.parsed_map_next_update_index
+            tile_type = self.parsed_map_tile_type_by_index[idx]
+            parsed_dist = self.parsed_map_own_core_dist_by_index[idx]
+
+            if self.active_mask_by_index[idx]:
+                tile = self.tiles_by_index[idx]
+                parsed_environment = self.u_get_environment_for_parsed_tile_type(
+                    tile_type
+                )
+                if parsed_environment is not None:
+                    tile.environment = parsed_environment
+                tile.u_refresh_core_distance_passability()
+                tile.u_refresh_intrinsic_passability()
+                tile.own_core_dist = parsed_dist
+            else:
+                self.own_core_dist_by_index[idx] = CORE_DIST_INF
+
+            self.own_core_dist_exact_by_index[idx] = 1
+            self.parsed_map_next_update_index = idx + 1
+
+            if (
+                ALLOCATED_MAP_AND_BOT_TIME_MUS - self.ct.get_cpu_time_elapsed()
+                <= MAP_UPDATE_MIN_REMAINING_MUS
+            ):
+                self.map_update_time_mus += self.ct.get_cpu_time_elapsed() - start_cpu_time
+                return
+
+        self.map_json_fully_loaded = True
+        self.map_update_time_mus += self.ct.get_cpu_time_elapsed() - start_cpu_time
+        self.own_core_dist_initialized = True
+        self.own_core_dist_init_started = False
+        self.own_core_dist_init_heap.clear()
+        self.u_reset_own_core_distance_incremental_update()
+        self.u_reset_own_core_distance_manhattan_initialization()
+        self.core_distance_dirty_indices.clear()
 
     def u_is_enemy_bot_on_ally_tile(self, target_tile: Tile) -> bool:
         if target_tile.building.id is None:
@@ -2612,6 +2869,12 @@ class Map:
     def u_update_distances(self) -> None:
         sw = Stopwatch("Map distances")
         sw.start()
+
+        if self.map_json_fully_loaded:
+            self.core_distance_dirty_indices.clear()
+            sw.lap("Own core field")
+            sw.log()
+            return
 
         sw.lap("Self distance field")
 

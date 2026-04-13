@@ -1,6 +1,4 @@
 from cambc import Controller
-import inspect
-
 ALLOCATED_MAP_TIME_MS = 0.75
 ALLOCATED_BOT_TIME_MS = 0.8
 
@@ -43,7 +41,6 @@ class RoundStopwatch:
             return False
 
         active_cpu_time = self.ct.get_cpu_time_elapsed()
-        print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
 
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
@@ -56,7 +53,6 @@ class RoundStopwatch:
             return False
 
         active_cpu_time = self.ct.get_cpu_time_elapsed()
-        print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
 
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS

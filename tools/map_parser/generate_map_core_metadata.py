@@ -13,6 +13,13 @@ ENV_WALL = 1
 ENV_ORE_TITANIUM = 2
 ENV_ORE_AXIONITE = 3
 
+TILE_TYPE_INACTIVE = 0
+TILE_TYPE_EMPTY = 1
+TILE_TYPE_WALL = 2
+TILE_TYPE_TITANIUM = 3
+TILE_TYPE_AXIONITE = 4
+TILE_TYPE_CORE = 5
+
 INDEX_STRIDE = 50
 MAX_MAP_SIZE = INDEX_STRIDE * INDEX_STRIDE
 INF_DIST = 10**9
@@ -37,7 +44,7 @@ def build_tile_type_by_index(
     core_a_center: dict[str, int],
     core_b_center: dict[str, int],
 ) -> list[str]:
-    tile_type_by_index = ["inactive"] * MAX_MAP_SIZE
+    tile_type_by_index = [TILE_TYPE_INACTIVE] * MAX_MAP_SIZE
     core_a_positions = set(core_footprint(core_a_center))
     core_b_positions = set(core_footprint(core_b_center))
 
@@ -46,21 +53,21 @@ def build_tile_type_by_index(
             idx = to_index(x, y)
             pos = (x, y)
             if pos in core_a_positions:
-                tile_type_by_index[idx] = "core_a"
+                tile_type_by_index[idx] = TILE_TYPE_CORE
                 continue
             if pos in core_b_positions:
-                tile_type_by_index[idx] = "core_b"
+                tile_type_by_index[idx] = TILE_TYPE_CORE
                 continue
 
             env = rows[y][x]
             if env == ENV_WALL:
-                tile_type_by_index[idx] = "wall"
+                tile_type_by_index[idx] = TILE_TYPE_WALL
             elif env == ENV_ORE_TITANIUM:
-                tile_type_by_index[idx] = "titanium"
+                tile_type_by_index[idx] = TILE_TYPE_TITANIUM
             elif env == ENV_ORE_AXIONITE:
-                tile_type_by_index[idx] = "axionite"
+                tile_type_by_index[idx] = TILE_TYPE_AXIONITE
             else:
-                tile_type_by_index[idx] = "empty"
+                tile_type_by_index[idx] = TILE_TYPE_EMPTY
 
     return tile_type_by_index
 
@@ -98,7 +105,7 @@ def build_core_distance_by_index(
                     continue
 
                 neighbor_idx = to_index(nx, ny)
-                if tile_type_by_index[neighbor_idx] == "wall":
+                if tile_type_by_index[neighbor_idx] == TILE_TYPE_WALL:
                     continue
 
                 step_cost = 1 if dx == 0 or dy == 0 else 2
@@ -114,7 +121,7 @@ def build_core_distance_by_index(
 def build_sorted_resource_indices(
     tile_type_by_index: list[str],
     distances: list[int],
-    resource_type: str,
+    resource_type: int,
 ) -> list[int]:
     resource_indices = [
         idx
@@ -167,22 +174,22 @@ def build_metadata(map_path: Path) -> dict:
         "titanium_by_core_a_dist": build_sorted_resource_indices(
             tile_type_by_index,
             core_a_dist_by_index,
-            "titanium",
+            TILE_TYPE_TITANIUM,
         ),
         "titanium_by_core_b_dist": build_sorted_resource_indices(
             tile_type_by_index,
             core_b_dist_by_index,
-            "titanium",
+            TILE_TYPE_TITANIUM,
         ),
         "axionite_by_core_a_dist": build_sorted_resource_indices(
             tile_type_by_index,
             core_a_dist_by_index,
-            "axionite",
+            TILE_TYPE_AXIONITE,
         ),
         "axionite_by_core_b_dist": build_sorted_resource_indices(
             tile_type_by_index,
             core_b_dist_by_index,
-            "axionite",
+            TILE_TYPE_AXIONITE,
         ),
         "tile_type_by_index": tile_type_by_index,
         "core_a_dist_by_index": core_a_dist_by_index,
@@ -203,6 +210,7 @@ def write_fast_map_inference(
     metadata_by_map_path: dict[Path, dict],
 ) -> Path:
     repo_root = maps_root.parent
+    bot_root = repo_root / "bots" / "uewomirudake"
     candidates_by_key: dict[str, list[str]] = defaultdict(list)
 
     for map_path, metadata in metadata_by_map_path.items():
@@ -217,7 +225,8 @@ def write_fast_map_inference(
     fast_map_inference = {
         key: sorted(values) for key, values in sorted(candidates_by_key.items())
     }
-    output_path = repo_root / "fast_map_inference.json"
+    bot_root.mkdir(parents=True, exist_ok=True)
+    output_path = bot_root / "fast_map_inference.json"
     output_path.write_text(
         json.dumps(fast_map_inference, indent=2) + "\n",
         encoding="utf-8",
@@ -234,13 +243,18 @@ def should_process_map(map_path: Path, maps_root: Path) -> bool:
 
 
 def write_metadata_for_maps(maps_root: Path) -> tuple[list[Path], Path]:
+    repo_root = maps_root.parent
+    parsed_maps_root = repo_root / "bots" / "uewomirudake" / "parsed_maps"
+    parsed_maps_root.mkdir(parents=True, exist_ok=True)
     written_paths: list[Path] = []
     metadata_by_map_path: dict[Path, dict] = {}
     for map_path in sorted(maps_root.rglob("*.map26")):
         if not should_process_map(map_path, maps_root):
             continue
         metadata = build_metadata(map_path)
-        output_path = map_path.with_suffix(".json")
+        relative_map_path = map_path.relative_to(maps_root)
+        output_path = (parsed_maps_root / relative_map_path).with_suffix(".json")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         written_paths.append(output_path)
         metadata_by_map_path[map_path] = metadata
