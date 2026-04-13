@@ -123,18 +123,12 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
     ) -> Position | None: ...
-    def u_move_to(
-        self,
-        pos: Position,
-        avoid_enemy_turrets: bool = True,
-        build_new_roads: bool = False,
-    ) -> bool: ...
-
     def u_move_to_astar(
         self,
         pos: Position,
         avoid_enemy_turrets: bool = True,
         build_new_roads: bool = False,
+        allow_conveyor_building: bool = True,
     ) -> bool: ...
 
     def u_attack_passable(
@@ -155,6 +149,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         facing_direction: Direction | None = None,
         target_pos: Position | None = None,
         avoid_enemy_turrets: bool = True,
+        allow_conveyor_building: bool = True,
     ) -> bool: ...
 
     def u_heal_at(

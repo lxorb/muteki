@@ -400,6 +400,24 @@ class BuilderStrategyMethodsMixin:
             )
             if supplier_type is None or supplier_target is None:
                 continue
+            if supplier_type == EntityType.CONVEYOR:
+                harvester_direction = self.map.u_get_direction_between(
+                    best_empty_tile.position,
+                    harvester_tile.position,
+                )
+                if (
+                    harvester_direction is not None
+                    and supplier_target == harvester_direction
+                    and best_empty_tile.index
+                    in self.map.own_supply_link_target_indices_in_vision
+                ):
+                    supplier_target = self.u_best_conveyor_orientation(
+                        best_empty_tile.position,
+                        resource,
+                        allow_adjacent_resource_sink=False,
+                    )
+                    if supplier_target is None:
+                        continue
 
             candidate_entries.append(
                 (
@@ -1043,7 +1061,7 @@ class BuilderStrategyMethodsMixin:
                     if current_pos != target_tile.position:
                         if not move_towards:
                             return False
-                        moved = self.u_move_to(target_tile.position)
+                        moved = self.u_move_to_astar(target_tile.position)
                         if moved:
                             remember_pending_harvester_target(target_tile.index)
                         return moved
@@ -1184,7 +1202,7 @@ class BuilderStrategyMethodsMixin:
                 if current_pos != target_tile.position:
                     if not move_towards:
                         return False
-                    moved = self.u_move_to(target_tile.position)
+                    moved = self.u_move_to_astar(target_tile.position)
                     if moved:
                         remember_pending_harvester_target(target_tile.index)
                     return moved
@@ -1438,7 +1456,7 @@ class BuilderStrategyMethodsMixin:
         if current_pos.distance_squared(target_tile.position) > BUILDER_ACTION_RADIUS_SQ:
             if not move_towards:
                 return False
-            return self.u_move_to(target_tile.position)
+            return self.u_move_to_astar(target_tile.position)
 
         titanium_cost, axionite_cost = getattr(
             self.ct, f"get_{target_supplier_type.value}_cost"
@@ -1555,7 +1573,7 @@ class BuilderStrategyMethodsMixin:
         if current_pos.distance_squared(target_tile.position) > BUILDER_ACTION_RADIUS_SQ:
             if not move_towards:
                 return False
-            return self.u_move_to(target_tile.position)
+            return self.u_move_to_astar(target_tile.position)
 
         titanium_cost, axionite_cost = getattr(
             self.ct, f"get_{target_supplier_type.value}_cost"
@@ -1682,7 +1700,7 @@ class BuilderStrategyMethodsMixin:
                         return True
 
             return False
-        if move_towards and self.u_move_to(target_pos):
+        if move_towards and self.u_move_to_astar(target_pos):
             return False
 
         return False
@@ -1959,7 +1977,7 @@ class BuilderStrategyMethodsMixin:
                 )
             if self.map.current_pos == wait_pos:
                 return True
-            if move_towards and self.u_move_to(wait_pos):
+            if move_towards and self.u_move_to_astar(wait_pos):
                 return True
             return (
                 self.map.current_pos.distance_squared(foundry_pos)
@@ -2052,7 +2070,7 @@ class BuilderStrategyMethodsMixin:
                 )
             if self.map.current_pos == wait_pos:
                 return True
-            if move_towards and self.u_move_to(wait_pos):
+            if move_towards and self.u_move_to_astar(wait_pos):
                 return True
             return (
                 self.map.current_pos.distance_squared(foundry_pos)
@@ -2150,7 +2168,7 @@ class BuilderStrategyMethodsMixin:
             patrol_target_indices = get_unpatrolled_target_indices()
 
         for target_idx in patrol_target_indices:
-            if self.u_move_to(tiles_by_index[target_idx].position):
+            if self.u_move_to_astar(tiles_by_index[target_idx].position):
                 return True
 
             if self.round_stopwatch.check_overtime():
@@ -2158,7 +2176,7 @@ class BuilderStrategyMethodsMixin:
 
         # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
         for target_idx in patrol_target_indices:
-            if self.u_move_to(
+            if self.u_move_to_astar(
                 tiles_by_index[target_idx].position, avoid_enemy_turrets=False
             ):
                 return True
@@ -2612,7 +2630,12 @@ class BuilderStrategyMethodsMixin:
         enemy_core_center_pos = self.map.enemy_core_center_pos
 
         if enemy_core_center_pos is not None:
-            return bool(self.u_move_to_astar(enemy_core_center_pos))
+            return bool(
+                self.u_move_to_astar(
+                    enemy_core_center_pos,
+                    allow_conveyor_building=False,
+                )
+            )
 
         if (
             not self.map.enemy_core_center_pos_candidates
@@ -2634,7 +2657,12 @@ class BuilderStrategyMethodsMixin:
         if target_pos is None:
             return False
 
-        return bool(self.u_move_to_astar(target_pos))
+        return bool(
+            self.u_move_to_astar(
+                target_pos,
+                allow_conveyor_building=False,
+            )
+        )
 
     def s_patrol_enemy_core(self):
         enemy_core_center_pos = self.map.enemy_core_center_pos

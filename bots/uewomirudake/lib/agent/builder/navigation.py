@@ -4,8 +4,6 @@ from collections.abc import Callable
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
-    AVOID_EMPTY_ORE_BRIDGE_TARGETS,
-    AVOID_OTHER_SUPPLY_LABEL_ORES,
     ATTACK_TURRET_FEEDER_TYPES,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
@@ -13,6 +11,7 @@ from lib.agent.constants import (
     DIRECTIONAL_BUILDING_TYPES,
     ENEMY_TURRET_TYPES,
     FOUNDRY_WAIT_RADIUS_SQ,
+    HARD_AVOID_EXISTING_SUPPLY_CHAIN,
     NONDIRECTIONAL_BUILDING_TYPES,
 )
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
@@ -26,16 +25,12 @@ _BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
     if 0 < dx * dx + dy * dy <= GameConstants.BRIDGE_TARGET_RADIUS_SQ
     and abs(dx) + abs(dy) != 1
 )
+_RESOURCE_ENVIRONMENTS = frozenset(
+    (Environment.ORE_TITANIUM, Environment.ORE_AXIONITE)
+)
 
 
 class BuilderNavigationMixin:
-    def u_is_empty_ore_tile(self, pos: Position) -> bool:
-        target_tile = self.map.u_get_pos_tile(pos)
-        return target_tile.building.id is None and target_tile.environment in {
-            Environment.ORE_TITANIUM,
-            Environment.ORE_AXIONITE,
-        }
-
     def u_can_host_foundry_site(self, pos: Position) -> bool:
         target_tile = self.map.u_get_pos_tile(pos)
         if (
@@ -433,7 +428,6 @@ class BuilderNavigationMixin:
         target_pos: Position,
         resource: Environment,
         blocked_indices: set[int],
-        via_bridge: bool,
     ) -> bool:
         if pos == target_pos:
             return True
@@ -448,12 +442,6 @@ class BuilderNavigationMixin:
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == self.map.own_team
-        ):
-            return False
-        if (
-            via_bridge
-            and AVOID_EMPTY_ORE_BRIDGE_TARGETS
-            and self.u_is_empty_ore_tile(pos)
         ):
             return False
         if (
@@ -486,7 +474,6 @@ class BuilderNavigationMixin:
             target_pos,
             resource,
             blocked_indices,
-            via_bridge=False,
         ):
             return False
 
@@ -528,7 +515,6 @@ class BuilderNavigationMixin:
                     target_pos,
                     resource,
                     blocked_indices,
-                    via_bridge=False,
                 ):
                     continue
 
@@ -569,7 +555,6 @@ class BuilderNavigationMixin:
                     target_pos,
                     resource,
                     blocked_indices,
-                    via_bridge=True,
                 ):
                     continue
 
@@ -587,21 +572,6 @@ class BuilderNavigationMixin:
 
         return False
 
-    def u_get_supply_chain_progress_key(
-        self,
-        pos: Position,
-        resource: Environment,
-    ) -> tuple[int, int]:
-        target_tile = self.map.u_get_pos_tile(pos)
-        if resource == Environment.ORE_AXIONITE:
-            foundry_pos = self.u_get_core_foundry_plan()
-            if foundry_pos is not None:
-                return (
-                    pos.distance_squared(foundry_pos),
-                    target_tile.own_core_dist,
-                )
-        return (target_tile.own_core_dist, 0)
-
     def u_get_supply_chain_label_for_resource(
         self,
         resource: Environment,
@@ -611,25 +581,6 @@ class BuilderNavigationMixin:
         if resource == Environment.ORE_AXIONITE:
             return SupplyChainLabel.AXIONITE
         return SupplyChainLabel.NONE
-
-    def u_get_supply_chain_avoidance_label(
-        self,
-        resource: Environment,
-    ) -> SupplyChainLabel:
-        avoidance_ore = self.u_get_supply_chain_avoidance_ore(resource)
-        if avoidance_ore is None:
-            return SupplyChainLabel.NONE
-        return self.u_get_supply_chain_label_for_resource(avoidance_ore)
-
-    def u_get_supply_chain_avoidance_ore(
-        self,
-        resource: Environment,
-    ) -> Environment | None:
-        if resource == Environment.ORE_TITANIUM:
-            return Environment.ORE_AXIONITE
-        if resource == Environment.ORE_AXIONITE:
-            return Environment.ORE_TITANIUM
-        return None
 
     def u_supply_chain_targets_core(self, resource: Environment) -> bool:
         return resource == Environment.ORE_TITANIUM
@@ -672,18 +623,14 @@ class BuilderNavigationMixin:
         resource: Environment,
     ) -> bool:
         target_tile = self.map.u_get_pos_tile(pos)
-        avoidance_label = self.u_get_supply_chain_avoidance_label(resource)
-        avoidance_ore = self.u_get_supply_chain_avoidance_ore(resource)
+        avoidance_label = SupplyChainLabel.NONE
+        if resource == Environment.ORE_TITANIUM:
+            avoidance_label = SupplyChainLabel.AXIONITE
+        elif resource == Environment.ORE_AXIONITE:
+            avoidance_label = SupplyChainLabel.TITANIUM
         return bool(
-            (
-                avoidance_label != SupplyChainLabel.NONE
-                and target_tile.own_supply_chain_label & avoidance_label
-            )
-            or (
-                AVOID_EMPTY_ORE_BRIDGE_TARGETS
-                and avoidance_ore is not None
-                and self.map.u_is_adjacent_to_ore(pos, avoidance_ore)
-            )
+            avoidance_label != SupplyChainLabel.NONE
+            and target_tile.own_supply_chain_label & avoidance_label
         )
 
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
@@ -812,13 +759,6 @@ class BuilderNavigationMixin:
         helpers. If both plans exist, prefer the bridge only when it skips at
         least `BRIDGE_PREFERRED_DIST` cached core-distance steps.
         """
-        foundry_pos = self.u_get_core_foundry_plan()
-        if (
-            resource == Environment.ORE_AXIONITE
-            and foundry_pos is not None
-            and pos == foundry_pos
-        ):
-            return (None, None)
         if self.u_is_supply_tile_forbidden(pos, resource):
             return (None, None)
 
@@ -834,34 +774,14 @@ class BuilderNavigationMixin:
 
         source_tile = self.map.u_get_pos_tile(pos)
         conveyor_target_pos = pos.add(conveyor_direction)
-        if self.u_is_axionite_foundry_target(
-            conveyor_target_pos,
-            resource,
-        ):
-            return (EntityType.CONVEYOR, conveyor_direction)
-        if self.u_is_axionite_foundry_target(
-            bridge_target,
-            resource,
+        conveyor_target_tile = self.map.u_get_pos_tile(conveyor_target_pos)
+        bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
+        if (
+            conveyor_target_tile.environment in _RESOURCE_ENVIRONMENTS
+            and bridge_target_tile.environment not in _RESOURCE_ENVIRONMENTS
         ):
             return (EntityType.BRIDGE, bridge_target)
-        if self.u_can_wrap_axionite_chain_around_core(
-            pos,
-            conveyor_target_pos,
-            resource,
-        ) or self.u_can_wrap_axionite_chain_around_core(
-            pos,
-            bridge_target,
-            resource,
-        ):
-            foundry_pos = self.u_get_core_foundry_plan()
-            if foundry_pos is not None:
-                if bridge_target.distance_squared(
-                    foundry_pos
-                ) < conveyor_target_pos.distance_squared(foundry_pos):
-                    return (EntityType.BRIDGE, bridge_target)
-            return (EntityType.CONVEYOR, conveyor_direction)
 
-        bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
         bridge_dist_covered = (
             source_tile.own_core_dist - bridge_target_tile.own_core_dist
         )
@@ -882,13 +802,6 @@ class BuilderNavigationMixin:
         considers transport-oriented conveyor directions plus the normal bridge
         candidate logic.
         """
-        foundry_pos = self.u_get_core_foundry_plan()
-        if (
-            resource == Environment.ORE_AXIONITE
-            and foundry_pos is not None
-            and pos == foundry_pos
-        ):
-            return (None, None)
         if self.u_is_supply_tile_forbidden(pos, resource):
             return (None, None)
 
@@ -907,35 +820,13 @@ class BuilderNavigationMixin:
             return (EntityType.CONVEYOR, conveyor_direction)
 
         source_tile = self.map.u_get_pos_tile(pos)
-        conveyor_target_pos = pos.add(conveyor_direction)
-        if self.u_is_axionite_foundry_target(
-            conveyor_target_pos,
-            resource,
-        ):
-            return (EntityType.CONVEYOR, conveyor_direction)
-        if self.u_is_axionite_foundry_target(
-            bridge_target,
-            resource,
+        conveyor_target_tile = self.map.u_get_pos_tile(pos.add(conveyor_direction))
+        bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
+        if (
+            conveyor_target_tile.environment in _RESOURCE_ENVIRONMENTS
+            and bridge_target_tile.environment not in _RESOURCE_ENVIRONMENTS
         ):
             return (EntityType.BRIDGE, bridge_target)
-        if self.u_can_wrap_axionite_chain_around_core(
-            pos,
-            conveyor_target_pos,
-            resource,
-        ) or self.u_can_wrap_axionite_chain_around_core(
-            pos,
-            bridge_target,
-            resource,
-        ):
-            foundry_pos = self.u_get_core_foundry_plan()
-            if foundry_pos is not None:
-                if bridge_target.distance_squared(
-                    foundry_pos
-                ) < conveyor_target_pos.distance_squared(foundry_pos):
-                    return (EntityType.BRIDGE, bridge_target)
-            return (EntityType.CONVEYOR, conveyor_direction)
-
-        bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
         bridge_dist_covered = (
             source_tile.own_core_dist - bridge_target_tile.own_core_dist
         )
@@ -1008,8 +899,9 @@ class BuilderNavigationMixin:
                             )
 
         current_pos = self.map.current_pos
-        source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
-        candidate_tiles: list[tuple[Direction, object, int]] = []
+        source_tile = self.map.u_get_pos_tile(pos)
+        source_core_dist = source_tile.own_core_dist
+        candidate_tiles: list[tuple[Direction, object, int, bool, bool]] = []
 
         for direction in Direction:
             if direction == Direction.CENTRE:
@@ -1027,14 +919,6 @@ class BuilderNavigationMixin:
                 if self.u_supply_chain_targets_core(resource):
                     return direction
                 continue
-            if self.u_get_supply_chain_progress_key(
-                neighbor_pos, resource
-            ) >= source_progress_key and not self.u_can_wrap_axionite_chain_around_core(
-                pos,
-                neighbor_pos,
-                resource,
-            ):
-                continue
 
             category_rank = self.u_get_supplier_tile_category_rank(
                 neighbor_tile,
@@ -1043,25 +927,93 @@ class BuilderNavigationMixin:
             if category_rank is None:
                 continue
 
-            candidate_tiles.append((direction, neighbor_tile, category_rank))
+            is_existing_supply_chain_tile = (
+                neighbor_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and neighbor_tile.building.team == own_team
+                and neighbor_tile.own_supply_chain_label != SupplyChainLabel.NONE
+            )
+            if neighbor_tile.own_core_dist > source_core_dist:
+                continue
+            if (
+                neighbor_tile.own_core_dist == source_core_dist
+                and (
+                    not HARD_AVOID_EXISTING_SUPPLY_CHAIN
+                    or is_existing_supply_chain_tile
+                )
+            ):
+                continue
+            candidate_tiles.append(
+                (
+                    direction,
+                    neighbor_tile,
+                    category_rank,
+                    neighbor_tile.environment in _RESOURCE_ENVIRONMENTS,
+                    is_existing_supply_chain_tile,
+                )
+            )
 
         if not candidate_tiles:
             return None
 
+        if any(
+            not is_existing_supply_chain_tile
+            for _, _, _, _, is_existing_supply_chain_tile in candidate_tiles
+        ):
+            candidate_tiles = [
+                (
+                    direction,
+                    neighbor_tile,
+                    category_rank,
+                    is_resource_tile,
+                    is_existing_supply_chain_tile,
+                )
+                for (
+                    direction,
+                    neighbor_tile,
+                    category_rank,
+                    is_resource_tile,
+                    is_existing_supply_chain_tile,
+                ) in candidate_tiles
+                if not is_existing_supply_chain_tile
+            ]
+            if not candidate_tiles:
+                return None
+
+        if any(
+            not is_resource_tile
+            for _, _, _, is_resource_tile, _ in candidate_tiles
+        ):
+            candidate_tiles = [
+                (
+                    direction,
+                    neighbor_tile,
+                    category_rank,
+                    is_resource_tile,
+                    is_existing_supply_chain_tile,
+                )
+                for (
+                    direction,
+                    neighbor_tile,
+                    category_rank,
+                    is_resource_tile,
+                    is_existing_supply_chain_tile,
+                ) in candidate_tiles
+                if not is_resource_tile
+            ]
+            if not candidate_tiles:
+                return None
+
         best_category_rank = min(
-            category_rank for _, _, category_rank in candidate_tiles
+            category_rank for _, _, category_rank, _, _ in candidate_tiles
         )
         candidate_tiles = [
             (direction, neighbor_tile)
-            for direction, neighbor_tile, category_rank in candidate_tiles
+            for direction, neighbor_tile, category_rank, _, _ in candidate_tiles
             if category_rank == best_category_rank
         ]
         candidate_tiles.sort(
             key=lambda item: (
-                *self.u_get_supply_chain_progress_key(
-                    item[1].position,
-                    resource,
-                ),
+                item[1].own_core_dist,
                 (
                     0
                     if current_pos.distance_squared(item[1].position)
@@ -1122,7 +1074,8 @@ class BuilderNavigationMixin:
         Return the best bridge target tile reachable from this source tile.
         """
         current_pos = self.map.current_pos
-        source_progress_key = self.u_get_supply_chain_progress_key(pos, resource)
+        source_tile = self.map.u_get_pos_tile(pos)
+        source_core_dist = source_tile.own_core_dist
         map_width = self.map.width
         map_height = self.map.height
         active_mask = self.map.active_mask_by_index
@@ -1130,8 +1083,7 @@ class BuilderNavigationMixin:
         pos_x = pos.x
         pos_y = pos.y
 
-        # Filter candidates, caching progress keys to avoid recomputing them later.
-        candidates: list[tuple[object, tuple[int, int]]] = []
+        candidates = []
         for dx, dy in _BRIDGE_TARGET_OFFSETS:
             nx = pos_x + dx
             ny = pos_y + dy
@@ -1146,26 +1098,21 @@ class BuilderNavigationMixin:
                 self.map.own_team
             ) and not self.u_supply_chain_targets_core(resource):
                 continue
-            target_progress_key = self.u_get_supply_chain_progress_key(
-                target_pos, resource
-            )
-            if (
-                target_progress_key >= source_progress_key
-                and not self.u_can_wrap_axionite_chain_around_core(
-                    pos,
-                    target_pos,
-                    resource,
-                )
-            ):
+            if target_tile.own_core_dist >= source_core_dist:
                 continue
-            candidates.append((target_tile, target_progress_key))
+            candidates.append(target_tile)
 
         if not candidates:
             return None
 
+        if any(tile.environment not in _RESOURCE_ENVIRONMENTS for tile in candidates):
+            candidates = [
+                tile for tile in candidates if tile.environment not in _RESOURCE_ENVIRONMENTS
+            ]
+
         if self.u_supply_chain_targets_core(resource):
             core_tiles = [
-                tile for tile, _ in candidates if tile.is_core_of(self.map.own_team)
+                tile for tile in candidates if tile.is_core_of(self.map.own_team)
             ]
             if core_tiles:
                 return min(
@@ -1181,7 +1128,7 @@ class BuilderNavigationMixin:
         # Avoids a separate categorize loop, a min-rank scan, a filter, and a second min.
         best_tile = None
         best_key: tuple | None = None
-        for target_tile, target_progress_key in candidates:
+        for target_tile in candidates:
             if self.round_stopwatch.check_overtime():
                 break
             category_rank = self.u_get_bridge_target_category_rank(
@@ -1198,7 +1145,7 @@ class BuilderNavigationMixin:
             )
             key = (
                 category_rank,
-                *target_progress_key,
+                target_tile.own_core_dist,
                 dist_bucket,
                 target_tile.position.x,
                 target_tile.position.y,
@@ -1218,10 +1165,6 @@ class BuilderNavigationMixin:
         if target_tile.environment == Environment.WALL:
             return None
         if self.u_is_supply_tile_forbidden(target_tile.position, resource):
-            return None
-        if AVOID_EMPTY_ORE_BRIDGE_TARGETS and self.u_is_empty_ore_tile(
-            target_tile.position
-        ):
             return None
         if self.u_is_axionite_foundry_target(target_tile.position, resource):
             if self.u_can_host_foundry_site(target_tile.position):
@@ -1246,87 +1189,12 @@ class BuilderNavigationMixin:
             return 2
         return None
 
-    def u_move_to(
-        self,
-        pos: Position,
-        avoid_enemy_turrets: bool = True,
-        build_new_roads: bool = True,
-    ) -> bool:
-        current_pos = self.map.current_pos
-        if current_pos == pos:
-            return False
-
-        shortest_path = self.map.u_calculate_shortest_path(
-            current_pos,
-            pos,
-            avoid_enemy_turrets=avoid_enemy_turrets,
-        )
-        if len(shortest_path) >= 2:
-            next_tile = shortest_path[1]
-            next_direction = self.map.u_get_direction_between(
-                current_pos,
-                next_tile.position,
-            )
-            if next_direction is not None and self.ct.can_move(next_direction):
-                self.ct.move(next_direction)
-                return True
-            if build_new_roads and self.ct.can_build_road(next_tile.position):
-                adjacent_resource_tiles = []
-                for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
-                    next_tile.position
-                ):
-                    adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-                    if adjacent_tile.environment == Environment.ORE_TITANIUM:
-                        adjacent_resource_tiles.append(adjacent_tile)
-
-                if adjacent_resource_tiles:
-                    resource_candidates: list[Environment] = []
-                    for adjacent_tile in adjacent_resource_tiles:
-                        if (
-                            adjacent_tile.building.team == self.map.own_team
-                            and adjacent_tile.building.entity_type
-                            == EntityType.HARVESTER
-                            and adjacent_tile.environment not in resource_candidates
-                        ):
-                            resource_candidates.append(adjacent_tile.environment)
-                    for adjacent_tile in adjacent_resource_tiles:
-                        if adjacent_tile.environment not in resource_candidates:
-                            resource_candidates.append(adjacent_tile.environment)
-
-                    for resource in resource_candidates:
-                        facing_direction = self.u_best_conveyor_orientation(
-                            next_tile.position,
-                            resource,
-                        )
-                        if facing_direction is None:
-                            continue
-                        if self.ct.can_build_conveyor(
-                            next_tile.position,
-                            facing_direction,
-                        ):
-                            self.ct.build_conveyor(
-                                next_tile.position,
-                                facing_direction,
-                            )
-                            if next_direction is not None and self.ct.can_move(
-                                next_direction
-                            ):
-                                self.ct.move(next_direction)
-                            return True
-                    return False
-
-                self.ct.build_road(next_tile.position)
-                if next_direction is not None and self.ct.can_move(next_direction):
-                    self.ct.move(next_direction)
-                return True
-
-        return False
-
     def u_move_to_astar(
         self,
         pos: Position,
         avoid_enemy_turrets: bool = True,
         build_new_roads: bool = True,
+        allow_conveyor_building: bool = True,
     ) -> bool:
         current_pos = self.map.current_pos
         if current_pos == pos:
@@ -1355,7 +1223,7 @@ class BuilderNavigationMixin:
                     if adjacent_tile.environment == Environment.ORE_TITANIUM:
                         adjacent_resource_tiles.append(adjacent_tile)
 
-                if adjacent_resource_tiles:
+                if allow_conveyor_building and adjacent_resource_tiles:
                     resource_candidates: list[Environment] = []
                     for adjacent_tile in adjacent_resource_tiles:
                         if (
@@ -1376,18 +1244,15 @@ class BuilderNavigationMixin:
                         )
                         if facing_direction is None:
                             continue
-                        if self.ct.can_build_conveyor(
+                        if self.u_build_at(
                             next_tile.position,
-                            facing_direction,
+                            EntityType.CONVEYOR,
+                            hold=False,
+                            move_towards=False,
+                            attack_enemy_passable=False,
+                            facing_direction=facing_direction,
+                            allow_conveyor_building=allow_conveyor_building,
                         ):
-                            self.ct.build_conveyor(
-                                next_tile.position,
-                                facing_direction,
-                            )
-                            if next_direction is not None and self.ct.can_move(
-                                next_direction
-                            ):
-                                self.ct.move(next_direction)
                             return True
                     return False
 
@@ -1440,7 +1305,7 @@ class BuilderNavigationMixin:
 
         if not move_towards:
             return False
-        return self.u_move_to(
+        return self.u_move_to_astar(
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,
         )
@@ -1455,10 +1320,13 @@ class BuilderNavigationMixin:
         facing_direction: Direction | None = None,
         target_pos: Position | None = None,
         avoid_enemy_turrets: bool = True,
+        allow_conveyor_building: bool = True,
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
         self.last_built_entity_type = None
+        if building_type == EntityType.CONVEYOR and not allow_conveyor_building:
+            return False
         print(
             "Build target:",
             building_type,
@@ -1510,6 +1378,15 @@ class BuilderNavigationMixin:
             and current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ
         ):
             return True
+        if not affordable:
+            if not hold:
+                return False
+            if not move_towards:
+                return False
+            return self.u_move_to_astar(
+                pos,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+            )
 
         if current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ and (
             pos != current_pos or can_build_on_own_tile
@@ -1557,6 +1434,14 @@ class BuilderNavigationMixin:
                     build_method(pos, facing_direction)
                     self.last_built_entity_type = building_type
                     if building_type == EntityType.CONVEYOR:
+                        next_direction = self.map.u_get_direction_between(
+                            current_pos,
+                            pos,
+                        )
+                        if next_direction is not None and self.ct.can_move(
+                            next_direction
+                        ):
+                            self.ct.move(next_direction)
                         output_pos = pos.add(facing_direction)
                         if self.map.u_is_in_bounds(output_pos):
                             output_tile = self.map.u_get_pos_tile(output_pos)
@@ -1569,22 +1454,10 @@ class BuilderNavigationMixin:
                             ):
                                 self.ct.destroy(output_pos)
                                 output_tile.clear_building()
-                        next_direction = self.map.u_get_direction_between(
-                            current_pos,
-                            pos,
-                        )
-                        if next_direction is not None and self.ct.can_move(
-                            next_direction
-                        ):
-                            self.ct.move(next_direction)
                     return True
 
                 if building_type == EntityType.BRIDGE:
                     if target_pos is None:
-                        return False
-                    if AVOID_EMPTY_ORE_BRIDGE_TARGETS and self.u_is_empty_ore_tile(
-                        target_pos
-                    ):
                         return False
                     if not can_build_method(pos, target_pos):
                         if should_try_attack_enemy_passable:
@@ -1632,7 +1505,7 @@ class BuilderNavigationMixin:
 
         if not move_towards:
             return False
-        return self.u_move_to(
+        return self.u_move_to_astar(
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,
         )
@@ -1652,7 +1525,7 @@ class BuilderNavigationMixin:
 
         if not move_towards:
             return False
-        return self.u_move_to(
+        return self.u_move_to_astar(
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,
         )
