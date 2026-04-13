@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import heapq
 import json
+import marshal
 from collections import defaultdict
 from pathlib import Path
 
@@ -253,10 +254,13 @@ def write_metadata_for_maps(maps_root: Path) -> tuple[list[Path], Path]:
             continue
         metadata = build_metadata(map_path)
         relative_map_path = map_path.relative_to(maps_root)
-        output_path = (parsed_maps_root / relative_map_path).with_suffix(".json")
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-        written_paths.append(output_path)
+        marshal_path = (parsed_maps_root / relative_map_path).with_suffix(".marshal")
+        json_path = (parsed_maps_root / relative_map_path).with_suffix(".json")
+        marshal_path.parent.mkdir(parents=True, exist_ok=True)
+        marshal_path.write_bytes(marshal.dumps(metadata))
+        json_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        written_paths.append(marshal_path)
+        written_paths.append(json_path)
         metadata_by_map_path[map_path] = metadata
 
     fast_map_inference_path = write_fast_map_inference(maps_root, metadata_by_map_path)
@@ -280,7 +284,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = _build_arg_parser().parse_args()
     written_paths, fast_map_inference_path = write_metadata_for_maps(args.maps_root)
-    print(f"Wrote {len(written_paths)} JSON files.")
+    print(f"Wrote {len(written_paths)} parsed map files.")
     for path in written_paths:
         print(path)
     print(fast_map_inference_path)

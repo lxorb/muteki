@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from enum import Enum
 from heapq import heappop, heappush
 import json
+import marshal
 from pathlib import Path
 
 from cambc import (
@@ -1349,11 +1350,11 @@ class Map:
                 )
         return True
 
-    def u_get_parsed_map_json_path(self, map_path: str) -> Path:
+    def u_get_parsed_map_data_path(self, map_path: str) -> Path:
         relative_map_path = Path(map_path)
         if relative_map_path.parts and relative_map_path.parts[0] == "maps":
             relative_map_path = Path(*relative_map_path.parts[1:])
-        return (_PARSED_MAPS_ROOT / relative_map_path).with_suffix(".json")
+        return (_PARSED_MAPS_ROOT / relative_map_path).with_suffix(".marshal")
 
     def u_infer_symmetry_mode_from_core_positions(
         self,
@@ -1431,14 +1432,14 @@ class Map:
             return
 
         inferred_map_path = candidate_maps[0]
-        parsed_map_path = self.u_get_parsed_map_json_path(inferred_map_path)
+        parsed_map_path = self.u_get_parsed_map_data_path(inferred_map_path)
         if not parsed_map_path.exists():
             print(
-                f"Parsed map json missing for inferred map {inferred_map_path}: {parsed_map_path}"
+                f"Parsed map data missing for inferred map {inferred_map_path}: {parsed_map_path}"
             )
             return
 
-        parsed_map_data = json.loads(parsed_map_path.read_text(encoding="utf-8"))
+        parsed_map_data = marshal.loads(parsed_map_path.read_bytes())
         if self.own_team == Team.A:
             own_resource_titanium_key = "titanium_by_core_a_dist"
             own_resource_axionite_key = "axionite_by_core_a_dist"
