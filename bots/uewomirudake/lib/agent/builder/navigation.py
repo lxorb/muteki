@@ -956,6 +956,30 @@ class BuilderNavigationMixin:
             return None
 
         if any(
+            neighbor_tile.own_core_dist < source_core_dist
+            for _, neighbor_tile, _, _, _ in candidate_tiles
+        ):
+            candidate_tiles = [
+                (
+                    direction,
+                    neighbor_tile,
+                    category_rank,
+                    is_resource_tile,
+                    is_existing_supply_chain_tile,
+                )
+                for (
+                    direction,
+                    neighbor_tile,
+                    category_rank,
+                    is_resource_tile,
+                    is_existing_supply_chain_tile,
+                ) in candidate_tiles
+                if neighbor_tile.own_core_dist < source_core_dist
+            ]
+            if not candidate_tiles:
+                return None
+
+        if any(
             not is_existing_supply_chain_tile
             for _, _, _, _, is_existing_supply_chain_tile in candidate_tiles
         ):
