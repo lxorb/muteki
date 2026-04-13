@@ -956,8 +956,8 @@ class BuilderNavigationMixin:
             return None
 
         if any(
-            neighbor_tile.own_core_dist < source_core_dist
-            for _, neighbor_tile, _, _, _ in candidate_tiles
+            not is_resource_tile
+            for _, _, _, is_resource_tile, _ in candidate_tiles
         ):
             candidate_tiles = [
                 (
@@ -974,7 +974,7 @@ class BuilderNavigationMixin:
                     is_resource_tile,
                     is_existing_supply_chain_tile,
                 ) in candidate_tiles
-                if neighbor_tile.own_core_dist < source_core_dist
+                if not is_resource_tile
             ]
             if not candidate_tiles:
                 return None
@@ -1004,8 +1004,8 @@ class BuilderNavigationMixin:
                 return None
 
         if any(
-            not is_resource_tile
-            for _, _, _, is_resource_tile, _ in candidate_tiles
+            neighbor_tile.own_core_dist < source_core_dist
+            for _, neighbor_tile, _, _, _ in candidate_tiles
         ):
             candidate_tiles = [
                 (
@@ -1022,7 +1022,7 @@ class BuilderNavigationMixin:
                     is_resource_tile,
                     is_existing_supply_chain_tile,
                 ) in candidate_tiles
-                if not is_resource_tile
+                if neighbor_tile.own_core_dist < source_core_dist
             ]
             if not candidate_tiles:
                 return None
