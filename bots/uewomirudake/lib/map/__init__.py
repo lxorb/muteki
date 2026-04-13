@@ -50,6 +50,7 @@ PARSED_TILE_TYPE_AXIONITE = 4
 PARSED_TILE_TYPE_CORE = 5
 
 MAP_UPDATE_MIN_REMAINING_MUS = 100
+PRELOADED_MAP_INDEX_STRIDE = 50
 
 
 def _iter_existing_parent_roots(path: Path) -> Iterable[Path]:
@@ -96,6 +97,7 @@ def _resolve_bot_root() -> Path:
 _BOT_ROOT = _resolve_bot_root()
 _PARSED_MAPS_ROOT = _BOT_ROOT / "parsed_maps"
 _FAST_MAP_INFERENCE_PATH = _BOT_ROOT / "fast_map_inference.json"
+_PRELOADED_PARSED_MAPS_PATH = _BOT_ROOT / "preloaded_parsed_maps.marshal"
 
 try:
     FAST_MAP_INFERENCE_BY_KEY: dict[str, list[str]] = json.loads(
@@ -103,6 +105,93 @@ try:
     )
 except FileNotFoundError:
     FAST_MAP_INFERENCE_BY_KEY = {}
+
+
+def _decode_packed_u16_view(data: bytes) -> memoryview:
+    return memoryview(data).cast("H")
+
+
+def _decode_checkpoint_positions(data: bytes) -> tuple[Position, ...]:
+    return tuple(
+        Position(
+            idx // PRELOADED_MAP_INDEX_STRIDE,
+            idx % PRELOADED_MAP_INDEX_STRIDE,
+        )
+        for idx in _decode_packed_u16_view(data)
+    )
+
+
+def _build_runtime_parsed_map_data_from_preloaded(raw_entry: dict) -> dict:
+    core_a_center = Position(*raw_entry["core_a_center_xy"])
+    core_b_center = Position(*raw_entry["core_b_center_xy"])
+    return {
+        "core_a_center": core_a_center,
+        "core_b_center": core_b_center,
+        "tile_type_by_index": raw_entry["tile_type_by_index_bytes"],
+        "core_a_dist_by_index": _decode_packed_u16_view(
+            raw_entry["core_a_dist_by_index_bytes"]
+        ),
+        "core_b_dist_by_index": _decode_packed_u16_view(
+            raw_entry["core_b_dist_by_index_bytes"]
+        ),
+        "titanium_by_core_a_dist": _decode_packed_u16_view(
+            raw_entry["titanium_by_core_a_dist_bytes"]
+        ),
+        "titanium_by_core_b_dist": _decode_packed_u16_view(
+            raw_entry["titanium_by_core_b_dist_bytes"]
+        ),
+        "axionite_by_core_a_dist": _decode_packed_u16_view(
+            raw_entry["axionite_by_core_a_dist_bytes"]
+        ),
+        "axionite_by_core_b_dist": _decode_packed_u16_view(
+            raw_entry["axionite_by_core_b_dist_bytes"]
+        ),
+        "core_a_to_core_b_checkpoints": _decode_checkpoint_positions(
+            raw_entry["core_a_to_core_b_checkpoint_index_bytes"]
+        ),
+        "core_b_to_core_a_checkpoints": _decode_checkpoint_positions(
+            raw_entry["core_b_to_core_a_checkpoint_index_bytes"]
+        ),
+    }
+
+
+def _build_runtime_parsed_map_data_from_legacy(raw_entry: dict) -> dict:
+    return {
+        "core_a_center": Position(
+            raw_entry["core_a_center"]["x"],
+            raw_entry["core_a_center"]["y"],
+        ),
+        "core_b_center": Position(
+            raw_entry["core_b_center"]["x"],
+            raw_entry["core_b_center"]["y"],
+        ),
+        "tile_type_by_index": raw_entry["tile_type_by_index"],
+        "core_a_dist_by_index": raw_entry["core_a_dist_by_index"],
+        "core_b_dist_by_index": raw_entry["core_b_dist_by_index"],
+        "titanium_by_core_a_dist": raw_entry["titanium_by_core_a_dist"],
+        "titanium_by_core_b_dist": raw_entry["titanium_by_core_b_dist"],
+        "axionite_by_core_a_dist": raw_entry["axionite_by_core_a_dist"],
+        "axionite_by_core_b_dist": raw_entry["axionite_by_core_b_dist"],
+        "core_a_to_core_b_checkpoints": tuple(
+            Position(pos["x"], pos["y"])
+            for pos in raw_entry["core_a_to_core_b_checkpoints"]
+        ),
+        "core_b_to_core_a_checkpoints": tuple(
+            Position(pos["x"], pos["y"])
+            for pos in raw_entry["core_b_to_core_a_checkpoints"]
+        ),
+    }
+
+
+try:
+    PRELOADED_PARSED_MAP_DATA_BY_PATH: dict[str, dict] = {
+        map_path: _build_runtime_parsed_map_data_from_preloaded(raw_entry)
+        for map_path, raw_entry in marshal.loads(
+            _PRELOADED_PARSED_MAPS_PATH.read_bytes()
+        ).items()
+    }
+except FileNotFoundError:
+    PRELOADED_PARSED_MAP_DATA_BY_PATH = {}
 
 
 def u_format_fast_inference_key(
@@ -1483,14 +1572,19 @@ class Map:
             return
 
         inferred_map_path = candidate_maps[0]
-        parsed_map_path = self.u_get_parsed_map_data_path(inferred_map_path)
-        if not parsed_map_path.exists():
-            print(
-                f"Parsed map data missing for inferred map {inferred_map_path}: {parsed_map_path}"
+        parsed_map_data = PRELOADED_PARSED_MAP_DATA_BY_PATH.get(inferred_map_path)
+        if parsed_map_data is None:
+            parsed_map_path = self.u_get_parsed_map_data_path(inferred_map_path)
+            if not parsed_map_path.exists():
+                print(
+                    f"Parsed map data missing for inferred map {inferred_map_path}: "
+                    f"{parsed_map_path}"
+                )
+                return
+            parsed_map_data = _build_runtime_parsed_map_data_from_legacy(
+                marshal.loads(parsed_map_path.read_bytes())
             )
-            return
 
-        parsed_map_data = marshal.loads(parsed_map_path.read_bytes())
         if self.own_team == Team.A:
             own_resource_titanium_key = "titanium_by_core_a_dist"
             own_resource_axionite_key = "axionite_by_core_a_dist"
@@ -1502,8 +1596,7 @@ class Map:
             enemy_core_center_key = "core_a_center"
             checkpoint_key = "core_b_to_core_a_checkpoints"
 
-        enemy_core_center = parsed_map_data[enemy_core_center_key]
-        enemy_core_pos = Position(enemy_core_center["x"], enemy_core_center["y"])
+        enemy_core_pos = parsed_map_data[enemy_core_center_key]
         symmetry_mode = self.u_infer_symmetry_mode_from_core_positions(
             self.own_core_center_pos,
             enemy_core_pos,
@@ -1517,10 +1610,7 @@ class Map:
         ]
         self.parsed_titanium_indices = parsed_map_data[own_resource_titanium_key]
         self.parsed_axionite_indices = parsed_map_data[own_resource_axionite_key]
-        self.enemy_core_checkpoint_positions = [
-            Position(pos["x"], pos["y"])
-            for pos in parsed_map_data[checkpoint_key]
-        ]
+        self.enemy_core_checkpoint_positions = parsed_map_data[checkpoint_key]
         self.parsed_map_next_update_index = 0
         self.map_json_fully_loaded = False
         self.map_json_loaded_print_pending = False
@@ -1541,7 +1631,6 @@ class Map:
 
         self.u_apply_parsed_resource_order_to_known_resources()
         self.map_inference_time_ns = time.perf_counter_ns() - inference_start_time_ns
-        self.u_update_map()
 
     def u_get_environment_for_parsed_tile_type(
         self,
@@ -1565,7 +1654,7 @@ class Map:
             return INF_DIST
 
         value = self.parsed_map_own_core_dist_by_index[idx]
-        return INF_DIST if value >= INF_DIST else value
+        return INF_DIST if value >= CORE_DIST_INF else value
 
     def u_apply_parsed_own_core_dist_to_tiles(self, tiles: Iterable[Tile]) -> None:
         if self.parsed_map_own_core_dist_by_index is None:
@@ -1589,7 +1678,7 @@ class Map:
         while self.parsed_map_next_update_index < self.INITIAL_MAP_SIZE:
             idx = self.parsed_map_next_update_index
             tile_type = self.parsed_map_tile_type_by_index[idx]
-            parsed_dist = self.parsed_map_own_core_dist_by_index[idx]
+            parsed_dist = self.u_get_parsed_own_core_dist_by_index(idx)
 
             if self.active_mask_by_index[idx]:
                 tile = self.tiles_by_index[idx]

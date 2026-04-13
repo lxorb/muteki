@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from array import array
 import heapq
 import json
 import marshal
@@ -248,6 +249,56 @@ def build_path_checkpoints(
     ]
 
 
+def pack_u16_sequence(values: list[int]) -> bytes:
+    packed = array("H")
+    packed.extend(min(value, 0xFFFF) for value in values)
+    return packed.tobytes()
+
+
+def build_preloaded_map_bundle_entry(metadata: dict) -> dict:
+    return {
+        "core_a_center_xy": (
+            metadata["core_a_center"]["x"],
+            metadata["core_a_center"]["y"],
+        ),
+        "core_b_center_xy": (
+            metadata["core_b_center"]["x"],
+            metadata["core_b_center"]["y"],
+        ),
+        "tile_type_by_index_bytes": bytes(metadata["tile_type_by_index"]),
+        "core_a_dist_by_index_bytes": pack_u16_sequence(
+            metadata["core_a_dist_by_index"]
+        ),
+        "core_b_dist_by_index_bytes": pack_u16_sequence(
+            metadata["core_b_dist_by_index"]
+        ),
+        "titanium_by_core_a_dist_bytes": pack_u16_sequence(
+            metadata["titanium_by_core_a_dist"]
+        ),
+        "titanium_by_core_b_dist_bytes": pack_u16_sequence(
+            metadata["titanium_by_core_b_dist"]
+        ),
+        "axionite_by_core_a_dist_bytes": pack_u16_sequence(
+            metadata["axionite_by_core_a_dist"]
+        ),
+        "axionite_by_core_b_dist_bytes": pack_u16_sequence(
+            metadata["axionite_by_core_b_dist"]
+        ),
+        "core_a_to_core_b_checkpoint_index_bytes": pack_u16_sequence(
+            [
+                to_index(checkpoint["x"], checkpoint["y"])
+                for checkpoint in metadata["core_a_to_core_b_checkpoints"]
+            ]
+        ),
+        "core_b_to_core_a_checkpoint_index_bytes": pack_u16_sequence(
+            [
+                to_index(checkpoint["x"], checkpoint["y"])
+                for checkpoint in metadata["core_b_to_core_a_checkpoints"]
+            ]
+        ),
+    }
+
+
 def build_metadata(map_path: Path) -> dict:
     decoded = parse_map26_file(map_path)
     core_by_team = {
@@ -372,6 +423,25 @@ def write_fast_map_inference(
     return output_path
 
 
+def write_preloaded_parsed_maps_bundle(
+    maps_root: Path,
+    metadata_by_map_path: dict[Path, dict],
+) -> Path:
+    repo_root = maps_root.parent
+    bot_root = repo_root / "bots" / "uewomirudake"
+    bundle_by_map_path: dict[str, dict] = {}
+
+    for map_path, metadata in metadata_by_map_path.items():
+        relative_map_path = map_path.relative_to(repo_root).as_posix()
+        bundle_by_map_path[relative_map_path] = build_preloaded_map_bundle_entry(
+            metadata
+        )
+
+    output_path = bot_root / "preloaded_parsed_maps.marshal"
+    output_path.write_bytes(marshal.dumps(bundle_by_map_path))
+    return output_path
+
+
 def should_process_map(map_path: Path, maps_root: Path) -> bool:
     try:
         relative_parts = map_path.relative_to(maps_root).parts
@@ -380,7 +450,7 @@ def should_process_map(map_path: Path, maps_root: Path) -> bool:
     return "custom" not in relative_parts
 
 
-def write_metadata_for_maps(maps_root: Path) -> tuple[list[Path], Path]:
+def write_metadata_for_maps(maps_root: Path) -> tuple[list[Path], Path, Path]:
     repo_root = maps_root.parent
     parsed_maps_root = repo_root / "bots" / "uewomirudake" / "parsed_maps"
     parsed_maps_root.mkdir(parents=True, exist_ok=True)
@@ -401,7 +471,11 @@ def write_metadata_for_maps(maps_root: Path) -> tuple[list[Path], Path]:
         metadata_by_map_path[map_path] = metadata
 
     fast_map_inference_path = write_fast_map_inference(maps_root, metadata_by_map_path)
-    return written_paths, fast_map_inference_path
+    preloaded_bundle_path = write_preloaded_parsed_maps_bundle(
+        maps_root,
+        metadata_by_map_path,
+    )
+    return written_paths, fast_map_inference_path, preloaded_bundle_path
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -420,11 +494,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _build_arg_parser().parse_args()
-    written_paths, fast_map_inference_path = write_metadata_for_maps(args.maps_root)
+    written_paths, fast_map_inference_path, preloaded_bundle_path = (
+        write_metadata_for_maps(args.maps_root)
+    )
     print(f"Wrote {len(written_paths)} parsed map files.")
     for path in written_paths:
         print(path)
     print(fast_map_inference_path)
+    print(preloaded_bundle_path)
     return 0
 
 
