@@ -6,6 +6,7 @@ from heapq import heappop, heappush
 import json
 import marshal
 from pathlib import Path
+import time
 
 from cambc import (
     Controller,
@@ -259,7 +260,7 @@ class Map:
         self.parsed_axionite_indices: list[int] = []
         self.parsed_map_next_update_index: int = 0
         self.map_json_fully_loaded: bool = False
-        self.map_update_time_mus: int = 0
+        self.map_update_time_ns: int = 0
 
         self.has_built_foundry: bool = False
         self.built_foundry_index: int = -1
@@ -1466,7 +1467,9 @@ class Map:
         self.parsed_axionite_indices = parsed_map_data[own_resource_axionite_key]
         self.parsed_map_next_update_index = 0
         self.map_json_fully_loaded = False
-        self.map_update_time_mus = 0
+        self.map_update_time_ns = 0
+        self.u_reset_own_core_distance_initialization()
+        self.core_distance_dirty_indices.clear()
         self.enemy_core_center_pos = enemy_core_pos
         self.enemy_core_source_indices = self.u_cache_core_source_indices(
             self.enemy_core_center_pos,
@@ -1498,7 +1501,22 @@ class Map:
             return Environment.EMPTY
         return None
 
-    def u_update_map(self) -> None:
+    def u_get_parsed_own_core_dist_by_index(self, idx: int) -> int:
+        if self.parsed_map_own_core_dist_by_index is None:
+            return INF_DIST
+
+        value = self.parsed_map_own_core_dist_by_index[idx]
+        return INF_DIST if value >= INF_DIST else value
+
+    def u_apply_parsed_own_core_dist_to_tiles(self, tiles: Iterable[Tile]) -> None:
+        if self.parsed_map_own_core_dist_by_index is None:
+            return
+
+        for tile in tiles:
+            tile.own_core_dist = self.u_get_parsed_own_core_dist_by_index(tile.index)
+            self.own_core_dist_exact_by_index[tile.index] = 1
+
+    def u_update_map(self) -> bool:
         if (
             not self.is_map_known
             or self.map_json_fully_loaded
@@ -1506,9 +1524,9 @@ class Map:
             or self.parsed_map_own_core_dist_by_index is None
             or self.ct is None
         ):
-            return
+            return False
 
-        start_cpu_time = self.ct.get_cpu_time_elapsed()
+        start_time_ns = time.perf_counter_ns()
         while self.parsed_map_next_update_index < self.INITIAL_MAP_SIZE:
             idx = self.parsed_map_next_update_index
             tile_type = self.parsed_map_tile_type_by_index[idx]
@@ -1534,17 +1552,18 @@ class Map:
                 ALLOCATED_MAP_AND_BOT_TIME_MUS - self.ct.get_cpu_time_elapsed()
                 <= MAP_UPDATE_MIN_REMAINING_MUS
             ):
-                self.map_update_time_mus += self.ct.get_cpu_time_elapsed() - start_cpu_time
-                return
+                self.map_update_time_ns += time.perf_counter_ns() - start_time_ns
+                return False
 
         self.map_json_fully_loaded = True
-        self.map_update_time_mus += self.ct.get_cpu_time_elapsed() - start_cpu_time
+        self.map_update_time_ns += time.perf_counter_ns() - start_time_ns
         self.own_core_dist_initialized = True
         self.own_core_dist_init_started = False
         self.own_core_dist_init_heap.clear()
         self.u_reset_own_core_distance_incremental_update()
         self.u_reset_own_core_distance_manhattan_initialization()
         self.core_distance_dirty_indices.clear()
+        return True
 
     def u_is_enemy_bot_on_ally_tile(self, target_tile: Tile) -> bool:
         if target_tile.building.id is None:
@@ -2273,6 +2292,9 @@ class Map:
         return dx + dy
 
     def u_get_own_core_dist_by_index(self, idx: int) -> int:
+        if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
+            return self.u_get_parsed_own_core_dist_by_index(idx)
+
         value = self.own_core_dist_by_index[idx]
         if self.own_core_dist_initialized or self.own_core_dist_exact_by_index[idx]:
             return INF_DIST if value >= CORE_DIST_INF else value
@@ -2871,8 +2893,11 @@ class Map:
         sw = Stopwatch("Map distances")
         sw.start()
 
-        if self.map_json_fully_loaded:
+        if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
+            self.u_apply_parsed_own_core_dist_to_tiles(self.tiles_in_vision)
             self.core_distance_dirty_indices.clear()
+            self.u_reset_own_core_distance_incremental_update()
+            self.u_reset_own_core_distance_manhattan_initialization()
             sw.lap("Own core field")
             sw.log()
             return
