@@ -28,6 +28,7 @@ from lib.map.constants import (
     CORE_DIST_INF,
     DIRECTIONS,
     DISABLE_CORRECT_OWN_CORE_DISTANCE,
+    ENABLE_MAP_DETECTION,
     INF_DIST,
     OWN_CORE_DISTANCE_INIT_SETTLE_BUDGET,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
@@ -1555,7 +1556,11 @@ class Map:
         )
 
     def u_infer_map(self) -> None:
-        if self.is_map_known or self.own_core_center_pos is None:
+        if (
+            not ENABLE_MAP_DETECTION
+            or self.is_map_known
+            or self.own_core_center_pos is None
+        ):
             return
 
         inference_start_time_ns = time.perf_counter_ns()
