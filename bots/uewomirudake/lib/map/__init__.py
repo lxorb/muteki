@@ -6,6 +6,7 @@ from heapq import heappop, heappush
 import json
 import marshal
 from pathlib import Path
+import sys
 import time
 
 from cambc import (
@@ -50,7 +51,49 @@ PARSED_TILE_TYPE_CORE = 5
 
 MAP_UPDATE_MIN_REMAINING_MUS = 100
 
-_BOT_ROOT = Path(__file__).resolve().parents[2]
+
+def _iter_existing_parent_roots(path: Path) -> Iterable[Path]:
+    try:
+        resolved_path = path.resolve()
+    except OSError:
+        return ()
+
+    if resolved_path.is_file():
+        start_path = resolved_path.parent
+    else:
+        start_path = resolved_path
+
+    return (start_path, *start_path.parents)
+
+
+def _resolve_bot_root() -> Path:
+    candidate_roots: list[Path] = []
+
+    module_file = globals().get("__file__")
+    if module_file:
+        candidate_roots.extend(_iter_existing_parent_roots(Path(module_file)))
+
+    argv0 = sys.argv[0] if sys.argv else ""
+    if argv0:
+        candidate_roots.extend(_iter_existing_parent_roots(Path(argv0)))
+
+    candidate_roots.extend(_iter_existing_parent_roots(Path.cwd()))
+
+    seen_roots: set[Path] = set()
+    for candidate_root in candidate_roots:
+        if candidate_root in seen_roots:
+            continue
+        seen_roots.add(candidate_root)
+        if (
+            (candidate_root / "fast_map_inference.json").exists()
+            and (candidate_root / "parsed_maps").is_dir()
+        ):
+            return candidate_root
+
+    return Path.cwd()
+
+
+_BOT_ROOT = _resolve_bot_root()
 _PARSED_MAPS_ROOT = _BOT_ROOT / "parsed_maps"
 _FAST_MAP_INFERENCE_PATH = _BOT_ROOT / "fast_map_inference.json"
 
