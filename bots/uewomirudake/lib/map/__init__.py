@@ -298,6 +298,7 @@ class Map:
         self.is_map_known: bool = False
         self.known_map_path: str | None = None
         self.enemy_core_seen_in_vision: bool = False
+        self.map_inference_time_ns: int = 0
         self.parsed_map_tile_type_by_index: list[int] | None = None
         self.parsed_map_own_core_dist_by_index: list[int] | None = None
         self.parsed_titanium_indices: list[int] = []
@@ -305,6 +306,7 @@ class Map:
         self.enemy_core_checkpoint_positions: list[Position] = []
         self.parsed_map_next_update_index: int = 0
         self.map_json_fully_loaded: bool = False
+        self.map_json_loaded_print_pending: bool = False
         self.map_update_time_ns: int = 0
 
         self.has_built_foundry: bool = False
@@ -1467,6 +1469,7 @@ class Map:
         if self.is_map_known or self.own_core_center_pos is None:
             return
 
+        inference_start_time_ns = time.perf_counter_ns()
         key = u_format_fast_inference_key(
             self.width,
             self.height,
@@ -1520,6 +1523,7 @@ class Map:
         ]
         self.parsed_map_next_update_index = 0
         self.map_json_fully_loaded = False
+        self.map_json_loaded_print_pending = False
         self.map_update_time_ns = 0
         self.u_reset_own_core_distance_initialization()
         self.core_distance_dirty_indices.clear()
@@ -1536,6 +1540,8 @@ class Map:
             ]
 
         self.u_apply_parsed_resource_order_to_known_resources()
+        self.map_inference_time_ns = time.perf_counter_ns() - inference_start_time_ns
+        self.u_update_map()
 
     def u_get_environment_for_parsed_tile_type(
         self,
@@ -1609,6 +1615,7 @@ class Map:
                 return False
 
         self.map_json_fully_loaded = True
+        self.map_json_loaded_print_pending = True
         self.map_update_time_ns += time.perf_counter_ns() - start_time_ns
         self.own_core_dist_initialized = True
         self.own_core_dist_init_started = False

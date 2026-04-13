@@ -70,7 +70,17 @@ class BuilderAgent(
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
         if self.map.is_map_known:
-            print(f"Inferred map: {self.map.known_map_path}")
+            print(
+                f"Inferred map: {self.map.known_map_path} "
+                f"(map inference loading took "
+                f"{self.map.map_inference_time_ns / 1_000_000:.2f} ms)."
+            )
+        if self.map.map_json_loaded_print_pending:
+            print(
+                "Finished loading parsed map data into map object. "
+                f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
+            )
+            self.map.map_json_loaded_print_pending = False
         print(f"Builder strategy: {self.u_get_strategy_name()}")
 
         handled = self.u_execute_strategy()
@@ -78,7 +88,7 @@ class BuilderAgent(
         if finished_loading_map:
             print(
                 "Finished loading parsed map data into map object. "
-                f"Map updating took {self.map.map_update_time_ns} ns "
-                f"({self.map.map_update_time_ns / 1_000_000:.3f} ms)."
+                f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
             )
+            self.map.map_json_loaded_print_pending = False
         return handled
