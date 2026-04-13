@@ -41,6 +41,26 @@
     51,
     268
   ],
+  "core_a_to_core_b_checkpoints": [
+    {
+      "x": 9,
+      "y": 3
+    },
+    {
+      "x": 13,
+      "y": 6
+    }
+  ],
+  "core_b_to_core_a_checkpoints": [
+    {
+      "x": 10,
+      "y": 3
+    },
+    {
+      "x": 6,
+      "y": 6
+    }
+  ],
   "tile_type_by_index": [
     1,
     1,

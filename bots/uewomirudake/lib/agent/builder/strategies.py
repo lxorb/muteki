@@ -72,7 +72,8 @@ HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
     # (BuilderStrategyMethodsMixin.s_block_titanium, True),
     (BuilderStrategyMethodsMixin.s_attack_enemy_core_supply_link, True),
-    (BuilderStrategyMethodsMixin.s_move_toward_enemy_core,),
+    # move toward enemy core with checkpoint
+    (BuilderStrategyMethodsMixin.s_checkpoint_move_toward_enemy_core,),
     (BuilderStrategyMethodsMixin.s_patrol_enemy_core,),
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]

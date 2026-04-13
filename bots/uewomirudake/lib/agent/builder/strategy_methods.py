@@ -2664,6 +2664,35 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
+    def s_checkpoint_move_toward_enemy_core(self):
+        if (
+            not self.map.map_json_fully_loaded
+            or self.map.enemy_core_seen_in_vision
+        ):
+            return False
+
+        checkpoint_positions = self.map.enemy_core_checkpoint_positions
+        if not checkpoint_positions:
+            return False
+
+        next_checkpoint_index = self.enemy_core_checkpoint_index + 1
+        while (
+            next_checkpoint_index < len(checkpoint_positions)
+            and self.map.current_pos == checkpoint_positions[next_checkpoint_index]
+        ):
+            self.enemy_core_checkpoint_index = next_checkpoint_index
+            next_checkpoint_index += 1
+
+        if next_checkpoint_index >= len(checkpoint_positions):
+            return False
+
+        return bool(
+            self.u_move_to_astar(
+                checkpoint_positions[next_checkpoint_index],
+                allow_conveyor_building=False,
+            )
+        )
+
     def s_patrol_enemy_core(self):
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is None:

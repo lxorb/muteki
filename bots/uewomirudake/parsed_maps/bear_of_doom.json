@@ -121,6 +121,8 @@
     70,
     170
   ],
+  "core_a_to_core_b_checkpoints": [],
+  "core_b_to_core_a_checkpoints": [],
   "tile_type_by_index": [
     4,
     1,

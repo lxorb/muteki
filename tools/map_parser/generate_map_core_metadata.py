@@ -24,6 +24,16 @@ TILE_TYPE_CORE = 5
 INDEX_STRIDE = 50
 MAX_MAP_SIZE = INDEX_STRIDE * INDEX_STRIDE
 INF_DIST = 10**9
+PATH_DIRS = (
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+)
 
 
 def to_index(x: int, y: int) -> int:
@@ -133,6 +143,111 @@ def build_sorted_resource_indices(
     return resource_indices
 
 
+def build_shortest_path_indices(
+    width: int,
+    height: int,
+    tile_type_by_index: list[int],
+    source_center: dict[str, int],
+    target_center: dict[str, int],
+) -> list[int]:
+    source_idx = to_index(source_center["x"], source_center["y"])
+    target_idx = to_index(target_center["x"], target_center["y"])
+    if source_idx == target_idx:
+        return [source_idx]
+
+    predecessor_by_index = [-1] * MAX_MAP_SIZE
+    dist_by_index = [INF_DIST] * MAX_MAP_SIZE
+    frontier: list[tuple[int, int, int, int]] = []
+    source_x = source_center["x"]
+    source_y = source_center["y"]
+    target_x = target_center["x"]
+    target_y = target_center["y"]
+
+    def heuristic(idx: int) -> int:
+        x = idx // INDEX_STRIDE
+        y = idx % INDEX_STRIDE
+        return max(abs(x - target_x), abs(y - target_y))
+
+    dist_by_index[source_idx] = 0
+    predecessor_by_index[source_idx] = source_idx
+    heapq.heappush(frontier, (heuristic(source_idx), 0, source_x, source_y))
+
+    while frontier:
+        _, current_dist, current_x, current_y = heapq.heappop(frontier)
+        current_idx = to_index(current_x, current_y)
+        if current_dist != dist_by_index[current_idx]:
+            continue
+        if current_idx == target_idx:
+            break
+
+        next_dist = current_dist + 1
+        for dx, dy in PATH_DIRS:
+            nx = current_x + dx
+            ny = current_y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+
+            neighbor_idx = to_index(nx, ny)
+            if (
+                neighbor_idx != target_idx
+                and tile_type_by_index[neighbor_idx] == TILE_TYPE_WALL
+            ):
+                continue
+            if next_dist >= dist_by_index[neighbor_idx]:
+                continue
+
+            dist_by_index[neighbor_idx] = next_dist
+            predecessor_by_index[neighbor_idx] = current_idx
+            heapq.heappush(
+                frontier,
+                (
+                    next_dist + heuristic(neighbor_idx),
+                    next_dist,
+                    nx,
+                    ny,
+                ),
+            )
+
+    if predecessor_by_index[target_idx] == -1:
+        return []
+
+    path_indices = [target_idx]
+    walk_idx = target_idx
+    while walk_idx != source_idx:
+        walk_idx = predecessor_by_index[walk_idx]
+        if walk_idx == -1:
+            return []
+        path_indices.append(walk_idx)
+    path_indices.reverse()
+    return path_indices
+
+
+def build_path_checkpoints(
+    path_indices: list[int],
+    tile_type_by_index: list[int],
+) -> list[dict[str, int]]:
+    if len(path_indices) <= 1:
+        return []
+
+    checkpoint_indices = [path_indices[i] for i in range(4, len(path_indices), 4)]
+    final_idx = path_indices[-1]
+    if tile_type_by_index[final_idx] == TILE_TYPE_CORE and len(path_indices) >= 2:
+        final_idx = path_indices[-2]
+
+    if final_idx != path_indices[0] and (
+        not checkpoint_indices or checkpoint_indices[-1] != final_idx
+    ):
+        checkpoint_indices.append(final_idx)
+
+    return [
+        {
+            "x": idx // INDEX_STRIDE,
+            "y": idx % INDEX_STRIDE,
+        }
+        for idx in checkpoint_indices
+    ]
+
+
 def build_metadata(map_path: Path) -> dict:
     decoded = parse_map26_file(map_path)
     core_by_team = {
@@ -166,6 +281,20 @@ def build_metadata(map_path: Path) -> dict:
         tile_type_by_index,
         core_b_center,
     )
+    core_a_to_core_b_path = build_shortest_path_indices(
+        decoded.width,
+        decoded.height,
+        tile_type_by_index,
+        core_a_center,
+        core_b_center,
+    )
+    core_b_to_core_a_path = build_shortest_path_indices(
+        decoded.width,
+        decoded.height,
+        tile_type_by_index,
+        core_b_center,
+        core_a_center,
+    )
 
     return {
         "width": decoded.width,
@@ -191,6 +320,14 @@ def build_metadata(map_path: Path) -> dict:
             tile_type_by_index,
             core_b_dist_by_index,
             TILE_TYPE_AXIONITE,
+        ),
+        "core_a_to_core_b_checkpoints": build_path_checkpoints(
+            core_a_to_core_b_path,
+            tile_type_by_index,
+        ),
+        "core_b_to_core_a_checkpoints": build_path_checkpoints(
+            core_b_to_core_a_path,
+            tile_type_by_index,
         ),
         "tile_type_by_index": tile_type_by_index,
         "core_a_dist_by_index": core_a_dist_by_index,

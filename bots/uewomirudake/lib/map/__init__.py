@@ -254,10 +254,12 @@ class Map:
         self.known_accessible_axionite_indices: list[int] = []
         self.is_map_known: bool = False
         self.known_map_path: str | None = None
+        self.enemy_core_seen_in_vision: bool = False
         self.parsed_map_tile_type_by_index: list[int] | None = None
         self.parsed_map_own_core_dist_by_index: list[int] | None = None
         self.parsed_titanium_indices: list[int] = []
         self.parsed_axionite_indices: list[int] = []
+        self.enemy_core_checkpoint_positions: list[Position] = []
         self.parsed_map_next_update_index: int = 0
         self.map_json_fully_loaded: bool = False
         self.map_update_time_ns: int = 0
@@ -985,6 +987,8 @@ class Map:
                     self.own_buildings_in_vision.append(tile)
                 else:
                     self.enemy_buildings_in_vision.append(tile)
+                    if building.entity_type == EntityType.CORE:
+                        self.enemy_core_seen_in_vision = True
 
                 if building.team == self.own_team:
                     building_damaged = building.hp < self.ct.get_max_hp(building.id)
@@ -1445,10 +1449,12 @@ class Map:
             own_resource_titanium_key = "titanium_by_core_a_dist"
             own_resource_axionite_key = "axionite_by_core_a_dist"
             enemy_core_center_key = "core_b_center"
+            checkpoint_key = "core_a_to_core_b_checkpoints"
         else:
             own_resource_titanium_key = "titanium_by_core_b_dist"
             own_resource_axionite_key = "axionite_by_core_b_dist"
             enemy_core_center_key = "core_a_center"
+            checkpoint_key = "core_b_to_core_a_checkpoints"
 
         enemy_core_center = parsed_map_data[enemy_core_center_key]
         enemy_core_pos = Position(enemy_core_center["x"], enemy_core_center["y"])
@@ -1465,6 +1471,10 @@ class Map:
         ]
         self.parsed_titanium_indices = parsed_map_data[own_resource_titanium_key]
         self.parsed_axionite_indices = parsed_map_data[own_resource_axionite_key]
+        self.enemy_core_checkpoint_positions = [
+            Position(pos["x"], pos["y"])
+            for pos in parsed_map_data[checkpoint_key]
+        ]
         self.parsed_map_next_update_index = 0
         self.map_json_fully_loaded = False
         self.map_update_time_ns = 0
