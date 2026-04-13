@@ -1499,7 +1499,7 @@ class BuilderStrategyMethodsMixin:
     def s_fix_harvester(self, move_towards: bool = True, hold: bool = True):
         """
         Rebuild the harvester's designated best supply tile when it currently
-        points back into the harvester instead of transporting outward.
+        points into any harvester instead of transporting outward.
         """
         current_pos = self.map.current_pos
         current_round = self.map.current_round
@@ -1536,7 +1536,7 @@ class BuilderStrategyMethodsMixin:
             if (
                 rebuild_building_type in SUPPLY_LINK_TYPES
                 and not any(
-                    target.index == harvester_tile.index
+                    target.building.entity_type == EntityType.HARVESTER
                     for target in rebuild_tile.building.targets
                 )
             ):
