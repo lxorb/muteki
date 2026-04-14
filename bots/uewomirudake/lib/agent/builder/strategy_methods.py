@@ -14,6 +14,7 @@ from lib.agent.constants import (
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
+    REPLACE_ATTACKED_CONVEYOR_MAX_HP,
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
 )
@@ -3288,6 +3289,75 @@ class BuilderStrategyMethodsMixin:
                 break
 
         return False
+
+    def s_replace_damaged_conveyor(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        own_team = self.map.own_team
+        conveyor_titanium_cost, _ = self.ct.get_conveyor_cost()
+        if self.map.titanium < conveyor_titanium_cost:
+            return False
+
+        candidate_tiles = self.map.own_buildings_healable_in_action_range
+        if not candidate_tiles:
+            candidate_tiles = self.map.own_buildings_needing_heal
+        if not candidate_tiles:
+            return False
+
+        target_tile = min(
+            (
+                tile
+                for tile in dict.fromkeys(candidate_tiles)
+                if (
+                    tile.building.team == own_team
+                    and tile.building.entity_type == EntityType.CONVEYOR
+                    and tile.building.hp is not None
+                    and tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                )
+            ),
+            key=lambda tile: (
+                tile.dist_to_self,
+                tile.own_core_dist,
+            ),
+            default=None,
+        )
+        if target_tile is None:
+            return False
+
+        facing_direction = target_tile.building.direction
+        if facing_direction is None or facing_direction == Direction.CENTRE:
+            return False
+
+        if (
+            self.map.current_pos.distance_squared(target_tile.position)
+            <= BUILDER_ACTION_RADIUS_SQ
+            and self.ct.can_destroy(target_tile.position)
+        ):
+            self.ct.destroy(target_tile.position)
+            target_tile.clear_building()
+            return bool(
+                self.u_build_at(
+                    target_tile.position,
+                    EntityType.CONVEYOR,
+                    hold=hold,
+                    move_towards=False,
+                    attack_enemy_passable=False,
+                    facing_direction=facing_direction,
+                )
+            )
+
+        return bool(
+            self.u_build_at(
+                target_tile.position,
+                EntityType.CONVEYOR,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+                facing_direction=facing_direction,
+            )
+        )
 
     def s_heal_own_building(self, move_towards: bool = True, hold: bool = True):
         """
