@@ -1,4 +1,5 @@
 from heapq import heapify, heappop
+import time
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
@@ -728,40 +729,34 @@ class BuilderStrategyMethodsMixin:
         move_towards: bool = True,
         hold: bool = True,
     ):
-        own_team = self.map.own_team
-        current_round = self.map.current_round
-        tiles_by_index = self.map.tiles_by_index
+        total_start_ns = time.perf_counter_ns()
+        map = self.map
+        own_team = map.own_team
+        current_round = map.current_round
+        tiles_by_index = map.tiles_by_index
+        all_own_supply_link_target_indices_in_vision = (
+            map.all_own_supply_link_target_indices_in_vision
+        )
         candidate_entries: list[
             tuple[
                 tuple[int, int, int, int, int],
                 int,
                 int,
+                Environment,
+                bool,
+                bool,
+                Direction | None,
             ]
         ] = []
+        harvester_best_supply_idx_by_index: dict[int, int | None] = {}
+        harvester_order_by_index: dict[int, int] = {}
+        resource_harvester_tiles = []
 
-        def has_empty_adjacent_tile(tile) -> bool:
-            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
-                adjacent_tile = tiles_by_index[adjacent_idx]
-                if (
-                    adjacent_tile.environment != Environment.WALL
-                    and adjacent_tile.building.id is None
-                ):
-                    return True
-            return False
+        def elapsed_ms(start_ns: int) -> float:
+            return (time.perf_counter_ns() - start_ns) / 1_000_000
 
-        def is_best_supplier_tile_for_any_adjacent_harvester(tile) -> bool:
-            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
-                adjacent_tile = tiles_by_index[adjacent_idx]
-                if (
-                    adjacent_tile.building.team == own_team
-                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
-                    and self.map.u_get_harvester_best_supply_tile(adjacent_tile.index)
-                    == tile.index
-                ):
-                    return True
-            return False
-
-        for harvester_order, harvester_tile in enumerate(self.map.own_harvesters_in_vision):
+        candidate_scan_start_ns = time.perf_counter_ns()
+        for harvester_order, harvester_tile in enumerate(map.own_harvesters_in_vision):
             if harvester_tile.last_seen_turn != current_round:
                 continue
 
@@ -769,15 +764,30 @@ class BuilderStrategyMethodsMixin:
             if resource not in {Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}:
                 continue
 
-            preferred_idx = self.map.u_get_harvester_best_supply_tile(
+            harvester_idx = harvester_tile.index
+            preferred_idx = map.u_get_harvester_best_supply_tile(
+                harvester_idx
+            )
+            harvester_best_supply_idx_by_index[harvester_idx] = preferred_idx
+            harvester_order_by_index[harvester_idx] = harvester_order
+            resource_harvester_tiles.append(harvester_tile)
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        for harvester_tile in resource_harvester_tiles:
+            harvester_idx = harvester_tile.index
+            harvester_order = harvester_order_by_index[harvester_idx]
+            preferred_idx = harvester_best_supply_idx_by_index.get(
                 harvester_tile.index
             )
             force_point_at_harvester = False
             best_empty_tile = None
             best_empty_key = None
+            best_empty_direction_to_harvester = None
 
             for safe_order, adjacent_idx in enumerate(
-                self.map.u_iter_cardinal_neighbor_indices(harvester_tile.index)
+                map.u_iter_cardinal_neighbor_indices(harvester_idx)
             ):
                 adjacent_tile = tiles_by_index[adjacent_idx]
                 building = adjacent_tile.building
@@ -793,7 +803,7 @@ class BuilderStrategyMethodsMixin:
                     building.team == own_team
                     and building_type == EntityType.CONVEYOR
                     and not any(
-                        target.index == harvester_tile.index
+                        target.index == harvester_idx
                         for target in building.targets
                     )
                 ):
@@ -816,10 +826,54 @@ class BuilderStrategyMethodsMixin:
                 if best_empty_key is None or empty_key < best_empty_key:
                     best_empty_key = empty_key
                     best_empty_tile = adjacent_tile
+                    best_empty_direction_to_harvester = map.u_get_direction_between(
+                        adjacent_tile.position,
+                        harvester_tile.position,
+                    )
 
             if best_empty_tile is None:
                 continue
 
+            target_idx = best_empty_tile.index
+            target_tile_is_resource = best_empty_tile.environment in {
+                Environment.ORE_TITANIUM,
+                Environment.ORE_AXIONITE,
+            }
+            should_build_harvester = False
+            if target_tile_is_resource:
+                has_empty_adjacent_tile = False
+                is_best_supplier_tile_for_any_adjacent_harvester = False
+                for adjacent_idx in map.u_iter_cardinal_neighbor_indices(target_idx):
+                    adjacent_tile = tiles_by_index[adjacent_idx]
+                    if (
+                        not has_empty_adjacent_tile
+                        and adjacent_tile.environment != Environment.WALL
+                        and adjacent_tile.building.id is None
+                    ):
+                        has_empty_adjacent_tile = True
+                    if (
+                        not is_best_supplier_tile_for_any_adjacent_harvester
+                        and adjacent_tile.building.team == own_team
+                        and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                        and harvester_best_supply_idx_by_index.get(adjacent_tile.index)
+                        == target_idx
+                    ):
+                        is_best_supplier_tile_for_any_adjacent_harvester = True
+                    if (
+                        has_empty_adjacent_tile
+                        and is_best_supplier_tile_for_any_adjacent_harvester
+                    ):
+                        break
+
+                should_build_harvester = (
+                    not has_empty_adjacent_tile
+                    and not is_best_supplier_tile_for_any_adjacent_harvester
+                )
+
+            needs_transport_supplier_plan = (
+                target_idx == preferred_idx
+                or target_idx in all_own_supply_link_target_indices_in_vision
+            )
             candidate_entries.append(
                 (
                     (
@@ -829,32 +883,69 @@ class BuilderStrategyMethodsMixin:
                         0 if force_point_at_harvester else 1,
                         best_empty_tile.index,
                     ),
-                    harvester_tile.index,
-                    best_empty_tile.index,
+                    harvester_idx,
+                    target_idx,
+                    harvester_tile.environment,
+                    should_build_harvester,
+                    needs_transport_supplier_plan,
+                    best_empty_direction_to_harvester,
                 )
             )
 
             if self.round_stopwatch.check_overtime():
                 break
 
+        print(
+            "Protect harvester timing: candidate scan",
+            f"{elapsed_ms(candidate_scan_start_ns):.3f} ms,",
+            "candidates",
+            len(candidate_entries),
+        )
         if not candidate_entries:
+            print(
+                "Protect harvester timing: total",
+                f"{elapsed_ms(total_start_ns):.3f} ms",
+            )
             return False
 
-        heapify(candidate_entries)
-        while candidate_entries:
-            _, harvester_idx, target_idx = heappop(candidate_entries)
+        sort_start_ns = time.perf_counter_ns()
+        candidate_entries.sort(key=lambda entry: entry[0])
+        print(
+            "Protect harvester timing: sort",
+            f"{elapsed_ms(sort_start_ns):.3f} ms",
+        )
+        for (
+            _priority_key,
+            harvester_idx,
+            target_idx,
+            resource,
+            should_build_harvester,
+            needs_transport_supplier_plan,
+            harvester_direction,
+        ) in candidate_entries:
+            candidate_start_ns = time.perf_counter_ns()
             harvester_tile = tiles_by_index[harvester_idx]
             target_tile = tiles_by_index[target_idx]
-            resource = harvester_tile.environment
+            print(
+                "Protect harvester timing: trying candidate",
+                harvester_tile.position,
+                "via",
+                target_tile.position,
+            )
 
+            resource_tile_check_start_ns = time.perf_counter_ns()
             if (
                 target_tile.environment in {
                     Environment.ORE_TITANIUM,
                     Environment.ORE_AXIONITE,
                 }
-                and not has_empty_adjacent_tile(target_tile)
-                and not is_best_supplier_tile_for_any_adjacent_harvester(target_tile)
+                and should_build_harvester
             ):
+                print(
+                    "Protect harvester timing: resource-tile check",
+                    f"{elapsed_ms(resource_tile_check_start_ns):.3f} ms",
+                )
+                build_start_ns = time.perf_counter_ns()
                 if self.u_build_at(
                     target_tile.position,
                     EntityType.HARVESTER,
@@ -862,18 +953,45 @@ class BuilderStrategyMethodsMixin:
                     move_towards=move_towards,
                     attack_enemy_passable=False,
                 ):
+                    print(
+                        "Protect harvester timing: harvester build_at",
+                        f"{elapsed_ms(build_start_ns):.3f} ms",
+                    )
+                    print(
+                        "Protect harvester timing: candidate total",
+                        f"{elapsed_ms(candidate_start_ns):.3f} ms",
+                    )
+                    print(
+                        "Protect harvester timing: total",
+                        f"{elapsed_ms(total_start_ns):.3f} ms",
+                    )
                     return True
+                print(
+                    "Protect harvester timing: harvester build_at",
+                    f"{elapsed_ms(build_start_ns):.3f} ms",
+                )
                 if self.round_stopwatch.check_overtime():
                     break
                 continue
+            print(
+                "Protect harvester timing: resource-tile check",
+                f"{elapsed_ms(resource_tile_check_start_ns):.3f} ms",
+            )
 
-            supplier_type, supplier_target = (
-                self.u_get_harvester_adjacent_supplier_build_plan(
-                    harvester_tile,
-                    target_tile,
+            supplier_plan_start_ns = time.perf_counter_ns()
+            if needs_transport_supplier_plan:
+                supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
+                    target_tile.position,
                     resource,
-                    use_all_own_supply_link_targets_in_vision=True,
                 )
+            else:
+                supplier_type, supplier_target = (
+                    EntityType.CONVEYOR,
+                    harvester_direction,
+                )
+            print(
+                "Protect harvester timing: supplier plan",
+                f"{elapsed_ms(supplier_plan_start_ns):.3f} ms",
             )
             if supplier_type is None or supplier_target is None:
                 if self.round_stopwatch.check_overtime():
@@ -881,15 +999,12 @@ class BuilderStrategyMethodsMixin:
                 continue
 
             if supplier_type == EntityType.CONVEYOR:
-                harvester_direction = self.map.u_get_direction_between(
-                    target_tile.position,
-                    harvester_tile.position,
-                )
+                retarget_start_ns = time.perf_counter_ns()
                 if (
-                    harvester_direction is not None
+                    needs_transport_supplier_plan
+                    and harvester_direction is not None
                     and supplier_target == harvester_direction
-                    and target_tile.index
-                    in self.map.all_own_supply_link_target_indices_in_vision
+                    and target_idx in all_own_supply_link_target_indices_in_vision
                 ):
                     supplier_target = self.u_best_conveyor_orientation(
                         target_tile.position,
@@ -900,7 +1015,12 @@ class BuilderStrategyMethodsMixin:
                         if self.round_stopwatch.check_overtime():
                             break
                         continue
+                print(
+                    "Protect harvester timing: conveyor retarget",
+                    f"{elapsed_ms(retarget_start_ns):.3f} ms",
+                )
 
+                build_start_ns = time.perf_counter_ns()
                 if self.u_build_at(
                     target_tile.position,
                     supplier_type,
@@ -909,8 +1029,25 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=False,
                     facing_direction=supplier_target,
                 ):
+                    print(
+                        "Protect harvester timing: conveyor build_at",
+                        f"{elapsed_ms(build_start_ns):.3f} ms",
+                    )
+                    print(
+                        "Protect harvester timing: candidate total",
+                        f"{elapsed_ms(candidate_start_ns):.3f} ms",
+                    )
+                    print(
+                        "Protect harvester timing: total",
+                        f"{elapsed_ms(total_start_ns):.3f} ms",
+                    )
                     return True
+                print(
+                    "Protect harvester timing: conveyor build_at",
+                    f"{elapsed_ms(build_start_ns):.3f} ms",
+                )
             elif supplier_type == EntityType.BRIDGE:
+                build_start_ns = time.perf_counter_ns()
                 if self.u_build_at(
                     target_tile.position,
                     supplier_type,
@@ -919,11 +1056,36 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=False,
                     target_pos=supplier_target,
                 ):
+                    print(
+                        "Protect harvester timing: bridge build_at",
+                        f"{elapsed_ms(build_start_ns):.3f} ms",
+                    )
+                    print(
+                        "Protect harvester timing: candidate total",
+                        f"{elapsed_ms(candidate_start_ns):.3f} ms",
+                    )
+                    print(
+                        "Protect harvester timing: total",
+                        f"{elapsed_ms(total_start_ns):.3f} ms",
+                    )
                     return True
+                print(
+                    "Protect harvester timing: bridge build_at",
+                    f"{elapsed_ms(build_start_ns):.3f} ms",
+                )
+
+            print(
+                "Protect harvester timing: candidate total",
+                f"{elapsed_ms(candidate_start_ns):.3f} ms",
+            )
 
             if self.round_stopwatch.check_overtime():
                 break
 
+        print(
+            "Protect harvester timing: total",
+            f"{elapsed_ms(total_start_ns):.3f} ms",
+        )
         return False
 
     def s_build_missing_supply_link(

@@ -27,6 +27,12 @@ _BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
 _RESOURCE_ENVIRONMENTS = frozenset(
     (Environment.ORE_TITANIUM, Environment.ORE_AXIONITE)
 )
+_CARDINAL_DIRECTIONS = tuple(
+    direction
+    for direction in Direction
+    if direction != Direction.CENTRE and sum(abs(delta) for delta in direction.delta()) == 1
+)
+_EMPTY_SOURCE_INDEX_SET = frozenset()
 
 
 class BuilderNavigationMixin:
@@ -428,83 +434,95 @@ class BuilderNavigationMixin:
         """
         Return the best cardinal output direction for a conveyor at this tile.
         """
-        own_team = self.map.own_team
+        map = self.map
+        own_team = map.own_team
+        current_pos = map.current_pos
+        source_tile = map.u_get_pos_tile(pos)
+        source_idx = source_tile.index
+        source_core_dist = source_tile.own_core_dist
+        tiles_by_index = map.tiles_by_index
+        incoming_supply_sources = (
+            map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                source_idx,
+                _EMPTY_SOURCE_INDEX_SET,
+            )
+        )
+        if allow_adjacent_resource_sink:
+            saw_adjacent_resource = False
+            all_adjacent_resources_have_own_conveyor = True
+            best_adjacent_harvester_direction = None
+            best_adjacent_harvester_key = None
+            surround_direction = None
 
-        adjacent_resource_tiles = []
-        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(pos):
-            adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-            if adjacent_tile.environment == resource:
-                adjacent_resource_tiles.append(adjacent_tile)
+            for direction in _CARDINAL_DIRECTIONS:
+                adjacent_idx = map.u_get_neighbor_index_by_direction(source_idx, direction)
+                if adjacent_idx is None:
+                    continue
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.environment != resource:
+                    continue
 
-        if allow_adjacent_resource_sink and adjacent_resource_tiles:
-            def has_adjacent_own_conveyor(tile) -> bool:
-                for neighbor_pos in self.map.u_iter_adjacent_cardinal_positions(
-                    tile.position
-                ):
-                    neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
+                saw_adjacent_resource = True
+                has_adjacent_own_conveyor = False
+                for neighbor_idx in map.u_iter_cardinal_neighbor_indices(adjacent_idx):
+                    neighbor_tile = tiles_by_index[neighbor_idx]
                     if (
                         neighbor_tile.building.team == own_team
                         and neighbor_tile.building.entity_type == EntityType.CONVEYOR
                     ):
-                        return True
-                return False
+                        has_adjacent_own_conveyor = True
+                        break
+                if not has_adjacent_own_conveyor:
+                    all_adjacent_resources_have_own_conveyor = False
 
-            if all(
-                has_adjacent_own_conveyor(resource_tile)
-                for resource_tile in adjacent_resource_tiles
-            ):
-                adjacent_harvesters = [
-                    resource_tile
-                    for resource_tile in adjacent_resource_tiles
-                    if (
-                        resource_tile.building.team == own_team
-                        and resource_tile.building.entity_type == EntityType.HARVESTER
-                    )
-                ]
                 if (
-                    adjacent_harvesters
+                    adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                ):
+                    adjacent_key = (
+                        adjacent_tile.position.x,
+                        adjacent_tile.position.y,
+                    )
+                    if (
+                        best_adjacent_harvester_key is None
+                        or adjacent_key < best_adjacent_harvester_key
+                    ):
+                        best_adjacent_harvester_key = adjacent_key
+                        best_adjacent_harvester_direction = direction
+
+                if (
+                    surround_target_pos is not None
+                    and adjacent_tile.position == surround_target_pos
+                ):
+                    surround_direction = direction
+
+            if saw_adjacent_resource and all_adjacent_resources_have_own_conveyor:
+                if (
+                    best_adjacent_harvester_direction is not None
                     and not DISABLE_CONVEYORS_POINTING_AT_HARVESTERS
                 ):
-                    if pos in self.map.own_supply_link_target_indices_in_vision:
-                        adjacent_harvesters = []
-                if adjacent_harvesters:
-                    target_tile = min(
-                        adjacent_harvesters,
-                        key=lambda tile: (tile.position.x, tile.position.y),
-                    )
-                    return self.map.u_get_direction_between(pos, target_tile.position)
+                    return best_adjacent_harvester_direction
+                if surround_direction is not None:
+                    return surround_direction
 
-                if surround_target_pos is not None:
-                    for resource_tile in adjacent_resource_tiles:
-                        if resource_tile.position == surround_target_pos:
-                            return self.map.u_get_direction_between(
-                                pos,
-                                surround_target_pos,
-                            )
-
-        current_pos = self.map.current_pos
-        source_tile = self.map.u_get_pos_tile(pos)
-        source_core_dist = source_tile.own_core_dist
-        candidate_tiles: list[tuple[Direction, object, int, bool, bool]] = []
-
-        def targets_source_tile(candidate_tile) -> bool:
-            return any(target.position == pos for target in candidate_tile.building.targets)
-
-        for direction in Direction:
-            if direction == Direction.CENTRE:
-                continue
-            dx, dy = direction.delta()
-            if abs(dx) + abs(dy) != 1:
+        best_direction = None
+        best_key: tuple[int, int, int, int, int, int, int, int] | None = None
+        for direction in _CARDINAL_DIRECTIONS:
+            neighbor_idx = map.u_get_neighbor_index_by_direction(source_idx, direction)
+            if neighbor_idx is None:
                 continue
 
-            neighbor_pos = pos.add(direction)
-            if not self.map.u_is_in_bounds(neighbor_pos):
+            neighbor_tile = tiles_by_index[neighbor_idx]
+            if (
+                neighbor_tile.last_seen_turn == map.current_round
+                and neighbor_tile.building.team == own_team
+                and neighbor_tile.building.entity_type in SUPPLY_LINK_TYPES
+            ):
+                if neighbor_idx in incoming_supply_sources:
+                    continue
+            elif any(target.position == pos for target in neighbor_tile.building.targets):
                 continue
-
-            neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
-            if targets_source_tile(neighbor_tile):
-                continue
-            if neighbor_tile.is_core_of(self.map.own_team):
+            if neighbor_tile.is_core_of(own_team):
                 return direction
 
             category_rank = self.u_get_supplier_tile_category_rank(
@@ -519,123 +537,36 @@ class BuilderNavigationMixin:
                 and neighbor_tile.building.team == own_team
                 and neighbor_tile.own_supply_chain_label != SupplyChainLabel.NONE
             )
-            if neighbor_tile.own_core_dist > source_core_dist:
+            neighbor_core_dist = neighbor_tile.own_core_dist
+            if neighbor_core_dist > source_core_dist:
                 continue
             if (
-                neighbor_tile.own_core_dist == source_core_dist
+                neighbor_core_dist == source_core_dist
                 and (
                     not HARD_AVOID_EXISTING_SUPPLY_CHAIN
                     or is_existing_supply_chain_tile
                 )
             ):
                 continue
-            candidate_tiles.append(
-                (
-                    direction,
-                    neighbor_tile,
-                    category_rank,
-                    neighbor_tile.environment in _RESOURCE_ENVIRONMENTS,
-                    is_existing_supply_chain_tile,
-                )
+
+            candidate_key = (
+                1 if neighbor_tile.environment in _RESOURCE_ENVIRONMENTS else 0,
+                1 if is_existing_supply_chain_tile else 0,
+                1 if neighbor_core_dist == source_core_dist else 0,
+                category_rank,
+                neighbor_core_dist,
+                0
+                if current_pos.distance_squared(neighbor_tile.position)
+                <= BUILDER_ACTION_RADIUS_SQ
+                else 1,
+                neighbor_tile.position.x,
+                neighbor_tile.position.y,
             )
+            if best_key is None or candidate_key < best_key:
+                best_key = candidate_key
+                best_direction = direction
 
-        if not candidate_tiles:
-            return None
-
-        if any(
-            not is_resource_tile
-            for _, _, _, is_resource_tile, _ in candidate_tiles
-        ):
-            candidate_tiles = [
-                (
-                    direction,
-                    neighbor_tile,
-                    category_rank,
-                    is_resource_tile,
-                    is_existing_supply_chain_tile,
-                )
-                for (
-                    direction,
-                    neighbor_tile,
-                    category_rank,
-                    is_resource_tile,
-                    is_existing_supply_chain_tile,
-                ) in candidate_tiles
-                if not is_resource_tile
-            ]
-            if not candidate_tiles:
-                return None
-
-        if any(
-            not is_existing_supply_chain_tile
-            for _, _, _, _, is_existing_supply_chain_tile in candidate_tiles
-        ):
-            candidate_tiles = [
-                (
-                    direction,
-                    neighbor_tile,
-                    category_rank,
-                    is_resource_tile,
-                    is_existing_supply_chain_tile,
-                )
-                for (
-                    direction,
-                    neighbor_tile,
-                    category_rank,
-                    is_resource_tile,
-                    is_existing_supply_chain_tile,
-                ) in candidate_tiles
-                if not is_existing_supply_chain_tile
-            ]
-            if not candidate_tiles:
-                return None
-
-        if any(
-            neighbor_tile.own_core_dist < source_core_dist
-            for _, neighbor_tile, _, _, _ in candidate_tiles
-        ):
-            candidate_tiles = [
-                (
-                    direction,
-                    neighbor_tile,
-                    category_rank,
-                    is_resource_tile,
-                    is_existing_supply_chain_tile,
-                )
-                for (
-                    direction,
-                    neighbor_tile,
-                    category_rank,
-                    is_resource_tile,
-                    is_existing_supply_chain_tile,
-                ) in candidate_tiles
-                if neighbor_tile.own_core_dist < source_core_dist
-            ]
-            if not candidate_tiles:
-                return None
-
-        best_category_rank = min(
-            category_rank for _, _, category_rank, _, _ in candidate_tiles
-        )
-        candidate_tiles = [
-            (direction, neighbor_tile)
-            for direction, neighbor_tile, category_rank, _, _ in candidate_tiles
-            if category_rank == best_category_rank
-        ]
-        candidate_tiles.sort(
-            key=lambda item: (
-                item[1].own_core_dist,
-                (
-                    0
-                    if current_pos.distance_squared(item[1].position)
-                    <= BUILDER_ACTION_RADIUS_SQ
-                    else 1
-                ),
-                item[1].position.x,
-                item[1].position.y,
-            )
-        )
-        return candidate_tiles[0][0]
+        return best_direction
 
     def u_get_supplier_tile_category_rank(
         self,
@@ -679,85 +610,85 @@ class BuilderNavigationMixin:
         """
         Return the best bridge target tile reachable from this source tile.
         """
-        current_pos = self.map.current_pos
-        source_tile = self.map.u_get_pos_tile(pos)
+        map = self.map
+        current_pos = map.current_pos
+        source_tile = map.u_get_pos_tile(pos)
+        source_idx = source_tile.index
         source_core_dist = source_tile.own_core_dist
-        map_width = self.map.width
-        map_height = self.map.height
-        active_mask = self.map.active_mask_by_index
-        tiles_by_index = self.map.tiles_by_index
+        own_team = map.own_team
+        map_width = map.width
+        map_height = map.height
+        active_mask = map.active_mask_by_index
+        tiles_by_index = map.tiles_by_index
         pos_x = pos.x
         pos_y = pos.y
-
-        def targets_source_tile(candidate_tile) -> bool:
-            return any(target.position == pos for target in candidate_tile.building.targets)
-
-        candidates = []
+        incoming_supply_sources = (
+            map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                source_idx,
+                _EMPTY_SOURCE_INDEX_SET,
+            )
+        )
+        best_target_pos = None
+        best_target_key = None
         for dx, dy in _BRIDGE_TARGET_OFFSETS:
             nx = pos_x + dx
             ny = pos_y + dy
             if nx < 0 or ny < 0 or nx >= map_width or ny >= map_height:
                 continue
-            target_idx = self.map.u_to_index_xy(nx, ny)
+            target_idx = map.u_to_index_xy(nx, ny)
             if not active_mask[target_idx]:
                 continue
             target_tile = tiles_by_index[target_idx]
-            if targets_source_tile(target_tile):
+            if (
+                target_tile.last_seen_turn == map.current_round
+                and target_tile.building.team == own_team
+                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            ):
+                if target_idx in incoming_supply_sources:
+                    continue
+            elif any(target.position == pos for target in target_tile.building.targets):
                 continue
             if target_tile.own_core_dist >= source_core_dist:
                 continue
-            candidates.append(target_tile)
-
-        if not candidates:
-            return None
-
-        if any(tile.environment not in _RESOURCE_ENVIRONMENTS for tile in candidates):
-            candidates = [
-                tile for tile in candidates if tile.environment not in _RESOURCE_ENVIRONMENTS
-            ]
-
-        core_tiles = [tile for tile in candidates if tile.is_core_of(self.map.own_team)]
-        if core_tiles:
-            return min(
-                core_tiles,
-                key=lambda tile: (
-                    pos.distance_squared(tile.position),
-                    tile.position.x,
-                    tile.position.y,
-                ),
-            ).position
-
-        # Single pass: find best tile using composite key (rank, progress, distance, pos).
-        # Avoids a separate categorize loop, a min-rank scan, a filter, and a second min.
-        best_tile = None
-        best_key: tuple | None = None
-        for target_tile in candidates:
+            resource_penalty = (
+                1 if target_tile.environment in _RESOURCE_ENVIRONMENTS else 0
+            )
+            if target_tile.is_core_of(own_team):
+                target_key = (
+                    resource_penalty,
+                    0,
+                    current_pos.distance_squared(target_tile.position),
+                    target_tile.position.x,
+                    target_tile.position.y,
+                    0,
+                    0,
+                )
+            else:
+                category_rank = self.u_get_bridge_target_category_rank(
+                    target_tile,
+                    resource,
+                )
+                if category_rank is None:
+                    continue
+                target_key = (
+                    resource_penalty,
+                    1,
+                    category_rank,
+                    target_tile.own_core_dist,
+                    0
+                    if current_pos.distance_squared(target_tile.position)
+                    <= BUILDER_ACTION_RADIUS_SQ
+                    else 1,
+                    target_tile.position.x,
+                    target_tile.position.y,
+                )
+            if best_target_key is None or target_key < best_target_key:
+                best_target_key = target_key
+                best_target_pos = target_tile.position
             if self.round_stopwatch.check_overtime():
                 break
-            category_rank = self.u_get_bridge_target_category_rank(
-                target_tile,
-                resource,
-            )
-            if category_rank is None:
-                continue
-            dist_bucket = (
-                0
-                if current_pos.distance_squared(target_tile.position)
-                <= BUILDER_ACTION_RADIUS_SQ
-                else 1
-            )
-            key = (
-                category_rank,
-                target_tile.own_core_dist,
-                dist_bucket,
-                target_tile.position.x,
-                target_tile.position.y,
-            )
-            if best_key is None or key < best_key:
-                best_key = key
-                best_tile = target_tile
 
-        return best_tile.position if best_tile is not None else None
+        return best_target_pos
 
     def u_get_bridge_target_category_rank(
         self,

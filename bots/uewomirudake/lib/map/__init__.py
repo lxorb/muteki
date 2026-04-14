@@ -281,6 +281,9 @@ class Map:
         self.all_own_supply_link_target_indices_in_vision: set[int] = set()
         self.own_supply_link_target_indices_in_vision: set[int] = set()
         self.enemy_supply_link_target_indices_in_vision: set[int] = set()
+        self.own_supply_link_source_indices_by_target_index_in_vision: dict[
+            int, set[int]
+        ] = {}
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_supply_chain_parent_by_index = array(
@@ -469,6 +472,7 @@ class Map:
         self.all_own_supply_link_target_indices_in_vision = set()
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
+        self.own_supply_link_source_indices_by_target_index_in_vision = {}
         self.frontier_expand_newly_seen_indices = []
 
     def _reset_supply_chain_union_find_arrays(
@@ -2169,6 +2173,9 @@ class Map:
         all_own_target_indices = self.all_own_supply_link_target_indices_in_vision
         own_target_indices = self.own_supply_link_target_indices_in_vision
         enemy_target_indices = self.enemy_supply_link_target_indices_in_vision
+        own_supply_link_sources_by_target_index = (
+            self.own_supply_link_source_indices_by_target_index_in_vision
+        )
 
         own_supply_targets_in_vision.clear()
         enemy_supply_targets_in_vision.clear()
@@ -2177,9 +2184,11 @@ class Map:
         all_own_target_indices.clear()
         own_target_indices.clear()
         enemy_target_indices.clear()
+        own_supply_link_sources_by_target_index.clear()
 
         for supply_link_tile in self.own_supply_links_in_vision:
             building = supply_link_tile.building
+            supply_link_idx = supply_link_tile.index
             include_for_own = not (
                 building.entity_type != EntityType.SPLITTER
                 and building.team == own_team
@@ -2193,6 +2202,13 @@ class Map:
                     continue
                 target_idx = target_tile.index
                 all_own_target_indices.add(target_idx)
+                source_indices = own_supply_link_sources_by_target_index.get(target_idx)
+                if source_indices is None:
+                    own_supply_link_sources_by_target_index[target_idx] = {
+                        supply_link_idx
+                    }
+                else:
+                    source_indices.add(supply_link_idx)
                 if include_for_own:
                     own_target_indices.add(target_idx)
             if check_overtime_interval():
