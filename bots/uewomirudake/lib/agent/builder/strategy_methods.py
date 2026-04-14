@@ -302,6 +302,133 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         current_round = self.map.current_round
         current_pos = self.map.current_pos
+        candidate_entries: list[tuple[tuple[int, int, int], Position]] = []
+
+        def get_opposite_direction(direction: Direction) -> Direction:
+            return (
+                direction.rotate_left()
+                .rotate_left()
+                .rotate_left()
+                .rotate_left()
+            )
+
+        for tile in self.map.own_supply_links_in_vision:
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team != own_team:
+                continue
+            if tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
+                continue
+            if not any(target_tile.is_core_of(own_team) for target_tile in tile.building.targets):
+                continue
+
+            root = self.map.u_get_supply_chain_id_by_index(tile.index, own_team)
+            if root is None:
+                continue
+            if not (
+                self.map.u_supply_chain_has_titanium(tile.index, own_team)
+                and self.map.u_supply_chain_has_raw_axionite(tile.index, own_team)
+            ):
+                continue
+
+            passing_conveyor_count = 0
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
+                adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+                if adjacent_tile.last_seen_turn != current_round:
+                    continue
+                if adjacent_tile.building.team != own_team:
+                    continue
+                if adjacent_tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
+                    continue
+                if (
+                    self.map.u_get_supply_chain_id_by_index(adjacent_tile.index, own_team)
+                    != root
+                ):
+                    continue
+                if any(target.index == tile.index for target in adjacent_tile.building.targets):
+                    continue
+
+                direction_to_target = self.map.u_get_direction_between(
+                    adjacent_tile.position,
+                    tile.position,
+                )
+                facing_direction = adjacent_tile.building.direction
+                if (
+                    direction_to_target is None
+                    or direction_to_target == Direction.CENTRE
+                    or facing_direction is None
+                    or facing_direction == Direction.CENTRE
+                ):
+                    continue
+                if facing_direction == get_opposite_direction(direction_to_target):
+                    continue
+
+                passing_conveyor_count += 1
+
+            candidate_entries.append(
+                (
+                    (
+                        -passing_conveyor_count,
+                        tile.dist_to_self,
+                        tile.index,
+                    ),
+                    tile.position,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        titanium_cost, axionite_cost = self.ct.get_foundry_cost()
+        for _, target_pos in sorted(candidate_entries, key=lambda item: item[0]):
+            target_tile = self.map.u_get_pos_tile(target_pos)
+            affordable = (
+                self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+            )
+            if not affordable:
+                if (
+                    hold
+                    and current_pos.distance_squared(target_pos)
+                    <= BUILDER_ACTION_RADIUS_SQ
+                ):
+                    return True
+                if not move_towards:
+                    continue
+                if self.u_move_to_astar(target_pos):
+                    return True
+                continue
+
+            if (
+                current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
+                and self.ct.can_destroy(target_pos)
+            ):
+                self.ct.destroy(target_pos)
+                target_tile.clear_building()
+                if self.ct.can_build_foundry(target_pos):
+                    self.ct.build_foundry(target_pos)
+                    self.last_built_entity_type = EntityType.FOUNDRY
+                    return True
+                return False
+
+            if move_towards and self.u_move_to_astar(target_pos):
+                return True
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return False
+
+    def s_integrate_foundry_old(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        current_pos = self.map.current_pos
         mixed_root_by_index: dict[int, int] = {}
         mixed_supply_tiles = []
         incoming_count_by_index: dict[int, int] = {}
