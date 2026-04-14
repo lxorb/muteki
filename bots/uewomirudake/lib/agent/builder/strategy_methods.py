@@ -17,7 +17,7 @@ from lib.agent.constants import (
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
 )
-from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
+from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
 _ENEMY_CORE_PATROL_OFFSETS = (
@@ -41,6 +41,51 @@ _ENEMY_CORE_PATROL_OFFSETS = (
 
 
 class BuilderStrategyMethodsMixin:
+    def u_get_splitter_direction_for_replaced_conveyor(
+        self,
+        target_tile,
+        fallback_direction: Direction | None = None,
+    ) -> Direction | None:
+        original_direction = target_tile.building.direction or fallback_direction
+        if original_direction is None or original_direction == Direction.CENTRE:
+            return original_direction
+
+        def get_opposite_direction(direction: Direction) -> Direction:
+            return (
+                direction.rotate_left()
+                .rotate_left()
+                .rotate_left()
+                .rotate_left()
+            )
+
+        current_round = self.map.current_round
+        target_idx = target_tile.index
+
+        def is_fed_from(direction: Direction) -> bool:
+            feeder_idx = self.map.u_get_neighbor_index_by_direction(target_idx, direction)
+            if feeder_idx is None:
+                return False
+
+            feeder_tile = self.map.tiles_by_index[feeder_idx]
+            return (
+                feeder_tile.last_seen_turn == current_round
+                and feeder_tile.building.team == self.map.own_team
+                and feeder_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+                and any(target.index == target_idx for target in feeder_tile.building.targets)
+            )
+
+        opposite_direction = get_opposite_direction(original_direction)
+        if is_fed_from(opposite_direction):
+            return original_direction
+
+        for direction in CARDINAL_DIRECTIONS:
+            if direction in {original_direction, opposite_direction}:
+                continue
+            if is_fed_from(direction):
+                return get_opposite_direction(direction)
+
+        return original_direction
+
     def s_integrate_foundry_passing_splitter(
         self,
         move_towards: bool = True,
@@ -58,21 +103,6 @@ class BuilderStrategyMethodsMixin:
                 .rotate_left()
                 .rotate_left()
             )
-
-        def iter_hypothetical_splitter_targets(pos: Position, direction: Direction):
-            for output_direction in (
-                direction,
-                direction.rotate_left().rotate_left(),
-                direction.rotate_right().rotate_right(),
-            ):
-                target_idx = self.map.u_get_neighbor_index_by_direction(
-                    self.map.u_to_index(pos),
-                    output_direction,
-                )
-                if target_idx is None:
-                    yield None
-                    continue
-                yield self.map.tiles_by_index[target_idx]
 
         for tile in self.map.own_supply_links_in_vision:
             if tile.last_seen_turn != current_round:
@@ -101,7 +131,6 @@ class BuilderStrategyMethodsMixin:
             if not adjacent_foundry_tiles:
                 continue
 
-            valid_passing_foundry = None
             for foundry_tile in adjacent_foundry_tiles:
                 direction_to_foundry = self.map.u_get_direction_between(
                     tile.position,
@@ -114,45 +143,18 @@ class BuilderStrategyMethodsMixin:
                 if facing_direction == get_opposite_direction(direction_to_foundry):
                     continue
 
-                splitter_targets = list(
-                    iter_hypothetical_splitter_targets(tile.position, facing_direction)
-                )
-                if any(target_tile is None for target_tile in splitter_targets):
-                    continue
-
-                valid_outputs = True
-                foundry_reached = False
-                for target_tile in splitter_targets:
-                    assert target_tile is not None
-                    if target_tile.index == foundry_tile.index:
-                        foundry_reached = True
-                        continue
-                    if not (
-                        target_tile.building.team == own_team
-                        and target_tile.building.entity_type
-                        in CONVEYOR_ENTITY_TYPES | {EntityType.BRIDGE}
-                    ):
-                        valid_outputs = False
-                        break
-
-                if valid_outputs and foundry_reached:
-                    valid_passing_foundry = foundry_tile
-                    break
-
-            if valid_passing_foundry is None:
-                continue
-
-            candidate_entries.append(
-                (
+                candidate_entries.append(
                     (
-                        tile.dist_to_self,
-                        tile.own_core_dist,
-                        tile.index,
-                    ),
-                    tile.position,
-                    facing_direction,
+                        (
+                            tile.dist_to_self,
+                            tile.own_core_dist,
+                            tile.index,
+                        ),
+                        tile.position,
+                        facing_direction,
+                    )
                 )
-            )
+                break
 
             if self.round_stopwatch.check_overtime():
                 break
@@ -160,8 +162,17 @@ class BuilderStrategyMethodsMixin:
         if not candidate_entries:
             return False
 
-        _, target_pos, facing_direction = min(candidate_entries, key=lambda item: item[0])
+        _, target_pos, original_direction = min(
+            candidate_entries,
+            key=lambda item: item[0],
+        )
         target_tile = self.map.u_get_pos_tile(target_pos)
+        facing_direction = self.u_get_splitter_direction_for_replaced_conveyor(
+            target_tile,
+            fallback_direction=original_direction,
+        )
+        if facing_direction is None or facing_direction == Direction.CENTRE:
+            return False
         titanium_cost, axionite_cost = self.ct.get_splitter_cost()
         can_afford_splitter = (
             self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
@@ -240,8 +251,17 @@ class BuilderStrategyMethodsMixin:
         if not candidate_entries:
             return False
 
-        _, target_pos, facing_direction = min(candidate_entries, key=lambda item: item[0])
+        _, target_pos, original_direction = min(
+            candidate_entries,
+            key=lambda item: item[0],
+        )
         target_tile = self.map.u_get_pos_tile(target_pos)
+        facing_direction = self.u_get_splitter_direction_for_replaced_conveyor(
+            target_tile,
+            fallback_direction=original_direction,
+        )
+        if facing_direction is None or facing_direction == Direction.CENTRE:
+            return False
         titanium_cost, axionite_cost = self.ct.get_splitter_cost()
         can_afford_splitter = (
             self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
