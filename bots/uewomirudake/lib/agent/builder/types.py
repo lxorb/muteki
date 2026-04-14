@@ -59,6 +59,12 @@ class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
+    def u_move_with_target(
+        self,
+        direction: Direction,
+        target_pos: Position,
+    ) -> None: ...
+
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction: ...
@@ -106,6 +112,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         avoid_enemy_turrets: bool = True,
         build_new_roads: bool = False,
         allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
     ) -> bool: ...
 
     def u_attack_passable(

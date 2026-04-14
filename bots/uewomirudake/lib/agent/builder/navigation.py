@@ -1,4 +1,5 @@
 import math
+import time
 from collections.abc import Callable
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
@@ -7,6 +8,7 @@ from lib.agent.constants import (
     ATTACK_TURRET_FEEDER_TYPES,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
+    CONVEYOR_ENTITY_TYPES,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     DIRECTIONAL_BUILDING_TYPES,
     ENEMY_TURRET_TYPES,
@@ -36,6 +38,21 @@ _EMPTY_SOURCE_INDEX_SET = frozenset()
 
 
 class BuilderNavigationMixin:
+    def u_move_with_target(
+        self,
+        direction: Direction,
+        target_pos: Position,
+    ) -> None:
+        print(
+            "Move target:",
+            target_pos,
+            "via",
+            direction,
+            "to",
+            self.map.current_pos.add(direction),
+        )
+        self.ct.move(direction)
+
     def u_get_supply_chain_progress_key_to_target(
         self,
         pos: Position,
@@ -724,24 +741,33 @@ class BuilderNavigationMixin:
         avoid_enemy_turrets: bool = True,
         build_new_roads: bool = True,
         allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
     ) -> bool:
         current_pos = self.map.current_pos
         if current_pos == pos:
             return False
 
-        shortest_path = self.map.u_calculate_shortest_path_astar(
-            current_pos,
-            pos,
-            avoid_enemy_turrets=avoid_enemy_turrets,
-        )
-        if len(shortest_path) >= 2:
-            next_tile = shortest_path[1]
+        print("Move to target:", pos)
+
+        if reach_builder_action_range:
+            next_tile = self.map.u_get_next_step_to_builder_action_range_astar(
+                current_pos,
+                pos,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+            )
+        else:
+            next_tile = self.map.u_get_next_step_towards_astar(
+                current_pos,
+                pos,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+            )
+        if next_tile is not None:
             next_direction = self.map.u_get_direction_between(
                 current_pos,
                 next_tile.position,
             )
             if next_direction is not None and self.ct.can_move(next_direction):
-                self.ct.move(next_direction)
+                self.u_move_with_target(next_direction, pos)
                 return True
             if build_new_roads and self.ct.can_build_road(next_tile.position):
                 adjacent_resource_tiles = []
@@ -787,7 +813,7 @@ class BuilderNavigationMixin:
 
                 self.ct.build_road(next_tile.position)
                 if next_direction is not None and self.ct.can_move(next_direction):
-                    self.ct.move(next_direction)
+                    self.u_move_with_target(next_direction, pos)
                 return True
 
         return False
@@ -851,11 +877,32 @@ class BuilderNavigationMixin:
         avoid_enemy_turrets: bool = True,
         allow_conveyor_building: bool = True,
     ) -> bool:
+        total_start_ns = time.perf_counter_ns()
+        last_step_ns = total_start_ns
+
+        def log_step(label: str) -> None:
+            nonlocal last_step_ns
+            now_ns = time.perf_counter_ns()
+            print(
+                "Build_at timing:",
+                label,
+                f"{(now_ns - last_step_ns) / 1_000_000:.3f} ms",
+            )
+            last_step_ns = now_ns
+
+        def finish(result: bool, label: str) -> bool:
+            log_step(label)
+            print(
+                "Build_at timing: total",
+                f"{(time.perf_counter_ns() - total_start_ns) / 1_000_000:.3f} ms",
+            )
+            return result
+
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
         self.last_built_entity_type = None
-        if building_type == EntityType.CONVEYOR and not allow_conveyor_building:
-            return False
+        if building_type in CONVEYOR_ENTITY_TYPES and not allow_conveyor_building:
+            return finish(False, "reject conveyor build")
         print(
             "Build target:",
             building_type,
@@ -866,6 +913,7 @@ class BuilderNavigationMixin:
             "target",
             target_pos,
         )
+        log_step("setup")
         can_build_on_own_tile = building_type in {
             EntityType.ARMOURED_CONVEYOR,
             EntityType.BRIDGE,
@@ -874,11 +922,12 @@ class BuilderNavigationMixin:
         }
 
         if avoid_enemy_turrets and target_tile.is_enemy_turret_target_tile:
-            return False
+            return finish(False, "reject enemy turret tile")
 
         titanium_cost, axionite_cost = getattr(
             self.ct, f"get_{building_type.value}_cost"
         )()
+        log_step("cost lookup")
 
         affordable = (
             self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
@@ -891,7 +940,7 @@ class BuilderNavigationMixin:
             )
             or (
                 building_type == EntityType.HARVESTER
-                and target_tile.building.entity_type == EntityType.CONVEYOR
+                and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
                 and target_tile.building.team == self.map.own_team
                 and target_tile.conveyor_targets_harvester
             )
@@ -900,22 +949,27 @@ class BuilderNavigationMixin:
                 and building_type != EntityType.BARRIER
             )
         )
+        log_step("affordability and hold checks")
         if (
             hold
             and can_hold_build_target
             and not affordable
             and current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ
         ):
-            return True
+            return finish(True, "hold affordable wait in range")
         if not affordable:
             if not hold:
-                return False
+                return finish(False, "reject unaffordable without hold")
             if not move_towards:
-                return False
-            return self.u_move_to_astar(
+                return finish(False, "reject unaffordable without move")
+            log_step("pre astar unaffordable")
+            move_result = self.u_move_to_astar(
                 pos,
                 avoid_enemy_turrets=avoid_enemy_turrets,
+                reach_builder_action_range=True,
             )
+            log_step("astar unaffordable")
+            return finish(move_result, "return unaffordable move")
 
         if current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ and (
             pos != current_pos or can_build_on_own_tile
@@ -926,6 +980,7 @@ class BuilderNavigationMixin:
                 and target_tile.is_passable
                 and target_tile.building.team != self.map.own_team
             )
+            log_step("in range prebuild")
             if (
                 target_tile.building.team == self.map.own_team
                 and target_tile.building.entity_type
@@ -935,34 +990,45 @@ class BuilderNavigationMixin:
             ):
                 self.ct.destroy(pos)
                 destroyed_replaceable_blocker = True
+                log_step("destroy replaceable blocker")
             elif (
                 building_type == EntityType.HARVESTER
                 and target_tile.building.team == self.map.own_team
-                and target_tile.building.entity_type == EntityType.CONVEYOR
+                and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
                 and target_tile.conveyor_targets_harvester
                 and self.ct.can_destroy(pos)
             ):
                 self.ct.destroy(pos)
                 destroyed_replaceable_blocker = True
+                log_step("destroy harvester feeder conveyor")
 
             if affordable:
                 can_build_method = getattr(self.ct, f"can_build_{building_type.value}")
                 build_method = getattr(self.ct, f"build_{building_type.value}")
+                log_step("build method lookup")
                 if building_type in DIRECTIONAL_BUILDING_TYPES:
                     if facing_direction is None:
-                        return False
+                        return finish(False, "reject missing facing direction")
                     if not can_build_method(pos, facing_direction):
+                        log_step("can_build directional")
                         if should_try_attack_enemy_passable:
-                            return self.u_attack_passable(
+                            attack_result = self.u_attack_passable(
                                 pos,
                                 move_towards=move_towards,
                                 destroy_condition=lambda _: True,
                                 avoid_enemy_turrets=avoid_enemy_turrets,
                             )
-                        return False
+                            log_step("attack fallback directional")
+                            return finish(
+                                attack_result,
+                                "return attack fallback directional",
+                            )
+                        return finish(False, "reject can_build directional")
+                    log_step("can_build directional")
                     build_method(pos, facing_direction)
                     self.last_built_entity_type = building_type
-                    if building_type == EntityType.CONVEYOR:
+                    log_step("build directional")
+                    if building_type in CONVEYOR_ENTITY_TYPES:
                         next_direction = self.map.u_get_direction_between(
                             current_pos,
                             pos,
@@ -970,74 +1036,98 @@ class BuilderNavigationMixin:
                         if next_direction is not None and self.ct.can_move(
                             next_direction
                         ):
-                            self.ct.move(next_direction)
+                            self.u_move_with_target(next_direction, pos)
                         output_pos = pos.add(facing_direction)
                         if self.map.u_is_in_bounds(output_pos):
                             output_tile = self.map.u_get_pos_tile(output_pos)
                             if (
                                 output_tile.building.team == self.map.own_team
                                 and output_tile.building.entity_type
-                                == EntityType.CONVEYOR
+                                in CONVEYOR_ENTITY_TYPES
                                 and output_tile.conveyor_targets_harvester
                                 and self.ct.can_destroy(output_pos)
                             ):
                                 self.ct.destroy(output_pos)
                                 output_tile.clear_building()
-                    return True
+                        log_step("conveyor post build")
+                    return finish(True, "return directional build")
 
                 if building_type == EntityType.BRIDGE:
                     if target_pos is None:
-                        return False
+                        return finish(False, "reject missing bridge target")
                     if not can_build_method(pos, target_pos):
+                        log_step("can_build bridge")
                         if should_try_attack_enemy_passable:
-                            return self.u_attack_passable(
+                            attack_result = self.u_attack_passable(
                                 pos,
                                 move_towards=move_towards,
                                 destroy_condition=lambda _: True,
                                 avoid_enemy_turrets=avoid_enemy_turrets,
                             )
-                        return False
+                            log_step("attack fallback bridge")
+                            return finish(
+                                attack_result,
+                                "return attack fallback bridge",
+                            )
+                        return finish(False, "reject can_build bridge")
+                    log_step("can_build bridge")
                     build_method(pos, target_pos)
                     self.last_built_entity_type = building_type
-                    return True
+                    log_step("build bridge")
+                    return finish(True, "return bridge build")
 
                 if building_type in NONDIRECTIONAL_BUILDING_TYPES:
                     if not can_build_method(pos):
+                        log_step("can_build nondirectional")
                         if should_try_attack_enemy_passable:
-                            return self.u_attack_passable(
+                            attack_result = self.u_attack_passable(
                                 pos,
                                 move_towards=move_towards,
                                 destroy_condition=lambda _: True,
                                 avoid_enemy_turrets=avoid_enemy_turrets,
                             )
-                        return False
+                            log_step("attack fallback nondirectional")
+                            return finish(
+                                attack_result,
+                                "return attack fallback nondirectional",
+                            )
+                        return finish(False, "reject can_build nondirectional")
+                    log_step("can_build nondirectional")
                     build_method(pos)
                     self.last_built_entity_type = building_type
-                    return True
+                    log_step("build nondirectional")
+                    return finish(True, "return nondirectional build")
 
                 raise ValueError(f"Unsupported builder target type: {building_type}")
 
             if destroyed_replaceable_blocker:
-                return True
+                return finish(True, "return destroyed blocker")
 
         if (
             attack_enemy_passable
             and target_tile.is_passable
             and target_tile.building.team != self.map.own_team
         ):
-            return self.u_attack_passable(
+            log_step("pre attack fallback")
+            attack_result = self.u_attack_passable(
                 pos,
                 move_towards=move_towards,
                 destroy_condition=lambda _: True,
                 avoid_enemy_turrets=avoid_enemy_turrets,
             )
+            log_step("attack fallback")
+            return finish(attack_result, "return attack fallback")
 
         if not move_towards:
-            return False
-        return self.u_move_to_astar(
+            return finish(False, "reject without move")
+        log_step("pre astar move")
+        move_result = self.u_move_to_astar(
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,
+            reach_builder_action_range=True,
         )
+        log_step("astar move")
+        return finish(move_result, "return move")
 
     def u_heal_at(
         self,

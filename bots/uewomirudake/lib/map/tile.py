@@ -203,6 +203,9 @@ class Tile:
         return building_type in PASSABLE_TYPES
 
     def u_calc_core_distance_passability(self) -> bool:
+        building_type = self.building.entity_type
+        if building_type == EntityType.CORE:
+            return self.building.team == self.map.own_team
         return self.environment != Environment.WALL
 
     def u_refresh_core_distance_passability(self) -> None:
@@ -254,6 +257,7 @@ class Tile:
             self.building.last_raw_axionite_onit_turn,
             self.building.last_refined_axionite_onit_turn,
         )
+        self.u_refresh_core_distance_passability()
         self.u_refresh_intrinsic_passability()
 
     def update_attributes(self) -> None:
@@ -295,6 +299,7 @@ class Tile:
             if building_id is not None:
                 self.update_building(id_changed=False)
 
+        self.u_refresh_core_distance_passability()
         self.u_refresh_intrinsic_passability()
         self.is_passable = self._is_intrinsically_passable() and (
             self.bot.id is None or self.position == self.map.current_pos

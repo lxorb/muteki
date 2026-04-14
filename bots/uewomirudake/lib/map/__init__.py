@@ -339,6 +339,7 @@ class Map:
         self.enemy_supply_chain_touched_indices: list[int] = []
         self.path_seen_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.path_predecessor_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
+        self.path_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.path_cost_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.path_epoch = 0
         self.tiles_by_index: list[Tile] = [
@@ -1716,6 +1717,8 @@ class Map:
 
     def u_get_parsed_own_core_dist_by_index(self, idx: int) -> int:
         if self.parsed_map_own_core_dist_by_index is None:
+            return INF_DIST
+        if self.enemy_core_source_by_index[idx]:
             return INF_DIST
 
         value = self.parsed_map_own_core_dist_by_index[idx]
@@ -3170,6 +3173,8 @@ class Map:
         bot_present_by_index = self.bot_present_by_index
         if source_pos == target_pos:
             return [source_tile]
+        if not intrinsic_passable_by_index[target_idx]:
+            return []
 
         if (
             self.compute_dist_to_self
@@ -3321,6 +3326,101 @@ class Map:
         if source_idx == target_idx:
             return [source_tile]
 
+        reached_idx = self._u_run_astar_search(
+            source_idx,
+            target_idx,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            avoid_other_builder_bots=avoid_other_builder_bots,
+        )
+        if reached_idx is None:
+            return []
+
+        tiles_by_index = self.tiles_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        path = [target_tile]
+        walk_idx = reached_idx
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        overtime_check_countdown = 16
+
+        while walk_idx != source_idx:
+            previous_idx = predecessor_by_index[walk_idx]
+            if previous_idx == -1:
+                return []
+            path.append(tiles_by_index[previous_idx])
+            walk_idx = previous_idx
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    return []
+                overtime_check_countdown = 16
+
+        path.reverse()
+        return path
+
+    def u_get_next_step_towards_astar(
+        self,
+        source_pos: Position,
+        target_pos: Position,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> Tile | None:
+        if not self.u_is_in_bounds(source_pos) or not self.u_is_in_bounds(target_pos):
+            return None
+
+        source_idx = self.u_to_index(source_pos)
+        target_idx = self.u_to_index(target_pos)
+        if source_idx == target_idx:
+            return self.tiles_by_index[source_idx]
+
+        reached_idx = self._u_run_astar_search(
+            source_idx,
+            target_idx,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            avoid_other_builder_bots=avoid_other_builder_bots,
+        )
+        if reached_idx is None:
+            return None
+
+        next_step_idx = self.path_first_step_by_index[reached_idx]
+        if next_step_idx == -1:
+            return None
+        return self.tiles_by_index[next_step_idx]
+
+    def u_get_next_step_to_builder_action_range_astar(
+        self,
+        source_pos: Position,
+        target_pos: Position,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> Tile | None:
+        if not self.u_is_in_bounds(source_pos) or not self.u_is_in_bounds(target_pos):
+            return None
+
+        source_idx = self.u_to_index(source_pos)
+        target_idx = self.u_to_index(target_pos)
+        reached_idx = self._u_run_astar_search(
+            source_idx,
+            target_idx,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            avoid_other_builder_bots=avoid_other_builder_bots,
+            stop_in_builder_action_range=True,
+        )
+        if reached_idx is None:
+            return None
+
+        next_step_idx = self.path_first_step_by_index[reached_idx]
+        if next_step_idx == -1:
+            return None
+        return self.tiles_by_index[next_step_idx]
+
+    def _u_run_astar_search(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+        stop_in_builder_action_range: bool = False,
+    ) -> int | None:
         tiles_by_index = self.tiles_by_index
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
@@ -3331,69 +3431,126 @@ class Map:
         bot_present_by_index = self.bot_present_by_index
         seen_epoch_by_index = self.path_seen_epoch_by_index
         predecessor_by_index = self.path_predecessor_by_index
+        first_step_by_index = self.path_first_step_by_index
         path_cost_by_index = self.path_cost_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
-
         target_x = index_x_by_index[target_idx]
         target_y = index_y_by_index[target_idx]
+        heappush_local = heappush
+        heappop_local = heappop
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
 
-        def heuristic(idx: int) -> int:
-            dx = abs(index_x_by_index[idx] - target_x)
-            dy = abs(index_y_by_index[idx] - target_y)
-            return dx if dx >= dy else dy
+        if not stop_in_builder_action_range and not intrinsic_passable_by_index[target_idx]:
+            return None
 
         self.path_epoch += 1
         path_epoch = self.path_epoch
         frontier = self.path_heap_buffer
         frontier.clear()
 
+        source_x = index_x_by_index[source_idx]
+        source_y = index_y_by_index[source_idx]
         seen_epoch_by_index[source_idx] = path_epoch
         predecessor_by_index[source_idx] = source_idx
+        first_step_by_index[source_idx] = -1
         path_cost_by_index[source_idx] = 0
-        heappush(
+
+        if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
+            source_own_core_dist = self.parsed_map_own_core_dist_by_index[source_idx]
+            use_parsed_core_dist = True
+        else:
+            use_parsed_core_dist = False
+            source_own_core_dist = INF_DIST
+        own_core_dist_initialized = self.own_core_dist_initialized
+        own_core_dist_by_index = self.own_core_dist_by_index
+        own_core_dist_exact_by_index = self.own_core_dist_exact_by_index
+        own_core_center_pos = self.own_core_center_pos
+        if own_core_center_pos is not None:
+            own_core_center_x = own_core_center_pos.x
+            own_core_center_y = own_core_center_pos.y
+        else:
+            own_core_center_x = -1
+            own_core_center_y = -1
+
+        if not use_parsed_core_dist:
+            if own_core_dist_initialized or own_core_dist_exact_by_index[source_idx]:
+                source_own_core_dist = own_core_dist_by_index[source_idx]
+                if source_own_core_dist >= CORE_DIST_INF:
+                    source_own_core_dist = INF_DIST
+            elif own_core_center_pos is not None:
+                dx = source_x - own_core_center_x
+                if dx < 0:
+                    dx = -dx
+                dx -= 1
+                if dx < 0:
+                    dx = 0
+                dy = source_y - own_core_center_y
+                if dy < 0:
+                    dy = -dy
+                dy -= 1
+                if dy < 0:
+                    dy = 0
+                source_own_core_dist = dx + dy
+
+        dx = source_x - target_x
+        if dx < 0:
+            dx = -dx
+        dy = source_y - target_y
+        if dy < 0:
+            dy = -dy
+        if stop_in_builder_action_range:
+            source_heuristic = dx if dx >= dy else dy
+            if source_heuristic > 0:
+                source_heuristic -= 1
+        else:
+            source_heuristic = dx if dx >= dy else dy
+        heappush_local(
             frontier,
             (
-                heuristic(source_idx),
+                source_heuristic,
                 0,
-                self.u_get_own_core_dist_by_index(source_idx),
-                index_x_by_index[source_idx],
-                index_y_by_index[source_idx],
+                source_own_core_dist,
+                source_x,
+                source_y,
                 source_idx,
             ),
         )
 
-        while frontier:
-            if self.round_stopwatch.check_overtime_interval():
-                break
+        overtime_check_countdown = 16
 
-            _, current_cost, _, _, _, current_idx = heappop(frontier)
+        while frontier:
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    return None
+                overtime_check_countdown = 16
+
+            _, current_cost, _, _, _, current_idx = heappop_local(frontier)
             if (
                 seen_epoch_by_index[current_idx] != path_epoch
                 or path_cost_by_index[current_idx] != current_cost
             ):
                 continue
 
-            if current_idx == target_idx:
-                path = [target_tile]
-                walk_idx = current_idx
-
-                while walk_idx != source_idx:
-                    previous_idx = predecessor_by_index[walk_idx]
-                    if previous_idx == -1:
-                        break
-                    path.append(tiles_by_index[previous_idx])
-                    walk_idx = previous_idx
-
-                    if self.round_stopwatch.check_overtime_interval():
-                        break
-
-                path.reverse()
-                return path
+            current_x = index_x_by_index[current_idx]
+            current_y = index_y_by_index[current_idx]
+            if stop_in_builder_action_range:
+                goal_dx = current_x - target_x
+                if goal_dx < 0:
+                    goal_dx = -goal_dx
+                goal_dy = current_y - target_y
+                if goal_dy < 0:
+                    goal_dy = -goal_dy
+                if goal_dx * goal_dx + goal_dy * goal_dy <= 2:
+                    return current_idx
+            elif current_idx == target_idx:
+                return current_idx
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
             next_cost = current_cost + 1
+            current_first_step_idx = first_step_by_index[current_idx]
 
             for offset in range(neighbor_count):
                 adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
@@ -3423,24 +3580,68 @@ class Map:
                 ):
                     continue
 
-                predecessor_by_index[adjacent_idx] = current_idx
-                seen_epoch_by_index[adjacent_idx] = path_epoch
-                path_cost_by_index[adjacent_idx] = next_cost
                 adjacent_x = index_x_by_index[adjacent_idx]
                 adjacent_y = index_y_by_index[adjacent_idx]
-                heappush(
+                predecessor_by_index[adjacent_idx] = current_idx
+                first_step_by_index[adjacent_idx] = (
+                    adjacent_idx
+                    if current_first_step_idx == -1
+                    else current_first_step_idx
+                )
+                seen_epoch_by_index[adjacent_idx] = path_epoch
+                path_cost_by_index[adjacent_idx] = next_cost
+
+                if use_parsed_core_dist:
+                    own_core_dist = self.parsed_map_own_core_dist_by_index[adjacent_idx]
+                elif (
+                    own_core_dist_initialized
+                    or own_core_dist_exact_by_index[adjacent_idx]
+                ):
+                    own_core_dist = own_core_dist_by_index[adjacent_idx]
+                    if own_core_dist >= CORE_DIST_INF:
+                        own_core_dist = INF_DIST
+                elif own_core_center_pos is not None:
+                    own_core_dx = adjacent_x - own_core_center_x
+                    if own_core_dx < 0:
+                        own_core_dx = -own_core_dx
+                    own_core_dx -= 1
+                    if own_core_dx < 0:
+                        own_core_dx = 0
+                    own_core_dy = adjacent_y - own_core_center_y
+                    if own_core_dy < 0:
+                        own_core_dy = -own_core_dy
+                    own_core_dy -= 1
+                    if own_core_dy < 0:
+                        own_core_dy = 0
+                    own_core_dist = own_core_dx + own_core_dy
+                else:
+                    own_core_dist = INF_DIST
+
+                heuristic_dx = adjacent_x - target_x
+                if heuristic_dx < 0:
+                    heuristic_dx = -heuristic_dx
+                heuristic_dy = adjacent_y - target_y
+                if heuristic_dy < 0:
+                    heuristic_dy = -heuristic_dy
+                heuristic = (
+                    heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
+                )
+                if stop_in_builder_action_range and heuristic > 0:
+                    heuristic -= 1
+
+                heappush_local(
                     frontier,
                     (
-                        next_cost + heuristic(adjacent_idx),
+                        next_cost + heuristic,
                         next_cost,
-                        self.u_get_own_core_dist_by_index(adjacent_idx),
+                        own_core_dist,
                         adjacent_x,
                         adjacent_y,
                         adjacent_idx,
                     ),
                 )
 
-        return []
+        return None
 
     def u_calculate_shortest_path_to_frontier(
         self,

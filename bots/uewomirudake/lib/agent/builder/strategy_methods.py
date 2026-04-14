@@ -1587,7 +1587,7 @@ class BuilderStrategyMethodsMixin:
                 target_tile.position,
             )
             if move_direction is not None and self.ct.can_move(move_direction):
-                self.ct.move(move_direction)
+                self.u_move_with_target(move_direction, target_tile.position)
                 return True
 
             current_distance_sq = current_pos.distance_squared(target_tile.position)
@@ -1623,7 +1623,7 @@ class BuilderStrategyMethodsMixin:
             if best_direction is None:
                 return False
 
-            self.ct.move(best_direction)
+            self.u_move_with_target(best_direction, target_tile.position)
             return True
 
         def step_off_current_ore_tile() -> bool:
@@ -1684,7 +1684,7 @@ class BuilderStrategyMethodsMixin:
                 return False
             _, move_direction = min(candidate_entries)
             if self.ct.can_move(move_direction):
-                self.ct.move(move_direction)
+                self.u_move_with_target(move_direction, current_pos)
                 return True
             return hold
 
@@ -2002,7 +2002,10 @@ class BuilderStrategyMethodsMixin:
                         if next_direction is not None and self.ct.can_move(
                             next_direction
                         ):
-                            self.ct.move(next_direction)
+                            self.u_move_with_target(
+                                next_direction,
+                                target_tile.position,
+                            )
                         return finish_with_harvester_target(True, current_tile)
                 elif supplier_type == EntityType.BARRIER:
                     if self.u_build_at(
@@ -2077,12 +2080,12 @@ class BuilderStrategyMethodsMixin:
                 next_tile.position,
             )
             if next_direction is not None and self.ct.can_move(next_direction):
-                self.ct.move(next_direction)
+                self.u_move_with_target(next_direction, next_tile.position)
                 return True
             if self.ct.can_build_road(next_tile.position):
                 self.ct.build_road(next_tile.position)
                 if next_direction is not None and self.ct.can_move(next_direction):
-                    self.ct.move(next_direction)
+                    self.u_move_with_target(next_direction, next_tile.position)
                 return True
             return False
 
@@ -2504,7 +2507,7 @@ class BuilderStrategyMethodsMixin:
                 return False
 
             _, move_direction = min(candidate_entries)
-            self.ct.move(move_direction)
+            self.u_move_with_target(move_direction, current_pos)
             if self.ct.can_build_sentinel(current_pos, sentinel_direction):
                 self.ct.build_sentinel(current_pos, sentinel_direction)
                 self.last_built_entity_type = EntityType.SENTINEL
@@ -3048,7 +3051,7 @@ class BuilderStrategyMethodsMixin:
                 return False
 
             _, move_direction = min(candidate_entries)
-            self.ct.move(move_direction)
+            self.u_move_with_target(move_direction, current_pos)
             return True
 
         for supplier_tile in dict.fromkeys(self.map.enemy_supply_links_in_vision):
