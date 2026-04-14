@@ -87,12 +87,6 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         resource: Environment,
     ) -> SupplyChainLabel: ...
 
-    def u_is_supply_tile_forbidden(
-        self,
-        pos: Position,
-        resource: Environment,
-    ) -> bool: ...
-
     def u_best_conveyor_orientation(
         self,
         pos: Position,
@@ -186,7 +180,6 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         move_towards: bool = True,
         hold: bool = True,
         attack_enemy_passable: bool = True,
-        resource: Environment = Environment.ORE_TITANIUM,
     ) -> BuilderActionResult: ...
 
     def s_build_harvester(

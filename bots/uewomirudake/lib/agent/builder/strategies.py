@@ -59,16 +59,16 @@ SCAVENGER_STRATEGY = [
         True,
         Environment.ORE_AXIONITE,
         True,
-        False
+        False,
     ),
-        (
+    (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,
         True,
         True,
         Environment.ORE_TITANIUM,
         True,
-        False
+        False,
     ),
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
 ]
@@ -110,9 +110,9 @@ DEFENDER_STRATEGY = [
         False,
         Environment.ORE_TITANIUM,
         False,
-        True
+        True,
     ),
-    (BuilderStrategyMethodsMixin.s_patrol_supply_chains,)
+    (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 
 ### STRATEGIES REGISTRY ###

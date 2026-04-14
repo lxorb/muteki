@@ -273,7 +273,14 @@ class BuilderStrategyMethodsMixin:
                 ):
                     self.ct.destroy(target_pos)
                     target_tile.clear_building()
+                    if self.ct.can_build_foundry(target_pos):
+                        self.ct.build_foundry(target_pos)
+                        self.last_built_entity_type = EntityType.FOUNDRY
+                        return True
+                    return False
+                if move_towards and self.u_move_to_astar(target_pos):
                     return True
+                continue
 
             if self.u_build_at(
                 target_pos,
@@ -727,25 +734,21 @@ class BuilderStrategyMethodsMixin:
         move_towards: bool = True,
         hold: bool = True,
         attack_enemy_passable: bool = True,
-        resource: Environment = Environment.ORE_TITANIUM,
     ):
         """
-        Fill the highest-priority cached supply-link gap for `resource`.
+        Fill the highest-priority cached supply-link gap for either resource.
 
         Uses cached missing-link positions plus any builder-local pending gap
         target, keeps tiles that can host a new supplier, filters to the
-        requested resource chain, prioritizes gaps closer to the core and then
+        relevant supply chain(s), prioritizes gaps closer to the core and then
         the builder, and relies on the transport supplier planner to choose
         whether the tile should become a conveyor or a bridge plus its optimal
-        target.
+        target for the inferred resource.
         """
         if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
             return False
 
         own_team = self.map.own_team
-        supply_chain_label = self.u_get_supply_chain_label_for_resource(resource)
-        if supply_chain_label == SupplyChainLabel.NONE:
-            return False
         tiles_by_index = self.map.tiles_by_index
         get_own_core_dist = self.map.u_get_own_core_dist_by_index
         current_round = self.map.current_round
@@ -770,14 +773,39 @@ class BuilderStrategyMethodsMixin:
             )
 
         def clear_pending_target() -> None:
-            if self.pending_missing_supply_link_resource == resource:
-                self.pending_missing_supply_link_index = None
-                self.pending_missing_supply_link_resource = None
+            self.pending_missing_supply_link_index = None
+            self.pending_missing_supply_link_resource = None
 
-        candidate_entries: list[tuple[tuple[int, int], int, int]] = []
+        def u_get_candidate_resources(
+            target_tile,
+            supply_chain_label: SupplyChainLabel,
+        ) -> list[Environment]:
+            resources: list[Environment] = []
+            if (
+                target_tile.environment == Environment.ORE_AXIONITE
+                and supply_chain_label & SupplyChainLabel.AXIONITE
+            ):
+                resources.append(Environment.ORE_AXIONITE)
+            if supply_chain_label & SupplyChainLabel.TITANIUM:
+                resources.append(Environment.ORE_TITANIUM)
+            if (
+                supply_chain_label & SupplyChainLabel.AXIONITE
+                and Environment.ORE_AXIONITE not in resources
+            ):
+                resources.append(Environment.ORE_AXIONITE)
+            if not resources:
+                resources.append(
+                    Environment.ORE_AXIONITE
+                    if target_tile.environment == Environment.ORE_AXIONITE
+                    else Environment.ORE_TITANIUM
+                )
+            return resources
+
+        candidate_entries: list[tuple[tuple[int, int], int, int, int]] = []
         candidate_seen_indices: set[int] = set()
         pending_target_idx: int | None = None
-        if self.pending_missing_supply_link_resource == resource:
+        pending_resource = self.pending_missing_supply_link_resource
+        if pending_resource is not None:
             pending_target_idx = self.pending_missing_supply_link_index
 
         if pending_target_idx is not None:
@@ -793,7 +821,14 @@ class BuilderStrategyMethodsMixin:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if can_use_tile(pending_target_tile):
                 candidate_seen_indices.add(pending_target_idx)
-                candidate_entries.append(((-1, -1), -1, pending_target_idx))
+                pending_label = (
+                    self.u_get_supply_chain_label_for_resource(pending_resource)
+                    if pending_resource is not None
+                    else pending_target_tile.own_supply_chain_label
+                )
+                candidate_entries.append(
+                    ((-1, -1), -1, pending_target_idx, int(pending_label))
+                )
 
         for encounter_order, target_tile in enumerate(
             self.map.own_missing_supply_links
@@ -801,7 +836,7 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
             target_label = target_tile.own_supply_chain_label
-            if not (target_label & supply_chain_label):
+            if target_label == SupplyChainLabel.NONE:
                 continue
             if not can_use_tile(target_tile):
                 continue
@@ -818,6 +853,7 @@ class BuilderStrategyMethodsMixin:
                     ),
                     encounter_order,
                     target_idx,
+                    int(target_label),
                 )
             )
 
@@ -828,7 +864,7 @@ class BuilderStrategyMethodsMixin:
             if (
                 splitter_tile.building.team != own_team
                 or splitter_tile.building.entity_type != EntityType.SPLITTER
-                or not (splitter_tile.own_supply_chain_label & supply_chain_label)
+                or splitter_tile.own_supply_chain_label == SupplyChainLabel.NONE
             ):
                 continue
 
@@ -859,6 +895,7 @@ class BuilderStrategyMethodsMixin:
                         ),
                         splitter_encounter_order,
                         target_idx,
+                        int(splitter_tile.own_supply_chain_label),
                     )
                 )
                 splitter_encounter_order += 1
@@ -866,44 +903,55 @@ class BuilderStrategyMethodsMixin:
         if not candidate_entries:
             return False
 
+        attempted_target_positions: list[Position] = []
         heapify(candidate_entries)
         while candidate_entries:
-            _, _, target_idx = heappop(candidate_entries)
+            _, _, target_idx, target_label = heappop(candidate_entries)
             target_tile = tiles_by_index[target_idx]
-            supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
-                target_tile.position,
-                resource,
-            )
-            if supplier_type is None or supplier_target is None:
-                continue
-            if supplier_type == EntityType.CONVEYOR:
-                if self.u_build_at(
+            attempted_target_positions.append(target_tile.position)
+            for resource in u_get_candidate_resources(
+                target_tile,
+                SupplyChainLabel(target_label),
+            ):
+                supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
                     target_tile.position,
-                    supplier_type,
-                    hold=hold,
-                    move_towards=move_towards,
-                    attack_enemy_passable=attack_enemy_passable,
-                    facing_direction=supplier_target,
-                ):
-                    self.pending_missing_supply_link_index = target_idx
-                    self.pending_missing_supply_link_resource = resource
-                    return True
-            elif supplier_type == EntityType.BRIDGE:
-                if self.u_build_at(
-                    target_tile.position,
-                    supplier_type,
-                    hold=hold,
-                    move_towards=move_towards,
-                    attack_enemy_passable=attack_enemy_passable,
-                    target_pos=supplier_target,
-                ):
-                    self.pending_missing_supply_link_index = target_idx
-                    self.pending_missing_supply_link_resource = resource
-                    return True
+                    resource,
+                )
+                if supplier_type is None or supplier_target is None:
+                    continue
+                if supplier_type == EntityType.CONVEYOR:
+                    if self.u_build_at(
+                        target_tile.position,
+                        supplier_type,
+                        hold=hold,
+                        move_towards=move_towards,
+                        attack_enemy_passable=attack_enemy_passable,
+                        facing_direction=supplier_target,
+                    ):
+                        self.pending_missing_supply_link_index = target_idx
+                        self.pending_missing_supply_link_resource = resource
+                        return True
+                elif supplier_type == EntityType.BRIDGE:
+                    if self.u_build_at(
+                        target_tile.position,
+                        supplier_type,
+                        hold=hold,
+                        move_towards=move_towards,
+                        attack_enemy_passable=attack_enemy_passable,
+                        target_pos=supplier_target,
+                    ):
+                        self.pending_missing_supply_link_index = target_idx
+                        self.pending_missing_supply_link_resource = resource
+                        return True
 
             if self.round_stopwatch.check_overtime():
                 break
 
+        if not candidate_entries and attempted_target_positions:
+            print(
+                "Build missing supply link: no valid conveyor or bridge for",
+                attempted_target_positions,
+            )
         return False
 
     def s_build_harvester(
@@ -966,6 +1014,11 @@ class BuilderStrategyMethodsMixin:
         def remember_pending_harvester_target(tile_index: int) -> None:
             self.pending_harvester_target_index = tile_index
             self.pending_harvester_target_resource = resource
+
+        def finish_with_harvester_target(result: bool, harvester_tile) -> bool:
+            if result:
+                print("Build harvester strategy target:", harvester_tile.position)
+            return result
 
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_cardinal_positions(
@@ -1340,7 +1393,7 @@ class BuilderStrategyMethodsMixin:
                                 facing_direction=supplier_target,
                             ):
                                 remember_pending_harvester_target(target_tile.index)
-                                return True
+                                return finish_with_harvester_target(True, target_tile)
                         elif supplier_type == EntityType.BRIDGE:
                             if self.u_build_at(
                                 surround_tile.position,
@@ -1351,7 +1404,7 @@ class BuilderStrategyMethodsMixin:
                                 target_pos=supplier_target,
                             ):
                                 remember_pending_harvester_target(target_tile.index)
-                                return True
+                                return finish_with_harvester_target(True, target_tile)
                         elif supplier_type == EntityType.BARRIER:
                             if self.u_build_at(
                                 surround_tile.position,
@@ -1361,7 +1414,7 @@ class BuilderStrategyMethodsMixin:
                                 attack_enemy_passable=False,
                             ):
                                 remember_pending_harvester_target(target_tile.index)
-                                return True
+                                return finish_with_harvester_target(True, target_tile)
 
                     if current_pos != target_tile.position:
                         if not move_towards:
@@ -1369,7 +1422,7 @@ class BuilderStrategyMethodsMixin:
                         moved = self.u_move_to_astar(target_tile.position)
                         if moved:
                             remember_pending_harvester_target(target_tile.index)
-                        return moved
+                        return finish_with_harvester_target(moved, target_tile)
 
             if self.u_build_at(
                 target_tile.position,
@@ -1389,7 +1442,7 @@ class BuilderStrategyMethodsMixin:
                             move_towards_tile(discontinued_tile)
                 else:
                     remember_pending_harvester_target(target_tile.index)
-                return True
+                return finish_with_harvester_target(True, target_tile)
 
             return False
 
@@ -1399,9 +1452,12 @@ class BuilderStrategyMethodsMixin:
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if is_valid_harvester_target(pending_target_tile):
-                return try_progress_harvester_target(
+                return finish_with_harvester_target(
+                    try_progress_harvester_target(
+                        pending_target_tile,
+                        require_surround=True,
+                    ),
                     pending_target_tile,
-                    require_surround=True,
                 )
             clear_pending_harvester_target()
 
@@ -1481,7 +1537,7 @@ class BuilderStrategyMethodsMixin:
                             facing_direction=supplier_target,
                         ):
                             remember_pending_harvester_target(target_tile.index)
-                            return True
+                            return finish_with_harvester_target(True, target_tile)
                     elif supplier_type == EntityType.BRIDGE:
                         if self.u_build_at(
                             road_target_tile.position,
@@ -1492,7 +1548,7 @@ class BuilderStrategyMethodsMixin:
                             target_pos=supplier_target,
                         ):
                             remember_pending_harvester_target(target_tile.index)
-                            return True
+                            return finish_with_harvester_target(True, target_tile)
                     elif supplier_type == EntityType.BARRIER:
                         if self.u_build_at(
                             road_target_tile.position,
@@ -1502,7 +1558,7 @@ class BuilderStrategyMethodsMixin:
                             attack_enemy_passable=False,
                         ):
                             remember_pending_harvester_target(target_tile.index)
-                            return True
+                            return finish_with_harvester_target(True, target_tile)
 
                 if current_pos != target_tile.position:
                     if not move_towards:
@@ -1510,7 +1566,7 @@ class BuilderStrategyMethodsMixin:
                     moved = self.u_move_to_astar(target_tile.position)
                     if moved:
                         remember_pending_harvester_target(target_tile.index)
-                    return moved
+                    return finish_with_harvester_target(moved, target_tile)
 
         if (
             current_tile.environment == resource
@@ -1569,7 +1625,7 @@ class BuilderStrategyMethodsMixin:
                         facing_direction=supplier_target,
                     ):
                         remember_pending_harvester_target(current_tile.index)
-                        return True
+                        return finish_with_harvester_target(True, current_tile)
                 elif supplier_type == EntityType.BRIDGE:
                     if self.u_build_at(
                         target_tile.position,
@@ -1588,7 +1644,7 @@ class BuilderStrategyMethodsMixin:
                             next_direction
                         ):
                             self.ct.move(next_direction)
-                        return True
+                        return finish_with_harvester_target(True, current_tile)
                 elif supplier_type == EntityType.BARRIER:
                     if self.u_build_at(
                         target_tile.position,
@@ -1598,7 +1654,7 @@ class BuilderStrategyMethodsMixin:
                         attack_enemy_passable=False,
                     ):
                         remember_pending_harvester_target(current_tile.index)
-                        return True
+                        return finish_with_harvester_target(True, current_tile)
 
         if (
             current_tile.environment == resource
@@ -1606,11 +1662,14 @@ class BuilderStrategyMethodsMixin:
             and step_off_current_ore_tile()
         ):
             remember_pending_harvester_target(current_tile.index)
-            return True
+            return finish_with_harvester_target(True, current_tile)
 
-        return try_progress_harvester_target(
+        return finish_with_harvester_target(
+            try_progress_harvester_target(
+                target_tile,
+                require_surround=enforce_safe,
+            ),
             target_tile,
-            require_surround=enforce_safe,
         )
 
     def s_build_connected_harvester(
