@@ -7,6 +7,7 @@ from lib.agent.constants import (
     AXIONITE_HARVESTER_MIN_TITANIUM,
     AXIONITE_HARVESTER_MIN_TURN,
     BUILDER_ACTION_RADIUS_SQ,
+    CONVEYOR_ENTITY_TYPES,
     DEFENDER_STRATEGY_ID,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     FOUNDRY_CAN_REPLACE_BRIDGE,
@@ -78,7 +79,7 @@ class BuilderStrategyMethodsMixin:
                 continue
             if tile.building.team != own_team:
                 continue
-            if tile.building.entity_type != EntityType.CONVEYOR:
+            if tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
                 continue
             if tile.bot.id is not None and tile.position != current_pos:
                 continue
@@ -129,7 +130,7 @@ class BuilderStrategyMethodsMixin:
                     if not (
                         target_tile.building.team == own_team
                         and target_tile.building.entity_type
-                        in {EntityType.CONVEYOR, EntityType.BRIDGE}
+                        in CONVEYOR_ENTITY_TYPES | {EntityType.BRIDGE}
                     ):
                         valid_outputs = False
                         break
@@ -200,7 +201,7 @@ class BuilderStrategyMethodsMixin:
                 continue
             if tile.building.team != own_team:
                 continue
-            if tile.building.entity_type != EntityType.CONVEYOR:
+            if tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
                 continue
             if tile.bot.id is not None and tile.position != self.map.current_pos:
                 continue
@@ -247,7 +248,7 @@ class BuilderStrategyMethodsMixin:
         )
         if (
             target_tile.building.team == own_team
-            and target_tile.building.entity_type == EntityType.CONVEYOR
+            and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
         ):
             if not can_afford_splitter:
                 if (
@@ -648,7 +649,7 @@ class BuilderStrategyMethodsMixin:
             _, _, target_idx = heappop(candidate_entries)
             target_tile = tiles_by_index[target_idx]
             supplier_type, supplier_target = supplier_plan_by_index[target_idx]
-            if supplier_type == EntityType.CONVEYOR:
+            if supplier_type in CONVEYOR_ENTITY_TYPES:
                 if self.u_build_at(
                     target_tile.position,
                     supplier_type,
@@ -801,7 +802,7 @@ class BuilderStrategyMethodsMixin:
 
                 if (
                     building.team == own_team
-                    and building_type == EntityType.CONVEYOR
+                    and building_type in CONVEYOR_ENTITY_TYPES
                     and not any(
                         target.index == harvester_idx
                         for target in building.targets
@@ -998,7 +999,7 @@ class BuilderStrategyMethodsMixin:
                     break
                 continue
 
-            if supplier_type == EntityType.CONVEYOR:
+            if supplier_type in CONVEYOR_ENTITY_TYPES:
                 retarget_start_ns = time.perf_counter_ns()
                 if (
                     needs_transport_supplier_plan
@@ -1278,7 +1279,7 @@ class BuilderStrategyMethodsMixin:
                 )
                 if supplier_type is None or supplier_target is None:
                     continue
-                if supplier_type == EntityType.CONVEYOR:
+                if supplier_type in CONVEYOR_ENTITY_TYPES:
                     if self.u_build_at(
                         target_tile.position,
                         supplier_type,
@@ -1424,7 +1425,7 @@ class BuilderStrategyMethodsMixin:
             for other_tile in self.map.own_supply_links_in_vision:
                 if other_tile.building.team != own_team:
                     continue
-                if other_tile.building.entity_type != EntityType.CONVEYOR:
+                if other_tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
                     continue
                 for target in other_tile.building.targets:
                     if target.index == tile_index:
@@ -1474,7 +1475,7 @@ class BuilderStrategyMethodsMixin:
             if not is_best_supply_tile and supplier_type == EntityType.BRIDGE:
                 return get_non_bridge_transport_conveyor_plan()
 
-            if supplier_type != EntityType.CONVEYOR:
+            if supplier_type not in CONVEYOR_ENTITY_TYPES:
                 return (supplier_type, supplier_target)
             if adjacent_tile.environment not in {
                 Environment.ORE_TITANIUM,
@@ -1516,7 +1517,7 @@ class BuilderStrategyMethodsMixin:
                 return True
             if (
                 target_tile.building.team == own_team
-                and target_tile.building.entity_type == EntityType.CONVEYOR
+                and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
                 and target_tile.conveyor_targets_harvester
             ):
                 return True
@@ -1543,7 +1544,7 @@ class BuilderStrategyMethodsMixin:
                 if adjacent_tile.building.team != own_team:
                     continue
                 if adjacent_tile.building.entity_type not in {
-                    EntityType.CONVEYOR,
+                    *CONVEYOR_ENTITY_TYPES,
                     EntityType.BRIDGE,
                 }:
                     continue
@@ -1742,7 +1743,7 @@ class BuilderStrategyMethodsMixin:
                             target_tile,
                             surround_tile,
                         )
-                        if supplier_type == EntityType.CONVEYOR:
+                        if supplier_type in CONVEYOR_ENTITY_TYPES:
                             if self.u_build_at(
                                 surround_tile.position,
                                 supplier_type,
@@ -1886,7 +1887,7 @@ class BuilderStrategyMethodsMixin:
                         target_tile,
                         road_target_tile,
                     )
-                    if supplier_type == EntityType.CONVEYOR:
+                    if supplier_type in CONVEYOR_ENTITY_TYPES:
                         if self.u_build_at(
                             road_target_tile.position,
                             supplier_type,
@@ -1974,7 +1975,7 @@ class BuilderStrategyMethodsMixin:
                     harvester_tile,
                     target_tile,
                 )
-                if supplier_type == EntityType.CONVEYOR:
+                if supplier_type in CONVEYOR_ENTITY_TYPES:
                     if self.u_build_at(
                         target_tile.position,
                         supplier_type,
@@ -2120,7 +2121,7 @@ class BuilderStrategyMethodsMixin:
                 if other_tile.building.team != own_team:
                     continue
                 if other_tile.building.entity_type not in {
-                    EntityType.CONVEYOR,
+                    *CONVEYOR_ENTITY_TYPES,
                     EntityType.BRIDGE,
                     EntityType.SPLITTER,
                 }:
@@ -2140,7 +2141,7 @@ class BuilderStrategyMethodsMixin:
                 continue
             if tile.building.team != own_team:
                 continue
-            if tile.building.entity_type != EntityType.CONVEYOR:
+            if tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
                 continue
             if tile.building.last_titanium_onit_turn != current_round:
                 continue
@@ -2198,7 +2199,7 @@ class BuilderStrategyMethodsMixin:
         self.ct.destroy(target_tile.position)
         target_tile.clear_building()
 
-        if target_supplier_type == EntityType.CONVEYOR:
+        if target_supplier_type in CONVEYOR_ENTITY_TYPES:
             return bool(
                 self.u_build_at(
                     target_tile.position,
@@ -2315,7 +2316,7 @@ class BuilderStrategyMethodsMixin:
         self.ct.destroy(target_tile.position)
         target_tile.clear_building()
 
-        if target_supplier_type == EntityType.CONVEYOR:
+        if target_supplier_type in CONVEYOR_ENTITY_TYPES:
             return bool(
                 self.u_build_at(
                     target_tile.position,
@@ -2404,7 +2405,7 @@ class BuilderStrategyMethodsMixin:
                     target_pos,
                     resource,
                 )
-                if supplier_type == EntityType.CONVEYOR:
+                if supplier_type in CONVEYOR_ENTITY_TYPES:
                     if self.u_build_at(
                         target_pos,
                         supplier_type,
@@ -3166,7 +3167,7 @@ class BuilderStrategyMethodsMixin:
             EntityType.ROAD: 4,
             EntityType.FOUNDRY: 5,
             EntityType.HARVESTER: 6,
-            EntityType.ARMOURED_CONVEYOR: 7,
+            EntityType.ARMOURED_CONVEYOR: 3,
             EntityType.SPLITTER: 8,
             EntityType.SENTINEL: 9,
             EntityType.GUNNER: 10,

@@ -26,6 +26,10 @@ SURROUND_HARVESTER_ENTITY_TYPE: EntityType = EntityType.CONVEYOR
 DISABLE_CONVEYORS_POINTING_AT_HARVESTERS: bool = False
 
 ### ENTITY TYPE GROUPS ###
+CONVEYOR_ENTITY_TYPES: set[EntityType] = {
+    EntityType.CONVEYOR,
+    EntityType.ARMOURED_CONVEYOR,
+}
 ATTACK_TURRET_FEEDER_TYPES: set[EntityType] = {
     EntityType.CONVEYOR,
     EntityType.ARMOURED_CONVEYOR,
@@ -82,6 +86,9 @@ TURRET_TARGET_PRIORITY = (
 TURRET_TARGET_PRIORITY_RANK = {
     target_type: idx for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
 }
+TURRET_TARGET_PRIORITY_RANK[EntityType.ARMOURED_CONVEYOR] = (
+    TURRET_TARGET_PRIORITY_RANK[EntityType.CONVEYOR]
+)
 LAUNCHER_THROWABLE_PRIORITY = (
     "enemy_bot_on_ally_bridge",
     "enemy_bot_on_ally_conveyor",
@@ -93,6 +100,9 @@ LAUNCHER_THROWABLE_PRIORITY = (
 LAUNCHER_THROWABLE_PRIORITY_RANK = {
     target_type: idx for idx, target_type in enumerate(LAUNCHER_THROWABLE_PRIORITY)
 }
+LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_armoured_conveyor"] = (
+    LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_conveyor"]
+)
 
 
 """

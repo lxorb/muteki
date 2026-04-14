@@ -3,6 +3,7 @@ from cambc import EntityType, Position
 from lib.agent import Agent
 from lib.agent.constants import (
     ATTACK_TURRET_TYPES,
+    CONVEYOR_ENTITY_TYPES,
     LAUNCHER_THROWABLE_PRIORITY_RANK,
     TURRET_TARGET_PRIORITY_RANK,
 )
@@ -118,16 +119,9 @@ class TurretAgent(Agent):
                     LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_bridge"],
                     target_tile.bot.hp,
                 )
-            if target_tile.building.entity_type == EntityType.CONVEYOR:
+            if target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES:
                 return (
                     LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_conveyor"],
-                    target_tile.bot.hp,
-                )
-            if target_tile.building.entity_type == EntityType.ARMOURED_CONVEYOR:
-                return (
-                    LAUNCHER_THROWABLE_PRIORITY_RANK[
-                        "enemy_bot_on_ally_armoured_conveyor"
-                    ],
                     target_tile.bot.hp,
                 )
             if target_tile.building.entity_type == EntityType.ROAD:

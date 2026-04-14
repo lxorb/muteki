@@ -1169,7 +1169,10 @@ class Map:
             building = tile.building
             self.conveyor_targets_harvester_by_index[tile.index] = 0
 
-            if building.entity_type == EntityType.CONVEYOR:
+            if building.entity_type in {
+                EntityType.CONVEYOR,
+                EntityType.ARMOURED_CONVEYOR,
+            }:
                 for target_tile in building.targets:
                     if target_tile.building.entity_type == EntityType.HARVESTER:
                         self.conveyor_targets_harvester_by_index[tile.index] = 1
@@ -1188,7 +1191,11 @@ class Map:
 
                 if building.team == self.own_team:
                     building_damaged = building.hp < self.ct.get_max_hp(building.id)
-                    if building.entity_type == EntityType.CONVEYOR and building.hp > 16:
+                    if (
+                        building.entity_type
+                        in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR}
+                        and building.hp > 16
+                    ):
                         building_damaged = False
                     own_bot_damaged = (
                         tile.bot.id is not None
@@ -2693,7 +2700,8 @@ class Map:
     def u_is_own_supply_link_occupied_by_other_builder(self, tile: Tile) -> bool:
         return bool(
             tile.building.team == self.own_team
-            and tile.building.entity_type in {EntityType.CONVEYOR, EntityType.BRIDGE}
+            and tile.building.entity_type
+            in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.BRIDGE}
             and tile.bot.id is not None
             and tile.bot.team == self.own_team
             and tile.bot.entity_type == EntityType.BUILDER_BOT

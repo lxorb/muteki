@@ -414,7 +414,7 @@ class BuilderNavigationMixin:
             and conveyor_target_tile.own_supply_chain_label != SupplyChainLabel.NONE
         )
         conveyor_targets_conveyor_feeding_harvester = (
-            conveyor_target_tile.building.entity_type == EntityType.CONVEYOR
+            conveyor_target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
             and conveyor_target_tile.building.team == self.map.own_team
             and conveyor_target_tile.conveyor_targets_harvester
         )
@@ -485,7 +485,7 @@ class BuilderNavigationMixin:
                     neighbor_tile = tiles_by_index[neighbor_idx]
                     if (
                         neighbor_tile.building.team == own_team
-                        and neighbor_tile.building.entity_type == EntityType.CONVEYOR
+                        and neighbor_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
                     ):
                         has_adjacent_own_conveyor = True
                         break
