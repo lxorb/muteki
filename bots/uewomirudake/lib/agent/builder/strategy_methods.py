@@ -2672,12 +2672,11 @@ class BuilderStrategyMethodsMixin:
 
     def s_patrol_supply_chains(self):
         """
-        Patrol known allied supply links and rebuild visible damaged gaps.
+        Patrol known allied supply links.
 
         The builder stamps its current tile plus all adjacent tiles with its
         current patrol index whenever those tiles hold allied supply-link
         structures. If a visible supply gap can be rebuilt, this delegates to
-        `s_build_missing_supply_link(...)`. Otherwise it moves toward the
         closest known allied supply-link tile whose stored patrol index is
         still lower than the builder's current patrol index. When the current
         patrol cycle is complete, the builder increments its patrol index and
@@ -2732,13 +2731,6 @@ class BuilderStrategyMethodsMixin:
             return [idx for _, _, _, idx in candidate_entries]
 
         stamp_local_patrol_coverage()
-
-        if self.s_build_missing_supply_link(
-            move_towards=True,
-            hold=True,
-            attack_enemy_passable=True,
-        ):
-            return True
 
         patrol_target_indices = get_unpatrolled_target_indices()
         if not patrol_target_indices:
