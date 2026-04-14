@@ -10,6 +10,7 @@ from lib.agent.builder.strategies import (
     MAX_BOTS,
 )
 from lib.agent.constants import (
+    AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM,
     DISABLE_HARASSMENT,
     HARASSMENT_STRATEGY_ID,
     SURRENDER_AT_TURN,
@@ -30,8 +31,17 @@ class CoreAgent(Agent):
         if self.ct.get_current_round() >= SURRENDER_AT_TURN:
             self.ct.resign()
             return True
+        self.u_convert_axionite_if_low_on_titanium()
         self.u_spawn_initial_bb()
         self.u_spawn_further_bb()
+
+    def u_convert_axionite_if_low_on_titanium(self) -> bool:
+        if self.map.titanium >= AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM:
+            return False
+        if self.map.axionite <= 1:
+            return False
+        self.ct.convert(self.map.axionite - 1)
+        return True
 
     def u_spawn_further_bb(self) -> bool:
         """

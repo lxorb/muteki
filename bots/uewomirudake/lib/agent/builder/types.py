@@ -148,6 +148,18 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
 
     def s_convert_to_defender(self) -> BuilderActionResult: ...
 
+    def s_integrate_foundry(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_swap_with_splitter(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     # DEPRECATED: kept only for legacy strategy compatibility.
     def s_build_harvester_supply_link(
         self,

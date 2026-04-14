@@ -38,6 +38,257 @@ _ENEMY_CORE_PATROL_OFFSETS = (
 
 
 class BuilderStrategyMethodsMixin:
+    def s_swap_with_splitter(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        candidate_entries: list[tuple[tuple[int, int, int], Position, Direction]] = []
+
+        for tile in self.map.own_supply_links_in_vision:
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team != own_team:
+                continue
+            if tile.building.entity_type != EntityType.CONVEYOR:
+                continue
+            if tile.bot.id is not None and tile.position != self.map.current_pos:
+                continue
+
+            foundry_targets = [
+                target_tile
+                for target_tile in tile.building.targets
+                if (
+                    target_tile.last_seen_turn == current_round
+                    and target_tile.building.team == own_team
+                    and target_tile.building.entity_type == EntityType.FOUNDRY
+                )
+            ]
+            if not foundry_targets:
+                continue
+
+            facing_direction = tile.building.direction
+            if facing_direction is None or facing_direction == Direction.CENTRE:
+                continue
+
+            candidate_entries.append(
+                (
+                    (
+                        tile.dist_to_self,
+                        tile.own_core_dist,
+                        tile.index,
+                    ),
+                    tile.position,
+                    facing_direction,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        _, target_pos, facing_direction = min(candidate_entries, key=lambda item: item[0])
+        target_tile = self.map.u_get_pos_tile(target_pos)
+        titanium_cost, axionite_cost = self.ct.get_splitter_cost()
+        can_afford_splitter = (
+            self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+        )
+        if (
+            target_tile.building.team == own_team
+            and target_tile.building.entity_type == EntityType.CONVEYOR
+        ):
+            if not can_afford_splitter:
+                if (
+                    hold
+                    and self.map.current_pos.distance_squared(target_pos)
+                    <= BUILDER_ACTION_RADIUS_SQ
+                ):
+                    return True
+                if move_towards and self.u_move_to_astar(target_pos):
+                    return True
+                return False
+            if (
+                self.map.current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
+                and self.ct.can_destroy(target_pos)
+            ):
+                self.ct.destroy(target_pos)
+                target_tile.clear_building()
+                if self.ct.can_build_splitter(target_pos, facing_direction):
+                    self.ct.build_splitter(target_pos, facing_direction)
+                    self.last_built_entity_type = EntityType.SPLITTER
+                    return True
+                return False
+
+            if move_towards and self.u_move_to_astar(target_pos):
+                return True
+            return False
+
+        if (
+            target_tile.building.team == own_team
+            and target_tile.building.entity_type == EntityType.SPLITTER
+            and target_tile.building.direction == facing_direction
+        ):
+            return False
+
+        return bool(
+            self.u_build_at(
+                target_pos,
+                EntityType.SPLITTER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+                facing_direction=facing_direction,
+            )
+        )
+
+    def s_integrate_foundry(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        current_pos = self.map.current_pos
+        mixed_root_by_index: dict[int, int] = {}
+        mixed_supply_tiles = []
+        incoming_count_by_index: dict[int, int] = {}
+        replaceable_supply_types = SUPPLY_LINK_TYPES
+
+        for tile in self.map.own_supply_links_in_vision:
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team != own_team:
+                continue
+            if (
+                tile.building.entity_type not in SUPPLY_LINK_TYPES
+                or tile.building.entity_type == EntityType.SPLITTER
+            ):
+                continue
+
+            root = self.map.u_get_supply_chain_id_by_index(tile.index, own_team)
+            if root is None:
+                continue
+            if not (
+                self.map.u_supply_chain_has_titanium(tile.index, own_team)
+                and self.map.u_supply_chain_has_raw_axionite(tile.index, own_team)
+            ):
+                continue
+
+            mixed_root_by_index[tile.index] = root
+            mixed_supply_tiles.append(tile)
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not mixed_supply_tiles:
+            return False
+
+        for tile in mixed_supply_tiles:
+            root = mixed_root_by_index[tile.index]
+            for target_tile in tile.building.targets:
+                if (
+                    target_tile.last_seen_turn == current_round
+                    and target_tile.building.team == own_team
+                    and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                    and target_tile.building.entity_type != EntityType.SPLITTER
+                    and mixed_root_by_index.get(target_tile.index) == root
+                ):
+                    incoming_count_by_index[target_tile.index] = (
+                        incoming_count_by_index.get(target_tile.index, 0) + 1
+                    )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        candidate_entries: list[tuple[tuple[int, int, int, int], Position]] = []
+        for tile in mixed_supply_tiles:
+            if incoming_count_by_index.get(tile.index, 0) <= 1:
+                continue
+            if len(tile.building.targets) != 1:
+                continue
+
+            target_tile = tile.building.targets[0]
+            if target_tile.is_core_of(own_team):
+                continue
+            if (
+                target_tile.building.team == own_team
+                and target_tile.building.entity_type == EntityType.HARVESTER
+            ):
+                continue
+
+            candidate_entries.append(
+                (
+                    (
+                        -tile.own_core_dist,
+                        target_tile.dist_to_self,
+                        target_tile.own_core_dist,
+                        target_tile.index,
+                    ),
+                    target_tile.position,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        for _, target_pos in sorted(candidate_entries, key=lambda item: item[0]):
+            target_tile = self.map.u_get_pos_tile(target_pos)
+            if (
+                target_tile.building.team == own_team
+                and target_tile.building.entity_type == EntityType.FOUNDRY
+            ):
+                continue
+
+            titanium_cost, axionite_cost = self.ct.get_foundry_cost()
+            affordable = (
+                self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+            )
+            if (
+                target_tile.building.team == own_team
+                and target_tile.building.entity_type in replaceable_supply_types
+            ):
+                if not affordable:
+                    if (
+                        hold
+                        and current_pos.distance_squared(target_pos)
+                        <= BUILDER_ACTION_RADIUS_SQ
+                    ):
+                        return True
+                    if not hold or not move_towards:
+                        continue
+                    if self.u_move_to_astar(target_pos):
+                        return True
+                    continue
+
+                if (
+                    current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
+                    and self.ct.can_destroy(target_pos)
+                ):
+                    self.ct.destroy(target_pos)
+                    target_tile.clear_building()
+                    return True
+
+            if self.u_build_at(
+                target_pos,
+                EntityType.FOUNDRY,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+            ):
+                return True
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return False
+
     def u_get_harvester_adjacent_supplier_build_plan(
         self,
         harvester_tile,
@@ -504,6 +755,8 @@ class BuilderStrategyMethodsMixin:
         current_round = self.map.current_round
 
         def can_use_tile(target_tile) -> bool:
+            if target_tile.environment == Environment.WALL:
+                return False
             if target_tile.building.entity_type == EntityType.CORE:
                 return False
             if target_tile.building.id is None:
@@ -571,6 +824,48 @@ class BuilderStrategyMethodsMixin:
                     target_idx,
                 )
             )
+
+        splitter_encounter_order = len(candidate_entries)
+        for splitter_tile in self.map.own_supply_links_in_vision:
+            if self.round_stopwatch.check_overtime():
+                break
+            if (
+                splitter_tile.building.team != own_team
+                or splitter_tile.building.entity_type != EntityType.SPLITTER
+                or not (splitter_tile.own_supply_chain_label & supply_chain_label)
+            ):
+                continue
+
+            for target_tile in splitter_tile.building.targets:
+                if target_tile.last_seen_turn != current_round:
+                    continue
+                if not (
+                    target_tile.building.id is None
+                    or (
+                        target_tile.building.team == own_team
+                        and target_tile.building.entity_type
+                        in {EntityType.ROAD, EntityType.BARRIER}
+                    )
+                ):
+                    continue
+                if not can_use_tile(target_tile):
+                    continue
+
+                target_idx = target_tile.index
+                if target_idx in candidate_seen_indices:
+                    continue
+                candidate_seen_indices.add(target_idx)
+                candidate_entries.append(
+                    (
+                        (
+                            get_own_core_dist(target_idx),
+                            self.map.u_get_estimated_dist_to_self_by_index(target_idx),
+                        ),
+                        splitter_encounter_order,
+                        target_idx,
+                    )
+                )
+                splitter_encounter_order += 1
 
         if not candidate_entries:
             return False
