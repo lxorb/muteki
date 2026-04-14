@@ -11,6 +11,8 @@ HARASSMENT_STRATEGY_ID: str = "harassment"
 DEFENDER_STRATEGY_ID: str = "defender"
 
 ### BOT LOGIC ###
+AXIONITE_HARVESTER_MIN_TITANIUM: int = 400
+AXIONITE_HARVESTER_MIN_TURN: int = 100
 BRIDGE_PREFERRED_DIST: int = 6
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 HARD_AVOID_EXISTING_SUPPLY_CHAIN: bool = True
@@ -113,5 +115,15 @@ try:
         import exclude
 
         SURRENDER_AT_TURN = getattr(exclude, "SURRENDER_AT_TURN", SURRENDER_AT_TURN)
+        AXIONITE_HARVESTER_MIN_TITANIUM = getattr(
+            exclude,
+            "AXIONITE_HARVESTER_MIN_TITANIUM",
+            AXIONITE_HARVESTER_MIN_TITANIUM,
+        )
+        AXIONITE_HARVESTER_MIN_TURN = getattr(
+            exclude,
+            "AXIONITE_HARVESTER_MIN_TURN",
+            AXIONITE_HARVESTER_MIN_TURN,
+        )
 except Exception:
     pass

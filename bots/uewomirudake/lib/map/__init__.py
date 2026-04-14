@@ -278,6 +278,7 @@ class Map:
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.all_own_supply_link_target_indices_in_vision: set[int] = set()
         self.own_supply_link_target_indices_in_vision: set[int] = set()
         self.enemy_supply_link_target_indices_in_vision: set[int] = set()
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -461,6 +462,7 @@ class Map:
         self.enemy_missing_supply_links: list[Tile] = []
         self.visible_builder_bot_ids_by_index = {}
         self.visible_building_ids_by_index = {}
+        self.all_own_supply_link_target_indices_in_vision = set()
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
         self.frontier_expand_newly_seen_indices = []
@@ -2101,10 +2103,14 @@ class Map:
         self.enemy_supply_targets_in_vision = []
         self.own_missing_supply_links = []
         self.enemy_missing_supply_links = []
+        self.all_own_supply_link_target_indices_in_vision = set()
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
 
         for supply_link_tile in self.own_supply_links_in_vision:
+            self.all_own_supply_link_target_indices_in_vision.update(
+                target.index for target in supply_link_tile.building.targets
+            )
             if self.u_is_own_supply_link_occupied_by_other_builder(supply_link_tile):
                 continue
             self.own_supply_link_target_indices_in_vision.update(

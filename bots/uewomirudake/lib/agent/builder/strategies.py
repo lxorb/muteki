@@ -50,6 +50,15 @@ SCAVENGER_STRATEGY = [
         False,
     ),
     (BuilderStrategyMethodsMixin.s_convert_to_defender,),
+    (
+        BuilderStrategyMethodsMixin.s_build_harvester,
+        True,
+        True,
+        True,
+        Environment.ORE_AXIONITE,
+        True,
+        False
+    ),
         (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,

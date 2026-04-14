@@ -3,6 +3,8 @@ from heapq import heapify, heappop
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
+    AXIONITE_HARVESTER_MIN_TITANIUM,
+    AXIONITE_HARVESTER_MIN_TURN,
     BUILDER_ACTION_RADIUS_SQ,
     DEFENDER_STRATEGY_ID,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
@@ -41,6 +43,7 @@ class BuilderStrategyMethodsMixin:
         harvester_tile,
         target_tile,
         resource: Environment,
+        use_all_own_supply_link_targets_in_vision: bool = False,
     ) -> tuple[EntityType | None, Direction | Position | None]:
         """
         Return the supplier plan for a tile directly adjacent to `harvester_tile`.
@@ -63,7 +66,12 @@ class BuilderStrategyMethodsMixin:
                 resource,
             )
 
-        if target_tile.index in self.map.own_supply_link_target_indices_in_vision:
+        own_supply_link_target_indices_in_vision = (
+            self.map.all_own_supply_link_target_indices_in_vision
+            if use_all_own_supply_link_targets_in_vision
+            else self.map.own_supply_link_target_indices_in_vision
+        )
+        if target_tile.index in own_supply_link_target_indices_in_vision:
             return self.u_get_transport_supplier_build_plan(
                 target_tile.position,
                 resource,
@@ -393,6 +401,7 @@ class BuilderStrategyMethodsMixin:
                     harvester_tile,
                     best_empty_tile,
                     resource,
+                    use_all_own_supply_link_targets_in_vision=True,
                 )
             )
             if supplier_type is None or supplier_target is None:
@@ -406,7 +415,7 @@ class BuilderStrategyMethodsMixin:
                     harvester_direction is not None
                     and supplier_target == harvester_direction
                     and best_empty_tile.index
-                    in self.map.own_supply_link_target_indices_in_vision
+                    in self.map.all_own_supply_link_target_indices_in_vision
                 ):
                     supplier_target = self.u_best_conveyor_orientation(
                         best_empty_tile.position,
@@ -631,6 +640,14 @@ class BuilderStrategyMethodsMixin:
         """
 
         current_pos = self.map.current_pos
+        if (
+            resource == Environment.ORE_AXIONITE
+            and (
+                self.map.current_round < AXIONITE_HARVESTER_MIN_TURN
+                or self.map.titanium < AXIONITE_HARVESTER_MIN_TITANIUM
+            )
+        ):
+            return False
         if (
             self.pending_missing_supply_link_index is not None
             and self.pending_missing_supply_link_resource == resource
