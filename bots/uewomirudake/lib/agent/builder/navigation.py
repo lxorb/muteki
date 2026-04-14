@@ -901,6 +901,28 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
         self.last_built_entity_type = None
+
+        if building_type == EntityType.CONVEYOR:
+            armoured_titanium_cost, armoured_axionite_cost = (
+                self.ct.get_armoured_conveyor_cost()
+            )
+            if (
+                self.map.titanium >= armoured_titanium_cost
+                and self.map.axionite >= armoured_axionite_cost
+                and self.map.axionite - armoured_axionite_cost >= 1
+                and any(
+                    adjacent_tile.building.team == self.map.own_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    for adjacent_tile in (
+                        self.map.u_get_pos_tile(adjacent_pos)
+                        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                            pos
+                        )
+                    )
+                )
+            ):
+                building_type = EntityType.ARMOURED_CONVEYOR
+
         if building_type in CONVEYOR_ENTITY_TYPES and not allow_conveyor_building:
             return finish(False, "reject conveyor build")
         print(
