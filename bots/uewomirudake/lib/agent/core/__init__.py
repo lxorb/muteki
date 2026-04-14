@@ -3,11 +3,11 @@ from cambc import Direction, EntityType
 from lib.agent import Agent
 from lib.agent.builder.strategies import (
     BUILDER_STRATEGY_BY_TILE,
+    FURTHER_BB_MIN_TURN,
     FURTHER_BB_MIN_TITANIUM,
     FURTHER_BB_ROTATION,
     FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN,
     INITIAL_BB_ORDER,
-    MAX_BOTS,
 )
 from lib.agent.constants import (
     AXIONITE_TO_TITANIUM_CONVERSION_MIN_ARMOURED_CONVEYORS,
@@ -70,9 +70,9 @@ class CoreAgent(Agent):
         """
         Spawn additional builders from a configured rotation once enough titanium is available.
         """
-        if self.spawn_bb_count >= MAX_BOTS:
-            return False
         if not self.further_builder_rotation:
+            return False
+        if self.ct.get_current_round() < FURTHER_BB_MIN_TURN:
             return False
 
         required_titanium = (
@@ -96,9 +96,6 @@ class CoreAgent(Agent):
         return False
 
     def u_spawn_initial_bb(self) -> bool:
-        if self.spawn_bb_count >= MAX_BOTS:
-            return False
-
         while self.spawning_order_pos < len(self.builder_bot_order):
             builder_bot_strategy = self.builder_bot_order[self.spawning_order_pos]
             if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
@@ -152,8 +149,6 @@ class CoreAgent(Agent):
         return candidate_spawns
 
     def u_spawn_builder(self, builder_bot_strategy: str) -> bool:
-        if self.spawn_bb_count >= MAX_BOTS:
-            return False
         if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
             return False
 

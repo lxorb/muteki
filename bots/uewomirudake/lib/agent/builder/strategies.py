@@ -37,6 +37,7 @@ INITRES_STRATEGY = [
 ]
 
 SCAVENGER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_turn_to_harassment,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
@@ -143,14 +144,14 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], str] = {
 }
 INITIAL_BB_ORDER: list[str] = [
     HARASSMENT_STRATEGY_ID,
-    HARASSMENT_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
 ]
 FURTHER_BB_ROTATION: list[str] = [
     SCAVENGER_STRATEGY_ID,
+    HARASSMENT_STRATEGY_ID,
 ]
+FURTHER_BB_MIN_TURN: int = 50
 FURTHER_BB_MIN_TITANIUM: int = 200
 FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN: int = 70
-MAX_BOTS: int = 999

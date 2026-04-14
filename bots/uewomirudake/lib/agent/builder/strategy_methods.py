@@ -11,6 +11,7 @@ from lib.agent.constants import (
     DEFENDER_STRATEGY_ID,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     FOUNDRY_CAN_REPLACE_BRIDGE,
+    HARASSMENT_STRATEGY_ID,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
@@ -180,7 +181,7 @@ class BuilderStrategyMethodsMixin:
                 return True
             return False
 
-        return bool(self.u_move_to_astar(target_pos))
+        return bool(self.u_move_to(target_pos))
 
     def s_defend_attacked_harvester(
         self,
@@ -318,7 +319,7 @@ class BuilderStrategyMethodsMixin:
                 if not move_towards:
                     return False
                 return bool(
-                    self.u_move_to_astar(
+                    self.u_move_to(
                         target_tile.position,
                         reach_builder_action_range=True,
                     )
@@ -345,7 +346,7 @@ class BuilderStrategyMethodsMixin:
             if not move_towards:
                 return False
             return bool(
-                self.u_move_to_astar(
+                self.u_move_to(
                     target_tile.position,
                     reach_builder_action_range=True,
                 )
@@ -515,7 +516,7 @@ class BuilderStrategyMethodsMixin:
                 return True
             return False
 
-        if move_towards and self.u_move_to_astar(target_pos):
+        if move_towards and self.u_move_to(target_pos):
             return True
         if hold and current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ:
             return True
@@ -602,7 +603,7 @@ class BuilderStrategyMethodsMixin:
                     <= BUILDER_ACTION_RADIUS_SQ
                 ):
                     return True
-                if move_towards and self.u_move_to_astar(target_pos):
+                if move_towards and self.u_move_to(target_pos):
                     return True
                 return False
             if (
@@ -617,7 +618,7 @@ class BuilderStrategyMethodsMixin:
                     return True
                 return False
 
-            if move_towards and self.u_move_to_astar(target_pos):
+            if move_towards and self.u_move_to(target_pos):
                 return True
             return False
 
@@ -744,7 +745,7 @@ class BuilderStrategyMethodsMixin:
                     return True
                 if not move_towards:
                     continue
-                if self.u_move_to_astar(target_pos):
+                if self.u_move_to(target_pos):
                     return True
                 continue
 
@@ -760,7 +761,7 @@ class BuilderStrategyMethodsMixin:
                     return True
                 return False
 
-            if move_towards and self.u_move_to_astar(target_pos):
+            if move_towards and self.u_move_to(target_pos):
                 return True
 
             if self.round_stopwatch.check_overtime():
@@ -888,7 +889,7 @@ class BuilderStrategyMethodsMixin:
                         return True
                     if not hold or not move_towards:
                         continue
-                    if self.u_move_to_astar(target_pos):
+                    if self.u_move_to(target_pos):
                         return True
                     continue
 
@@ -903,7 +904,7 @@ class BuilderStrategyMethodsMixin:
                         self.last_built_entity_type = EntityType.FOUNDRY
                         return True
                     return False
-                if move_towards and self.u_move_to_astar(target_pos):
+                if move_towards and self.u_move_to(target_pos):
                     return True
                 continue
 
@@ -987,6 +988,25 @@ class BuilderStrategyMethodsMixin:
             return False
 
         self.strategy = DEFENDER_STRATEGY_ID
+        self.last_strategy_index = -1
+        self.last_turn_completed = True
+        return True
+
+    def s_turn_to_harassment(self):
+        enemy_core_center_pos = self.map.enemy_core_center_pos
+        if enemy_core_center_pos is None:
+            return False
+        if self.strategy == HARASSMENT_STRATEGY_ID:
+            return False
+
+        current_pos = self.map.current_pos
+        if not any(
+            current_pos.distance_squared(core_tile.position) == 1
+            for core_tile in self.map.u_get_core_footprint_positions(enemy_core_center_pos)
+        ):
+            return False
+
+        self.strategy = HARASSMENT_STRATEGY_ID
         self.last_strategy_index = -1
         self.last_turn_completed = True
         return True
@@ -2265,7 +2285,7 @@ class BuilderStrategyMethodsMixin:
                     if current_pos != target_tile.position:
                         if not move_towards:
                             return False
-                        moved = self.u_move_to_astar(target_tile.position)
+                        moved = self.u_move_to(target_tile.position)
                         if moved:
                             remember_pending_harvester_target(target_tile.index)
                         return finish_with_harvester_target(moved, target_tile)
@@ -2416,7 +2436,7 @@ class BuilderStrategyMethodsMixin:
                 if current_pos != target_tile.position:
                     if not move_towards:
                         return False
-                    moved = self.u_move_to_astar(target_tile.position)
+                    moved = self.u_move_to(target_tile.position)
                     if moved:
                         remember_pending_harvester_target(target_tile.index)
                     return finish_with_harvester_target(moved, target_tile)
@@ -2682,7 +2702,7 @@ class BuilderStrategyMethodsMixin:
         if current_pos.distance_squared(target_tile.position) > BUILDER_ACTION_RADIUS_SQ:
             if not move_towards:
                 return False
-            return self.u_move_to_astar(target_tile.position)
+            return self.u_move_to(target_tile.position)
 
         titanium_cost, axionite_cost = getattr(
             self.ct, f"get_{target_supplier_type.value}_cost"
@@ -2799,7 +2819,7 @@ class BuilderStrategyMethodsMixin:
         if current_pos.distance_squared(target_tile.position) > BUILDER_ACTION_RADIUS_SQ:
             if not move_towards:
                 return False
-            return self.u_move_to_astar(target_tile.position)
+            return self.u_move_to(target_tile.position)
 
         titanium_cost, axionite_cost = getattr(
             self.ct, f"get_{target_supplier_type.value}_cost"
@@ -2926,7 +2946,7 @@ class BuilderStrategyMethodsMixin:
                         return True
 
             return False
-        if move_towards and self.u_move_to_astar(target_pos):
+        if move_towards and self.u_move_to(target_pos):
             return False
 
         return False
@@ -3242,7 +3262,7 @@ class BuilderStrategyMethodsMixin:
             patrol_target_indices = get_unpatrolled_target_indices()
 
         for target_idx in patrol_target_indices:
-            if self.u_move_to_astar(tiles_by_index[target_idx].position):
+            if self.u_move_to(tiles_by_index[target_idx].position):
                 return True
 
             if self.round_stopwatch.check_overtime():
@@ -3250,7 +3270,7 @@ class BuilderStrategyMethodsMixin:
 
         # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
         for target_idx in patrol_target_indices:
-            if self.u_move_to_astar(
+            if self.u_move_to(
                 tiles_by_index[target_idx].position, avoid_enemy_turrets=False
             ):
                 return True
@@ -3774,7 +3794,7 @@ class BuilderStrategyMethodsMixin:
 
         if enemy_core_center_pos is not None:
             return bool(
-                self.u_move_to_astar(
+                self.u_move_to(
                     enemy_core_center_pos,
                     allow_conveyor_building=False,
                     respect_titanium_reserve_for_road_build=True,
@@ -3802,7 +3822,7 @@ class BuilderStrategyMethodsMixin:
             return False
 
         return bool(
-            self.u_move_to_astar(
+            self.u_move_to(
                 target_pos,
                 allow_conveyor_building=False,
                 respect_titanium_reserve_for_road_build=True,
@@ -3832,7 +3852,7 @@ class BuilderStrategyMethodsMixin:
             return False
 
         return bool(
-            self.u_move_to_astar(
+            self.u_move_to(
                 checkpoint_positions[next_checkpoint_index],
                 allow_conveyor_building=False,
             )
@@ -3889,7 +3909,7 @@ class BuilderStrategyMethodsMixin:
 
         self.enemy_core_patrol_index = next_patrol_index
         return bool(
-            self.u_move_to_astar(
+            self.u_move_to(
                 tiles_by_index[waypoint_indices[next_patrol_index]].position
             )
         )
