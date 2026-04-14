@@ -113,6 +113,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         build_new_roads: bool = False,
         allow_conveyor_building: bool = True,
         reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
     ) -> bool: ...
 
     def u_attack_passable(
@@ -134,6 +135,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         target_pos: Position | None = None,
         avoid_enemy_turrets: bool = True,
         allow_conveyor_building: bool = True,
+        respect_titanium_reserve: bool = False,
     ) -> bool: ...
 
     def u_heal_at(
@@ -145,6 +147,14 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
+    def s_split_supply_sentinel(self) -> BuilderActionResult: ...
+
+    def s_defend_attacked_harvester(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_heal_self(self) -> BuilderActionResult: ...
 
     def s_convert_to_defender(self) -> BuilderActionResult: ...
@@ -265,6 +275,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     ) -> BuilderActionResult: ...
 
     def s_build_enemy_supplied_sentinel(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_replace_damaged_conveyor(
         self,
         move_towards: bool = True,
         hold: bool = True,

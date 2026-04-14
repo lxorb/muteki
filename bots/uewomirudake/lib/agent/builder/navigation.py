@@ -6,6 +6,7 @@ from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
     ATTACK_TURRET_FEEDER_TYPES,
+    BUILD_ACTION_MIN_TITANIUM_BASE,
     BRIDGE_PREFERRED_DIST,
     BUILDER_ACTION_RADIUS_SQ,
     CONVEYOR_ENTITY_TYPES,
@@ -38,6 +39,24 @@ _EMPTY_SOURCE_INDEX_SET = frozenset()
 
 
 class BuilderNavigationMixin:
+    def u_get_required_build_titanium_reserve(self) -> int:
+        if BUILD_ACTION_MIN_TITANIUM_BASE <= 0:
+            return 0
+
+        harvester_titanium_cost, _ = self.ct.get_harvester_cost()
+        return math.ceil(
+            BUILD_ACTION_MIN_TITANIUM_BASE * harvester_titanium_cost / 20
+        )
+
+    def u_can_spend_titanium_without_falling_below_reserve(
+        self,
+        titanium_cost: int,
+    ) -> bool:
+        return (
+            self.map.titanium - titanium_cost
+            >= self.u_get_required_build_titanium_reserve()
+        )
+
     def u_move_with_target(
         self,
         direction: Direction,
@@ -742,6 +761,7 @@ class BuilderNavigationMixin:
         build_new_roads: bool = True,
         allow_conveyor_building: bool = True,
         reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
     ) -> bool:
         current_pos = self.map.current_pos
         if current_pos == pos:
@@ -769,7 +789,18 @@ class BuilderNavigationMixin:
             if next_direction is not None and self.ct.can_move(next_direction):
                 self.u_move_with_target(next_direction, pos)
                 return True
-            if build_new_roads and self.ct.can_build_road(next_tile.position):
+            road_titanium_cost, _ = self.ct.get_road_cost()
+            can_build_road = (
+                build_new_roads
+                and self.ct.can_build_road(next_tile.position)
+                and (
+                    not respect_titanium_reserve_for_road_build
+                    or self.u_can_spend_titanium_without_falling_below_reserve(
+                        road_titanium_cost
+                    )
+                )
+            )
+            if can_build_road:
                 adjacent_resource_tiles = []
                 for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
                     next_tile.position
@@ -876,6 +907,7 @@ class BuilderNavigationMixin:
         target_pos: Position | None = None,
         avoid_enemy_turrets: bool = True,
         allow_conveyor_building: bool = True,
+        respect_titanium_reserve: bool = False,
     ) -> bool:
         total_start_ns = time.perf_counter_ns()
         last_step_ns = total_start_ns
@@ -951,8 +983,14 @@ class BuilderNavigationMixin:
         )()
         log_step("cost lookup")
 
+        meets_titanium_reserve = (
+            not respect_titanium_reserve
+            or self.u_can_spend_titanium_without_falling_below_reserve(titanium_cost)
+        )
         affordable = (
-            self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+            meets_titanium_reserve
+            and self.map.titanium >= titanium_cost
+            and self.map.axionite >= axionite_cost
         )
         can_hold_build_target = (
             target_tile.building.id is None

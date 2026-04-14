@@ -23,7 +23,20 @@ class CoreAgent(Agent):
         super().__init__()
         self.spawn_tile_counts: dict[Direction, int] = dict.fromkeys(Direction, 0)
         self.spawn_bb_count = 0
-        self.builder_bot_order: list[str] = list(INITIAL_BB_ORDER)
+        self.builder_bot_order: list[str] = [
+            strategy_id
+            for strategy_id in INITIAL_BB_ORDER
+            if not (
+                DISABLE_HARASSMENT and strategy_id == HARASSMENT_STRATEGY_ID
+            )
+        ]
+        self.further_builder_rotation: list[str] = [
+            strategy_id
+            for strategy_id in FURTHER_BB_ROTATION
+            if not (
+                DISABLE_HARASSMENT and strategy_id == HARASSMENT_STRATEGY_ID
+            )
+        ]
         self.spawning_order_pos = 0
         self.further_spawn_count = 0
         self.further_spawn_rotation_pos = 0
@@ -59,7 +72,7 @@ class CoreAgent(Agent):
         """
         if self.spawn_bb_count >= MAX_BOTS:
             return False
-        if not FURTHER_BB_ROTATION:
+        if not self.further_builder_rotation:
             return False
 
         required_titanium = (
@@ -69,12 +82,10 @@ class CoreAgent(Agent):
         if self.map.titanium < required_titanium:
             return False
 
-        rotation_length = len(FURTHER_BB_ROTATION)
+        rotation_length = len(self.further_builder_rotation)
         for offset in range(rotation_length):
             rotation_idx = (self.further_spawn_rotation_pos + offset) % rotation_length
-            builder_bot_strategy = FURTHER_BB_ROTATION[rotation_idx]
-            if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
-                continue
+            builder_bot_strategy = self.further_builder_rotation[rotation_idx]
             if not self.u_spawn_builder(builder_bot_strategy):
                 continue
 

@@ -42,6 +42,326 @@ _ENEMY_CORE_PATROL_OFFSETS = (
 
 
 class BuilderStrategyMethodsMixin:
+    def u_get_splitter_direction_for_target_directions(
+        self,
+        *target_directions: Direction | None,
+    ) -> Direction | None:
+        desired_directions = tuple(
+            dict.fromkeys(
+                direction
+                for direction in target_directions
+                if direction is not None and direction != Direction.CENTRE
+            )
+        )
+        if not desired_directions:
+            return None
+
+        for facing_direction in CARDINAL_DIRECTIONS:
+            output_directions = {
+                facing_direction,
+                facing_direction.rotate_left().rotate_left(),
+                facing_direction.rotate_right().rotate_right(),
+            }
+            if all(direction in output_directions for direction in desired_directions):
+                return facing_direction
+
+        return None
+
+    def s_split_supply_sentinel(self):
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        current_pos = self.map.current_pos
+        candidate_entries: list[tuple[tuple[int, int, int, int], Position, Direction]] = []
+
+        for tile in self.map.own_supply_links_in_vision:
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team != own_team:
+                continue
+            if tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
+                continue
+            if tile.bot.id is not None and tile.position != current_pos:
+                continue
+
+            original_direction = tile.building.direction
+            if original_direction is None or original_direction == Direction.CENTRE:
+                continue
+
+            adjacent_harvesters = []
+            adjacent_sentinels = []
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
+                adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+                if adjacent_tile.last_seen_turn != current_round:
+                    continue
+                if adjacent_tile.building.team != own_team:
+                    continue
+                if adjacent_tile.building.entity_type == EntityType.HARVESTER:
+                    adjacent_harvesters.append(adjacent_tile)
+                elif adjacent_tile.building.entity_type == EntityType.SENTINEL:
+                    adjacent_sentinels.append(adjacent_tile)
+
+            if not adjacent_harvesters or not adjacent_sentinels:
+                continue
+
+            facing_direction = None
+            harvester_index = None
+            sentinel_index = None
+            for harvester_tile in adjacent_harvesters:
+                direction_to_harvester = self.map.u_get_direction_between(
+                    tile.position,
+                    harvester_tile.position,
+                )
+                if direction_to_harvester is None or direction_to_harvester == Direction.CENTRE:
+                    continue
+
+                for sentinel_tile in adjacent_sentinels:
+                    direction_to_sentinel = self.map.u_get_direction_between(
+                        tile.position,
+                        sentinel_tile.position,
+                    )
+                    if (
+                        direction_to_sentinel is None
+                        or direction_to_sentinel == Direction.CENTRE
+                    ):
+                        continue
+
+                    facing_direction = self.map.u_get_direction_between(
+                        harvester_tile.position,
+                        tile.position,
+                    )
+                    if facing_direction is None or facing_direction == Direction.CENTRE:
+                        continue
+
+                    harvester_index = harvester_tile.index
+                    sentinel_index = sentinel_tile.index
+                    break
+
+                if facing_direction is not None:
+                    break
+
+            if facing_direction is None or harvester_index is None or sentinel_index is None:
+                continue
+
+            candidate_entries.append(
+                (
+                    (
+                        tile.dist_to_self,
+                        tile.index,
+                        harvester_index,
+                        sentinel_index,
+                    ),
+                    tile.position,
+                    facing_direction,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        titanium_cost, axionite_cost = self.ct.get_splitter_cost()
+        if self.map.titanium < titanium_cost or self.map.axionite < axionite_cost:
+            return False
+
+        _, target_pos, facing_direction = min(candidate_entries, key=lambda item: item[0])
+        target_tile = self.map.u_get_pos_tile(target_pos)
+
+        if (
+            current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
+            and self.ct.can_destroy(target_pos)
+        ):
+            self.ct.destroy(target_pos)
+            target_tile.clear_building()
+            if self.ct.can_build_splitter(target_pos, facing_direction):
+                self.ct.build_splitter(target_pos, facing_direction)
+                self.last_built_entity_type = EntityType.SPLITTER
+                return True
+            return False
+
+        return bool(self.u_move_to_astar(target_pos))
+
+    def s_defend_attacked_harvester(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        current_pos = self.map.current_pos
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        tiles_by_index = self.map.tiles_by_index
+        sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
+        candidate_entries: list[tuple[tuple[int, int, int, int], int, int, Direction]] = []
+
+        def enemy_adjacent_tile_needs_defense(tile) -> bool:
+            return (
+                tile.last_seen_turn == current_round
+                and tile.bot.id is not None
+                and tile.bot.team != own_team
+                and not tile.in_own_attack_range
+                and not tile.in_own_launcher_pickup_zone
+            )
+
+        def can_use_defender_sentinel_tile(tile) -> bool:
+            if tile.environment == Environment.WALL:
+                return False
+            if tile.bot.id is not None:
+                return False
+            if tile.building.id is None:
+                return True
+            if tile.building.team != own_team:
+                return False
+            if tile.building.entity_type in {EntityType.ROAD, EntityType.BARRIER}:
+                return True
+            return (
+                tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+                and tile.conveyor_targets_harvester
+            )
+
+        for harvester_tile in self.map.own_harvesters_in_vision:
+            if harvester_tile.last_seen_turn != current_round:
+                continue
+
+            if not any(
+                enemy_adjacent_tile_needs_defense(tiles_by_index[adjacent_idx])
+                for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                    harvester_tile.index
+                )
+            ):
+                continue
+
+            best_supply_idx = self.map.u_get_harvester_best_supply_tile(harvester_tile.index)
+            if best_supply_idx is None:
+                continue
+
+            supplier_tile = tiles_by_index[best_supply_idx]
+            if supplier_tile.building.entity_type == EntityType.BRIDGE:
+                continue
+            if (
+                supplier_tile.building.team != own_team
+                or supplier_tile.building.entity_type not in CONVEYOR_ENTITY_TYPES
+            ):
+                continue
+
+            supplier_direction = supplier_tile.building.direction
+            if supplier_direction is None or supplier_direction == Direction.CENTRE:
+                continue
+
+            for passing_direction in dict.fromkeys(
+                (
+                    supplier_direction.rotate_left().rotate_left(),
+                    supplier_direction.rotate_right().rotate_right(),
+                )
+            ):
+                target_pos = supplier_tile.position.add(passing_direction)
+                if not self.map.u_is_in_bounds(target_pos):
+                    continue
+
+                target_tile = self.map.u_get_pos_tile(target_pos)
+                if not can_use_defender_sentinel_tile(target_tile):
+                    continue
+
+                sentinel_direction = self.map.u_get_direction_between(
+                    target_tile.position,
+                    harvester_tile.position,
+                )
+                if (
+                    sentinel_direction is None
+                    or sentinel_direction == Direction.CENTRE
+                    or sum(abs(delta) for delta in sentinel_direction.delta()) != 2
+                ):
+                    continue
+
+                candidate_entries.append(
+                    (
+                        (
+                            harvester_tile.dist_to_self,
+                            target_tile.dist_to_self,
+                            harvester_tile.index,
+                            target_tile.index,
+                        ),
+                        harvester_tile.index,
+                        target_tile.index,
+                        sentinel_direction,
+                    )
+                )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        if self.map.titanium < sentinel_titanium_cost:
+            return False
+
+        _, _, target_idx, sentinel_direction = min(candidate_entries)
+        target_tile = tiles_by_index[target_idx]
+        affordable = (
+            self.map.titanium >= sentinel_titanium_cost
+            and self.map.axionite >= sentinel_axionite_cost
+        )
+
+        if (
+            target_tile.building.team == own_team
+            and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+            and target_tile.conveyor_targets_harvester
+        ):
+            if not affordable:
+                if (
+                    hold
+                    and current_pos.distance_squared(target_tile.position)
+                    <= BUILDER_ACTION_RADIUS_SQ
+                ):
+                    return True
+                if not move_towards:
+                    return False
+                return bool(
+                    self.u_move_to_astar(
+                        target_tile.position,
+                        reach_builder_action_range=True,
+                    )
+                )
+
+            if (
+                current_pos.distance_squared(target_tile.position)
+                <= BUILDER_ACTION_RADIUS_SQ
+                and self.ct.can_destroy(target_tile.position)
+            ):
+                self.ct.destroy(target_tile.position)
+                target_tile.clear_building()
+                return bool(
+                    self.u_build_at(
+                        target_tile.position,
+                        EntityType.SENTINEL,
+                        hold=False,
+                        move_towards=False,
+                        attack_enemy_passable=False,
+                        facing_direction=sentinel_direction,
+                    )
+                )
+
+            if not move_towards:
+                return False
+            return bool(
+                self.u_move_to_astar(
+                    target_tile.position,
+                    reach_builder_action_range=True,
+                )
+            )
+
+        return bool(
+            self.u_build_at(
+                target_tile.position,
+                EntityType.SENTINEL,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+                facing_direction=sentinel_direction,
+            )
+        )
+
     def u_get_splitter_direction_for_replaced_conveyor(
         self,
         target_tile,
@@ -176,7 +496,9 @@ class BuilderStrategyMethodsMixin:
             return False
         titanium_cost, axionite_cost = self.ct.get_splitter_cost()
         can_afford_splitter = (
-            self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+            self.u_can_spend_titanium_without_falling_below_reserve(titanium_cost)
+            and self.map.titanium >= titanium_cost
+            and self.map.axionite >= axionite_cost
         )
         if not can_afford_splitter:
             return False
@@ -265,7 +587,9 @@ class BuilderStrategyMethodsMixin:
             return False
         titanium_cost, axionite_cost = self.ct.get_splitter_cost()
         can_afford_splitter = (
-            self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+            self.u_can_spend_titanium_without_falling_below_reserve(titanium_cost)
+            and self.map.titanium >= titanium_cost
+            and self.map.axionite >= axionite_cost
         )
         if (
             target_tile.building.team == own_team
@@ -407,7 +731,9 @@ class BuilderStrategyMethodsMixin:
         for _, target_pos in sorted(candidate_entries, key=lambda item: item[0]):
             target_tile = self.map.u_get_pos_tile(target_pos)
             affordable = (
-                self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+                self.u_can_spend_titanium_without_falling_below_reserve(titanium_cost)
+                and self.map.titanium >= titanium_cost
+                and self.map.axionite >= axionite_cost
             )
             if not affordable:
                 if (
@@ -1442,6 +1768,7 @@ class BuilderStrategyMethodsMixin:
                         move_towards=move_towards,
                         attack_enemy_passable=attack_enemy_passable,
                         facing_direction=supplier_target,
+                        respect_titanium_reserve=True,
                     ):
                         self.pending_missing_supply_link_index = target_idx
                         self.pending_missing_supply_link_resource = resource
@@ -1454,6 +1781,7 @@ class BuilderStrategyMethodsMixin:
                         move_towards=move_towards,
                         attack_enemy_passable=attack_enemy_passable,
                         target_pos=supplier_target,
+                        respect_titanium_reserve=True,
                     ):
                         self.pending_missing_supply_link_index = target_idx
                         self.pending_missing_supply_link_resource = resource
@@ -1906,6 +2234,7 @@ class BuilderStrategyMethodsMixin:
                                 move_towards=move_towards,
                                 attack_enemy_passable=False,
                                 facing_direction=supplier_target,
+                                respect_titanium_reserve=True,
                             ):
                                 remember_pending_harvester_target(target_tile.index)
                                 return finish_with_harvester_target(True, target_tile)
@@ -1917,6 +2246,7 @@ class BuilderStrategyMethodsMixin:
                                 move_towards=move_towards,
                                 attack_enemy_passable=False,
                                 target_pos=supplier_target,
+                                respect_titanium_reserve=True,
                             ):
                                 remember_pending_harvester_target(target_tile.index)
                                 return finish_with_harvester_target(True, target_tile)
@@ -1927,6 +2257,7 @@ class BuilderStrategyMethodsMixin:
                                 hold=hold,
                                 move_towards=move_towards,
                                 attack_enemy_passable=False,
+                                respect_titanium_reserve=True,
                             ):
                                 remember_pending_harvester_target(target_tile.index)
                                 return finish_with_harvester_target(True, target_tile)
@@ -1945,6 +2276,7 @@ class BuilderStrategyMethodsMixin:
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=attack_enemy_passable,
+                respect_titanium_reserve=True,
             ):
                 if self.last_built_entity_type == EntityType.HARVESTER:
                     clear_pending_harvester_target()
@@ -1966,7 +2298,10 @@ class BuilderStrategyMethodsMixin:
             pending_target_idx = self.pending_harvester_target_index
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
-            if is_valid_harvester_target(pending_target_tile):
+            if (
+                pending_target_tile.last_seen_turn == self.map.current_round
+                and is_valid_harvester_target(pending_target_tile)
+            ):
                 return finish_with_harvester_target(
                     try_progress_harvester_target(
                         pending_target_tile,
@@ -2050,6 +2385,7 @@ class BuilderStrategyMethodsMixin:
                             move_towards=move_towards,
                             attack_enemy_passable=False,
                             facing_direction=supplier_target,
+                            respect_titanium_reserve=True,
                         ):
                             remember_pending_harvester_target(target_tile.index)
                             return finish_with_harvester_target(True, target_tile)
@@ -2061,6 +2397,7 @@ class BuilderStrategyMethodsMixin:
                             move_towards=move_towards,
                             attack_enemy_passable=False,
                             target_pos=supplier_target,
+                            respect_titanium_reserve=True,
                         ):
                             remember_pending_harvester_target(target_tile.index)
                             return finish_with_harvester_target(True, target_tile)
@@ -2071,6 +2408,7 @@ class BuilderStrategyMethodsMixin:
                             hold=hold,
                             move_towards=move_towards,
                             attack_enemy_passable=False,
+                            respect_titanium_reserve=True,
                         ):
                             remember_pending_harvester_target(target_tile.index)
                             return finish_with_harvester_target(True, target_tile)
@@ -2238,7 +2576,13 @@ class BuilderStrategyMethodsMixin:
             if next_direction is not None and self.ct.can_move(next_direction):
                 self.u_move_with_target(next_direction, next_tile.position)
                 return True
-            if self.ct.can_build_road(next_tile.position):
+            road_titanium_cost, _ = self.ct.get_road_cost()
+            if (
+                self.ct.can_build_road(next_tile.position)
+                and self.u_can_spend_titanium_without_falling_below_reserve(
+                    road_titanium_cost
+                )
+            ):
                 self.ct.build_road(next_tile.position)
                 if next_direction is not None and self.ct.can_move(next_direction):
                     self.u_move_with_target(next_direction, next_tile.position)
@@ -3433,6 +3777,7 @@ class BuilderStrategyMethodsMixin:
                 self.u_move_to_astar(
                     enemy_core_center_pos,
                     allow_conveyor_building=False,
+                    respect_titanium_reserve_for_road_build=True,
                 )
             )
 
@@ -3460,6 +3805,7 @@ class BuilderStrategyMethodsMixin:
             self.u_move_to_astar(
                 target_pos,
                 allow_conveyor_building=False,
+                respect_titanium_reserve_for_road_build=True,
             )
         )
 
