@@ -8,6 +8,7 @@ from lib.agent.constants import (
     BUILDER_ACTION_RADIUS_SQ,
     DEFENDER_STRATEGY_ID,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
+    FOUNDRY_CAN_REPLACE_BRIDGE,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
@@ -156,7 +157,9 @@ class BuilderStrategyMethodsMixin:
         mixed_root_by_index: dict[int, int] = {}
         mixed_supply_tiles = []
         incoming_count_by_index: dict[int, int] = {}
-        replaceable_supply_types = SUPPLY_LINK_TYPES
+        replaceable_supply_types = set(SUPPLY_LINK_TYPES)
+        if not FOUNDRY_CAN_REPLACE_BRIDGE:
+            replaceable_supply_types.discard(EntityType.BRIDGE)
 
         for tile in self.map.own_supply_links_in_vision:
             if tile.last_seen_turn != current_round:
