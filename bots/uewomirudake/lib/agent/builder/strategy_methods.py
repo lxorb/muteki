@@ -734,9 +734,8 @@ class BuilderStrategyMethodsMixin:
         candidate_entries: list[
             tuple[
                 tuple[int, int, int, int, int],
-                Position,
-                EntityType,
-                Direction | Position | None,
+                int,
+                int,
             ]
         ] = []
 
@@ -821,61 +820,6 @@ class BuilderStrategyMethodsMixin:
             if best_empty_tile is None:
                 continue
 
-            if (
-                best_empty_tile.environment in {
-                    Environment.ORE_TITANIUM,
-                    Environment.ORE_AXIONITE,
-                }
-                and not has_empty_adjacent_tile(best_empty_tile)
-                and not is_best_supplier_tile_for_any_adjacent_harvester(best_empty_tile)
-            ):
-                candidate_entries.append(
-                    (
-                        (
-                            best_empty_tile.dist_to_self,
-                            best_empty_tile.own_core_dist,
-                            harvester_order,
-                            0 if force_point_at_harvester else 1,
-                            best_empty_tile.index,
-                        ),
-                        best_empty_tile.position,
-                        EntityType.HARVESTER,
-                        None,
-                    )
-                )
-                if self.round_stopwatch.check_overtime():
-                    break
-                continue
-
-            supplier_type, supplier_target = (
-                self.u_get_harvester_adjacent_supplier_build_plan(
-                    harvester_tile,
-                    best_empty_tile,
-                    resource,
-                    use_all_own_supply_link_targets_in_vision=True,
-                )
-            )
-            if supplier_type is None or supplier_target is None:
-                continue
-            if supplier_type == EntityType.CONVEYOR:
-                harvester_direction = self.map.u_get_direction_between(
-                    best_empty_tile.position,
-                    harvester_tile.position,
-                )
-                if (
-                    harvester_direction is not None
-                    and supplier_target == harvester_direction
-                    and best_empty_tile.index
-                    in self.map.all_own_supply_link_target_indices_in_vision
-                ):
-                    supplier_target = self.u_best_conveyor_orientation(
-                        best_empty_tile.position,
-                        resource,
-                        allow_adjacent_resource_sink=False,
-                    )
-                    if supplier_target is None:
-                        continue
-
             candidate_entries.append(
                 (
                     (
@@ -885,9 +829,8 @@ class BuilderStrategyMethodsMixin:
                         0 if force_point_at_harvester else 1,
                         best_empty_tile.index,
                     ),
-                    best_empty_tile.position,
-                    supplier_type,
-                    supplier_target,
+                    harvester_tile.index,
+                    best_empty_tile.index,
                 )
             )
 
@@ -899,19 +842,67 @@ class BuilderStrategyMethodsMixin:
 
         heapify(candidate_entries)
         while candidate_entries:
-            _, target_pos, supplier_type, supplier_target = heappop(candidate_entries)
-            if supplier_type == EntityType.HARVESTER:
+            _, harvester_idx, target_idx = heappop(candidate_entries)
+            harvester_tile = tiles_by_index[harvester_idx]
+            target_tile = tiles_by_index[target_idx]
+            resource = harvester_tile.environment
+
+            if (
+                target_tile.environment in {
+                    Environment.ORE_TITANIUM,
+                    Environment.ORE_AXIONITE,
+                }
+                and not has_empty_adjacent_tile(target_tile)
+                and not is_best_supplier_tile_for_any_adjacent_harvester(target_tile)
+            ):
                 if self.u_build_at(
-                    target_pos,
-                    supplier_type,
+                    target_tile.position,
+                    EntityType.HARVESTER,
                     hold=hold,
                     move_towards=move_towards,
                     attack_enemy_passable=False,
                 ):
                     return True
-            elif supplier_type == EntityType.CONVEYOR:
+                if self.round_stopwatch.check_overtime():
+                    break
+                continue
+
+            supplier_type, supplier_target = (
+                self.u_get_harvester_adjacent_supplier_build_plan(
+                    harvester_tile,
+                    target_tile,
+                    resource,
+                    use_all_own_supply_link_targets_in_vision=True,
+                )
+            )
+            if supplier_type is None or supplier_target is None:
+                if self.round_stopwatch.check_overtime():
+                    break
+                continue
+
+            if supplier_type == EntityType.CONVEYOR:
+                harvester_direction = self.map.u_get_direction_between(
+                    target_tile.position,
+                    harvester_tile.position,
+                )
+                if (
+                    harvester_direction is not None
+                    and supplier_target == harvester_direction
+                    and target_tile.index
+                    in self.map.all_own_supply_link_target_indices_in_vision
+                ):
+                    supplier_target = self.u_best_conveyor_orientation(
+                        target_tile.position,
+                        resource,
+                        allow_adjacent_resource_sink=False,
+                    )
+                    if supplier_target is None:
+                        if self.round_stopwatch.check_overtime():
+                            break
+                        continue
+
                 if self.u_build_at(
-                    target_pos,
+                    target_tile.position,
                     supplier_type,
                     hold=hold,
                     move_towards=move_towards,
@@ -921,7 +912,7 @@ class BuilderStrategyMethodsMixin:
                     return True
             elif supplier_type == EntityType.BRIDGE:
                 if self.u_build_at(
-                    target_pos,
+                    target_tile.position,
                     supplier_type,
                     hold=hold,
                     move_towards=move_towards,
