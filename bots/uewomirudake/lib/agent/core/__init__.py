@@ -1,4 +1,4 @@
-from cambc import Direction
+from cambc import Direction, EntityType
 
 from lib.agent import Agent
 from lib.agent.builder.strategies import (
@@ -10,6 +10,7 @@ from lib.agent.builder.strategies import (
     MAX_BOTS,
 )
 from lib.agent.constants import (
+    AXIONITE_TO_TITANIUM_CONVERSION_MIN_ARMOURED_CONVEYORS,
     AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM,
     DISABLE_HARASSMENT,
     HARASSMENT_STRATEGY_ID,
@@ -38,9 +39,18 @@ class CoreAgent(Agent):
     def u_convert_axionite_if_low_on_titanium(self) -> bool:
         if self.map.titanium >= AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM:
             return False
-        if self.map.axionite <= 1:
+        _, armoured_conveyor_axionite_cost = getattr(
+            self.ct,
+            f"get_{EntityType.ARMOURED_CONVEYOR.value}_cost",
+        )()
+        reserved_axionite = max(
+            1,
+            armoured_conveyor_axionite_cost
+            * AXIONITE_TO_TITANIUM_CONVERSION_MIN_ARMOURED_CONVEYORS,
+        )
+        if self.map.axionite <= reserved_axionite:
             return False
-        self.ct.convert(self.map.axionite - 1)
+        self.ct.convert(self.map.axionite - reserved_axionite)
         return True
 
     def u_spawn_further_bb(self) -> bool:
