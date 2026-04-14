@@ -56,8 +56,6 @@ class BuilderNavigationMixin:
             return False
         if target_tile.environment == Environment.WALL:
             return False
-        if self.u_is_supply_tile_forbidden(pos, resource):
-            return False
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == self.map.own_team
@@ -202,23 +200,7 @@ class BuilderNavigationMixin:
         return SupplyChainLabel.NONE
 
     def u_supply_chain_targets_core(self, resource: Environment) -> bool:
-        return resource == Environment.ORE_TITANIUM
-
-    def u_is_supply_tile_forbidden(
-        self,
-        pos: Position,
-        resource: Environment,
-    ) -> bool:
-        target_tile = self.map.u_get_pos_tile(pos)
-        avoidance_label = SupplyChainLabel.NONE
-        if resource == Environment.ORE_TITANIUM:
-            avoidance_label = SupplyChainLabel.AXIONITE
-        elif resource == Environment.ORE_AXIONITE:
-            avoidance_label = SupplyChainLabel.TITANIUM
-        return bool(
-            avoidance_label != SupplyChainLabel.NONE
-            and target_tile.own_supply_chain_label & avoidance_label
-        )
+        return True
 
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
         enemy_core_center_pos = self.map.enemy_core_center_pos
@@ -346,9 +328,6 @@ class BuilderNavigationMixin:
         helpers. If both plans exist, prefer the bridge only when it skips at
         least `BRIDGE_PREFERRED_DIST` cached core-distance steps.
         """
-        if self.u_is_supply_tile_forbidden(pos, resource):
-            return (None, None)
-
         conveyor_direction = self.u_best_conveyor_orientation(pos, resource)
         bridge_target = self.u_best_bridge_target(pos, resource)
 
@@ -389,9 +368,6 @@ class BuilderNavigationMixin:
         considers transport-oriented conveyor directions plus the normal bridge
         candidate logic.
         """
-        if self.u_is_supply_tile_forbidden(pos, resource):
-            return (None, None)
-
         conveyor_direction = self.u_best_conveyor_orientation(
             pos,
             resource,
@@ -409,9 +385,30 @@ class BuilderNavigationMixin:
         source_tile = self.map.u_get_pos_tile(pos)
         conveyor_target_tile = self.map.u_get_pos_tile(pos.add(conveyor_direction))
         bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
+        conveyor_targets_existing_supply_chain = (
+            conveyor_target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and conveyor_target_tile.building.team == self.map.own_team
+            and conveyor_target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+        )
+        conveyor_targets_conveyor_feeding_harvester = (
+            conveyor_target_tile.building.entity_type == EntityType.CONVEYOR
+            and conveyor_target_tile.building.team == self.map.own_team
+            and conveyor_target_tile.conveyor_targets_harvester
+        )
+        bridge_targets_existing_supply_chain = (
+            bridge_target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and bridge_target_tile.building.team == self.map.own_team
+            and bridge_target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+        )
         if (
             conveyor_target_tile.environment in _RESOURCE_ENVIRONMENTS
             and bridge_target_tile.environment not in _RESOURCE_ENVIRONMENTS
+        ):
+            return (EntityType.BRIDGE, bridge_target)
+        if (
+            conveyor_targets_existing_supply_chain
+            and not conveyor_targets_conveyor_feeding_harvester
+            and not bridge_targets_existing_supply_chain
         ):
             return (EntityType.BRIDGE, bridge_target)
         bridge_dist_covered = (
@@ -490,6 +487,9 @@ class BuilderNavigationMixin:
         source_core_dist = source_tile.own_core_dist
         candidate_tiles: list[tuple[Direction, object, int, bool, bool]] = []
 
+        def targets_source_tile(candidate_tile) -> bool:
+            return any(target.position == pos for target in candidate_tile.building.targets)
+
         for direction in Direction:
             if direction == Direction.CENTRE:
                 continue
@@ -502,10 +502,10 @@ class BuilderNavigationMixin:
                 continue
 
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
-            if neighbor_tile.is_core_of(self.map.own_team):
-                if self.u_supply_chain_targets_core(resource):
-                    return direction
+            if targets_source_tile(neighbor_tile):
                 continue
+            if neighbor_tile.is_core_of(self.map.own_team):
+                return direction
 
             category_rank = self.u_get_supplier_tile_category_rank(
                 neighbor_tile,
@@ -645,8 +645,6 @@ class BuilderNavigationMixin:
         own_team = self.map.own_team
         if target_tile.environment == Environment.WALL:
             return None
-        if self.u_is_supply_tile_forbidden(target_tile.position, resource):
-            return None
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
@@ -691,6 +689,9 @@ class BuilderNavigationMixin:
         pos_x = pos.x
         pos_y = pos.y
 
+        def targets_source_tile(candidate_tile) -> bool:
+            return any(target.position == pos for target in candidate_tile.building.targets)
+
         candidates = []
         for dx, dy in _BRIDGE_TARGET_OFFSETS:
             nx = pos_x + dx
@@ -701,10 +702,7 @@ class BuilderNavigationMixin:
             if not active_mask[target_idx]:
                 continue
             target_tile = tiles_by_index[target_idx]
-            target_pos = target_tile.position
-            if target_tile.is_core_of(
-                self.map.own_team
-            ) and not self.u_supply_chain_targets_core(resource):
+            if targets_source_tile(target_tile):
                 continue
             if target_tile.own_core_dist >= source_core_dist:
                 continue
@@ -718,19 +716,16 @@ class BuilderNavigationMixin:
                 tile for tile in candidates if tile.environment not in _RESOURCE_ENVIRONMENTS
             ]
 
-        if self.u_supply_chain_targets_core(resource):
-            core_tiles = [
-                tile for tile in candidates if tile.is_core_of(self.map.own_team)
-            ]
-            if core_tiles:
-                return min(
-                    core_tiles,
-                    key=lambda tile: (
-                        pos.distance_squared(tile.position),
-                        tile.position.x,
-                        tile.position.y,
-                    ),
-                ).position
+        core_tiles = [tile for tile in candidates if tile.is_core_of(self.map.own_team)]
+        if core_tiles:
+            return min(
+                core_tiles,
+                key=lambda tile: (
+                    pos.distance_squared(tile.position),
+                    tile.position.x,
+                    tile.position.y,
+                ),
+            ).position
 
         # Single pass: find best tile using composite key (rank, progress, distance, pos).
         # Avoids a separate categorize loop, a min-rank scan, a filter, and a second min.
@@ -772,20 +767,18 @@ class BuilderNavigationMixin:
         own_team = self.map.own_team
         if target_tile.environment == Environment.WALL:
             return None
-        if self.u_is_supply_tile_forbidden(target_tile.position, resource):
-            return None
+        if target_tile.building.id is None or (
+            target_tile.building.team == own_team
+            and target_tile.building.entity_type
+            in {EntityType.BARRIER, EntityType.ROAD}
+        ):
+            return 0
         if (
             target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and target_tile.building.team == own_team
         ):
             if target_tile.own_supply_chain_label == SupplyChainLabel.NONE:
                 return None
-            return 0
-        if target_tile.building.id is None or (
-            target_tile.building.team == own_team
-            and target_tile.building.entity_type
-            in {EntityType.BARRIER, EntityType.ROAD}
-        ):
             return 1
         if (
             target_tile.building.entity_type == EntityType.ROAD

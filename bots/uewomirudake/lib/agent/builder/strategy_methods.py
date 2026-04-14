@@ -434,10 +434,6 @@ class BuilderStrategyMethodsMixin:
                     adjacent_tile.building.team == own_team
                     and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
                     and adjacent_label & supply_chain_label
-                    and not self.u_is_supply_tile_forbidden(
-                        adjacent_tile.position,
-                        resource,
-                    )
                 ):
                     has_own_supply_link = True
                 adjacent_tiles.append((safe_order, adjacent_tile))
