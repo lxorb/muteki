@@ -736,9 +736,31 @@ class BuilderStrategyMethodsMixin:
                 tuple[int, int, int, int, int],
                 Position,
                 EntityType,
-                Direction | Position,
+                Direction | Position | None,
             ]
         ] = []
+
+        def has_empty_adjacent_tile(tile) -> bool:
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.environment != Environment.WALL
+                    and adjacent_tile.building.id is None
+                ):
+                    return True
+            return False
+
+        def is_best_supplier_tile_for_any_adjacent_harvester(tile) -> bool:
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    and self.map.u_get_harvester_best_supply_tile(adjacent_tile.index)
+                    == tile.index
+                ):
+                    return True
+            return False
 
         for harvester_order, harvester_tile in enumerate(self.map.own_harvesters_in_vision):
             if harvester_tile.last_seen_turn != current_round:
@@ -799,6 +821,32 @@ class BuilderStrategyMethodsMixin:
             if best_empty_tile is None:
                 continue
 
+            if (
+                best_empty_tile.environment in {
+                    Environment.ORE_TITANIUM,
+                    Environment.ORE_AXIONITE,
+                }
+                and not has_empty_adjacent_tile(best_empty_tile)
+                and not is_best_supplier_tile_for_any_adjacent_harvester(best_empty_tile)
+            ):
+                candidate_entries.append(
+                    (
+                        (
+                            best_empty_tile.dist_to_self,
+                            best_empty_tile.own_core_dist,
+                            harvester_order,
+                            0 if force_point_at_harvester else 1,
+                            best_empty_tile.index,
+                        ),
+                        best_empty_tile.position,
+                        EntityType.HARVESTER,
+                        None,
+                    )
+                )
+                if self.round_stopwatch.check_overtime():
+                    break
+                continue
+
             supplier_type, supplier_target = (
                 self.u_get_harvester_adjacent_supplier_build_plan(
                     harvester_tile,
@@ -852,7 +900,16 @@ class BuilderStrategyMethodsMixin:
         heapify(candidate_entries)
         while candidate_entries:
             _, target_pos, supplier_type, supplier_target = heappop(candidate_entries)
-            if supplier_type == EntityType.CONVEYOR:
+            if supplier_type == EntityType.HARVESTER:
+                if self.u_build_at(
+                    target_pos,
+                    supplier_type,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=False,
+                ):
+                    return True
+            elif supplier_type == EntityType.CONVEYOR:
                 if self.u_build_at(
                     target_pos,
                     supplier_type,
