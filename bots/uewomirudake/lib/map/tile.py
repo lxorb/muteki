@@ -191,7 +191,7 @@ class Tile:
 
     def u_get_resource_targets(self) -> list["Tile"]:
         if self.building.entity_type in RESOURCE_TARGET_TYPES:
-            return list(self.building.targets)
+            return self.building.targets
         return []
 
     def u_calc_intrinsic_passability(self) -> bool:

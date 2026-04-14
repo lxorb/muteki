@@ -839,8 +839,14 @@ class Map:
                 break
 
     def u_update_supply_chain_union_find(self) -> None:
-        self.u_update_supply_chain_union_find_for_team(self.own_team)
-        self.u_update_supply_chain_union_find_for_team(self.enemy_team)
+        self._u_update_supply_chain_union_find_for_team_fast(
+            self.own_team,
+            self.own_supply_links_in_vision,
+        )
+        self._u_update_supply_chain_union_find_for_team_fast(
+            self.enemy_team,
+            self.enemy_supply_links_in_vision,
+        )
 
     def _build_index_caches(self) -> None:
         max_width = self.INITIAL_WIDTH
@@ -2147,80 +2153,522 @@ class Map:
         )
 
     def u_update_supply_chain_labels(self) -> None:
-        self.u_update_supply_chain_labels_for_team(self.own_team)
-        self.u_update_supply_chain_labels_for_team(self.enemy_team)
+        self._u_update_supply_chain_labels_for_team_fast(self.own_team)
+        self._u_update_supply_chain_labels_for_team_fast(self.enemy_team)
 
     def u_update_supply_information(self) -> None:
-        self.own_supply_targets_in_vision = []
-        self.enemy_supply_targets_in_vision = []
-        self.own_missing_supply_links = []
-        self.enemy_missing_supply_links = []
-        self.all_own_supply_link_target_indices_in_vision = set()
-        self.own_supply_link_target_indices_in_vision = set()
-        self.enemy_supply_link_target_indices_in_vision = set()
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        own_team = self.own_team
+        enemy_team = self.enemy_team
+        supply_chain_sink_types = (EntityType.HARVESTER, EntityType.FOUNDRY)
+
+        own_supply_targets_in_vision = self.own_supply_targets_in_vision
+        enemy_supply_targets_in_vision = self.enemy_supply_targets_in_vision
+        own_missing_supply_links = self.own_missing_supply_links
+        enemy_missing_supply_links = self.enemy_missing_supply_links
+        all_own_target_indices = self.all_own_supply_link_target_indices_in_vision
+        own_target_indices = self.own_supply_link_target_indices_in_vision
+        enemy_target_indices = self.enemy_supply_link_target_indices_in_vision
+
+        own_supply_targets_in_vision.clear()
+        enemy_supply_targets_in_vision.clear()
+        own_missing_supply_links.clear()
+        enemy_missing_supply_links.clear()
+        all_own_target_indices.clear()
+        own_target_indices.clear()
+        enemy_target_indices.clear()
 
         for supply_link_tile in self.own_supply_links_in_vision:
-            self.all_own_supply_link_target_indices_in_vision.update(
-                target.index
-                for target in supply_link_tile.building.targets
-                if target.environment != Environment.WALL
+            building = supply_link_tile.building
+            include_for_own = not (
+                building.entity_type != EntityType.SPLITTER
+                and building.team == own_team
+                and supply_link_tile.bot.id is not None
+                and supply_link_tile.bot.team == own_team
+                and supply_link_tile.bot.entity_type == EntityType.BUILDER_BOT
+                and supply_link_tile.position != self.current_pos
             )
-            if (
-                self.u_is_own_supply_link_occupied_by_other_builder(supply_link_tile)
-                and supply_link_tile.building.entity_type != EntityType.SPLITTER
-            ):
-                continue
-            self.own_supply_link_target_indices_in_vision.update(
-                target.index
-                for target in supply_link_tile.building.targets
-                if target.environment != Environment.WALL
-            )
-            if self.round_stopwatch.check_overtime_interval():
+            for target_tile in building.targets:
+                if target_tile.environment == Environment.WALL:
+                    continue
+                target_idx = target_tile.index
+                all_own_target_indices.add(target_idx)
+                if include_for_own:
+                    own_target_indices.add(target_idx)
+            if check_overtime_interval():
                 break
 
         for supply_link_tile in self.enemy_supply_links_in_vision:
-            self.enemy_supply_link_target_indices_in_vision.update(
-                target.index
-                for target in supply_link_tile.building.targets
-                if target.environment != Environment.WALL
-            )
-            if self.round_stopwatch.check_overtime_interval():
+            for target_tile in supply_link_tile.building.targets:
+                if target_tile.environment == Environment.WALL:
+                    continue
+                enemy_target_indices.add(target_tile.index)
+            if check_overtime_interval():
                 break
 
-        self.u_update_supply_chain_labels()
-        self.u_update_supply_chain_union_find()
+        self._u_update_supply_chain_labels_for_team_fast(own_team)
+        self._u_update_supply_chain_labels_for_team_fast(enemy_team)
+        self._u_update_supply_chain_union_find_for_team_fast(
+            own_team,
+            self.own_supply_links_in_vision,
+        )
+        self._u_update_supply_chain_union_find_for_team_fast(
+            enemy_team,
+            self.enemy_supply_links_in_vision,
+        )
+
+        own_supply_targets_append = own_supply_targets_in_vision.append
+        enemy_supply_targets_append = enemy_supply_targets_in_vision.append
+        own_missing_append = own_missing_supply_links.append
+        enemy_missing_append = enemy_missing_supply_links.append
+        own_core_source_by_index = self.own_core_source_by_index
+        enemy_core_source_by_index = self.enemy_core_source_by_index
 
         for tile in self.tiles_in_vision:
             if tile.in_own_resource_range > 0:
-                self.own_supply_targets_in_vision.append(tile)
+                own_supply_targets_append(tile)
             if tile.in_enemy_resource_range > 0:
-                self.enemy_supply_targets_in_vision.append(tile)
+                enemy_supply_targets_append(tile)
 
-            if tile.index in self.own_supply_link_target_indices_in_vision and not (
-                tile.propagates_for_team(self.own_team)
-                or tile.is_core_of(self.own_team)
+            tile_idx = tile.index
+            building = tile.building
+            building_entity_type = building.entity_type
+            building_team = building.team
+
+            if tile_idx in own_target_indices and not (
+                (
+                    building.id is not None
+                    and building_team == own_team
+                    and building_entity_type in SUPPLY_LINK_TYPES
+                )
                 or (
-                    tile.building.id is not None
-                    and tile.building.team == self.own_team
-                    and tile.building.entity_type
-                    in {EntityType.HARVESTER, EntityType.FOUNDRY}
+                    building_entity_type == EntityType.CORE
+                    and building_team == own_team
+                )
+                or own_core_source_by_index[tile_idx]
+                or (
+                    building.id is not None
+                    and building_team == own_team
+                    and building_entity_type in supply_chain_sink_types
                 )
             ):
-                self.own_missing_supply_links.append(tile)
+                own_missing_append(tile)
 
-            if tile.index in self.enemy_supply_link_target_indices_in_vision and not (
-                tile.propagates_for_team(self.enemy_team)
-                or tile.is_core_of(self.enemy_team)
+            if tile_idx in enemy_target_indices and not (
+                (
+                    building.id is not None
+                    and building_team == enemy_team
+                    and building_entity_type in SUPPLY_LINK_TYPES
+                )
                 or (
-                    tile.building.id is not None
-                    and tile.building.team == self.enemy_team
-                    and tile.building.entity_type
-                    in {EntityType.HARVESTER, EntityType.FOUNDRY}
+                    building_entity_type == EntityType.CORE
+                    and building_team == enemy_team
+                )
+                or enemy_core_source_by_index[tile_idx]
+                or (
+                    building.id is not None
+                    and building_team == enemy_team
+                    and building_entity_type in supply_chain_sink_types
                 )
             ):
-                self.enemy_missing_supply_links.append(tile)
+                enemy_missing_append(tile)
 
-            if self.round_stopwatch.check_overtime_interval():
+            if check_overtime_interval():
+                break
+
+    def _u_update_supply_chain_labels_for_team_fast(self, team: Team) -> None:
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        current_round = self.current_round
+        tiles_in_vision = self.tiles_in_vision
+        preservable_visible_entity_types = (EntityType.ROAD, EntityType.BARRIER)
+
+        if team == self.own_team:
+            labels_by_index = self.own_supply_chain_labels_by_index
+            core_source_by_index = self.own_core_source_by_index
+            supply_link_target_indices_in_vision = (
+                self.own_supply_link_target_indices_in_vision
+            )
+        else:
+            labels_by_index = self.enemy_supply_chain_labels_by_index
+            core_source_by_index = self.enemy_core_source_by_index
+            supply_link_target_indices_in_vision = (
+                self.enemy_supply_link_target_indices_in_vision
+            )
+
+        remembered_tiles: list[Tile] = []
+        remembered_labels: list[int] = []
+        fresh_queue: deque[Tile] = deque()
+        remembered_queue: deque[Tile] = deque()
+
+        for tile in tiles_in_vision:
+            tile_idx = tile.index
+            remembered_tiles.append(tile)
+            remembered_labels.append(labels_by_index[tile_idx])
+            labels_by_index[tile_idx] = 0
+            if check_overtime_interval():
+                break
+
+        for tile in remembered_tiles:
+            building = tile.building
+            source_label = 0
+            if (
+                building.id is not None
+                and building.team == team
+                and building.entity_type == EntityType.HARVESTER
+            ):
+                if tile.environment == Environment.ORE_TITANIUM:
+                    source_label = int(SupplyChainLabel.TITANIUM)
+                elif tile.environment == Environment.ORE_AXIONITE:
+                    source_label = int(SupplyChainLabel.AXIONITE)
+            if source_label == 0:
+                continue
+            labels_by_index[tile.index] = source_label
+            fresh_queue.append(tile)
+            if check_overtime_interval():
+                break
+
+        while fresh_queue:
+            source_tile = fresh_queue.popleft()
+            source_building = source_tile.building
+            if (
+                source_building.id is None
+                or source_building.team != team
+                or source_building.entity_type not in RESOURCE_TARGET_TYPES
+            ):
+                continue
+
+            output_label = labels_by_index[source_tile.index]
+            if output_label == 0:
+                continue
+
+            for target_tile in source_building.targets:
+                target_idx = target_tile.index
+                target_building = target_tile.building
+                if target_tile.last_seen_turn == current_round:
+                    can_preserve = False
+                    if target_tile.environment != Environment.WALL:
+                        target_building_entity_type = target_building.entity_type
+                        if (
+                            target_building_entity_type == EntityType.CORE
+                            and target_building.team == team
+                        ) or core_source_by_index[target_idx]:
+                            can_preserve = True
+                        elif target_building.id is None:
+                            can_preserve = (
+                                target_idx in supply_link_target_indices_in_vision
+                            )
+                        elif (
+                            target_building.team == team
+                            and target_building_entity_type in RESOURCE_TARGET_TYPES
+                        ):
+                            can_preserve = True
+                        elif target_building_entity_type in preservable_visible_entity_types:
+                            can_preserve = (
+                                target_idx in supply_link_target_indices_in_vision
+                            )
+                    if not can_preserve:
+                        continue
+
+                current_label = labels_by_index[target_idx]
+                updated_label = current_label | output_label
+                if updated_label == current_label:
+                    continue
+                labels_by_index[target_idx] = updated_label
+
+                if (
+                    target_tile.last_seen_turn == current_round
+                    and target_building.id is not None
+                    and target_building.team == team
+                    and target_building.entity_type in RESOURCE_TARGET_TYPES
+                ):
+                    fresh_queue.append(target_tile)
+
+            if check_overtime_interval():
+                break
+
+        remembered_count = len(remembered_tiles)
+        for i in range(remembered_count):
+            tile = remembered_tiles[i]
+            remembered_label = remembered_labels[i]
+            if remembered_label == 0:
+                continue
+
+            tile_idx = tile.index
+            if labels_by_index[tile_idx] != 0:
+                continue
+
+            building = tile.building
+            building_entity_type = building.entity_type
+            can_preserve = False
+            if tile.environment != Environment.WALL:
+                if (
+                    building_entity_type == EntityType.CORE
+                    and building.team == team
+                ) or core_source_by_index[tile_idx]:
+                    can_preserve = True
+                elif building.id is None:
+                    can_preserve = tile_idx in supply_link_target_indices_in_vision
+                elif (
+                    building.team == team
+                    and building_entity_type in RESOURCE_TARGET_TYPES
+                ):
+                    can_preserve = True
+                elif building_entity_type in preservable_visible_entity_types:
+                    can_preserve = tile_idx in supply_link_target_indices_in_vision
+
+            if not can_preserve:
+                continue
+
+            labels_by_index[tile_idx] = remembered_label
+            if (
+                tile.last_seen_turn == current_round
+                and building.id is not None
+                and building.team == team
+                and building_entity_type in RESOURCE_TARGET_TYPES
+            ):
+                remembered_queue.append(tile)
+            if check_overtime_interval():
+                break
+
+        while remembered_queue:
+            source_tile = remembered_queue.popleft()
+            source_building = source_tile.building
+            if (
+                source_building.id is None
+                or source_building.team != team
+                or source_building.entity_type not in RESOURCE_TARGET_TYPES
+            ):
+                continue
+
+            output_label = labels_by_index[source_tile.index]
+            if output_label == 0:
+                continue
+
+            for target_tile in source_building.targets:
+                target_idx = target_tile.index
+                target_building = target_tile.building
+                if target_tile.last_seen_turn == current_round:
+                    can_preserve = False
+                    if target_tile.environment != Environment.WALL:
+                        target_building_entity_type = target_building.entity_type
+                        if (
+                            target_building_entity_type == EntityType.CORE
+                            and target_building.team == team
+                        ) or core_source_by_index[target_idx]:
+                            can_preserve = True
+                        elif target_building.id is None:
+                            can_preserve = (
+                                target_idx in supply_link_target_indices_in_vision
+                            )
+                        elif (
+                            target_building.team == team
+                            and target_building_entity_type in RESOURCE_TARGET_TYPES
+                        ):
+                            can_preserve = True
+                        elif target_building_entity_type in preservable_visible_entity_types:
+                            can_preserve = (
+                                target_idx in supply_link_target_indices_in_vision
+                            )
+                    if not can_preserve:
+                        continue
+
+                if labels_by_index[target_idx] != SupplyChainLabel.NONE:
+                    continue
+                labels_by_index[target_idx] = output_label
+
+                if (
+                    target_tile.last_seen_turn == current_round
+                    and target_building.id is not None
+                    and target_building.team == team
+                    and target_building.entity_type in RESOURCE_TARGET_TYPES
+                ):
+                    remembered_queue.append(target_tile)
+
+            if check_overtime_interval():
+                break
+
+    def _u_update_supply_chain_union_find_for_team_fast(
+        self,
+        team: Team,
+        supply_links_in_vision: list[Tile],
+    ) -> None:
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        current_round = self.current_round
+        own_team = self.own_team
+        tile_count = self.tile_count
+        own_turret_types = (
+            EntityType.GUNNER,
+            EntityType.SENTINEL,
+            EntityType.BREACH,
+        )
+
+        if team == own_team:
+            parent_by_index = self.own_supply_chain_parent_by_index
+            size_by_index = self.own_supply_chain_size_by_index
+            active_by_index = self.own_supply_chain_active_by_index
+            tile_count_by_index = self.own_supply_chain_tile_count_by_index
+            harvester_count_by_index = self.own_supply_chain_harvester_count_by_index
+            resource_item_count_by_index = (
+                self.own_supply_chain_resource_item_count_by_index
+            )
+            has_titanium_by_index = self.own_supply_chain_has_titanium_by_index
+            has_raw_axionite_by_index = self.own_supply_chain_has_raw_axionite_by_index
+            has_refined_axionite_by_index = (
+                self.own_supply_chain_has_refined_axionite_by_index
+            )
+            feeds_own_turret_by_index = None
+            touched_indices = self.own_supply_chain_touched_indices
+            is_enemy_team = False
+        else:
+            parent_by_index = self.enemy_supply_chain_parent_by_index
+            size_by_index = self.enemy_supply_chain_size_by_index
+            active_by_index = self.enemy_supply_chain_active_by_index
+            tile_count_by_index = self.enemy_supply_chain_tile_count_by_index
+            harvester_count_by_index = self.enemy_supply_chain_harvester_count_by_index
+            resource_item_count_by_index = (
+                self.enemy_supply_chain_resource_item_count_by_index
+            )
+            has_titanium_by_index = self.enemy_supply_chain_has_titanium_by_index
+            has_raw_axionite_by_index = (
+                self.enemy_supply_chain_has_raw_axionite_by_index
+            )
+            has_refined_axionite_by_index = (
+                self.enemy_supply_chain_has_refined_axionite_by_index
+            )
+            feeds_own_turret_by_index = self.enemy_supply_chain_feeds_own_turret_by_index
+            touched_indices = self.enemy_supply_chain_touched_indices
+            is_enemy_team = True
+
+        def find_root(idx: int) -> int | None:
+            if not active_by_index[idx]:
+                return None
+
+            root = idx
+            while parent_by_index[root] != root:
+                root = parent_by_index[root]
+
+            while parent_by_index[idx] != idx:
+                next_idx = parent_by_index[idx]
+                parent_by_index[idx] = root
+                idx = next_idx
+
+            return root
+
+        def union_indices(first_idx: int, second_idx: int) -> int | None:
+            first_root = find_root(first_idx)
+            second_root = find_root(second_idx)
+            if first_root is None or second_root is None:
+                return None
+            if first_root == second_root:
+                return first_root
+
+            if size_by_index[first_root] < size_by_index[second_root]:
+                first_root, second_root = second_root, first_root
+
+            parent_by_index[second_root] = first_root
+            size_by_index[first_root] += size_by_index[second_root]
+            tile_count_by_index[first_root] += tile_count_by_index[second_root]
+            harvester_count_by_index[first_root] += harvester_count_by_index[
+                second_root
+            ]
+            resource_item_count_by_index[first_root] += resource_item_count_by_index[
+                second_root
+            ]
+            has_titanium_by_index[first_root] |= has_titanium_by_index[second_root]
+            has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[
+                second_root
+            ]
+            has_refined_axionite_by_index[first_root] |= (
+                has_refined_axionite_by_index[second_root]
+            )
+            if feeds_own_turret_by_index is not None:
+                feeds_own_turret_by_index[first_root] |= feeds_own_turret_by_index[
+                    second_root
+                ]
+            return first_root
+
+        for tile in supply_links_in_vision:
+            if tile.building.entity_type == EntityType.SPLITTER:
+                continue
+            tile_idx = tile.index
+            if active_by_index[tile_idx]:
+                continue
+            parent_by_index[tile_idx] = tile_idx
+            size_by_index[tile_idx] = 1
+            active_by_index[tile_idx] = 1
+            tile_count_by_index[tile_idx] = 1
+            harvester_count_by_index[tile_idx] = 0
+            resource_item_count_by_index[tile_idx] = 0
+            has_titanium_by_index[tile_idx] = 0
+            has_raw_axionite_by_index[tile_idx] = 0
+            has_refined_axionite_by_index[tile_idx] = 0
+            if feeds_own_turret_by_index is not None:
+                feeds_own_turret_by_index[tile_idx] = 0
+            touched_indices.append(tile_idx)
+            if check_overtime_interval():
+                break
+
+        for tile in supply_links_in_vision:
+            if tile.building.entity_type == EntityType.SPLITTER:
+                continue
+            tile_idx = tile.index
+            for target_tile in tile.building.targets:
+                target_building = target_tile.building
+                if (
+                    target_tile.last_seen_turn == current_round
+                    and target_building.team == team
+                    and target_building.entity_type in SUPPLY_LINK_TYPES
+                    and target_building.entity_type != EntityType.SPLITTER
+                ):
+                    union_indices(tile_idx, target_tile.index)
+            if check_overtime_interval():
+                break
+
+        counted_harvester_component_keys: set[int] = set()
+        for tile in supply_links_in_vision:
+            if tile.building.entity_type == EntityType.SPLITTER:
+                continue
+
+            root = find_root(tile.index)
+            if root is None:
+                continue
+
+            building = tile.building
+            if building.last_resource_onit_turn == current_round:
+                resource_item_count_by_index[root] += 1
+            if building.last_titanium_onit_turn == current_round:
+                has_titanium_by_index[root] = 1
+            if building.last_raw_axionite_onit_turn == current_round:
+                has_raw_axionite_by_index[root] = 1
+            if building.last_refined_axionite_onit_turn == current_round:
+                has_refined_axionite_by_index[root] = 1
+
+            feeds_own_turret = False
+            for target_tile in building.targets:
+                target_building = target_tile.building
+                if (
+                    target_tile.last_seen_turn == current_round
+                    and target_building.team == team
+                    and target_building.entity_type == EntityType.HARVESTER
+                ):
+                    pair_key = root * tile_count + target_tile.index
+                    if pair_key not in counted_harvester_component_keys:
+                        counted_harvester_component_keys.add(pair_key)
+                        harvester_count_by_index[root] += 1
+
+                if (
+                    is_enemy_team
+                    and not feeds_own_turret
+                    and target_tile.last_seen_turn == current_round
+                    and target_building.team == own_team
+                    and target_building.entity_type in own_turret_types
+                ):
+                    feeds_own_turret = True
+
+            if feeds_own_turret:
+                feeds_own_turret_by_index[root] = 1
+
+            if check_overtime_interval():
                 break
 
     def u_is_own_supply_link_occupied_by_other_builder(self, tile: Tile) -> bool:
