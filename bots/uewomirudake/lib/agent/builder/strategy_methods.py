@@ -39,6 +39,152 @@ _ENEMY_CORE_PATROL_OFFSETS = (
 
 
 class BuilderStrategyMethodsMixin:
+    def s_integrate_foundry_passing_splitter(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        current_pos = self.map.current_pos
+        candidate_entries: list[tuple[tuple[int, int, int], Position, Direction]] = []
+
+        def get_opposite_direction(direction: Direction) -> Direction:
+            return (
+                direction.rotate_left()
+                .rotate_left()
+                .rotate_left()
+                .rotate_left()
+            )
+
+        def iter_hypothetical_splitter_targets(pos: Position, direction: Direction):
+            for output_direction in (
+                direction,
+                direction.rotate_left().rotate_left(),
+                direction.rotate_right().rotate_right(),
+            ):
+                target_idx = self.map.u_get_neighbor_index_by_direction(
+                    self.map.u_to_index(pos),
+                    output_direction,
+                )
+                if target_idx is None:
+                    yield None
+                    continue
+                yield self.map.tiles_by_index[target_idx]
+
+        for tile in self.map.own_supply_links_in_vision:
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.building.team != own_team:
+                continue
+            if tile.building.entity_type != EntityType.CONVEYOR:
+                continue
+            if tile.bot.id is not None and tile.position != current_pos:
+                continue
+
+            facing_direction = tile.building.direction
+            if facing_direction is None or facing_direction == Direction.CENTRE:
+                continue
+
+            adjacent_foundry_tiles = []
+            for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(tile.position):
+                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                if (
+                    adjacent_tile.last_seen_turn == current_round
+                    and adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type == EntityType.FOUNDRY
+                ):
+                    adjacent_foundry_tiles.append(adjacent_tile)
+
+            if not adjacent_foundry_tiles:
+                continue
+
+            valid_passing_foundry = None
+            for foundry_tile in adjacent_foundry_tiles:
+                direction_to_foundry = self.map.u_get_direction_between(
+                    tile.position,
+                    foundry_tile.position,
+                )
+                if direction_to_foundry is None or direction_to_foundry == Direction.CENTRE:
+                    continue
+                if facing_direction == direction_to_foundry:
+                    continue
+                if facing_direction == get_opposite_direction(direction_to_foundry):
+                    continue
+
+                splitter_targets = list(
+                    iter_hypothetical_splitter_targets(tile.position, facing_direction)
+                )
+                if any(target_tile is None for target_tile in splitter_targets):
+                    continue
+
+                valid_outputs = True
+                foundry_reached = False
+                for target_tile in splitter_targets:
+                    assert target_tile is not None
+                    if target_tile.index == foundry_tile.index:
+                        foundry_reached = True
+                        continue
+                    if not (
+                        target_tile.building.team == own_team
+                        and target_tile.building.entity_type
+                        in {EntityType.CONVEYOR, EntityType.BRIDGE}
+                    ):
+                        valid_outputs = False
+                        break
+
+                if valid_outputs and foundry_reached:
+                    valid_passing_foundry = foundry_tile
+                    break
+
+            if valid_passing_foundry is None:
+                continue
+
+            candidate_entries.append(
+                (
+                    (
+                        tile.dist_to_self,
+                        tile.own_core_dist,
+                        tile.index,
+                    ),
+                    tile.position,
+                    facing_direction,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        _, target_pos, facing_direction = min(candidate_entries, key=lambda item: item[0])
+        target_tile = self.map.u_get_pos_tile(target_pos)
+        titanium_cost, axionite_cost = self.ct.get_splitter_cost()
+        can_afford_splitter = (
+            self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
+        )
+        if not can_afford_splitter:
+            return False
+
+        if (
+            current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
+            and self.ct.can_destroy(target_pos)
+        ):
+            self.ct.destroy(target_pos)
+            target_tile.clear_building()
+            if self.ct.can_build_splitter(target_pos, facing_direction):
+                self.ct.build_splitter(target_pos, facing_direction)
+                self.last_built_entity_type = EntityType.SPLITTER
+                return True
+            return False
+
+        if move_towards and self.u_move_to_astar(target_pos):
+            return True
+        if hold and current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ:
+            return True
+        return False
+
     def s_swap_with_splitter(
         self,
         move_towards: bool = True,

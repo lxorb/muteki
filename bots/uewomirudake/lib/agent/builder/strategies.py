@@ -51,6 +51,7 @@ SCAVENGER_STRATEGY = [
     ),
     (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (BuilderStrategyMethodsMixin.s_swap_with_splitter, True, True),
+    (BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
@@ -102,6 +103,7 @@ DEFENDER_STRATEGY = [
         False,
     ),
     (BuilderStrategyMethodsMixin.s_swap_with_splitter, True, True),
+    (BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
