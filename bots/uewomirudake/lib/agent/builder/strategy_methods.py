@@ -756,6 +756,18 @@ class BuilderStrategyMethodsMixin:
         def elapsed_ms(start_ns: int) -> float:
             return (time.perf_counter_ns() - start_ns) / 1_000_000
 
+        def can_use_protect_harvester_tile(tile) -> bool:
+            if tile.environment == Environment.WALL:
+                return False
+            if tile.is_enemy_turret_target_tile:
+                return False
+            if tile.building.id is None:
+                return True
+            return (
+                tile.building.team == own_team
+                and tile.building.entity_type == EntityType.ROAD
+            )
+
         candidate_scan_start_ns = time.perf_counter_ns()
         for harvester_order, harvester_tile in enumerate(map.own_harvesters_in_vision):
             if harvester_tile.last_seen_turn != current_round:
@@ -810,11 +822,7 @@ class BuilderStrategyMethodsMixin:
                 ):
                     force_point_at_harvester = True
 
-                if adjacent_tile.environment == Environment.WALL:
-                    continue
-                if adjacent_tile.is_enemy_turret_target_tile:
-                    continue
-                if adjacent_tile.building.id is not None:
+                if not can_use_protect_harvester_tile(adjacent_tile):
                     continue
 
                 empty_key = (
@@ -848,8 +856,7 @@ class BuilderStrategyMethodsMixin:
                     adjacent_tile = tiles_by_index[adjacent_idx]
                     if (
                         not has_empty_adjacent_tile
-                        and adjacent_tile.environment != Environment.WALL
-                        and adjacent_tile.building.id is None
+                        and can_use_protect_harvester_tile(adjacent_tile)
                     ):
                         has_empty_adjacent_tile = True
                     if (
@@ -2439,7 +2446,7 @@ class BuilderStrategyMethodsMixin:
         hold: bool = False,
     ):
         """
-        Build a sentinel next to the closest visible enemy harvester.
+        Build a sentinel next to the closest visible enemy harvester on titanium.
 
         Prefer nearby empty tiles, own roads, and optionally passable enemy tiles.
         If `move_towards` is false, only act on targets already in action range.
@@ -2449,7 +2456,11 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
-        enemy_harvesters = self.map.enemy_harvesters_in_vision
+        enemy_harvesters = [
+            tile
+            for tile in self.map.enemy_harvesters_in_vision
+            if tile.environment == Environment.ORE_TITANIUM
+        ]
         if not enemy_harvesters:
             return False
 
