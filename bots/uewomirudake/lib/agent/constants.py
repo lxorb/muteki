@@ -14,6 +14,7 @@ DEFENDER_STRATEGY_ID: str = "defender"
 AXIONITE_HARVESTER_MIN_TITANIUM: int = 400
 AXIONITE_HARVESTER_MIN_TURN: int = 100
 BRIDGE_PREFERRED_DIST: int = 6
+DISABLE_HARASSMENT: bool = True
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 HARD_AVOID_EXISTING_SUPPLY_CHAIN: bool = True
 MAX_CORE_ORE_DIRECT_DIST: int = 20
@@ -124,6 +125,11 @@ try:
             exclude,
             "AXIONITE_HARVESTER_MIN_TURN",
             AXIONITE_HARVESTER_MIN_TURN,
+        )
+        DISABLE_HARASSMENT = getattr(
+            exclude,
+            "DISABLE_HARASSMENT",
+            DISABLE_HARASSMENT,
         )
 except Exception:
     pass

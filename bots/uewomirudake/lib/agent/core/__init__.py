@@ -3,7 +3,6 @@ from cambc import Direction
 from lib.agent import Agent
 from lib.agent.builder.strategies import (
     BUILDER_STRATEGY_BY_TILE,
-    DISABLE_HARASSMENT,
     FURTHER_BB_MIN_TITANIUM,
     FURTHER_BB_ROTATION,
     FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN,
@@ -11,6 +10,7 @@ from lib.agent.builder.strategies import (
     MAX_BOTS,
 )
 from lib.agent.constants import (
+    DISABLE_HARASSMENT,
     HARASSMENT_STRATEGY_ID,
     SURRENDER_AT_TURN,
 )
