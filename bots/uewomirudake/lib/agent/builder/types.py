@@ -59,24 +59,6 @@ class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
-    def u_get_core_foundry_plan(
-        self,
-    ) -> Position | None: ...
-
-    def u_get_core_splitter_foundry_plan(
-        self,
-    ) -> tuple[Position, Direction, Position] | None: ...
-
-    def u_get_foundry_wait_position(
-        self,
-        foundry_pos: Position,
-    ) -> Position | None: ...
-
-    def u_foundry_site_has_visible_axionite_supply(
-        self,
-        foundry_pos: Position,
-    ) -> bool: ...
-
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction: ...
@@ -165,18 +147,6 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_heal_self(self) -> BuilderActionResult: ...
 
     def s_convert_to_defender(self) -> BuilderActionResult: ...
-
-    def s_insert_core_splitter(
-        self,
-        move_towards: bool = True,
-        hold: bool = True,
-    ) -> BuilderActionResult: ...
-
-    def s_build_core_foundry(
-        self,
-        move_towards: bool = True,
-        hold: bool = True,
-    ) -> BuilderActionResult: ...
 
     # DEPRECATED: kept only for legacy strategy compatibility.
     def s_build_harvester_supply_link(

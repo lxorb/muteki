@@ -8,7 +8,6 @@ NS_PER_TURN: int = 2_000_000
 INITRES_STRATEGY_ID: str = "initres"
 SCAVENGER_STRATEGY_ID: str = "scavenger"
 HARASSMENT_STRATEGY_ID: str = "harassment"
-FOUNDRY_STRATEGY_ID: str = "foundry"
 DEFENDER_STRATEGY_ID: str = "defender"
 
 ### BOT LOGIC ###
@@ -19,17 +18,6 @@ MAX_CORE_ORE_DIRECT_DIST: int = 20
 PREVENT_SUPPLY_LINKS_TILL_HARVESTER: bool = True
 SURROUND_HARVESTER_ENTITY_TYPE: EntityType = EntityType.CONVEYOR
 DISABLE_CONVEYORS_POINTING_AT_HARVESTERS: bool = False
-
-# Builder tuning constants.
-# `BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN` toggles when
-# `s_build_core_foundry()` is allowed to commit to the planned foundry site.
-# Building the foundry first guarantees it can still be afforded before
-# titanium costs scale too high, but may force a suboptimal placement.
-# Building the supply chain first allows for optimal foundry placement, but
-# increases the risk that the foundry later becomes too expensive to build.
-FOUNDRY_WAIT_RADIUS_SQ: int = 8
-MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST: int = 0  # TODO: Unused
-BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN: bool = True
 
 ### ENTITY TYPE GROUPS ###
 ATTACK_TURRET_FEEDER_TYPES: set[EntityType] = {
@@ -124,6 +112,6 @@ try:
 
         import exclude
 
-        SURRENDER_AT_TURN = exclude.SURRENDER_AT_TURN
+        SURRENDER_AT_TURN = getattr(exclude, "SURRENDER_AT_TURN", SURRENDER_AT_TURN)
 except Exception:
     pass

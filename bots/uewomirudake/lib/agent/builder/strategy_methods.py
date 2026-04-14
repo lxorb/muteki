@@ -4,13 +4,10 @@ from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
     BUILDER_ACTION_RADIUS_SQ,
-    BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN,
     DEFENDER_STRATEGY_ID,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
-    FOUNDRY_WAIT_RADIUS_SQ,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
-    MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
@@ -1942,154 +1939,6 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=False,
             )
         )
-
-    def s_insert_core_splitter(self, move_towards: bool = True, hold: bool = True):
-        """
-        Insert the planned core-facing splitter after the foundry exists, or
-        wait near the foundry until a valid routed splitter slot becomes
-        available.
-        """
-        foundry_pos = self.u_get_core_foundry_plan()
-        if foundry_pos is None:
-            return False
-
-        if not self.map.has_built_foundry:
-            foundry_tile = self.map.u_get_pos_tile(foundry_pos)
-            if (
-                foundry_tile.building.entity_type == EntityType.FOUNDRY
-                and foundry_tile.building.team == self.map.own_team
-            ):
-                self.map.has_built_foundry = True
-                self.map.built_foundry_index = foundry_tile.index
-            else:
-                return False
-        else:
-            if not self.u_foundry_site_has_visible_axionite_supply(foundry_pos):
-                return False
-
-        core_plan = self.u_get_core_splitter_foundry_plan()
-        if core_plan is None:
-            wait_pos = self.u_get_foundry_wait_position(foundry_pos)
-            if wait_pos is None:
-                return (
-                    self.map.current_pos.distance_squared(foundry_pos)
-                    <= FOUNDRY_WAIT_RADIUS_SQ
-                )
-            if self.map.current_pos == wait_pos:
-                return True
-            if move_towards and self.u_move_to_astar(wait_pos):
-                return True
-            return (
-                self.map.current_pos.distance_squared(foundry_pos)
-                <= FOUNDRY_WAIT_RADIUS_SQ
-            )
-
-        splitter_pos, splitter_direction, _ = core_plan
-        splitter_tile = self.map.u_get_pos_tile(splitter_pos)
-        if (
-            splitter_tile.building.entity_type == EntityType.SPLITTER
-            and splitter_tile.building.team == self.map.own_team
-            and splitter_tile.building.direction == splitter_direction
-        ):
-            return False
-
-        return self.u_build_at(
-            splitter_pos,
-            EntityType.SPLITTER,
-            hold=hold,
-            move_towards=move_towards,
-            attack_enemy_passable=False,
-            facing_direction=splitter_direction,
-        )
-
-    def s_build_core_foundry(
-        self,
-        move_towards: bool = True,
-        hold: bool = True,
-    ):
-        """
-        Build or confirm the planned core-side foundry before splitter work.
-        """
-        foundry_pos = self.u_get_core_foundry_plan()
-        if foundry_pos is None:
-            return False
-        foundry_tile = self.map.u_get_pos_tile(foundry_pos)
-        if (
-            foundry_tile.building.entity_type == EntityType.FOUNDRY
-            and foundry_tile.building.team == self.map.own_team
-        ):
-            self.map.has_built_foundry = True
-            self.map.built_foundry_index = foundry_tile.index
-            return False
-        if (
-            not BUILD_FOUNDRY_BEFORE_AXIONITE_SUPPLY_CHAIN
-            and not self.u_foundry_site_has_visible_axionite_supply(foundry_pos)
-        ):
-            return False
-        titanium_cost, axionite_cost = self.ct.get_foundry_cost()
-        can_afford_foundry = (
-            self.map.titanium >= titanium_cost and self.map.axionite >= axionite_cost
-        )
-        can_build_now = (
-            self.map.current_pos.distance_squared(foundry_pos)
-            <= GameConstants.ACTION_RADIUS_SQ
-            and can_afford_foundry
-            and self.ct.can_build_foundry(foundry_pos)
-        )
-
-        if not can_afford_foundry:
-            barrier_titanium_cost, _ = self.ct.get_barrier_cost()
-            can_reserve_with_barrier = foundry_tile.building.id is None or (
-                foundry_tile.building.entity_type == EntityType.ROAD
-                and foundry_tile.building.team == self.map.own_team
-            )
-            if (
-                barrier_titanium_cost <= MAX_TEMP_FOUNDRY_BARRIER_TITANIUM_COST
-                and self.map.titanium >= barrier_titanium_cost
-                and can_reserve_with_barrier
-            ) and self.u_build_at(
-                foundry_pos,
-                EntityType.BARRIER,
-                hold=False,
-                move_towards=move_towards,
-                attack_enemy_passable=False,
-            ):
-                self.map.built_foundry_index = foundry_tile.index
-                return True
-            if (
-                foundry_tile.building.entity_type == EntityType.BARRIER
-                and foundry_tile.building.team == self.map.own_team
-            ):
-                self.map.built_foundry_index = foundry_tile.index
-
-            wait_pos = self.u_get_foundry_wait_position(foundry_pos)
-            if wait_pos is None:
-                return (
-                    self.map.current_pos.distance_squared(foundry_pos)
-                    <= FOUNDRY_WAIT_RADIUS_SQ
-                )
-            if self.map.current_pos == wait_pos:
-                return True
-            if move_towards and self.u_move_to_astar(wait_pos):
-                return True
-            return (
-                self.map.current_pos.distance_squared(foundry_pos)
-                <= FOUNDRY_WAIT_RADIUS_SQ
-            )
-
-        if self.u_build_at(
-            foundry_pos,
-            EntityType.FOUNDRY,
-            hold=hold,
-            move_towards=move_towards,
-            attack_enemy_passable=False,
-        ):
-            if can_build_now:
-                self.map.has_built_foundry = True
-                self.map.built_foundry_index = foundry_tile.index
-            return True
-
-        return False
 
     def s_patrol_supply_chains(self):
         """

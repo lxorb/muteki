@@ -9,10 +9,8 @@ from lib.agent.builder.strategies import (
     FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN,
     INITIAL_BB_ORDER,
     MAX_BOTS,
-    START_FOUNDRY_TURN,
 )
 from lib.agent.constants import (
-    FOUNDRY_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
     SURRENDER_AT_TURN,
 )
@@ -32,7 +30,6 @@ class CoreAgent(Agent):
         if self.ct.get_current_round() >= SURRENDER_AT_TURN:
             self.ct.resign()
             return True
-        self.u_convert_axionite()
         self.u_spawn_initial_bb()
         self.u_spawn_further_bb()
 
@@ -58,11 +55,6 @@ class CoreAgent(Agent):
             builder_bot_strategy = FURTHER_BB_ROTATION[rotation_idx]
             if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
                 continue
-            if (
-                self.map.current_round < START_FOUNDRY_TURN
-                and builder_bot_strategy == FOUNDRY_STRATEGY_ID
-            ):
-                continue
             if not self.u_spawn_builder(builder_bot_strategy):
                 continue
 
@@ -71,12 +63,6 @@ class CoreAgent(Agent):
             return True
 
         return False
-
-    def u_convert_axionite(self) -> bool:
-        if self.map.axionite <= 1:
-            return False
-        self.ct.convert(self.map.axionite - 1)
-        return True
 
     def u_spawn_initial_bb(self) -> bool:
         if self.spawn_bb_count >= MAX_BOTS:

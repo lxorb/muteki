@@ -34,7 +34,6 @@ from lib.map.constants import (
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
-    TEMPORARY_TITANIUM_SUPPLY_AT_FOUNDRY_FIX,
     WEAPON_TARGET_TYPES,
 )
 from lib.map.tile import Tile
@@ -398,9 +397,6 @@ class Map:
         self.map_json_fully_loaded: bool = False
         self.map_json_loaded_print_pending: bool = False
         self.map_update_time_ns: int = 0
-
-        self.has_built_foundry: bool = False
-        self.built_foundry_index: int = -1
 
         # Frontier expansion cache used by `s_frontier_expand_new`.
         self.frontier_expand_cached_unseen_indices: set[int] = set()
@@ -1954,11 +1950,6 @@ class Map:
                 return SupplyChainLabel.AXIONITE
             return SupplyChainLabel.NONE
 
-        # TODO: More robust fix, don't just disable foundry supply label marking.
-        if not TEMPORARY_TITANIUM_SUPPLY_AT_FOUNDRY_FIX:
-            if tile.building.entity_type == EntityType.FOUNDRY:
-                return SupplyChainLabel.AXIONITE
-
         return SupplyChainLabel.NONE
 
     def u_get_supply_chain_output_label(
@@ -1971,9 +1962,6 @@ class Map:
 
         if tile.building.entity_type not in RESOURCE_TARGET_TYPES:
             return SupplyChainLabel.NONE
-
-        if tile.building.entity_type == EntityType.FOUNDRY:
-            return SupplyChainLabel.AXIONITE
 
         return tile.get_supply_chain_label(team)
 
