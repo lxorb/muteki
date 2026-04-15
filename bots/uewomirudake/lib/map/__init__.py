@@ -1303,6 +1303,55 @@ class Map:
         if self.symmetry_mode is not None:
             return
 
+        current_round = self.current_round
+        if self.enemy_core_center_pos is None and self.enemy_core_center_pos_candidates:
+            pruned_enemy_core_center_pos_candidates = []
+            inferred_enemy_core_center_pos = None
+            for mode, center_pos in self.enemy_core_center_pos_candidates:
+                footprint_overlaps_current_vision = False
+                footprint_contains_enemy_core = False
+                for candidate_tile in self.u_get_core_footprint_positions(center_pos):
+                    if candidate_tile.last_seen_turn != current_round:
+                        continue
+                    footprint_overlaps_current_vision = True
+                    if (
+                        candidate_tile.building.entity_type == EntityType.CORE
+                        and candidate_tile.building.team == self.enemy_team
+                    ):
+                        footprint_contains_enemy_core = True
+                        inferred_enemy_core_center_pos = center_pos
+                        break
+
+                if not footprint_overlaps_current_vision or footprint_contains_enemy_core:
+                    pruned_enemy_core_center_pos_candidates.append((mode, center_pos))
+
+            if inferred_enemy_core_center_pos is not None:
+                self.enemy_core_center_pos_candidates = [
+                    (mode, pos)
+                    for mode, pos in pruned_enemy_core_center_pos_candidates
+                    if pos == inferred_enemy_core_center_pos
+                ]
+                self.enemy_core_center_pos = inferred_enemy_core_center_pos
+                self.enemy_core_source_indices = self.u_set_core_source_indices(
+                    self.enemy_team,
+                    self.enemy_core_center_pos,
+                )
+            elif len(pruned_enemy_core_center_pos_candidates) != len(
+                self.enemy_core_center_pos_candidates
+            ):
+                self.enemy_core_center_pos_candidates = (
+                    pruned_enemy_core_center_pos_candidates
+                )
+                remaining_positions = {
+                    pos for _, pos in self.enemy_core_center_pos_candidates
+                }
+                if len(remaining_positions) == 1:
+                    self.enemy_core_center_pos = next(iter(remaining_positions))
+                    self.enemy_core_source_indices = self.u_set_core_source_indices(
+                        self.enemy_team,
+                        self.enemy_core_center_pos,
+                    )
+
         newly_seen_tiles = self.newly_seen_tiles_in_vision
         if not newly_seen_tiles:
             return
