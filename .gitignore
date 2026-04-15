@@ -50,3 +50,6 @@ replay_*.json
 
 # excluded constants
 /bots/exclude/exclude.py
+
+# queued match ids (may not be current anymore)
+/tools/unrated_runner/queued.json

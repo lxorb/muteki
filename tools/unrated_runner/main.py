@@ -13,7 +13,9 @@ TEAM_NAME = "muteki"
 SCRIPT_DIR = Path(__file__).parent
 TEAMS_FILE = SCRIPT_DIR / "teams.json"
 QUEUED_FILE = SCRIPT_DIR / "queued.json"
-RESULTS_FILE = SCRIPT_DIR / "results_{}.json".format(
+RESULTS_DIR = SCRIPT_DIR / "results"
+RESULTS_DIR.mkdir(exist_ok=True)
+RESULTS_FILE = RESULTS_DIR / "results_{}.json".format(
     datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 )
 
@@ -48,15 +50,15 @@ def check_match(match_id: str) -> list[dict] | None:
         ["cambc", "match", "info", match_id], capture_output=True, text=True
     )
     output = result.stdout
-    print(repr(output))  # DEBUG: see raw captured output
+    # print(repr(output))  # DEBUG: see raw captured output
     if "Status:  complete" not in output:
         return None
 
     games = []
     for line in output.splitlines():
-        if not line.startswith("│"):
+        if not line.startswith("|"):
             continue
-        cells = [c.strip() for c in line.split("│")[1:-1]]
+        cells = [c.strip() for c in line.split("|")[1:-1]]
         if len(cells) != 5 or not cells[0].isdigit():
             continue
         games.append(
@@ -97,7 +99,9 @@ def main():
     )
     save_json(QUEUED_FILE, {"queued": []})
 
-    print(f"Unrated runner started. {len(match_queue)} queued from previous run. Ctrl+C to stop.")
+    print(
+        f"Unrated runner started. {len(match_queue)} queued from previous run. Ctrl+C to stop."
+    )
 
     try:
         while True:
