@@ -389,6 +389,10 @@ class Map:
         ]
         self.own_core_center_pos: Position | None = None
         self.enemy_core_center_pos: Position | None = None
+        self.own_core_building_id: int | None = None
+        self.enemy_core_building_id: int | None = None
+        self.own_core_building_hp: int | None = None
+        self.enemy_core_building_hp: int | None = None
         self.enemy_core_center_pos_candidates: list[tuple[SymmetryMode, Position]] = []
         self.known_accessible_titanium_indices: list[int] = []
         self.known_accessible_axionite_indices: list[int] = []
@@ -1104,6 +1108,7 @@ class Map:
             self.u_calc_core_center_positions()
 
         self.u_infer_map()
+        self.u_sync_core_footprint_tiles()
 
         self.stopwatch.lap("Core positions")
 
@@ -1188,6 +1193,9 @@ class Map:
                     self.enemy_buildings_in_vision.append(tile)
                     if building.entity_type == EntityType.CORE:
                         self.enemy_core_seen_in_vision = True
+
+                if building.entity_type == EntityType.CORE:
+                    self.u_update_visible_core_center(tile)
 
                 if building.team == self.own_team:
                     building_damaged = building.hp < self.ct.get_max_hp(building.id)
@@ -1402,9 +1410,9 @@ class Map:
         remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
         if len(remaining_positions) == 1:
             self.enemy_core_center_pos = next(iter(remaining_positions))
-            self.enemy_core_source_indices = self.u_cache_core_source_indices(
+            self.enemy_core_source_indices = self.u_set_core_source_indices(
+                self.enemy_team,
                 self.enemy_core_center_pos,
-                self.enemy_core_source_by_index,
             )
 
     def u_get_pos_tile(self, pos: Position) -> Tile:
@@ -1497,6 +1505,69 @@ class Map:
             source_mask_by_index[idx] = 1
         return source_indices
 
+    def u_set_core_source_indices(
+        self,
+        team: Team,
+        center: Position | None,
+    ) -> tuple[int, ...]:
+        if team == self.own_team:
+            old_source_indices = self.own_core_source_indices
+            source_mask_by_index = self.own_core_source_by_index
+        else:
+            old_source_indices = self.enemy_core_source_indices
+            source_mask_by_index = self.enemy_core_source_by_index
+
+        source_indices = self.u_cache_core_source_indices(center, source_mask_by_index)
+        if team == self.own_team:
+            self.own_core_source_indices = source_indices
+        else:
+            self.enemy_core_source_indices = source_indices
+
+        for idx in set(old_source_indices) - set(source_indices):
+            self.tiles_by_index[idx].u_clear_core_building_state(team)
+
+        self.u_sync_core_footprint_tiles_for_team(team)
+        return source_indices
+
+    def u_sync_core_footprint_tiles_for_team(self, team: Team) -> None:
+        if team == self.own_team:
+            center_pos = self.own_core_center_pos
+            source_indices = self.own_core_source_indices
+            building_id = self.own_core_building_id
+            building_hp = self.own_core_building_hp
+        else:
+            center_pos = self.enemy_core_center_pos
+            source_indices = self.enemy_core_source_indices
+            building_id = self.enemy_core_building_id
+            building_hp = self.enemy_core_building_hp
+
+        if center_pos is not None:
+            center_tile = self.u_get_pos_tile(center_pos)
+            if (
+                center_tile.building.entity_type == EntityType.CORE
+                and center_tile.building.team == team
+            ):
+                building_id = center_tile.building.id
+                building_hp = center_tile.building.hp
+
+        if team == self.own_team:
+            self.own_core_building_id = building_id
+            self.own_core_building_hp = building_hp
+        else:
+            self.enemy_core_building_id = building_id
+            self.enemy_core_building_hp = building_hp
+
+        for idx in source_indices:
+            self.tiles_by_index[idx].u_apply_core_building_state(
+                team,
+                building_id,
+                building_hp,
+            )
+
+    def u_sync_core_footprint_tiles(self) -> None:
+        self.u_sync_core_footprint_tiles_for_team(self.own_team)
+        self.u_sync_core_footprint_tiles_for_team(self.enemy_team)
+
     def u_calc_core_center_positions(self) -> bool:
         if self.own_core_center_pos is not None:
             return True
@@ -1521,9 +1592,9 @@ class Map:
                 return False
 
         self.own_core_center_pos = self.ct.get_position(core_tile.building.id)
-        self.own_core_source_indices = self.u_cache_core_source_indices(
+        self.own_core_source_indices = self.u_set_core_source_indices(
+            self.own_team,
             self.own_core_center_pos,
-            self.own_core_source_by_index,
         )
         self.u_reset_own_core_distance_initialization()
         if not self.enemy_core_center_pos_candidates:
@@ -1552,9 +1623,9 @@ class Map:
             }
             if len(remaining_positions) == 1:
                 self.enemy_core_center_pos = next(iter(remaining_positions))
-                self.enemy_core_source_indices = self.u_cache_core_source_indices(
+                self.enemy_core_source_indices = self.u_set_core_source_indices(
+                    self.enemy_team,
                     self.enemy_core_center_pos,
-                    self.enemy_core_source_by_index,
                 )
         return True
 
@@ -1622,6 +1693,27 @@ class Map:
             axionite_indices,
             self.parsed_axionite_indices,
         )
+
+    def u_update_visible_core_center(self, tile: Tile) -> None:
+        if tile.building.entity_type != EntityType.CORE or tile.building.team is None:
+            return
+
+        center_pos = self.ct.get_position(tile.building.id)
+        if tile.building.team == self.own_team:
+            if self.own_core_center_pos != center_pos:
+                self.own_core_center_pos = center_pos
+                self.u_set_core_source_indices(self.own_team, center_pos)
+                self.u_reset_own_core_distance_initialization()
+            else:
+                self.u_sync_core_footprint_tiles_for_team(self.own_team)
+            return
+
+        if tile.building.team == self.enemy_team:
+            if self.enemy_core_center_pos != center_pos:
+                self.enemy_core_center_pos = center_pos
+                self.u_set_core_source_indices(self.enemy_team, center_pos)
+            else:
+                self.u_sync_core_footprint_tiles_for_team(self.enemy_team)
 
     def u_infer_map(self) -> None:
         if (
@@ -1691,9 +1783,9 @@ class Map:
         self.u_reset_own_core_distance_initialization()
         self.core_distance_dirty_indices.clear()
         self.enemy_core_center_pos = enemy_core_pos
-        self.enemy_core_source_indices = self.u_cache_core_source_indices(
+        self.enemy_core_source_indices = self.u_set_core_source_indices(
+            self.enemy_team,
             self.enemy_core_center_pos,
-            self.enemy_core_source_by_index,
         )
         if symmetry_mode is not None:
             self.symmetry_mode = symmetry_mode

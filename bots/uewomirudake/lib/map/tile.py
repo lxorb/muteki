@@ -195,6 +195,10 @@ class Tile:
         return []
 
     def u_calc_intrinsic_passability(self) -> bool:
+        if self.is_core_of(self.map.enemy_team):
+            return False
+        if self.is_core_of(self.map.own_team):
+            return True
         building_type = self.building.entity_type
         if building_type is None:
             return self.environment != Environment.WALL
@@ -203,6 +207,10 @@ class Tile:
         return building_type in PASSABLE_TYPES
 
     def u_calc_core_distance_passability(self) -> bool:
+        if self.is_core_of(self.map.enemy_team):
+            return False
+        if self.is_core_of(self.map.own_team):
+            return True
         building_type = self.building.entity_type
         if building_type == EntityType.CORE:
             return self.building.team == self.map.own_team
@@ -259,6 +267,35 @@ class Tile:
         )
         self.u_refresh_core_distance_passability()
         self.u_refresh_intrinsic_passability()
+
+    def u_apply_core_building_state(
+        self,
+        team: Team,
+        building_id: int | None,
+        hp: int | None,
+    ) -> None:
+        if self.building.entity_type not in {None, EntityType.CORE}:
+            self.clear_building()
+
+        self.building.id = building_id
+        self.building.entity_type = EntityType.CORE
+        self.building.team = team
+        self.building.direction = None
+        self.building.vision_radius_sq = None
+        self.building.targets = []
+        self.building.hp = hp
+        self.u_refresh_core_distance_passability()
+        self.u_refresh_intrinsic_passability()
+        self.is_passable = self._is_intrinsically_passable() and (
+            self.bot.id is None or self.position == self.map.current_pos
+        )
+
+    def u_clear_core_building_state(self, team: Team) -> None:
+        if self.building.entity_type == EntityType.CORE and self.building.team == team:
+            self.clear_building()
+            self.is_passable = self._is_intrinsically_passable() and (
+                self.bot.id is None or self.position == self.map.current_pos
+            )
 
     def update_attributes(self) -> None:
         ct = self.map.ct
