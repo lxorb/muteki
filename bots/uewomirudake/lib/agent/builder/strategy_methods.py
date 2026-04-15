@@ -4036,20 +4036,37 @@ class BuilderStrategyMethodsMixin:
 
         If the exact enemy core position is not known yet, move toward the
         nearest remaining symmetry candidate instead, using a single A* path
-        search.
+        search. Once the center is known, move toward the closest in-bounds
+        tile adjacent to the enemy core footprint that is either passable or
+        still of unknown building type.
         """
         enemy_core_center_pos = self.map.enemy_core_center_pos
+        current_pos = self.map.current_pos
 
         if enemy_core_center_pos is not None:
+            print("MARK 3")
+            candidate_tiles = []
+            center_x = enemy_core_center_pos.x
+            center_y = enemy_core_center_pos.y
+            for dx in range(-2, 3):
+                for dy in range(-2, 3):
+                    if max(abs(dx), abs(dy)) != 2:
+                        continue
+                    candidate_pos = Position(center_x + dx, center_y + dy)
+                    if not self.map.u_is_in_bounds(candidate_pos):
+                        continue
+                    candidate_tile = self.map.u_get_pos_tile(candidate_pos)
+                    if (
+                        candidate_tile.building.entity_type is not None
+                        and not candidate_tile.is_passable
+                    ):
+                        continue
+                    candidate_tiles.append(candidate_tile)
+
             target_pos = min(
-                (
-                    core_tile.position
-                    for core_tile in self.map.u_get_core_footprint_positions(
-                        enemy_core_center_pos
-                    )
-                ),
+                (tile.position for tile in candidate_tiles),
                 key=lambda pos: (
-                    self.map.u_get_estimated_dist_to_self(pos),
+                    abs(current_pos.x - pos.x) + abs(current_pos.y - pos.y),
                     pos.x,
                     pos.y,
                 ),
@@ -4057,6 +4074,7 @@ class BuilderStrategyMethodsMixin:
             )
             if target_pos is None:
                 return False
+            print("MARK 2")
             return bool(
                 self.u_move_to(
                     target_pos,
@@ -4069,6 +4087,7 @@ class BuilderStrategyMethodsMixin:
             not self.map.enemy_core_center_pos_candidates
             and not self.map.u_calc_core_center_positions()
         ):
+            print("MARK 1")
             return False
 
         target_pos = min(
@@ -4083,42 +4102,15 @@ class BuilderStrategyMethodsMixin:
             default=None,
         )
         if target_pos is None:
+            print("MARK 5")
             return False
 
+        print("MARK 6")
         return bool(
             self.u_move_to(
                 target_pos,
                 allow_conveyor_building=False,
                 respect_titanium_reserve_for_road_build=True,
-            )
-        )
-
-    def s_checkpoint_move_toward_enemy_core(self):
-        if (
-            not self.map.map_json_fully_loaded
-            or self.map.enemy_core_seen_in_vision
-        ):
-            return False
-
-        checkpoint_positions = self.map.enemy_core_checkpoint_positions
-        if not checkpoint_positions:
-            return False
-
-        next_checkpoint_index = self.enemy_core_checkpoint_index + 1
-        while (
-            next_checkpoint_index < len(checkpoint_positions)
-            and self.map.current_pos == checkpoint_positions[next_checkpoint_index]
-        ):
-            self.enemy_core_checkpoint_index = next_checkpoint_index
-            next_checkpoint_index += 1
-
-        if next_checkpoint_index >= len(checkpoint_positions):
-            return False
-
-        return bool(
-            self.u_move_to(
-                checkpoint_positions[next_checkpoint_index],
-                allow_conveyor_building=False,
             )
         )
 

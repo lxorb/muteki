@@ -87,7 +87,6 @@ HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_attack_key_enemy_supply_chain, True),
     # (BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
     # (BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
-    (BuilderStrategyMethodsMixin.s_checkpoint_move_toward_enemy_core,),
     (BuilderStrategyMethodsMixin.s_move_toward_enemy_core),
     (BuilderStrategyMethodsMixin.s_patrol_enemy_core,),
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
@@ -149,6 +148,7 @@ INITIAL_BB_ORDER: list[str] = [
     HARASSMENT_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
+    # FIRST RESOURCE INCREASE
     SCAVENGER_STRATEGY_ID,
 ]
 FURTHER_BB_ROTATION: list[str] = [
