@@ -4038,13 +4038,33 @@ class BuilderStrategyMethodsMixin:
         nearest remaining symmetry candidate instead, using a single A* path
         search. Once the center is known, move toward the closest in-bounds
         tile adjacent to the enemy core footprint that is either passable or
-        still of unknown building type.
+        still of unknown building type. When the chosen target has never been
+        seen before, move toward the first unseen tile on the ray from the
+        builder to that target instead.
         """
         enemy_core_center_pos = self.map.enemy_core_center_pos
         current_pos = self.map.current_pos
 
+        def get_move_target(target_pos: Position) -> Position:
+            target_tile = self.map.u_get_pos_tile(target_pos)
+            if target_tile.last_seen_turn != -1:
+                return target_pos
+
+            target_direction = self.map.u_get_direction_between(current_pos, target_pos)
+            if target_direction is None:
+                return target_pos
+
+            delta_x, delta_y = target_direction.delta()
+            next_pos = Position(current_pos.x + delta_x, current_pos.y + delta_y)
+            while self.map.u_is_in_bounds(next_pos):
+                next_tile = self.map.u_get_pos_tile(next_pos)
+                if next_tile.last_seen_turn == -1:
+                    return next_pos
+                next_pos = Position(next_pos.x + delta_x, next_pos.y + delta_y)
+
+            return target_pos
+
         if enemy_core_center_pos is not None:
-            print("MARK 3")
             candidate_tiles = []
             center_x = enemy_core_center_pos.x
             center_y = enemy_core_center_pos.y
@@ -4074,10 +4094,10 @@ class BuilderStrategyMethodsMixin:
             )
             if target_pos is None:
                 return False
-            print("MARK 2")
+            move_target_pos = get_move_target(target_pos)
             return bool(
                 self.u_move_to(
-                    target_pos,
+                    move_target_pos,
                     allow_conveyor_building=False,
                     respect_titanium_reserve_for_road_build=True,
                 )
@@ -4087,7 +4107,6 @@ class BuilderStrategyMethodsMixin:
             not self.map.enemy_core_center_pos_candidates
             and not self.map.u_calc_core_center_positions()
         ):
-            print("MARK 1")
             return False
 
         target_pos = min(
@@ -4098,17 +4117,16 @@ class BuilderStrategyMethodsMixin:
                 self.map.u_get_estimated_dist_to_self(pos),
                 pos.x,
                 pos.y,
-            ),
-            default=None,
-        )
+                ),
+                default=None,
+            )
         if target_pos is None:
-            print("MARK 5")
             return False
 
-        print("MARK 6")
+        move_target_pos = get_move_target(target_pos)
         return bool(
             self.u_move_to(
-                target_pos,
+                move_target_pos,
                 allow_conveyor_building=False,
                 respect_titanium_reserve_for_road_build=True,
             )
