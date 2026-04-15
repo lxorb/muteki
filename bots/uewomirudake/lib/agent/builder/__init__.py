@@ -1,4 +1,4 @@
-from cambc import Controller, Direction, EntityType, Environment
+from cambc import Controller, Direction, EntityType, Environment, Position
 
 from lib.agent import Agent
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
@@ -35,6 +35,8 @@ class BuilderAgent(
     bugnav_last_move_direction: Direction | None
     harvesters_built: int
     last_built_entity_type: EntityType | None
+    enemy_core_proxy_target_pos: Position | None
+    enemy_core_proxy_base_target_pos: Position | None
 
     def __init__(self, strategy: str = ""):
         Agent.__init__(self)
@@ -56,6 +58,8 @@ class BuilderAgent(
         self.bugnav_last_move_direction = None
         self.harvesters_built = 0
         self.last_built_entity_type = None
+        self.enemy_core_proxy_target_pos = None
+        self.enemy_core_proxy_base_target_pos = None
 
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos

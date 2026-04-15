@@ -4219,28 +4219,56 @@ class BuilderStrategyMethodsMixin:
         search. Once the center is known, move toward the closest in-bounds
         tile adjacent to the enemy core footprint that is either passable or
         still of unknown building type. When the chosen target has never been
-        seen before, move toward the first unseen tile on the ray from the
-        builder to that target instead.
+        seen before, reuse a cached unseen proxy target on the Bresenham line
+        toward that target until the proxy becomes stale or the underlying
+        target changes.
         """
         enemy_core_center_pos = self.map.enemy_core_center_pos
         current_pos = self.map.current_pos
 
+        def iter_bresenham_positions(source_pos: Position, target_pos: Position):
+            x0, y0 = source_pos.x, source_pos.y
+            x1, y1 = target_pos.x, target_pos.y
+            dx = abs(x1 - x0)
+            dy = abs(y1 - y0)
+            step_x = 1 if x0 < x1 else -1
+            step_y = 1 if y0 < y1 else -1
+            error = dx - dy
+
+            while x0 != x1 or y0 != y1:
+                doubled_error = error * 2
+                if doubled_error > -dy:
+                    error -= dy
+                    x0 += step_x
+                if doubled_error < dx:
+                    error += dx
+                    y0 += step_y
+                yield Position(x0, y0)
+
         def get_move_target(target_pos: Position) -> Position:
+            if self.enemy_core_proxy_base_target_pos != target_pos:
+                self.enemy_core_proxy_target_pos = None
+                self.enemy_core_proxy_base_target_pos = target_pos
+
+            proxy_target_pos = self.enemy_core_proxy_target_pos
+            if proxy_target_pos is not None:
+                proxy_tile = self.map.u_get_pos_tile(proxy_target_pos)
+                if (
+                    proxy_target_pos != current_pos
+                    and proxy_tile.last_seen_turn == -1
+                ):
+                    return proxy_target_pos
+                self.enemy_core_proxy_target_pos = None
+
             target_tile = self.map.u_get_pos_tile(target_pos)
             if target_tile.last_seen_turn != -1:
                 return target_pos
 
-            target_direction = self.map.u_get_direction_between(current_pos, target_pos)
-            if target_direction is None:
-                return target_pos
-
-            delta_x, delta_y = target_direction.delta()
-            next_pos = Position(current_pos.x + delta_x, current_pos.y + delta_y)
-            while self.map.u_is_in_bounds(next_pos):
+            for next_pos in iter_bresenham_positions(current_pos, target_pos):
                 next_tile = self.map.u_get_pos_tile(next_pos)
                 if next_tile.last_seen_turn == -1:
+                    self.enemy_core_proxy_target_pos = next_pos
                     return next_pos
-                next_pos = Position(next_pos.x + delta_x, next_pos.y + delta_y)
 
             return target_pos
 

@@ -36,6 +36,8 @@ class BuilderCommonSelf(Protocol):
     bugnav_last_move_direction: Direction | None
     harvesters_built: int
     last_built_entity_type: EntityType | None
+    enemy_core_proxy_target_pos: Position | None
+    enemy_core_proxy_base_target_pos: Position | None
 
     def u_filter_tiles(
         self,
