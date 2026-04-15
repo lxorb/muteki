@@ -313,6 +313,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_attack_enemy_harvester_supply_link(
         self,
         move_towards: bool = True,
+        require_no_enemy_bbs_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_attack_key_enemy_supply_chain(

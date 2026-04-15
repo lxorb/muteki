@@ -3503,7 +3503,11 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_attack_enemy_harvester_supply_link(self, move_towards: bool = True):
+    def s_attack_enemy_harvester_supply_link(
+        self,
+        move_towards: bool = True,
+        require_no_enemy_bbs_in_range: bool = True,
+    ):
         """
         Attack the closest enemy supply link next to a visible enemy harvester.
 
@@ -3511,6 +3515,9 @@ class BuilderStrategyMethodsMixin:
         conveyor or bridge tiles that the builder can stand on, and then either
         attacks from the current tile or moves toward the best target.
         """
+        if require_no_enemy_bbs_in_range and self.map.has_enemy_bot_in_vision:
+            return False
+
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
