@@ -299,9 +299,16 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,
+        wait_if_enemy_builder_bots_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_build_enemy_supplied_sentinel(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_gunner_next_to_enemy_core(
         self,
         move_towards: bool = True,
         hold: bool = True,
@@ -316,6 +323,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_attack_enemy_core_supply_link(
         self,
         move_towards: bool = True,
+        wait_if_enemy_builder_bots_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_move_toward_enemy_core(self) -> BuilderActionResult: ...

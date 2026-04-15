@@ -43,6 +43,14 @@ _ENEMY_CORE_PATROL_OFFSETS = (
 
 
 class BuilderStrategyMethodsMixin:
+    def _is_visible_building_damaged(self, tile) -> bool:
+        building = tile.building
+        return (
+            building.id is not None
+            and building.hp is not None
+            and building.hp < self.ct.get_max_hp(building.id)
+        )
+
     def u_get_splitter_direction_for_target_directions(
         self,
         *target_directions: Direction | None,
@@ -3329,7 +3337,11 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
-    def s_attack_enemy_core_supply_link(self, move_towards: bool = True):
+    def s_attack_enemy_core_supply_link(
+        self,
+        move_towards: bool = True,
+        wait_if_enemy_builder_bots_in_range: bool = True,
+    ):
         """
         Attack the closest visible enemy supply link that directly feeds the enemy core.
 
@@ -3345,6 +3357,7 @@ class BuilderStrategyMethodsMixin:
             return False
 
         current_round = self.ct.get_current_round()
+
         target_tile = None
         target_dist = None
         for tile in dict.fromkeys(self.map.enemy_supply_links_in_vision):
@@ -3369,18 +3382,27 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
+        if (
+            wait_if_enemy_builder_bots_in_range
+            and self.map.has_enemy_bot_in_vision
+            and current_pos == target_tile.position
+            and not self._is_visible_building_damaged(target_tile)
+        ):
+            return True
+
         return bool(
             self.u_attack_passable(
                 target_tile.position,
                 move_towards=move_towards,
-                destroy_condition=lambda pos: (
-                    self.map.u_get_pos_tile(pos).in_enemy_bot_action_range_turn
-                    != current_round
-                ),
+                destroy_condition=lambda _: True,
             )
         )
 
-    def s_attack_key_enemy_supply_chain(self, move_towards: bool = True):
+    def s_attack_key_enemy_supply_chain(
+        self,
+        move_towards: bool = True,
+        wait_if_enemy_builder_bots_in_range: bool = True,
+    ):
         """
         Attack enemy supply links that matter for core-facing sentinel positions.
 
@@ -3397,6 +3419,7 @@ class BuilderStrategyMethodsMixin:
             return False
 
         current_tile = self.map.u_get_pos_tile(current_pos)
+
         enemy_core_tiles = self.map.u_get_core_footprint_positions(
             enemy_core_center_pos
         )
@@ -3425,6 +3448,12 @@ class BuilderStrategyMethodsMixin:
             and current_tile.building.entity_type in SUPPLY_LINK_TYPES
             and sentinel_targets_enemy_core(current_tile)
         ):
+            if (
+                wait_if_enemy_builder_bots_in_range
+                and self.map.has_enemy_bot_in_vision
+                and not self._is_visible_building_damaged(current_tile)
+            ):
+                return True
             return bool(
                 self.u_attack_passable(
                     current_pos,
@@ -3467,6 +3496,14 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
+        if (
+            wait_if_enemy_builder_bots_in_range
+            and self.map.has_enemy_bot_in_vision
+            and current_pos == target_tile.position
+            and not self._is_visible_building_damaged(target_tile)
+        ):
+            return True
+
         return bool(
             self.u_attack_passable(
                 target_tile.position,
@@ -3498,6 +3535,8 @@ class BuilderStrategyMethodsMixin:
 
         def can_host_sentinel(target_tile) -> bool:
             if target_tile.last_seen_turn != current_round:
+                return False
+            if target_tile.is_core_of(enemy_team):
                 return False
             if target_tile.bot.id is not None and target_tile.position != current_pos:
                 return False
@@ -3654,6 +3693,215 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
+    def s_gunner_next_to_enemy_core(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        """
+        Build a gunner on a tile currently fed by a recently active enemy supplier,
+        but only when directly facing the enemy core would put the core on the
+        gunner ray.
+        """
+        current_pos = self.map.current_pos
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+        candidate_keys_by_index: dict[int, tuple[int, int, int, int, int]] = {}
+        tiles_by_index = self.map.tiles_by_index
+
+        enemy_core_tiles: list = []
+        if self.map.enemy_core_center_pos is not None:
+            enemy_core_tiles = self.map.u_get_core_footprint_positions(
+                self.map.enemy_core_center_pos
+            )
+        elif self.map.enemy_core_center_pos_candidates:
+            enemy_core_tile_by_index: dict[int, object] = {}
+            for _, candidate_center_pos in self.map.enemy_core_center_pos_candidates:
+                for core_tile in self.map.u_get_core_footprint_positions(
+                    candidate_center_pos
+                ):
+                    enemy_core_tile_by_index.setdefault(core_tile.index, core_tile)
+            enemy_core_tiles = list(enemy_core_tile_by_index.values())
+        if not enemy_core_tiles:
+            return False
+
+        def can_host_gunner(target_tile) -> bool:
+            if target_tile.last_seen_turn != current_round:
+                return False
+            if target_tile.is_core_of(enemy_team):
+                return False
+            if target_tile.bot.id is not None and target_tile.position != current_pos:
+                return False
+            if target_tile.building.id is None:
+                return True
+            return (
+                target_tile.building.team == own_team
+                and target_tile.building.entity_type
+                in {EntityType.ROAD, EntityType.BARRIER}
+            )
+
+        def gunner_targets_enemy_core_directly(target_tile) -> bool:
+            facing_direction = self.u_get_sentinel_orientation(target_tile.position)
+            if facing_direction == Direction.CENTRE:
+                return False
+            return any(
+                self.map.u_gunner_covers_target(
+                    target_tile.position,
+                    facing_direction,
+                    core_tile.position,
+                    GameConstants.GUNNER_VISION_RADIUS_SQ,
+                )
+                for core_tile in enemy_core_tiles
+            )
+
+        def step_off_current_build_tile(target_tile) -> bool:
+            candidate_entries: list[
+                tuple[tuple[int, int, int, int, int, int], Direction]
+            ] = []
+
+            for safe_order, adjacent_pos in enumerate(
+                self.map.u_iter_adjacent_cardinal_positions(current_pos)
+            ):
+                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                move_direction = self.map.u_get_direction_between(
+                    current_pos,
+                    adjacent_pos,
+                )
+                if move_direction is None or not self.ct.can_move(move_direction):
+                    continue
+                if (
+                    adjacent_tile.position.distance_squared(target_tile.position)
+                    > BUILDER_ACTION_RADIUS_SQ
+                ):
+                    continue
+
+                if (
+                    adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
+                ):
+                    walkable_rank = 0
+                elif adjacent_tile.is_core_of(own_team):
+                    walkable_rank = 1
+                elif (
+                    adjacent_tile.building.entity_type == EntityType.ROAD
+                    and adjacent_tile.building.team == own_team
+                ):
+                    walkable_rank = 2
+                elif adjacent_tile.building.id is None:
+                    walkable_rank = 3
+                elif adjacent_tile.is_passable:
+                    walkable_rank = 4
+                else:
+                    continue
+
+                candidate_entries.append(
+                    (
+                        (
+                            1 if adjacent_tile.is_enemy_turret_target_tile else 0,
+                            walkable_rank,
+                            adjacent_tile.own_core_dist,
+                            adjacent_tile.dist_to_self,
+                            safe_order,
+                            adjacent_tile.index,
+                        ),
+                        move_direction,
+                    )
+                )
+
+            if not candidate_entries:
+                return False
+
+            _, move_direction = min(candidate_entries)
+            self.u_move_with_target(move_direction, current_pos)
+            return True
+
+        for supplier_tile in dict.fromkeys(self.map.enemy_supply_links_in_vision):
+            if supplier_tile.last_seen_turn != current_round:
+                continue
+            if supplier_tile.building.team != enemy_team:
+                continue
+            if supplier_tile.building.entity_type not in SUPPLY_LINK_TYPES:
+                continue
+
+            last_resource_turn = supplier_tile.building.last_resource_onit_turn
+            if last_resource_turn is None or current_round - last_resource_turn > 3:
+                continue
+
+            for target_tile in supplier_tile.building.targets:
+                if not can_host_gunner(target_tile):
+                    continue
+                if not gunner_targets_enemy_core_directly(target_tile):
+                    continue
+
+                key = (
+                    0 if target_tile.position == current_pos else 1,
+                    target_tile.dist_to_self,
+                    current_round - last_resource_turn,
+                    target_tile.own_core_dist,
+                    target_tile.index,
+                )
+                existing_key = candidate_keys_by_index.get(target_tile.index)
+                if existing_key is None or key < existing_key:
+                    candidate_keys_by_index[target_tile.index] = key
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_keys_by_index:
+            return False
+
+        target_indices = sorted(
+            candidate_keys_by_index,
+            key=lambda idx: candidate_keys_by_index[idx],
+        )
+        for target_idx in target_indices:
+            target_tile = tiles_by_index[target_idx]
+            if target_tile.position == current_pos:
+                if move_towards and step_off_current_build_tile(target_tile):
+                    print(
+                        "Gunner next to enemy core: step off",
+                        target_tile.position,
+                    )
+                    return True
+                continue
+
+            gunner_direction = self.u_get_sentinel_orientation(target_tile.position)
+            if self.u_build_at(
+                target_tile.position,
+                EntityType.GUNNER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+                facing_direction=gunner_direction,
+            ):
+                if self.last_built_entity_type == EntityType.GUNNER:
+                    print(
+                        "Gunner next to enemy core: built at",
+                        target_tile.position,
+                        "facing",
+                        gunner_direction,
+                    )
+                elif (
+                    current_pos.distance_squared(target_tile.position)
+                    > BUILDER_ACTION_RADIUS_SQ
+                ):
+                    print(
+                        "Gunner next to enemy core: move toward",
+                        target_tile.position,
+                    )
+                else:
+                    print(
+                        "Gunner next to enemy core: hold for",
+                        target_tile.position,
+                    )
+                return True
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return False
+
     def s_replace_damaged_conveyor(
         self,
         move_towards: bool = True,
@@ -3793,9 +4041,25 @@ class BuilderStrategyMethodsMixin:
         enemy_core_center_pos = self.map.enemy_core_center_pos
 
         if enemy_core_center_pos is not None:
+            target_pos = min(
+                (
+                    core_tile.position
+                    for core_tile in self.map.u_get_core_footprint_positions(
+                        enemy_core_center_pos
+                    )
+                ),
+                key=lambda pos: (
+                    self.map.u_get_estimated_dist_to_self(pos),
+                    pos.x,
+                    pos.y,
+                ),
+                default=None,
+            )
+            if target_pos is None:
+                return False
             return bool(
                 self.u_move_to(
-                    enemy_core_center_pos,
+                    target_pos,
                     allow_conveyor_building=False,
                     respect_titanium_reserve_for_road_build=True,
                 )

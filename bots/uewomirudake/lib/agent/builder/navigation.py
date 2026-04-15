@@ -169,6 +169,8 @@ class BuilderNavigationMixin:
         if next_idx is None:
             return False
         next_tile = self.map.tiles_by_index[next_idx]
+        if next_tile.is_core_of(self.map.enemy_team):
+            return False
         if avoid_enemy_turrets and next_tile.is_enemy_turret_target_tile:
             return False
         if self.ct.can_move(move_direction):
