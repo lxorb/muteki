@@ -26,7 +26,18 @@ class TurretAgent(Agent):
                 return self.u_turret_attack()
             case EntityType.BREACH:
                 return self.u_turret_attack()
+            case EntityType.LAUNCHER:
+                return self.u_launcher_run()
         return False
+
+    def u_launcher_run(self) -> bool:
+        
+        # priority list:
+        # enemies into killer zone
+        # enemies away from core
+        # ally into safe zone (the closer the higher the better)
+
+        return True
 
     def u_gunner_attack(self) -> bool:
         """
