@@ -361,12 +361,12 @@ class Tile:
             self.building.team = ct.get_team(self.building.id)
             tracks_targets = self.u_tracks_building_targets()
 
-            if tracks_targets and self.building.entity_type in DIRECTIONAL_ENTITY_TYPES:
+            if self.building.entity_type in DIRECTIONAL_ENTITY_TYPES:
                 self.building.direction = ct.get_direction(self.building.id)
             else:
                 self.building.direction = None
 
-            if tracks_targets and self.building.entity_type in VISION_RADIUS_ENTITY_TYPES:
+            if self.building.entity_type in VISION_RADIUS_ENTITY_TYPES:
                 self.building.vision_radius_sq = ct.get_vision_radius_sq(
                     self.building.id
                 )
@@ -384,22 +384,22 @@ class Tile:
             )
             self.update_target_zones_building()
         else:
-            if (
-                self.u_tracks_building_targets()
-                and self.building.entity_type == EntityType.GUNNER
-            ):
+            if self.building.entity_type == EntityType.GUNNER:
                 new_direction = ct.get_direction(self.building.id)
                 if new_direction != self.building.direction:
-                    self.building.prev_entity_type = self.building.entity_type
-                    self.building.prev_targets = self.building.targets.copy()
-                    self.building.prev_team = self.building.team
+                    tracks_targets = self.u_tracks_building_targets()
+                    if tracks_targets:
+                        self.building.prev_entity_type = self.building.entity_type
+                        self.building.prev_targets = self.building.targets.copy()
+                        self.building.prev_team = self.building.team
                     self.building.direction = new_direction
-                    self.building.targets = self.get_targets(
-                        self.building.entity_type,
-                        self.building.id,
-                        direction=self.building.direction,
-                    )
-                    self.update_target_zones_building()
+                    if tracks_targets:
+                        self.building.targets = self.get_targets(
+                            self.building.entity_type,
+                            self.building.id,
+                            direction=self.building.direction,
+                        )
+                        self.update_target_zones_building()
 
         self.building.hp = ct.get_hp(self.building.id)
         if self.building.entity_type in STORED_RESOURCE_TRACKED_ENTITY_TYPES:

@@ -1,4 +1,4 @@
-from cambc import EntityType, Position
+from cambc import EntityType, Environment, Position
 
 from lib.agent import Agent
 from lib.agent.constants import (
@@ -21,12 +21,167 @@ class TurretAgent(Agent):
             case EntityType.LAUNCHER:
                 return self.u_launcher_throw()
             case EntityType.GUNNER:
-                return self.u_turret_attack()
+                return self.u_gunner_attack()
             case EntityType.SENTINEL:
                 return self.u_turret_attack()
             case EntityType.BREACH:
                 return self.u_turret_attack()
         return False
+
+    def u_gunner_attack(self) -> bool:
+        """
+        Fire according to the engine's current gunner target selection.
+
+        The engine's `get_gunner_target()` is used as one hint, but target
+        selection is resolved locally from the firing ray so every tile in the
+        enemy core footprint is treated like the center tile. Fire when the
+        resolved target is an enemy tile with no allied builder on it, or when
+        the tile contains an enemy builder. If the first target is an allied
+        road, clear it only when the next targetable occupied tile behind it
+        would be an enemy building or would contain an enemy builder bot.
+        """
+        current_round = self.ct.get_current_round()
+        current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        direction = current_tile.building.direction
+        if direction is None:
+            direction = self.ct.get_direction()
+        if direction is None:
+            print(
+                "Gunner next target:",
+                None,
+                "building:",
+                None,
+                "enemy_bot:",
+                False,
+            )
+            return False
+
+        vision_radius_sq = current_tile.building.vision_radius_sq
+        if vision_radius_sq is None:
+            vision_radius_sq = self.ct.get_vision_radius_sq()
+        ray_tiles = self.map.u_get_gunner_ray_tiles(
+            current_pos,
+            direction,
+            vision_radius_sq,
+        )
+        target_tile = self.u_get_gunner_target_tile(ray_tiles, current_round)
+        print(
+            "Gunner next target:",
+            None if target_tile is None else target_tile.position,
+            "building:",
+            None if target_tile is None else target_tile.building.entity_type,
+            "enemy_bot:",
+            bool(
+                target_tile is not None
+                and target_tile.bot.id is not None
+                and target_tile.bot.team != self.map.own_team
+            ),
+        )
+        if target_tile is None:
+            return False
+        if target_tile.bot.id is not None and target_tile.bot.team == self.map.own_team:
+            return False
+
+        if self.u_gunner_should_attack_target(target_tile) and self.ct.can_fire(
+            target_tile.position
+        ):
+            self.ct.fire(target_tile.position)
+            return True
+
+        if (
+            target_tile.building.team == self.map.own_team
+            and target_tile.building.entity_type == EntityType.ROAD
+        ):
+            target_index = next(
+                (
+                    idx
+                    for idx, ray_tile in enumerate(ray_tiles)
+                    if ray_tile.position == target_tile.position
+                ),
+                None,
+            )
+            if (
+                target_index is not None
+                and self.u_gunner_should_clear_own_road(
+                    ray_tiles[target_index + 1 :],
+                    current_round,
+                )
+                and self.ct.can_fire(target_tile.position)
+            ):
+                self.ct.fire(target_tile.position)
+                return True
+
+        return False
+
+    def u_get_gunner_target_tile(
+        self,
+        ray_tiles,
+        current_round: int,
+    ):
+        return self.u_get_gunner_first_targetable_tile(ray_tiles, current_round)
+
+    def u_gunner_should_attack_target(self, target_tile) -> bool:
+        return (
+            (
+                target_tile.bot.id is not None
+                and target_tile.bot.team != self.map.own_team
+            )
+            or target_tile.is_core_of(self.map.enemy_team)
+            or (
+                target_tile.building.id is not None
+                and target_tile.building.team != self.map.own_team
+            )
+        )
+
+    def u_gunner_should_clear_own_road(
+        self,
+        behind_tiles,
+        current_round: int,
+    ) -> bool:
+        followup_target = self.u_get_gunner_followup_target(behind_tiles, current_round)
+        if followup_target is None:
+            return False
+        return self.u_gunner_should_clear_for_followup_target(followup_target)
+
+    def u_gunner_should_clear_for_followup_target(self, target_tile) -> bool:
+        marker_entity_type = getattr(EntityType, "MARKER", None)
+        return (
+            (
+                target_tile.bot.id is not None
+                and target_tile.bot.team != self.map.own_team
+            )
+            or target_tile.is_core_of(self.map.enemy_team)
+            or (
+                target_tile.building.id is not None
+                and target_tile.building.team != self.map.own_team
+                and target_tile.building.entity_type != marker_entity_type
+            )
+        )
+
+    def u_get_gunner_followup_target(
+        self,
+        behind_tiles,
+        current_round: int,
+    ):
+        return self.u_get_gunner_first_targetable_tile(behind_tiles, current_round)
+
+    def u_get_gunner_first_targetable_tile(
+        self,
+        ray_tiles,
+        current_round: int,
+    ):
+        for tile in ray_tiles:
+            if tile.environment == Environment.WALL:
+                return None
+            if tile.is_core_of(self.map.enemy_team) or tile.is_core_of(self.map.own_team):
+                return tile
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.bot.id is not None or tile.building.id is not None:
+                return tile
+
+        return None
 
     def u_turret_attack(self) -> bool:
         """
