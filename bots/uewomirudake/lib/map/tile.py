@@ -357,7 +357,13 @@ class Tile:
             self.building.prev_entity_type = self.building.entity_type
             self.building.prev_targets = self.building.targets.copy()
             self.building.prev_team = self.building.team
-            self.building.entity_type = ct.get_entity_type(self.building.id)
+            original_entity_type = ct.get_entity_type(self.building.id)
+            if (original_entity_type == EntityType.MARKER):
+                self.building.id = None
+                self.building.entity_type = None
+                self.building.team = None
+                return
+            self.building.entity_type = original_entity_type
             self.building.team = ct.get_team(self.building.id)
             tracks_targets = self.u_tracks_building_targets()
 
