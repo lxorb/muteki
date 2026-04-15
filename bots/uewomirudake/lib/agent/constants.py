@@ -1,4 +1,5 @@
 from cambc import EntityType
+from lib.map import SymmetryMode
 
 ### GAME CONSTANTS ###
 BUILDER_ACTION_RADIUS_SQ: int = 2
@@ -109,6 +110,12 @@ LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_armoured_conveyor"] = (
 )
 
 
+### MARKER INFORMATION ###
+
+MARKER_STRATEGIES_LIST = [INITRES_STRATEGY_ID,SCAVENGER_STRATEGY_ID, HARASSMENT_STRATEGY_ID, DEFENDER_STRATEGY_ID]
+MARKER_SYMMETRY_LIST = [SymmetryMode.ROTATION, SymmetryMode.MIRROR_X, SymmetryMode.MIRROR_Y, None]
+
+
 """
 The following code automatically prevents
 surrendering early in submissions.
@@ -117,7 +124,7 @@ surrendering early in submissions.
 import sys
 from pathlib import Path
 
-SURRENDER_AT_TURN: int = 1e6
+SURRENDER_AT_TURN: int = 100
 
 try:
     exclude_module_dir: str | None = None
@@ -165,3 +172,5 @@ try:
         )
 except Exception:
     pass
+
+
