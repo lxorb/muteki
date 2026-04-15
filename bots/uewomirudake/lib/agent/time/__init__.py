@@ -1,4 +1,5 @@
 from cambc import Controller
+
 ALLOCATED_MAP_TIME_MS = 0.75
 ALLOCATED_BOT_TIME_MS = 0.8
 
@@ -14,7 +15,7 @@ OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
 
 import inspect
 
-OUTPUT_TIME = False
+LOG_TIME = True
 
 
 class RoundStopwatch:
@@ -44,10 +45,10 @@ class RoundStopwatch:
         if self.iterations & OVERTIME_CHECK_MASK:
             return False
 
-        if OUTPUT_TIME:
-            print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
-
         active_cpu_time = self.ct.get_cpu_time_elapsed()
+
+        if LOG_TIME:
+            print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
 
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
@@ -61,7 +62,7 @@ class RoundStopwatch:
 
         active_cpu_time = self.ct.get_cpu_time_elapsed()
 
-        if OUTPUT_TIME:
+        if LOG_TIME:
             print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
 
         return (
