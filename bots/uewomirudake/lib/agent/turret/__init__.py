@@ -192,11 +192,12 @@ class TurretAgent(Agent):
         bot or enemy building. It then applies the configured category order.
 
         Within the attack-turret bucket, enemy turrets that can currently hit
-        this turret are preferred, then lower remaining HP breaks ties. Enemy
-        bots on allied tiles and enemy bots elsewhere are separate priority
-        buckets, and each bucket breaks ties by lower remaining HP. All later
-        buckets also tie-break by lower remaining HP. The first tile after that
-        ordering is fired at.
+        this turret are preferred, then lower remaining HP breaks ties.
+        Unprotected enemy harvesters use their own bucket, then lower remaining
+        HP breaks ties. Enemy bots on allied tiles and enemy bots elsewhere are
+        separate priority buckets, and each bucket breaks ties by lower
+        remaining HP. All later buckets also tie-break by lower remaining HP.
+        The first tile after that ordering is fired at.
         """
         candidate_tiles = self.u_filter_tiles(
             [self.map.u_get_pos_tile(pos) for pos in self.ct.get_attackable_tiles()],
@@ -215,6 +216,19 @@ class TurretAgent(Agent):
 
         self.ct.fire(candidate_tiles[0].position)
         return True
+
+    def u_enemy_harvester_has_adjacent_own_turret(self, harvester_tile) -> bool:
+        harvester_team = harvester_tile.building.team
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+            harvester_tile.index
+        ):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.building.team == harvester_team
+                and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                return True
+        return False
 
     def u_launcher_throw(self) -> bool:
         """
@@ -380,6 +394,18 @@ class TurretAgent(Agent):
             return (
                 TURRET_TARGET_PRIORITY_RANK[enemy_building_type],
                 0 if self.map.u_enemy_turret_targets_self(enemy_building_id) else 1,
+                target_tile.building.hp,
+            )
+
+        if (
+            enemy_building_id is not None
+            and enemy_building_type == EntityType.HARVESTER
+            and not self.u_enemy_harvester_has_adjacent_own_turret(target_tile)
+        ):
+            return (
+                TURRET_TARGET_PRIORITY_RANK[
+                    "enemy_harvester_without_adjacent_own_turret"
+                ],
                 target_tile.building.hp,
             )
 

@@ -75,6 +75,7 @@ TURRET_TARGET_PRIORITY = (
     EntityType.GUNNER,
     EntityType.BREACH,
     EntityType.CORE,
+    "enemy_harvester_without_adjacent_own_turret",
     EntityType.LAUNCHER,
     "enemy_bot_on_ally_tile",
     "enemy_bot_on_non_ally_tile",
