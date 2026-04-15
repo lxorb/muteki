@@ -2,6 +2,10 @@
 
 Automated unrated match runner and results analyzer for cambc.
 
+## Required packages
+
+matplotlib
+
 ## Quick Start
 
 In VSCode, right-click a script and select **Run Python File in Terminal**, or run from a terminal:
@@ -19,7 +23,7 @@ Continuously queues unrated matches against configured opponents and records res
 
 ### output.py
 
-Reads `results/results.json` (the cumulative results file) and generates a markdown summary at `outputs/output_<timestamp>.md` with two tables: overall win rates by map, and a map-vs-team grid showing the last game result (✅/❌) for each combination.
+Reads `results/results.json` (the cumulative results file) and generates a markdown summary at `outputs/output_<timestamp>.md` with a map-vs-team grid showing the last game result (✅/❌) for each combination, with cumulative win percentages next to each map and team.
 
 ## Configuration
 
@@ -81,4 +85,5 @@ unrated_runner/
     results_*.json     # per-session results (gitignored)
   outputs/
     output_*.md        # generated reports
+    output_*.jpg       # generated result grid images
 ```

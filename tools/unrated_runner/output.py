@@ -33,10 +33,11 @@ def load_results() -> dict:
         return json.load(f)
 
 
-def win_rate(wins: int, games: int) -> str:
+def win_pct(wins: int, games: int) -> str:
+    """Return win percentage rounded to int, e.g. '67%'."""
     if games == 0:
-        return "0.00%"
-    return f"{wins / games * 100:.2f}%"
+        return "0%"
+    return f"{round(wins / games * 100)}%"
 
 
 def make_table(headers: list[str], rows: list[list[str]]) -> str:
@@ -120,59 +121,59 @@ def main():
     combined = load_results()
     now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    lines: list[str] = []
-
-    lines.append(f"# Unrated runner output from {now}")
-    lines.append("")
-
-    # --- By win rate, then map ---
-    lines.append("## By win rate, then map")
-    lines.append("")
-    map_totals_wr: dict[str, dict[str, int]] = {}
+    # Compute per-map totals (across all teams)
+    map_totals: dict[str, dict[str, int]] = {}
     for team_id, maps in combined.items():
         for map_name, map_data in maps.items():
-            if map_name not in map_totals_wr:
-                map_totals_wr[map_name] = {"wins": 0, "losses": 0}
-            map_totals_wr[map_name]["wins"] += map_data["wins"]
-            map_totals_wr[map_name]["losses"] += map_data["losses"]
-    rows = []
-    for map_name in map_totals_wr:
-        m = map_totals_wr[map_name]
-        w, l = m["wins"], m["losses"]
-        g = w + l
-        wr = w / g if g > 0 else 0
-        rows.append((wr, map_name, w, g))
-    rows.sort(key=lambda r: (r[0], r[1]))
-    wins_headers = ["Win rate", "Map", "Wins", "Games played"]
-    wins_rows = [[win_rate(w, g), map_name, str(w), str(g)] for _, map_name, w, g in rows]
-    lines.append(make_table(wins_headers, wins_rows))
-    lines.append("")
+            if map_name not in map_totals:
+                map_totals[map_name] = {"wins": 0, "losses": 0}
+            map_totals[map_name]["wins"] += map_data["wins"]
+            map_totals[map_name]["losses"] += map_data["losses"]
 
-    # --- Last result: maps (rows) vs teams (columns) ---
-    lines.append("## Last result by map and team")
-    lines.append("")
+    # Compute per-team totals (across all maps)
+    team_totals: dict[str, dict[str, int]] = {}
+    for team_id, maps in combined.items():
+        if team_id not in team_totals:
+            team_totals[team_id] = {"wins": 0, "losses": 0}
+        for map_name, map_data in maps.items():
+            team_totals[team_id]["wins"] += map_data["wins"]
+            team_totals[team_id]["losses"] += map_data["losses"]
+
+    # --- Result grid: maps (rows) vs teams (columns) with win % ---
     all_teams = sorted(combined.keys(), key=lambda t: team_names.get(t, t))
     all_maps: set[str] = set()
     for maps in combined.values():
         all_maps.update(maps.keys())
-    last_headers = ["Map"] + [team_names.get(t, t) for t in all_teams]
-    rows = []
+
+    headers = ["Map"] + [
+        f"{team_names.get(t, t)} ({win_pct(team_totals[t]['wins'], team_totals[t]['wins'] + team_totals[t]['losses'])})"
+        for t in all_teams
+    ]
+
+    rows: list[list[str]] = []
     for map_name in sorted(all_maps):
-        row = [map_name]
+        mt = map_totals.get(map_name, {"wins": 0, "losses": 0})
+        map_games = mt["wins"] + mt["losses"]
+        map_label = f"{map_name} ({win_pct(mt['wins'], map_games)})"
+        row = [map_label]
         for team_id in all_teams:
             map_data = combined.get(team_id, {}).get(map_name)
             if map_data is None:
                 row.append("")
             else:
-                # Last match entry is the last key that isn't wins/losses
                 last_win = None
                 for k, v in map_data.items():
                     if k not in ("wins", "losses"):
                         last_win = v["win"]
                 row.append("✅" if last_win else "❌" if last_win is not None else "")
         rows.append(row)
-    last_rows = rows
-    lines.append(make_table(last_headers, last_rows))
+
+    lines: list[str] = []
+    lines.append(f"# Unrated runner output from {now}")
+    lines.append("")
+    lines.append("## Results by map and team")
+    lines.append("")
+    lines.append(make_table(headers, rows))
     lines.append("")
 
     output_path = OUTPUT_DIR / f"output_{now}.md"
@@ -181,12 +182,8 @@ def main():
 
     if RENDER_IMAGES:
         render_table_to_image(
-            wins_headers, wins_rows,
-            OUTPUT_DIR / f"output_{now}_wins.jpg",
-        )
-        render_table_to_image(
-            last_headers, last_rows,
-            OUTPUT_DIR / f"output_{now}_last.jpg",
+            headers, rows,
+            OUTPUT_DIR / f"output_{now}.jpg",
         )
 
 
