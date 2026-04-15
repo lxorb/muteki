@@ -1569,34 +1569,36 @@ class Map:
         self.u_sync_core_footprint_tiles_for_team(self.enemy_team)
 
     def u_calc_core_center_positions(self) -> bool:
-        if self.own_core_center_pos is not None:
-            return True
+        if self.own_core_center_pos is None:
+            current_tile = self.u_get_pos_tile(self.current_pos)
+            core_tile = current_tile
+            if (
+                core_tile.building.entity_type != EntityType.CORE
+                or core_tile.building.team != self.own_team
+            ):
+                core_tile = None
+                for candidate_tile in self.own_buildings_in_vision:
+                    if (
+                        candidate_tile.building.entity_type == EntityType.CORE
+                        and candidate_tile.building.team == self.own_team
+                    ):
+                        core_tile = candidate_tile
+                        break
+                    if self.round_stopwatch.check_overtime_interval():
+                        break
+                if core_tile is None:
+                    return False
 
-        current_tile = self.u_get_pos_tile(self.current_pos)
-        core_tile = current_tile
-        if (
-            core_tile.building.entity_type != EntityType.CORE
-            or core_tile.building.team != self.own_team
-        ):
-            core_tile = None
-            for candidate_tile in self.own_buildings_in_vision:
-                if (
-                    candidate_tile.building.entity_type == EntityType.CORE
-                    and candidate_tile.building.team == self.own_team
-                ):
-                    core_tile = candidate_tile
-                    break
-                if self.round_stopwatch.check_overtime_interval():
-                    break
-            if core_tile is None:
-                return False
+            self.own_core_center_pos = self.ct.get_position(core_tile.building.id)
+            self.own_core_source_indices = self.u_set_core_source_indices(
+                self.own_team,
+                self.own_core_center_pos,
+            )
+            self.u_reset_own_core_distance_initialization()
 
-        self.own_core_center_pos = self.ct.get_position(core_tile.building.id)
-        self.own_core_source_indices = self.u_set_core_source_indices(
-            self.own_team,
-            self.own_core_center_pos,
-        )
-        self.u_reset_own_core_distance_initialization()
+        if self.own_core_center_pos is None:
+            return False
+
         if not self.enemy_core_center_pos_candidates:
             center = self.own_core_center_pos
             all_enemy_core_center_pos_candidates = [
@@ -1618,15 +1620,13 @@ class Map:
                 for mode, pos in all_enemy_core_center_pos_candidates
                 if mode in self.symmetry_mode_candidates
             ]
-            remaining_positions = {
-                pos for _, pos in self.enemy_core_center_pos_candidates
-            }
-            if len(remaining_positions) == 1:
-                self.enemy_core_center_pos = next(iter(remaining_positions))
-                self.enemy_core_source_indices = self.u_set_core_source_indices(
-                    self.enemy_team,
-                    self.enemy_core_center_pos,
-                )
+        remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
+        if len(remaining_positions) == 1:
+            self.enemy_core_center_pos = next(iter(remaining_positions))
+            self.enemy_core_source_indices = self.u_set_core_source_indices(
+                self.enemy_team,
+                self.enemy_core_center_pos,
+            )
         return True
 
     def u_get_parsed_map_data_path(self, map_path: str) -> Path:
