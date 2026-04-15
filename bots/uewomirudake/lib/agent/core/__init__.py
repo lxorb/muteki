@@ -5,7 +5,7 @@ from lib.agent.builder.strategies import (
     BUILDER_STRATEGY_BY_TILE,
     FURTHER_BB_MIN_TURN,
     FURTHER_BB_MIN_TITANIUM,
-    FURTHER_BB_ROTATION,
+    FUTHER_BB_ROTATION,
     FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN,
     INITIAL_BB_ORDER,
 )
@@ -32,7 +32,7 @@ class CoreAgent(Agent):
         ]
         self.further_builder_rotation: list[str] = [
             strategy_id
-            for strategy_id in FURTHER_BB_ROTATION
+            for strategy_id in FUTHER_BB_ROTATION
             if not (
                 DISABLE_HARASSMENT and strategy_id == HARASSMENT_STRATEGY_ID
             )
