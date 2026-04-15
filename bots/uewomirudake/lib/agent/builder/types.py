@@ -161,6 +161,8 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         avoid_enemy_turrets: bool = True,
         allow_conveyor_building: bool = True,
         respect_titanium_reserve: bool = False,
+        allow_sentinel_next_to_harvester_instead_conveyor: bool = True,
+        safety_conveyor: bool = False,
     ) -> bool: ...
 
     def u_heal_at(

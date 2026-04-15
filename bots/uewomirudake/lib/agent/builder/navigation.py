@@ -1198,6 +1198,8 @@ class BuilderNavigationMixin:
         avoid_enemy_turrets: bool = True,
         allow_conveyor_building: bool = True,
         respect_titanium_reserve: bool = False,
+        allow_sentinel_next_to_harvester_instead_conveyor: bool = True,
+        safety_conveyor: bool = False,
     ) -> bool:
         total_start_ns = time.perf_counter_ns()
         last_step_ns = total_start_ns
@@ -1330,6 +1332,87 @@ class BuilderNavigationMixin:
                 and target_tile.is_passable
                 and target_tile.building.team != self.map.own_team
             )
+            conveyor_feeds_own_harvester = False
+            if facing_direction is not None and pos != current_pos:
+                conveyor_output_pos = pos.add(facing_direction)
+                if self.map.u_is_in_bounds(conveyor_output_pos):
+                    conveyor_output_tile = self.map.u_get_pos_tile(conveyor_output_pos)
+                    conveyor_feeds_own_harvester = (
+                        conveyor_output_tile.building.team == self.map.own_team
+                        and conveyor_output_tile.building.entity_type
+                        == EntityType.HARVESTER
+                    )
+            barrier_adjacent_to_own_harvester = (
+                building_type == EntityType.BARRIER
+                and any(
+                    adjacent_tile.building.team == self.map.own_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    for adjacent_tile in (
+                        self.map.u_get_pos_tile(adjacent_pos)
+                        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                            pos
+                        )
+                    )
+                )
+            )
+            sentinel_substitution_candidate = (
+                conveyor_feeds_own_harvester
+                or safety_conveyor
+                or barrier_adjacent_to_own_harvester
+            )
+
+            preferred_building_type = building_type
+            preferred_facing_direction = facing_direction
+            if (
+                allow_sentinel_next_to_harvester_instead_conveyor
+                and (
+                    building_type in CONVEYOR_ENTITY_TYPES
+                    or building_type == EntityType.BARRIER
+                )
+                and pos != current_pos
+                and sentinel_substitution_candidate
+            ):
+                sentinel_titanium_cost, sentinel_axionite_cost = (
+                    self.ct.get_sentinel_cost()
+                )
+                sentinel_affordable = (
+                    (
+                        not respect_titanium_reserve
+                        or self.u_can_spend_titanium_without_falling_below_reserve(
+                            sentinel_titanium_cost
+                        )
+                    )
+                    and self.map.titanium >= sentinel_titanium_cost
+                    and self.map.axionite >= sentinel_axionite_cost
+                )
+                if sentinel_affordable:
+                    sentinel_direction = self.u_get_sentinel_orientation(pos)
+                    enemy_team = self.map.enemy_team
+                    sentinel_target_indices = self.map.u_get_attackable_target_indices(
+                        target_tile.index,
+                        EntityType.SENTINEL,
+                        sentinel_direction,
+                    )
+                    for sentinel_target_idx in sentinel_target_indices:
+                        sentinel_target_tile = self.map.tiles_by_index[
+                            sentinel_target_idx
+                        ]
+                        if sentinel_target_tile.is_core_of(enemy_team):
+                            preferred_building_type = EntityType.SENTINEL
+                            preferred_facing_direction = sentinel_direction
+                            break
+                        if sentinel_target_tile.building.team != enemy_team:
+                            continue
+                        if sentinel_target_tile.building.entity_type in (
+                            EntityType.HARVESTER,
+                            EntityType.FOUNDRY,
+                            EntityType.LAUNCHER,
+                        ) or sentinel_target_tile.building.entity_type in (
+                            ENEMY_TURRET_TYPES
+                        ):
+                            preferred_building_type = EntityType.SENTINEL
+                            preferred_facing_direction = sentinel_direction
+                            break
             log_step("in range prebuild")
             if (
                 target_tile.building.team == self.map.own_team
@@ -1353,13 +1436,39 @@ class BuilderNavigationMixin:
                 log_step("destroy harvester feeder conveyor")
 
             if affordable:
-                can_build_method = getattr(self.ct, f"can_build_{building_type.value}")
-                build_method = getattr(self.ct, f"build_{building_type.value}")
+                actual_building_type = preferred_building_type
+                actual_facing_direction = preferred_facing_direction
+                can_build_method = getattr(self.ct, f"can_build_{actual_building_type.value}")
+                build_method = getattr(self.ct, f"build_{actual_building_type.value}")
                 log_step("build method lookup")
-                if building_type in DIRECTIONAL_BUILDING_TYPES:
-                    if facing_direction is None:
+                if actual_building_type in DIRECTIONAL_BUILDING_TYPES:
+                    if actual_facing_direction is None:
                         return finish(False, "reject missing facing direction")
-                    if not can_build_method(pos, facing_direction):
+                    can_build_directional = can_build_method(
+                        pos,
+                        actual_facing_direction,
+                    )
+                    if (
+                        not can_build_directional
+                        and actual_building_type != building_type
+                    ):
+                        actual_building_type = building_type
+                        actual_facing_direction = facing_direction
+                        can_build_method = getattr(
+                            self.ct,
+                            f"can_build_{actual_building_type.value}",
+                        )
+                        build_method = getattr(
+                            self.ct,
+                            f"build_{actual_building_type.value}",
+                        )
+                        if actual_facing_direction is None:
+                            return finish(False, "reject missing fallback facing direction")
+                        can_build_directional = can_build_method(
+                            pos,
+                            actual_facing_direction,
+                        )
+                    if not can_build_directional:
                         log_step("can_build directional")
                         if should_try_attack_enemy_passable:
                             attack_result = self.u_attack_passable(
@@ -1375,10 +1484,10 @@ class BuilderNavigationMixin:
                             )
                         return finish(False, "reject can_build directional")
                     log_step("can_build directional")
-                    build_method(pos, facing_direction)
-                    self.last_built_entity_type = building_type
+                    build_method(pos, actual_facing_direction)
+                    self.last_built_entity_type = actual_building_type
                     log_step("build directional")
-                    if building_type in CONVEYOR_ENTITY_TYPES:
+                    if actual_building_type in CONVEYOR_ENTITY_TYPES:
                         next_direction = self.map.u_get_direction_between(
                             current_pos,
                             pos,
@@ -1387,7 +1496,7 @@ class BuilderNavigationMixin:
                             next_direction
                         ):
                             self.u_move_with_target(next_direction, pos)
-                        output_pos = pos.add(facing_direction)
+                        output_pos = pos.add(actual_facing_direction)
                         if self.map.u_is_in_bounds(output_pos):
                             output_tile = self.map.u_get_pos_tile(output_pos)
                             if (
