@@ -322,10 +322,11 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         wait_if_enemy_builder_bots_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_build_enemy_supplied_sentinel(
+    def s_build_enemy_supplied_turret(
         self,
         move_towards: bool = True,
         hold: bool = True,
+        candidate_radius: float | None = None,
     ) -> BuilderActionResult: ...
 
     def s_gunner_next_to_enemy_core(

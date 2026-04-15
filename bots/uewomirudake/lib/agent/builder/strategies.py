@@ -83,7 +83,7 @@ HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_gunner_next_to_enemy_core),
     (BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester, True, False, False),
-    (BuilderStrategyMethodsMixin.s_build_enemy_supplied_sentinel, True, False),
+    (BuilderStrategyMethodsMixin.s_build_enemy_supplied_turret, True, False),
     (BuilderStrategyMethodsMixin.s_attack_enemy_core_supply_link, True),
     (BuilderStrategyMethodsMixin.s_attack_key_enemy_supply_chain, True),
     (BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),

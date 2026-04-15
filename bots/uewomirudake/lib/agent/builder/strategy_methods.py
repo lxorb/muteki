@@ -16,6 +16,7 @@ from lib.agent.constants import (
     HARASSMENT_STRATEGY_ID,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
+    PREFER_SENTINEL_OVER_GUNNER_MIN_TITANIUM,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
     SCAVENGER_STRATEGY_ID,
@@ -4207,19 +4208,23 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
-    def s_build_enemy_supplied_sentinel(
+    def s_build_enemy_supplied_turret(
         self,
         move_towards: bool = True,
         hold: bool = True,
+        candidate_radius: float | None = None,
     ):
         """
-        Build a sentinel on a tile currently fed by a recently active enemy supplier.
+        Build a turret on a tile currently fed by a recently active enemy supplier.
 
         Considers visible target tiles of enemy conveyors, splitters, armoured
         conveyors, and bridges whose last seen carried resource was within the
         last three turns. If the builder is already standing on the chosen build
-        tile, it first steps off that tile so the sentinel can be built from the
-        new position on the following turn.
+        tile, it first steps off that tile so the turret can be built from the
+        new position on the following turn. Prefer a sentinel over a gunner only
+        when the sentinel can target the enemy core while the gunner cannot, or
+        once the scaled titanium preference threshold is reached. Candidate
+        target tiles are limited to the configured radius around the builder.
         """
         current_pos = self.map.current_pos
         current_round = self.map.current_round
@@ -4227,8 +4232,32 @@ class BuilderStrategyMethodsMixin:
         enemy_team = self.map.enemy_team
         candidate_keys_by_index: dict[int, tuple[int, int, int, int, int]] = {}
         tiles_by_index = self.map.tiles_by_index
+        if candidate_radius is None:
+            candidate_radius = math.sqrt(self.ct.get_vision_radius_sq()) - 2
+        if candidate_radius < 0:
+            candidate_radius = 0
+        candidate_radius_sq = candidate_radius * candidate_radius
+        scale_ratio = max(0.0001, self.ct.get_scale_percent() / 100.0)
+        prefer_sentinel_over_gunner_min_titanium = int(
+            math.ceil(PREFER_SENTINEL_OVER_GUNNER_MIN_TITANIUM * scale_ratio)
+        )
+        sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
 
-        def can_host_sentinel(target_tile) -> bool:
+        enemy_core_tiles: list = []
+        if self.map.enemy_core_center_pos is not None:
+            enemy_core_tiles = self.map.u_get_core_footprint_positions(
+                self.map.enemy_core_center_pos
+            )
+        elif self.map.enemy_core_center_pos_candidates:
+            enemy_core_tile_by_index: dict[int, object] = {}
+            for _, candidate_center_pos in self.map.enemy_core_center_pos_candidates:
+                for core_tile in self.map.u_get_core_footprint_positions(
+                    candidate_center_pos
+                ):
+                    enemy_core_tile_by_index.setdefault(core_tile.index, core_tile)
+            enemy_core_tiles = list(enemy_core_tile_by_index.values())
+
+        def can_host_turret(target_tile) -> bool:
             if target_tile.last_seen_turn != current_round:
                 return False
             if target_tile.is_core_of(enemy_team):
@@ -4304,6 +4333,46 @@ class BuilderStrategyMethodsMixin:
             self.u_move_with_target(move_direction, current_pos)
             return True
 
+        def sentinel_targets_enemy_core(
+            pos: Position,
+            facing_direction: Direction | None,
+        ) -> bool:
+            if (
+                facing_direction is None
+                or facing_direction == Direction.CENTRE
+                or not enemy_core_tiles
+            ):
+                return False
+            return any(
+                self.map.u_sentinel_covers_target(
+                    pos,
+                    facing_direction,
+                    core_tile.position,
+                    GameConstants.SENTINEL_VISION_RADIUS_SQ,
+                )
+                for core_tile in enemy_core_tiles
+            )
+
+        def gunner_targets_enemy_core(
+            pos: Position,
+            facing_direction: Direction | None,
+        ) -> bool:
+            if (
+                facing_direction is None
+                or facing_direction == Direction.CENTRE
+                or not enemy_core_tiles
+            ):
+                return False
+            return any(
+                self.map.u_gunner_covers_target(
+                    pos,
+                    facing_direction,
+                    core_tile.position,
+                    GameConstants.GUNNER_VISION_RADIUS_SQ,
+                )
+                for core_tile in enemy_core_tiles
+            )
+
         for supplier_tile in dict.fromkeys(self.map.enemy_supply_links_in_vision):
             if supplier_tile.last_seen_turn != current_round:
                 continue
@@ -4317,7 +4386,12 @@ class BuilderStrategyMethodsMixin:
                 continue
 
             for target_tile in supplier_tile.building.targets:
-                if not can_host_sentinel(target_tile):
+                if not can_host_turret(target_tile):
+                    continue
+                if (
+                    current_pos.distance_squared(target_tile.position)
+                    > candidate_radius_sq
+                ):
                     continue
 
                 key = (
@@ -4346,40 +4420,75 @@ class BuilderStrategyMethodsMixin:
             if target_tile.position == current_pos:
                 if move_towards and step_off_current_build_tile(target_tile):
                     print(
-                        "Build enemy supplied sentinel: step off",
+                        "Build enemy supplied turret: step off",
                         target_tile.position,
                     )
                     return True
                 continue
 
-            sentinel_direction = self.u_get_sentinel_orientation(target_tile.position)
+            build_entity_type = EntityType.GUNNER
+            build_direction = self.u_get_gunner_orientation(target_tile.position)
+            can_afford_sentinel = (
+                self.map.titanium >= sentinel_titanium_cost
+                and self.map.axionite >= sentinel_axionite_cost
+            )
+            if can_afford_sentinel:
+                sentinel_direction = self.u_get_sentinel_orientation(
+                    target_tile.position
+                )
+                if (
+                    (
+                        sentinel_targets_enemy_core(
+                            target_tile.position,
+                            sentinel_direction,
+                        )
+                        and not gunner_targets_enemy_core(
+                            target_tile.position,
+                            build_direction,
+                        )
+                    )
+                    or self.map.titanium
+                    >= prefer_sentinel_over_gunner_min_titanium
+                ):
+                    build_entity_type = EntityType.SENTINEL
+                    build_direction = sentinel_direction
+
             if self.u_build_at(
                 target_tile.position,
-                EntityType.SENTINEL,
+                build_entity_type,
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=False,
-                facing_direction=sentinel_direction,
+                facing_direction=build_direction,
             ):
-                if self.last_built_entity_type == EntityType.SENTINEL:
+                if self.last_built_entity_type in {
+                    EntityType.GUNNER,
+                    EntityType.SENTINEL,
+                }:
                     print(
-                        "Build enemy supplied sentinel: built at",
+                        "Build enemy supplied turret: built",
+                        self.last_built_entity_type.value,
+                        "at",
                         target_tile.position,
                         "facing",
-                        sentinel_direction,
+                        build_direction,
                     )
                 elif (
                     current_pos.distance_squared(target_tile.position)
                     > BUILDER_ACTION_RADIUS_SQ
                 ):
                     print(
-                        "Build enemy supplied sentinel: move toward",
+                        "Build enemy supplied turret: move toward",
                         target_tile.position,
+                        "for",
+                        build_entity_type.value,
                     )
                 else:
                     print(
-                        "Build enemy supplied sentinel: hold for",
+                        "Build enemy supplied turret: hold for",
                         target_tile.position,
+                        "with",
+                        build_entity_type.value,
                     )
                 return True
 
