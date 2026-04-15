@@ -1180,6 +1180,7 @@ class BuilderNavigationMixin:
         move_towards: bool,
         destroy_condition: Callable[[Position], bool] | None = None,
         avoid_enemy_turrets: bool = True,
+        ignore_conveyor_reserve_if_target_damaged: bool = False,
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
@@ -1198,7 +1199,15 @@ class BuilderNavigationMixin:
                     * max(0.0001, self.ct.get_scale_percent() / 100.0)
                 )
             )
-            if current_titanium - attack_titanium_cost < conveyor_titanium_cost:
+            target_is_damaged = target_tile.building.hp < self.ct.get_max_hp(
+                target_tile.building.id
+            )
+            if (
+                not (
+                    ignore_conveyor_reserve_if_target_damaged and target_is_damaged
+                )
+                and current_titanium - attack_titanium_cost < conveyor_titanium_cost
+            ):
                 return False
 
             would_destroy = (

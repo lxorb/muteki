@@ -3107,6 +3107,41 @@ class BuilderStrategyMethodsMixin:
             target_tile.clear_building()
 
             if rebuild:
+                gunner_titanium_cost, _ = self.ct.get_gunner_cost()
+                incoming_source_indices = (
+                    self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                        target_tile.index,
+                        (),
+                    )
+                )
+                has_adjacent_harvester = any(
+                    adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    for adjacent_tile in (
+                        self.map.tiles_by_index[adjacent_idx]
+                        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                            target_tile.index
+                        )
+                    )
+                )
+                has_titanium_supply_source = any(
+                    self.map.u_supply_chain_has_titanium(source_idx, own_team)
+                    for source_idx in incoming_source_indices
+                )
+
+                if self.map.titanium >= gunner_titanium_cost and (
+                    has_adjacent_harvester or has_titanium_supply_source
+                ):
+                    gunner_direction = self.u_get_gunner_orientation(target_pos)
+                    return self.u_build_at(
+                        target_pos,
+                        EntityType.GUNNER,
+                        hold=False,
+                        move_towards=False,
+                        attack_enemy_passable=False,
+                        facing_direction=gunner_direction,
+                    )
+
                 resource = infer_resource(target_tile)
                 supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
                     target_pos,
@@ -3640,6 +3675,7 @@ class BuilderStrategyMethodsMixin:
                     move_towards=False,
                     destroy_condition=lambda _: True,
                     avoid_enemy_turrets=False,
+                    ignore_conveyor_reserve_if_target_damaged=True,
                 )
             )
 
@@ -3689,6 +3725,7 @@ class BuilderStrategyMethodsMixin:
                 target_tile.position,
                 move_towards=move_towards,
                 destroy_condition=lambda _: True,
+                ignore_conveyor_reserve_if_target_damaged=True,
             )
         )
 
