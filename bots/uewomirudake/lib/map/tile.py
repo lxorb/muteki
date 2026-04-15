@@ -350,6 +350,16 @@ class Tile:
             self.bot.targets = self.get_targets(self.bot.entity_type, self.bot.id)
         self.bot.hp = ct.get_hp(self.bot.id)
         self.update_target_zones_bot()
+    
+    def handle_marker(self, marker_id):
+        self.building.id = None
+        self.building.entity_type = None
+        self.building.team = None
+        if self.map.symmetry_mode is not None:
+            return
+        strategy, symmetry_mode, own_id, current_round, target_x, target_y = self.map.read_marker(self.map.ct.get_marker_value(marker_id))
+        self.map.symmetry_mode = symmetry_mode
+
 
     def update_building(self, id_changed: bool) -> None:
         ct = self.map.ct
@@ -359,9 +369,7 @@ class Tile:
             self.building.prev_team = self.building.team
             original_entity_type = ct.get_entity_type(self.building.id)
             if (original_entity_type == EntityType.MARKER):
-                self.building.id = None
-                self.building.entity_type = None
-                self.building.team = None
+                self.handle_marker(self.building.id)
                 return
             self.building.entity_type = original_entity_type
             self.building.team = ct.get_team(self.building.id)

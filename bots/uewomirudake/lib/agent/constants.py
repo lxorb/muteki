@@ -1,5 +1,5 @@
 from cambc import EntityType
-from lib.map import SymmetryMode
+from lib.map.types import SymmetryMode
 
 ### GAME CONSTANTS ###
 BUILDER_ACTION_RADIUS_SQ: int = 2
@@ -110,10 +110,7 @@ LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_armoured_conveyor"] = (
 )
 
 
-### MARKER INFORMATION ###
 
-MARKER_STRATEGIES_LIST = [INITRES_STRATEGY_ID,SCAVENGER_STRATEGY_ID, HARASSMENT_STRATEGY_ID, DEFENDER_STRATEGY_ID]
-MARKER_SYMMETRY_LIST = [SymmetryMode.ROTATION, SymmetryMode.MIRROR_X, SymmetryMode.MIRROR_Y, None]
 
 
 """

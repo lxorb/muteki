@@ -35,11 +35,14 @@ from lib.map.constants import (
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
     WEAPON_TARGET_TYPES,
+    MARKER_STRATEGIES_LIST,
+    MARKER_SYMMETRY_LIST
 )
 from lib.map.tile import Tile
-from lib.map.types import SupplyChainLabel
+from lib.map.types import SupplyChainLabel, SymmetryMode
 
 from lib.debug import Stopwatch
+
 
 
 PARSED_TILE_TYPE_INACTIVE = 0
@@ -202,10 +205,7 @@ def u_format_fast_inference_key(
     return f"({width}, {height}, ({core_center.x}, {core_center.y}))"
 
 
-class SymmetryMode(Enum):
-    ROTATION = "rotation"
-    MIRROR_X = "mirror_x"
-    MIRROR_Y = "mirror_y"
+
 
 
 class Map:
@@ -3961,3 +3961,18 @@ class Map:
         self.core_distance_dirty_indices.clear()
 
         sw.log()
+
+
+    def read_marker(self, num):
+        bot_type     = (num >>  0) & 0b11          #  2 bits
+        symmetry_type= (num >>  2) & 0b11          #  2 bits
+        own_id       = (num >>  4) & 0b11111111    #  8 bits
+        current_round= (num >> 12) & 0b11111111111 # 11 bits
+        target_index = (num >> 23) & 0b111111111111# 12 bits
+
+        strategy = MARKER_STRATEGIES_LIST[bot_type]
+        symmetry_mode = MARKER_SYMMETRY_LIST[symmetry_type]
+        target_x = target_index % self.INDEX_STRIDE
+        target_y = target_index // self.INDEX_STRIDE
+
+        return strategy, symmetry_mode, own_id, current_round, target_x, target_y

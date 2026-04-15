@@ -1,6 +1,6 @@
 from lib.agent.builder.strategies import STRATEGIES
-from lib.agent.constants import MARKER_STRATEGIES_LIST, MARKER_SYMMETRY_LIST
 from lib.debug import Stopwatch
+from lib.map.constants import MARKER_STRATEGIES_LIST, MARKER_SYMMETRY_LIST
 from cambc import Position, EntityType
 
 
@@ -68,7 +68,6 @@ class BuilderExecutionMixin:
         return False
 
     def place_marker(self):
-
         bot_type = MARKER_STRATEGIES_LIST.index(self.strategy)
         # 2 bits
         symmetry_type = MARKER_SYMMETRY_LIST.index(self.map.symmetry_mode)
@@ -99,7 +98,7 @@ class BuilderExecutionMixin:
                 building_id = self.ct.get_tile_building_id(pos)
                 if building_id is not None and self.ct.get_entity_type(building_id) == EntityType.MARKER and self.ct.get_team(building_id) == self.ct.get_team():
                     content = self.ct.get_marker_value(building_id)
-                    n_Strategy, n_symmetry_mode, n_own_id, n_current_round, n_target_x, n_target_y = self.read_marker(content)
+                    n_Strategy, n_symmetry_mode, n_own_id, n_current_round, n_target_x, n_target_y = self.map.read_marker(content)
                     pos_round.append((pos, n_current_round))
                     continue
                 self.ct.place_marker(pos, result)
@@ -112,16 +111,3 @@ class BuilderExecutionMixin:
 
 
     
-    def read_marker(self, num):
-        bot_type     = (num >>  0) & 0b11          #  2 bits
-        symmetry_type= (num >>  2) & 0b11          #  2 bits
-        own_id       = (num >>  4) & 0b11111111    #  8 bits
-        current_round= (num >> 12) & 0b11111111111 # 11 bits
-        target_index = (num >> 23) & 0b111111111111# 12 bits
-
-        strategy = MARKER_STRATEGIES_LIST[bot_type]
-        symmetry_mode = MARKER_SYMMETRY_LIST[symmetry_type]
-        target_x = target_index % self.map.width
-        target_y = target_index // self.map.width
-
-        return strategy, symmetry_mode, own_id, current_round, target_x, target_y
