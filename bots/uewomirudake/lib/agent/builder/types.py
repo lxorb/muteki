@@ -297,7 +297,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = False,
     ) -> BuilderActionResult: ...
 
-    def s_block_enemy_supply_chain(
+    def s_hijack_enemy_supply_chain(
         self,
         move_towards: bool = True,
         hold: bool = True,

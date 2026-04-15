@@ -284,6 +284,9 @@ class Map:
         self.own_supply_link_source_indices_by_target_index_in_vision: dict[
             int, set[int]
         ] = {}
+        self.enemy_supply_link_source_indices_by_target_index_in_vision: dict[
+            int, set[int]
+        ] = {}
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_supply_chain_parent_by_index = array(
@@ -327,6 +330,9 @@ class Map:
             self.INITIAL_MAP_SIZE
         )
         self.own_supply_chain_has_refined_axionite_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_supply_chain_feeds_own_turret_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
         self.enemy_supply_chain_has_refined_axionite_by_index = bytearray(
@@ -436,6 +442,7 @@ class Map:
             self.own_supply_chain_has_titanium_by_index,
             self.own_supply_chain_has_raw_axionite_by_index,
             self.own_supply_chain_has_refined_axionite_by_index,
+            self.own_supply_chain_feeds_own_turret_by_index,
         )
         self._reset_supply_chain_union_find_arrays(
             self.enemy_supply_chain_touched_indices,
@@ -478,6 +485,7 @@ class Map:
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
         self.own_supply_link_source_indices_by_target_index_in_vision = {}
+        self.enemy_supply_link_source_indices_by_target_index_in_vision = {}
         self.frontier_expand_newly_seen_indices = []
 
     def _reset_supply_chain_union_find_arrays(
@@ -520,7 +528,7 @@ class Map:
                 self.own_supply_chain_has_titanium_by_index,
                 self.own_supply_chain_has_raw_axionite_by_index,
                 self.own_supply_chain_has_refined_axionite_by_index,
-                None,
+                self.own_supply_chain_feeds_own_turret_by_index,
                 self.own_supply_chain_touched_indices,
             )
         return (
@@ -735,6 +743,15 @@ class Map:
             return False
         return bool(self.enemy_supply_chain_feeds_own_turret_by_index[root])
 
+    def u_own_supply_chain_feeds_own_turret(
+        self,
+        idx: int,
+    ) -> bool:
+        root = self.u_find_supply_chain_root_by_index(idx, self.own_team)
+        if root is None:
+            return False
+        return bool(self.own_supply_chain_feeds_own_turret_by_index[root])
+
     def u_update_supply_chain_union_find_for_team(self, team: Team) -> None:
         if team == self.own_team:
             supply_links_in_vision = self.own_supply_links_in_vision
@@ -753,7 +770,9 @@ class Map:
             supply_chain_has_refined_axionite_by_index = (
                 self.own_supply_chain_has_refined_axionite_by_index
             )
-            supply_chain_feeds_own_turret_by_index = None
+            supply_chain_feeds_own_turret_by_index = (
+                self.own_supply_chain_feeds_own_turret_by_index
+            )
         else:
             supply_links_in_vision = self.enemy_supply_links_in_vision
             supply_chain_harvester_count_by_index = (
@@ -2327,6 +2346,9 @@ class Map:
         own_supply_link_sources_by_target_index = (
             self.own_supply_link_source_indices_by_target_index_in_vision
         )
+        enemy_supply_link_sources_by_target_index = (
+            self.enemy_supply_link_source_indices_by_target_index_in_vision
+        )
 
         own_supply_targets_in_vision.clear()
         enemy_supply_targets_in_vision.clear()
@@ -2336,6 +2358,7 @@ class Map:
         own_target_indices.clear()
         enemy_target_indices.clear()
         own_supply_link_sources_by_target_index.clear()
+        enemy_supply_link_sources_by_target_index.clear()
 
         for supply_link_tile in self.own_supply_links_in_vision:
             building = supply_link_tile.building
@@ -2366,10 +2389,19 @@ class Map:
                 break
 
         for supply_link_tile in self.enemy_supply_links_in_vision:
+            supply_link_idx = supply_link_tile.index
             for target_tile in supply_link_tile.building.targets:
                 if target_tile.environment == Environment.WALL:
                     continue
-                enemy_target_indices.add(target_tile.index)
+                target_idx = target_tile.index
+                enemy_target_indices.add(target_idx)
+                source_indices = enemy_supply_link_sources_by_target_index.get(target_idx)
+                if source_indices is None:
+                    enemy_supply_link_sources_by_target_index[target_idx] = {
+                        supply_link_idx
+                    }
+                else:
+                    source_indices.add(supply_link_idx)
             if check_overtime_interval():
                 break
 
@@ -2683,9 +2715,9 @@ class Map:
             has_refined_axionite_by_index = (
                 self.own_supply_chain_has_refined_axionite_by_index
             )
-            feeds_own_turret_by_index = None
+            feeds_own_turret_by_index = self.own_supply_chain_feeds_own_turret_by_index
             touched_indices = self.own_supply_chain_touched_indices
-            is_enemy_team = False
+            turret_team = own_team
         else:
             parent_by_index = self.enemy_supply_chain_parent_by_index
             size_by_index = self.enemy_supply_chain_size_by_index
@@ -2704,7 +2736,7 @@ class Map:
             )
             feeds_own_turret_by_index = self.enemy_supply_chain_feeds_own_turret_by_index
             touched_indices = self.enemy_supply_chain_touched_indices
-            is_enemy_team = True
+            turret_team = own_team
 
         def find_root(idx: int) -> int | None:
             if not active_by_index[idx]:
@@ -2824,10 +2856,9 @@ class Map:
                         harvester_count_by_index[root] += 1
 
                 if (
-                    is_enemy_team
-                    and not feeds_own_turret
+                    not feeds_own_turret
                     and target_tile.last_seen_turn == current_round
-                    and target_building.team == own_team
+                    and target_building.team == turret_team
                     and target_building.entity_type in own_turret_types
                 ):
                     feeds_own_turret = True

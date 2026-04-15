@@ -42,6 +42,14 @@ _ENEMY_CORE_PATROL_OFFSETS = (
     (-2, 0),
     (-2, -1),
 )
+_BRIDGE_R = int(GameConstants.BRIDGE_TARGET_RADIUS_SQ**0.5) + 1
+_HIJACK_BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
+    (dx, dy)
+    for dx in range(-_BRIDGE_R, _BRIDGE_R + 1)
+    for dy in range(-_BRIDGE_R, _BRIDGE_R + 1)
+    if 0 < dx * dx + dy * dy <= GameConstants.BRIDGE_TARGET_RADIUS_SQ
+    and abs(dx) + abs(dy) != 1
+)
 
 
 class BuilderStrategyMethodsMixin:
@@ -3333,15 +3341,316 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
-    def s_block_enemy_supply_chain(self, move_towards: bool = True, hold: bool = True):
-        """
-        Build a barrier on the closest visible enemy resource target.
+    def _u_tile_points_at_index(self, tile, target_idx: int) -> bool:
+        return any(target_tile.index == target_idx for target_tile in tile.building.targets)
 
-        Uses cached map targets, prefers shorter squared distance, and
-        delegates build, attack, movement, and hold handling to `u_build_at`.
-        """
-        current_pos = self.map.current_pos
+    def _u_supply_tile_transports_pure_titanium(self, tile) -> bool:
+        current_round = self.map.current_round
+
+        if tile.building.entity_type == EntityType.SPLITTER:
+            return (
+                tile.building.last_titanium_onit_turn == current_round
+                and tile.building.last_raw_axionite_onit_turn != current_round
+                and tile.building.last_refined_axionite_onit_turn != current_round
+            )
+
+        return (
+            self.map.u_supply_chain_has_titanium(tile.index, self.map.enemy_team)
+            and not self.map.u_supply_chain_has_raw_axionite(
+                tile.index,
+                self.map.enemy_team,
+            )
+            and not self.map.u_supply_chain_has_refined_axionite(
+                tile.index,
+                self.map.enemy_team,
+            )
+        )
+
+    def _u_target_has_pure_titanium_enemy_supply(self, target_idx: int) -> bool:
+        current_round = self.map.current_round
+        enemy_team = self.map.enemy_team
+        tiles_by_index = self.map.tiles_by_index
+        source_indices = self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+            target_idx,
+        )
+        if not source_indices:
+            return False
+
+        checked_root_indices: set[int] = set()
+        found_source = False
+        for source_idx in source_indices:
+            source_tile = tiles_by_index[source_idx]
+            if (
+                source_tile.last_seen_turn != current_round
+                or source_tile.building.team != enemy_team
+                or source_tile.building.entity_type not in SUPPLY_LINK_TYPES
+            ):
+                continue
+
+            if source_tile.building.entity_type != EntityType.SPLITTER:
+                root_idx = self.map.u_find_supply_chain_root_by_index(
+                    source_idx,
+                    enemy_team,
+                )
+                if root_idx is None or root_idx in checked_root_indices:
+                    continue
+                checked_root_indices.add(root_idx)
+
+            found_source = True
+            if not self._u_supply_tile_transports_pure_titanium(source_tile):
+                return False
+
+        return found_source
+
+    def _u_tile_is_currently_fed(self, tile) -> bool:
+        current_round = self.map.current_round
+        if tile.last_seen_turn != current_round:
+            return False
+        if (
+            tile.index in self.map.own_supply_link_target_indices_in_vision
+            or tile.index in self.map.enemy_supply_link_target_indices_in_vision
+        ):
+            return True
+
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if adjacent_tile.last_seen_turn != current_round:
+                continue
+            if adjacent_tile.building.entity_type in {
+                EntityType.HARVESTER,
+                EntityType.FOUNDRY,
+            }:
+                return True
+        return False
+
+    def _u_supply_tile_feeds_own_turret(self, tile) -> bool:
+        current_round = self.map.current_round
         own_team = self.map.own_team
+        if (
+            tile.last_seen_turn != current_round
+            or tile.building.team != own_team
+            or tile.building.entity_type not in SUPPLY_LINK_TYPES
+        ):
+            return False
+
+        if tile.building.entity_type != EntityType.SPLITTER:
+            return self.map.u_own_supply_chain_feeds_own_turret(tile.index)
+
+        pending_indices = [tile.index]
+        seen_indices: set[int] = set()
+        while pending_indices:
+            current_idx = pending_indices.pop()
+            if current_idx in seen_indices:
+                continue
+            seen_indices.add(current_idx)
+
+            current_tile = self.map.tiles_by_index[current_idx]
+            for target_tile in current_tile.building.targets:
+                target_building = target_tile.building
+                if (
+                    target_tile.last_seen_turn != current_round
+                    or target_tile.environment == Environment.WALL
+                ):
+                    continue
+                if (
+                    target_building.team == own_team
+                    and target_building.entity_type in ATTACK_TURRET_TYPES
+                ):
+                    return True
+                if (
+                    target_building.team == own_team
+                    and target_building.entity_type in SUPPLY_LINK_TYPES
+                ):
+                    if target_building.entity_type == EntityType.SPLITTER:
+                        pending_indices.append(target_tile.index)
+                    elif self.map.u_own_supply_chain_feeds_own_turret(
+                        target_tile.index
+                    ):
+                        return True
+
+        return False
+
+    def _u_splitter_targets_only_own_buildings_or_walls(
+        self,
+        pos: Position,
+        facing_direction: Direction,
+    ) -> bool:
+        own_team = self.map.own_team
+        source_idx = self.map.u_to_index(pos)
+        for output_direction in dict.fromkeys(
+            (
+                facing_direction,
+                facing_direction.rotate_left().rotate_left(),
+                facing_direction.rotate_right().rotate_right(),
+            )
+        ):
+            target_idx = self.map.u_get_neighbor_index_by_direction(
+                source_idx,
+                output_direction,
+            )
+            if target_idx is None:
+                return False
+
+            target_tile = self.map.tiles_by_index[target_idx]
+            if target_tile.environment == Environment.WALL or target_tile.is_core_of(
+                own_team
+            ):
+                continue
+            if (
+                target_tile.building.id is not None
+                and target_tile.building.team == own_team
+            ):
+                continue
+            return False
+
+        return True
+
+    def _u_get_hijack_adjacent_own_turrets(self, target_idx: int) -> list:
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+        adjacent_turrets = []
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(target_idx):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.team == own_team
+                and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                adjacent_turrets.append(adjacent_tile)
+        return adjacent_turrets
+
+    def _u_get_hijack_incoming_conveyors(self, target_idx: int) -> list:
+        current_round = self.map.current_round
+        incoming_conveyors = []
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(target_idx):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn != current_round
+                or adjacent_tile.building.entity_type not in CONVEYOR_ENTITY_TYPES
+            ):
+                continue
+            if self._u_tile_points_at_index(adjacent_tile, target_idx):
+                incoming_conveyors.append(adjacent_tile)
+        return incoming_conveyors
+
+    def _u_get_best_hijack_adjacent_turret(self, adjacent_turrets: list):
+        if not adjacent_turrets:
+            return None
+        return min(
+            adjacent_turrets,
+            key=lambda tile: (self._u_tile_is_currently_fed(tile), tile.index),
+        )
+
+    def _u_get_hijack_bridge_turret_target(self, source_pos: Position):
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+        active_mask = self.map.active_mask_by_index
+        tiles_by_index = self.map.tiles_by_index
+        source_x = source_pos.x
+        source_y = source_pos.y
+
+        candidates = []
+        for dx, dy in _HIJACK_BRIDGE_TARGET_OFFSETS:
+            target_x = source_x + dx
+            target_y = source_y + dy
+            if (
+                target_x < 0
+                or target_y < 0
+                or target_x >= self.map.width
+                or target_y >= self.map.height
+            ):
+                continue
+            target_idx = self.map.u_to_index_xy(target_x, target_y)
+            if not active_mask[target_idx]:
+                continue
+
+            target_tile = tiles_by_index[target_idx]
+            if (
+                target_tile.last_seen_turn != current_round
+                or target_tile.building.team != own_team
+                or target_tile.building.entity_type not in ATTACK_TURRET_TYPES
+                or not self.ct.can_build_bridge(source_pos, target_tile.position)
+            ):
+                continue
+            candidates.append(target_tile)
+
+        if not candidates:
+            return None
+
+        def narrow(predicate) -> bool:
+            nonlocal candidates
+            filtered_candidates = [tile for tile in candidates if predicate(tile)]
+            if filtered_candidates:
+                candidates = filtered_candidates
+            return len(candidates) == 1
+
+        if narrow(
+            lambda tile: any(
+                target_tile.is_core_of(enemy_team)
+                for target_tile in tile.building.targets
+            )
+        ):
+            return candidates[0]
+        if narrow(lambda tile: not self._u_tile_is_currently_fed(tile)):
+            return candidates[0]
+        if narrow(lambda tile: tile.building.entity_type == EntityType.GUNNER):
+            return candidates[0]
+
+        return min(candidates, key=lambda tile: tile.index)
+
+    def _u_get_hijack_bridge_supply_target(self, source_pos: Position):
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+        active_mask = self.map.active_mask_by_index
+        tiles_by_index = self.map.tiles_by_index
+        source_x = source_pos.x
+        source_y = source_pos.y
+
+        best_tile = None
+        for dx, dy in _HIJACK_BRIDGE_TARGET_OFFSETS:
+            target_x = source_x + dx
+            target_y = source_y + dy
+            if (
+                target_x < 0
+                or target_y < 0
+                or target_x >= self.map.width
+                or target_y >= self.map.height
+            ):
+                continue
+            target_idx = self.map.u_to_index_xy(target_x, target_y)
+            if not active_mask[target_idx]:
+                continue
+
+            target_tile = tiles_by_index[target_idx]
+            if (
+                target_tile.last_seen_turn != current_round
+                or target_tile.building.team != own_team
+                or target_tile.building.entity_type not in SUPPLY_LINK_TYPES
+                or not self._u_supply_tile_feeds_own_turret(target_tile)
+                or not self.ct.can_build_bridge(source_pos, target_tile.position)
+            ):
+                continue
+            if best_tile is None or target_tile.index < best_tile.index:
+                best_tile = target_tile
+
+        return best_tile
+
+    def s_hijack_enemy_supply_chain(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        """
+        Build on the closest visible enemy resource target, preferring a hijack.
+
+        When the targeted enemy supply input is carrying pure titanium, try to
+        convert that target tile into an allied supply tile that feeds nearby
+        turrets or downstream allied turret chains before falling back to a
+        barrier.
+        """
+        own_team = self.map.own_team
+        current_round = self.map.current_round
 
         target_tile = None
         target_key = None
@@ -3362,7 +3671,7 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        return bool(
+        barrier_build = lambda: bool(
             self.u_build_at(
                 target_tile.position,
                 EntityType.BARRIER,
@@ -3371,6 +3680,168 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=True,
             )
         )
+
+        conveyor_titanium_cost, conveyor_axionite_cost = self.ct.get_conveyor_cost()
+        can_afford_conveyor = (
+            self.map.titanium >= conveyor_titanium_cost
+            and self.map.axionite >= conveyor_axionite_cost
+        )
+        if not can_afford_conveyor or not self._u_target_has_pure_titanium_enemy_supply(
+            target_tile.index
+        ):
+            return barrier_build()
+
+        adjacent_own_turrets = self._u_get_hijack_adjacent_own_turrets(target_tile.index)
+        if len(adjacent_own_turrets) == 1:
+            turret_tile = adjacent_own_turrets[0]
+            turret_direction = self.map.u_get_direction_between(
+                target_tile.position,
+                turret_tile.position,
+            )
+            if turret_direction is not None and self.u_build_at(
+                target_tile.position,
+                EntityType.CONVEYOR,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=True,
+                facing_direction=turret_direction,
+            ):
+                return True
+
+        elif len(adjacent_own_turrets) == 3:
+            splitter_titanium_cost, splitter_axionite_cost = self.ct.get_splitter_cost()
+            can_afford_splitter = (
+                self.map.titanium >= splitter_titanium_cost
+                and self.map.axionite >= splitter_axionite_cost
+            )
+            if can_afford_splitter:
+                incoming_conveyors = self._u_get_hijack_incoming_conveyors(
+                    target_tile.index
+                )
+                if len(incoming_conveyors) == 1:
+                    splitter_direction = self.map.u_get_direction_between(
+                        incoming_conveyors[0].position,
+                        target_tile.position,
+                    )
+                    exact_splitter_direction = (
+                        self.u_get_splitter_direction_for_target_directions(
+                            *(
+                                self.map.u_get_direction_between(
+                                    target_tile.position,
+                                    turret_tile.position,
+                                )
+                                for turret_tile in adjacent_own_turrets
+                            )
+                        )
+                    )
+                    if (
+                        splitter_direction is not None
+                        and splitter_direction == exact_splitter_direction
+                        and self._u_splitter_targets_only_own_buildings_or_walls(
+                            target_tile.position,
+                            splitter_direction,
+                        )
+                        and self.u_build_at(
+                            target_tile.position,
+                            EntityType.SPLITTER,
+                            hold=hold,
+                            move_towards=move_towards,
+                            attack_enemy_passable=True,
+                            facing_direction=splitter_direction,
+                        )
+                    ):
+                        return True
+
+            turret_tile = self._u_get_best_hijack_adjacent_turret(adjacent_own_turrets)
+            if turret_tile is not None:
+                turret_direction = self.map.u_get_direction_between(
+                    target_tile.position,
+                    turret_tile.position,
+                )
+                if turret_direction is not None and self.u_build_at(
+                    target_tile.position,
+                    EntityType.CONVEYOR,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=True,
+                    facing_direction=turret_direction,
+                ):
+                    return True
+
+        if not adjacent_own_turrets:
+            adjacent_supply_tile = None
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                target_tile.index
+            ):
+                candidate_tile = self.map.tiles_by_index[adjacent_idx]
+                if (
+                    candidate_tile.last_seen_turn != current_round
+                    or candidate_tile.building.team != own_team
+                    or candidate_tile.building.entity_type not in SUPPLY_LINK_TYPES
+                    or not self._u_supply_tile_feeds_own_turret(candidate_tile)
+                ):
+                    continue
+                if (
+                    candidate_tile.building.entity_type
+                    in CONVEYOR_ENTITY_TYPES | {EntityType.SPLITTER}
+                    and self._u_tile_points_at_index(candidate_tile, target_tile.index)
+                ):
+                    continue
+                if (
+                    adjacent_supply_tile is None
+                    or candidate_tile.index < adjacent_supply_tile.index
+                ):
+                    adjacent_supply_tile = candidate_tile
+
+            if adjacent_supply_tile is not None:
+                supply_direction = self.map.u_get_direction_between(
+                    target_tile.position,
+                    adjacent_supply_tile.position,
+                )
+                if supply_direction is not None and self.u_build_at(
+                    target_tile.position,
+                    EntityType.CONVEYOR,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=True,
+                    facing_direction=supply_direction,
+                ):
+                    return True
+
+        bridge_titanium_cost, bridge_axionite_cost = self.ct.get_bridge_cost()
+        can_afford_bridge = (
+            self.map.titanium >= bridge_titanium_cost
+            and self.map.axionite >= bridge_axionite_cost
+        )
+
+        if can_afford_bridge:
+            bridge_turret_target = self._u_get_hijack_bridge_turret_target(
+                target_tile.position
+            )
+            if bridge_turret_target is not None and self.u_build_at(
+                target_tile.position,
+                EntityType.BRIDGE,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=True,
+                target_pos=bridge_turret_target.position,
+            ):
+                return True
+
+            bridge_supply_target = self._u_get_hijack_bridge_supply_target(
+                target_tile.position
+            )
+            if bridge_supply_target is not None and self.u_build_at(
+                target_tile.position,
+                EntityType.BRIDGE,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=True,
+                target_pos=bridge_supply_target.position,
+            ):
+                return True
+
+        return barrier_build()
 
     def s_block_titanium(
         self,
