@@ -1,6 +1,7 @@
 from lib.agent.builder.strategies import STRATEGIES
 from lib.agent.constants import MARKER_STRATEGIES_LIST, MARKER_SYMMETRY_LIST
 from lib.debug import Stopwatch
+from cambc import Position, EntityType
 
 
 class BuilderExecutionMixin:
@@ -69,28 +70,58 @@ class BuilderExecutionMixin:
     def place_marker(self):
 
         bot_type = MARKER_STRATEGIES_LIST.index(self.strategy)
+        # 2 bits
         symmetry_type = MARKER_SYMMETRY_LIST.index(self.map.symmetry_mode)
-        current_index = self.map.INDEX_STRIDE * self.map.current_pos.y + self.map.current_pos.x
-        target_index = 0
-        # 12 bits per position
-            # TODO
+        # 2 bits
+        own_id = self.ct.get_id() # < 256
+        # 8 bits
+        current_round = self.ct.get_current_round()
+        # 11 bits
+        target_position = Position(0, 0) # TODO
+        target_index = target_position.y * self.map.INDEX_STRIDE + target_position.x
+        # 12 bits 
         
         result = 0
         result |= bot_type
         result |= symmetry_type << 2
-        result |= current_index << 4
-        result |= target_index << 16
+        result |= own_id << 4
+        result |= current_round << 12
+        result |= target_index << 23
 
         # place a marker in the action radius where possible
         action_radius = 2
         candidate_positions = self.ct.get_nearby_tiles(action_radius)
+        pos_round = []
         for pos in candidate_positions:
-            if self.ct.is_tile_empty(pos):
+            if self.ct.can_place_marker(pos):
+                # cannot use the information in the map, since we store marker as "nothing"
+                # it is never possible that a marker we are building over contains better information about symmetry -> updated in update_vision
+                building_id = self.ct.get_tile_building_id(pos)
+                if building_id is not None and self.ct.get_entity_type(building_id) == EntityType.MARKER and self.ct.get_team(building_id) == self.ct.get_team():
+                    content = self.ct.get_marker_value(building_id)
+                    n_Strategy, n_symmetry_mode, n_own_id, n_current_round, n_target_x, n_target_y = self.read_marker(content)
+                    pos_round.append((pos, n_current_round))
+                    continue
                 self.ct.place_marker(pos, result)
                 print(self.map.symmetry_mode, symmetry_type)
                 return;
-                
+        if pos_round:
+            pos_round = sorted(pos_round, key = lambda x: x[1])
+            self.ct.place_marker(pos_round[0][0], result)
+
+
+
     
     def read_marker(self, num):
+        bot_type     = (num >>  0) & 0b11          #  2 bits
+        symmetry_type= (num >>  2) & 0b11          #  2 bits
+        own_id       = (num >>  4) & 0b11111111    #  8 bits
+        current_round= (num >> 12) & 0b11111111111 # 11 bits
+        target_index = (num >> 23) & 0b111111111111# 12 bits
 
-        pass
+        strategy = MARKER_STRATEGIES_LIST[bot_type]
+        symmetry_mode = MARKER_SYMMETRY_LIST[symmetry_type]
+        target_x = target_index % self.map.width
+        target_y = target_index // self.map.width
+
+        return strategy, symmetry_mode, own_id, current_round, target_x, target_y
