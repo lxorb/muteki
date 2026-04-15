@@ -51,5 +51,11 @@ replay_*.json
 # excluded constants
 /bots/exclude/exclude.py
 
+# unrated runner
+
 # queued match ids (may not be current anymore)
-/tools/unrated_runner/queued.json
+/tools/unrated_runner/data/queued.json
+# partial results (only useful in the case of conflicts)
+/tools/unrated_runner/results/partial/
+# output logs (can generate at any time)
+/tools/unrated_runner/outputs/
