@@ -10,6 +10,7 @@ import datetime
 TEAM_NAME = "muteki"
 
 SCRIPT_DIR = Path(__file__).parent
+MAPS_DIR = SCRIPT_DIR.parent.parent / "maps"
 CONFIG_DIR = SCRIPT_DIR / "config"
 DATA_DIR = SCRIPT_DIR / "data"
 RESULTS_DIR = SCRIPT_DIR / "results"
@@ -66,9 +67,23 @@ def save_json(path: Path, data: dict) -> None:
         json.dump(data, f, indent=4)
 
 
-def queue_match(team_id: str) -> str | None:
+def get_priority_maps(results: dict, count: int = 5) -> list[str]:
+    """Return the maps with the fewest games played."""
+    all_maps = [p.stem for p in MAPS_DIR.glob("*.map26")]
+    games_per_map: dict[str, int] = {m: 0 for m in all_maps}
+    for team_data in results.values():
+        for map_name, map_data in team_data.items():
+            if map_name in games_per_map:
+                games_per_map[map_name] += map_data.get("wins", 0) + map_data.get("losses", 0)
+    return sorted(games_per_map, key=lambda m: (games_per_map[m], m))[:count]
+
+
+def queue_match(team_id: str, maps: list[str]) -> str | None:
+    cmd = ["cambc", "match", "unrated", team_id]
+    for m in maps:
+        cmd += ["--map", m]
     result = subprocess.run(
-        ["cambc", "match", "unrated", team_id], capture_output=True, text=True
+        cmd, capture_output=True, text=True
     )
     m = re.search(r"Match ID: ([0-9a-f-]+)", result.stdout)
     if m:
@@ -168,8 +183,9 @@ def main():
                 remaining_teams = team_ids
             team_id = remaining_teams[0]
             queued_teams.add(team_id)
-            print(f"Queuing vs {teams[team_id]} ({team_id})...")
-            match_id = queue_match(team_id)
+            priority_maps = get_priority_maps(results_all)
+            print(f"Queuing vs {teams[team_id]} ({team_id}) on {priority_maps}...")
+            match_id = queue_match(team_id, priority_maps)
             if match_id:
                 print(f"  Queued: {match_id}")
                 match_queue.append((match_id, team_id))

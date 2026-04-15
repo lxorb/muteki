@@ -15,7 +15,7 @@ OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
 
 import inspect
 
-LOG_TIME = False
+LOG_TIME = True
 
 
 class RoundStopwatch:
