@@ -43,6 +43,7 @@ SCAVENGER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
     (BuilderStrategyMethodsMixin.s_replace_damaged_conveyor, True, True),
     (BuilderStrategyMethodsMixin.s_split_supply_sentinel,),
+    (BuilderStrategyMethodsMixin.s_integrate_own_sentinel, True, True),
     (BuilderStrategyMethodsMixin.s_defend_attacked_harvester, True, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (BuilderStrategyMethodsMixin.s_fix_harvester, True, True),

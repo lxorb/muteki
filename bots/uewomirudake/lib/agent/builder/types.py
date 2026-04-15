@@ -64,6 +64,11 @@ class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
+    def u_can_afford_sentinel(
+        self,
+        respect_titanium_reserve: bool = False,
+    ) -> bool: ...
+
     def u_move_with_target(
         self,
         direction: Direction,
@@ -71,6 +76,8 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
     ) -> None: ...
 
     def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
+
+    def u_get_useful_sentinel_direction(self, pos: Position) -> Direction | None: ...
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction: ...
 
@@ -192,6 +199,13 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         hold: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_integrate_own_sentinel(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        candidate_radius: float | None = None,
     ) -> BuilderActionResult: ...
 
     def s_integrate_foundry_passing_splitter(

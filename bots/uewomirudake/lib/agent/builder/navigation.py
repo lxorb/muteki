@@ -584,6 +584,19 @@ class BuilderNavigationMixin:
     def u_supply_chain_targets_core(self, resource: Environment) -> bool:
         return True
 
+    def u_can_afford_sentinel(self, respect_titanium_reserve: bool = False) -> bool:
+        sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
+        return (
+            (
+                not respect_titanium_reserve
+                or self.u_can_spend_titanium_without_falling_below_reserve(
+                    sentinel_titanium_cost
+                )
+            )
+            and self.map.titanium >= sentinel_titanium_cost
+            and self.map.axionite >= sentinel_axionite_cost
+        )
+
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is None and self.map.enemy_core_center_pos_candidates:
@@ -603,6 +616,28 @@ class BuilderNavigationMixin:
         if direction is None or direction == Direction.CENTRE:
             return Direction.NORTH
         return direction
+
+    def u_get_useful_sentinel_direction(self, pos: Position) -> Direction | None:
+        sentinel_direction = self.u_get_sentinel_orientation(pos)
+        enemy_team = self.map.enemy_team
+        sentinel_target_indices = self.map.u_get_attackable_target_indices(
+            self.map.u_get_pos_tile(pos).index,
+            EntityType.SENTINEL,
+            sentinel_direction,
+        )
+        for sentinel_target_idx in sentinel_target_indices:
+            sentinel_target_tile = self.map.tiles_by_index[sentinel_target_idx]
+            if sentinel_target_tile.is_core_of(enemy_team):
+                return sentinel_direction
+            if sentinel_target_tile.building.team != enemy_team:
+                continue
+            if sentinel_target_tile.building.entity_type in (
+                EntityType.HARVESTER,
+                EntityType.FOUNDRY,
+                EntityType.LAUNCHER,
+            ) or sentinel_target_tile.building.entity_type in ENEMY_TURRET_TYPES:
+                return sentinel_direction
+        return None
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction:
         """
@@ -1372,47 +1407,11 @@ class BuilderNavigationMixin:
                 and pos != current_pos
                 and sentinel_substitution_candidate
             ):
-                sentinel_titanium_cost, sentinel_axionite_cost = (
-                    self.ct.get_sentinel_cost()
-                )
-                sentinel_affordable = (
-                    (
-                        not respect_titanium_reserve
-                        or self.u_can_spend_titanium_without_falling_below_reserve(
-                            sentinel_titanium_cost
-                        )
-                    )
-                    and self.map.titanium >= sentinel_titanium_cost
-                    and self.map.axionite >= sentinel_axionite_cost
-                )
-                if sentinel_affordable:
-                    sentinel_direction = self.u_get_sentinel_orientation(pos)
-                    enemy_team = self.map.enemy_team
-                    sentinel_target_indices = self.map.u_get_attackable_target_indices(
-                        target_tile.index,
-                        EntityType.SENTINEL,
-                        sentinel_direction,
-                    )
-                    for sentinel_target_idx in sentinel_target_indices:
-                        sentinel_target_tile = self.map.tiles_by_index[
-                            sentinel_target_idx
-                        ]
-                        if sentinel_target_tile.is_core_of(enemy_team):
-                            preferred_building_type = EntityType.SENTINEL
-                            preferred_facing_direction = sentinel_direction
-                            break
-                        if sentinel_target_tile.building.team != enemy_team:
-                            continue
-                        if sentinel_target_tile.building.entity_type in (
-                            EntityType.HARVESTER,
-                            EntityType.FOUNDRY,
-                            EntityType.LAUNCHER,
-                        ) or sentinel_target_tile.building.entity_type in (
-                            ENEMY_TURRET_TYPES
-                        ):
-                            preferred_building_type = EntityType.SENTINEL
-                            preferred_facing_direction = sentinel_direction
-                            break
+                if self.u_can_afford_sentinel(respect_titanium_reserve):
+                    sentinel_direction = self.u_get_useful_sentinel_direction(pos)
+                    if sentinel_direction is not None:
+                        preferred_building_type = EntityType.SENTINEL
+                        preferred_facing_direction = sentinel_direction
             log_step("in range prebuild")
             if (
                 target_tile.building.team == self.map.own_team
