@@ -3675,6 +3675,7 @@ class BuilderStrategyMethodsMixin:
                     move_towards=False,
                     destroy_condition=lambda _: True,
                     avoid_enemy_turrets=False,
+                    ignore_conveyor_reserve_if_target_damaged=True,
                 )
             )
 
@@ -3724,6 +3725,7 @@ class BuilderStrategyMethodsMixin:
                 target_tile.position,
                 move_towards=move_towards,
                 destroy_condition=lambda _: True,
+                ignore_conveyor_reserve_if_target_damaged=True,
             )
         )
 

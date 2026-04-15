@@ -156,6 +156,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         move_towards: bool,
         destroy_condition: Callable[[Position], bool] | None = None,
         avoid_enemy_turrets: bool = True,
+        ignore_conveyor_reserve_if_target_damaged: bool = False,
     ) -> bool: ...
 
     def u_build_at(
