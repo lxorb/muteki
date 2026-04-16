@@ -3637,22 +3637,8 @@ class BuilderStrategyMethodsMixin:
 
         return best_tile
 
-    def s_hijack_enemy_supply_chain(
-        self,
-        move_towards: bool = True,
-        hold: bool = True,
-        enable_barrier: bool = True,
-    ):
-        """
-        Build on the closest visible enemy resource target, preferring a hijack.
-
-        When the targeted enemy supply input is carrying pure titanium, try to
-        convert that target tile into an allied supply tile that feeds nearby
-        turrets or downstream allied turret chains before falling back to a
-        barrier when enabled.
-        """
+    def _u_get_enemy_supply_target_tile(self):
         own_team = self.map.own_team
-        current_round = self.map.current_round
 
         target_tile = None
         target_key = None
@@ -3670,6 +3656,61 @@ class BuilderStrategyMethodsMixin:
                 target_key = key
                 target_tile = tile
 
+        return target_tile
+
+    def s_block_enemy_supply_chain(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        """
+        Block a hijackable enemy supply target by building a barrier on it.
+
+        Uses the same target selection and pure-titanium gate as
+        `s_hijack_enemy_supply_chain`, but once the tile qualifies it builds a
+        barrier directly instead of considering allied supply-link builds.
+        """
+        target_tile = self._u_get_enemy_supply_target_tile()
+        if target_tile is None:
+            return False
+
+        conveyor_titanium_cost, conveyor_axionite_cost = self.ct.get_conveyor_cost()
+        can_afford_conveyor = (
+            self.map.titanium >= conveyor_titanium_cost
+            and self.map.axionite >= conveyor_axionite_cost
+        )
+        if not can_afford_conveyor or not self._u_target_has_pure_titanium_enemy_supply(
+            target_tile.index
+        ):
+            return False
+
+        return bool(
+            self.u_build_at(
+                target_tile.position,
+                EntityType.BARRIER,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=True,
+            )
+        )
+
+    def s_hijack_enemy_supply_chain(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        enable_barrier: bool = True,
+    ):
+        """
+        Build on the closest visible enemy resource target, preferring a hijack.
+
+        When the targeted enemy supply input is carrying pure titanium, try to
+        convert that target tile into an allied supply tile that feeds nearby
+        turrets or downstream allied turret chains before falling back to a
+        barrier when enabled.
+        """
+        current_round = self.map.current_round
+
+        target_tile = self._u_get_enemy_supply_target_tile()
         if target_tile is None:
             return False
 

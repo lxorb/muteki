@@ -304,6 +304,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         enable_barrier: bool = True,
     ) -> BuilderActionResult: ...
 
+    def s_block_enemy_supply_chain(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_block_titanium(
         self,
         move_towards: bool = True,

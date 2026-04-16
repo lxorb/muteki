@@ -88,7 +88,7 @@ HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_attack_enemy_core_supply_link, True),
     (BuilderStrategyMethodsMixin.s_attack_key_enemy_supply_chain, True),
     (BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
-    (BuilderStrategyMethodsMixin.s_hijack_enemy_supply_chain, True, True),
+    (BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
     (BuilderStrategyMethodsMixin.s_move_toward_enemy_core),
     (BuilderStrategyMethodsMixin.s_patrol_enemy_core,),
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
