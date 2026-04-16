@@ -2051,6 +2051,9 @@ class BuilderStrategyMethodsMixin:
             target_tile = tiles_by_index[target_idx]
             attempted_target_positions.append(target_tile.position)
             supply_chain_label = SupplyChainLabel(target_label)
+            is_pure_axionite_supply_chain = (
+                supply_chain_label == SupplyChainLabel.AXIONITE
+            )
             for resource in u_get_candidate_resources(
                 target_tile,
                 supply_chain_label,
@@ -2059,7 +2062,11 @@ class BuilderStrategyMethodsMixin:
                     target_tile.position,
                     resource,
                     prefer_bridge_when_conveyor_targets_existing_chain=(
-                        supply_chain_label != SupplyChainLabel.AXIONITE
+                        not is_pure_axionite_supply_chain
+                    ),
+                    avoid_core=is_pure_axionite_supply_chain,
+                    prefer_join_existing_supply_chain=(
+                        is_pure_axionite_supply_chain
                     ),
                 )
                 if supplier_type is None or supplier_target is None:

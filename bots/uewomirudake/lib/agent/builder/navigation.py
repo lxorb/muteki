@@ -777,6 +777,8 @@ class BuilderNavigationMixin:
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
         prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> tuple[EntityType | None, Direction | Position | None]:
         """
         Return the normal transport-oriented supplier plan for `resource` at `pos`.
@@ -790,8 +792,15 @@ class BuilderNavigationMixin:
             pos,
             resource,
             allow_adjacent_resource_sink=False,
+            avoid_core=avoid_core,
+            prefer_join_existing_supply_chain=prefer_join_existing_supply_chain,
         )
-        bridge_target = self.u_best_bridge_target(pos, resource)
+        bridge_target = self.u_best_bridge_target(
+            pos,
+            resource,
+            avoid_core=avoid_core,
+            prefer_join_existing_supply_chain=prefer_join_existing_supply_chain,
+        )
 
         if conveyor_direction is None and bridge_target is None:
             return (None, None)
@@ -843,6 +852,8 @@ class BuilderNavigationMixin:
         resource: Environment = Environment.ORE_TITANIUM,
         surround_target_pos: Position | None = None,
         allow_adjacent_resource_sink: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Direction | None:
         """
         Return the best cardinal output direction for a conveyor at this tile.
@@ -854,12 +865,36 @@ class BuilderNavigationMixin:
         source_idx = source_tile.index
         source_core_dist = source_tile.own_core_dist
         tiles_by_index = map.tiles_by_index
+        hard_avoid_existing_supply_chain = (
+            HARD_AVOID_EXISTING_SUPPLY_CHAIN
+            and not prefer_join_existing_supply_chain
+        )
         incoming_supply_sources = (
             map.own_supply_link_source_indices_by_target_index_in_vision.get(
                 source_idx,
                 _EMPTY_SOURCE_INDEX_SET,
             )
         )
+        joinable_existing_supply_chain_cache: dict[int, bool] = {}
+
+        def is_joinable_existing_supply_chain(target_idx: int, target_tile) -> bool:
+            if not (
+                target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and target_tile.building.team == own_team
+                and target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+            ):
+                return False
+
+            root_idx = map.u_get_supply_chain_id_by_index(target_idx, own_team)
+            if root_idx is None:
+                return False
+
+            is_joinable = joinable_existing_supply_chain_cache.get(root_idx)
+            if is_joinable is None:
+                is_joinable = map.u_supply_chain_is_joinable(target_idx, own_team)
+                joinable_existing_supply_chain_cache[root_idx] = is_joinable
+            return is_joinable
+
         if allow_adjacent_resource_sink:
             saw_adjacent_resource = False
             all_adjacent_resources_have_own_conveyor = True
@@ -919,7 +954,7 @@ class BuilderNavigationMixin:
                     return surround_direction
 
         best_direction = None
-        best_key: tuple[int, int, int, int, int, int, int, int] | None = None
+        best_key: tuple[int, int, int, int, int, int, int, int, int] | None = None
         for direction in _CARDINAL_DIRECTIONS:
             neighbor_idx = map.u_get_neighbor_index_by_direction(source_idx, direction)
             if neighbor_idx is None:
@@ -936,6 +971,8 @@ class BuilderNavigationMixin:
             elif any(target.position == pos for target in neighbor_tile.building.targets):
                 continue
             if neighbor_tile.is_core_of(own_team):
+                if avoid_core:
+                    continue
                 return direction
 
             category_rank = self.u_get_supplier_tile_category_rank(
@@ -950,13 +987,17 @@ class BuilderNavigationMixin:
                 and neighbor_tile.building.team == own_team
                 and neighbor_tile.own_supply_chain_label != SupplyChainLabel.NONE
             )
+            is_joinable_existing_supply_chain_tile = (
+                is_existing_supply_chain_tile
+                and is_joinable_existing_supply_chain(neighbor_idx, neighbor_tile)
+            )
             neighbor_core_dist = neighbor_tile.own_core_dist
             if neighbor_core_dist > source_core_dist:
                 continue
             if (
                 neighbor_core_dist == source_core_dist
                 and (
-                    not HARD_AVOID_EXISTING_SUPPLY_CHAIN
+                    not hard_avoid_existing_supply_chain
                     or is_existing_supply_chain_tile
                 )
             ):
@@ -964,7 +1005,15 @@ class BuilderNavigationMixin:
 
             candidate_key = (
                 1 if neighbor_tile.environment in _RESOURCE_ENVIRONMENTS else 0,
-                1 if is_existing_supply_chain_tile else 0,
+                0 if is_joinable_existing_supply_chain_tile else 1,
+                (
+                    0
+                    if (
+                        is_existing_supply_chain_tile
+                        == prefer_join_existing_supply_chain
+                    )
+                    else 1
+                ),
                 1 if neighbor_core_dist == source_core_dist else 0,
                 category_rank,
                 neighbor_core_dist,
@@ -1019,6 +1068,8 @@ class BuilderNavigationMixin:
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Position | None:
         """
         Return the best bridge target tile reachable from this source tile.
@@ -1041,6 +1092,26 @@ class BuilderNavigationMixin:
                 _EMPTY_SOURCE_INDEX_SET,
             )
         )
+        joinable_existing_supply_chain_cache: dict[int, bool] = {}
+
+        def is_joinable_existing_supply_chain(target_idx: int, target_tile) -> bool:
+            if not (
+                target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and target_tile.building.team == own_team
+                and target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+            ):
+                return False
+
+            root_idx = map.u_get_supply_chain_id_by_index(target_idx, own_team)
+            if root_idx is None:
+                return False
+
+            is_joinable = joinable_existing_supply_chain_cache.get(root_idx)
+            if is_joinable is None:
+                is_joinable = map.u_supply_chain_is_joinable(target_idx, own_team)
+                joinable_existing_supply_chain_cache[root_idx] = is_joinable
+            return is_joinable
+
         best_target_pos = None
         best_target_key = None
         for dx, dy in _BRIDGE_TARGET_OFFSETS:
@@ -1067,16 +1138,29 @@ class BuilderNavigationMixin:
                 1 if target_tile.environment in _RESOURCE_ENVIRONMENTS else 0
             )
             if target_tile.is_core_of(own_team):
+                if avoid_core:
+                    continue
                 target_key = (
                     resource_penalty,
+                    0,
+                    0,
+                    0,
                     0,
                     current_pos.distance_squared(target_tile.position),
                     target_tile.position.x,
                     target_tile.position.y,
                     0,
-                    0,
                 )
             else:
+                is_existing_supply_chain_tile = (
+                    target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                    and target_tile.building.team == own_team
+                    and target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+                )
+                is_joinable_existing_supply_chain_tile = (
+                    is_existing_supply_chain_tile
+                    and is_joinable_existing_supply_chain(target_idx, target_tile)
+                )
                 category_rank = self.u_get_bridge_target_category_rank(
                     target_tile,
                     resource,
@@ -1086,6 +1170,15 @@ class BuilderNavigationMixin:
                 target_key = (
                     resource_penalty,
                     1,
+                    0 if is_joinable_existing_supply_chain_tile else 1,
+                    (
+                        0
+                        if (
+                            is_existing_supply_chain_tile
+                            == prefer_join_existing_supply_chain
+                        )
+                        else 1
+                    ),
                     category_rank,
                     target_tile.own_core_dist,
                     0

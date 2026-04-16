@@ -94,6 +94,8 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
         prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> SupplierBuildPlan: ...
 
     def u_get_surround_supplier_build_plan(
@@ -114,12 +116,16 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         resource: Environment = Environment.ORE_TITANIUM,
         surround_target_pos: Position | None = None,
         allow_adjacent_resource_sink: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Direction | None: ...
 
     def u_best_bridge_target(
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Position | None: ...
     def u_move_to_astar(
         self,
