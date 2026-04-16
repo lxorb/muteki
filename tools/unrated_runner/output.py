@@ -34,7 +34,7 @@ def load_results() -> dict:
 def win_pct(wins: int, games: int) -> str:
     """Return win percentage rounded to int, e.g. '67%'."""
     if games == 0:
-        return "0%"
+        return "N/A"
     return f"{round(wins / games * 100)}%"
 
 
