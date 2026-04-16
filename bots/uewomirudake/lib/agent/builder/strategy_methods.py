@@ -3708,6 +3708,7 @@ class BuilderStrategyMethodsMixin:
         turrets or downstream allied turret chains before falling back to a
         barrier when enabled.
         """
+        own_team = self.map.own_team
         current_round = self.map.current_round
 
         target_tile = self._u_get_enemy_supply_target_tile()
