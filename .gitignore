@@ -61,3 +61,5 @@ replay_*.json
 /tools/unrated_runner/outputs/
 # compare logs (can generate at any time)
 /tools/unrated_runner/compares/
+
+CLAUDE.md
