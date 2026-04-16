@@ -5248,6 +5248,7 @@ class BuilderStrategyMethodsMixin:
         self.enemy_core_patrol_index = next_patrol_index
         return bool(
             self.u_move_to(
-                tiles_by_index[waypoint_indices[next_patrol_index]].position
+                tiles_by_index[waypoint_indices[next_patrol_index]].position,
+                allow_conveyor_building=False,
             )
         )
