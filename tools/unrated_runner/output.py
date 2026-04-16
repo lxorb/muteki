@@ -10,6 +10,7 @@ DECAY_LAMBDA = math.log(2) / (HALF_LIFE_MINUTES / 1440)  # in days^-1
 
 SCRIPT_DIR = Path(__file__).parent
 TEAM_LIST_FILE = SCRIPT_DIR / "data" / "team_list.json"
+REQUEST_TEAMS_FILE = SCRIPT_DIR / "config" / "request_teams.txt"
 RESULTS_ALL_FILE = SCRIPT_DIR / "results" / "results.json"
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -159,7 +160,21 @@ def main():
             team_totals[team_id]["losses"] += map_data["losses"]
 
     # --- Result grid: maps (rows) vs teams (columns) with win % ---
-    all_teams = sorted(combined.keys(), key=lambda t: team_names.get(t, t))
+    requested_order: list[str] = []
+    if REQUEST_TEAMS_FILE.exists():
+        requested_order = [
+            name.strip()
+            for name in REQUEST_TEAMS_FILE.read_text().splitlines()
+            if name.strip()
+        ]
+    requested_rank = {name: i for i, name in enumerate(requested_order)}
+    all_teams = sorted(
+        combined.keys(),
+        key=lambda t: (
+            requested_rank.get(team_names.get(t, t), len(requested_order)),
+            team_names.get(t, t),
+        ),
+    )
     all_maps: set[str] = set()
     for maps in combined.values():
         all_maps.update(maps.keys())
