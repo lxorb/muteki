@@ -3641,6 +3641,7 @@ class BuilderStrategyMethodsMixin:
         self,
         move_towards: bool = True,
         hold: bool = True,
+        enable_barrier: bool = True,
     ):
         """
         Build on the closest visible enemy resource target, preferring a hijack.
@@ -3648,7 +3649,7 @@ class BuilderStrategyMethodsMixin:
         When the targeted enemy supply input is carrying pure titanium, try to
         convert that target tile into an allied supply tile that feeds nearby
         turrets or downstream allied turret chains before falling back to a
-        barrier.
+        barrier when enabled.
         """
         own_team = self.map.own_team
         current_round = self.map.current_round
@@ -3672,14 +3673,18 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        barrier_build = lambda: bool(
-            self.u_build_at(
-                target_tile.position,
-                EntityType.BARRIER,
-                hold=hold,
-                move_towards=move_towards,
-                attack_enemy_passable=True,
+        barrier_build = lambda: (
+            bool(
+                self.u_build_at(
+                    target_tile.position,
+                    EntityType.BARRIER,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=True,
+                )
             )
+            if enable_barrier
+            else False
         )
 
         conveyor_titanium_cost, conveyor_axionite_cost = self.ct.get_conveyor_cost()
