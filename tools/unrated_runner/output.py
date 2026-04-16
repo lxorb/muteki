@@ -5,7 +5,7 @@ import datetime
 from pathlib import Path
 
 RENDER_IMAGES = True
-HALF_LIFE_MINUTES = 15
+HALF_LIFE_MINUTES = 60
 DECAY_LAMBDA = math.log(2) / (HALF_LIFE_MINUTES / 1440)  # in days^-1
 
 SCRIPT_DIR = Path(__file__).parent
