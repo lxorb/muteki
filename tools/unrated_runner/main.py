@@ -27,7 +27,7 @@ RESULTS_SESSION_FILE = RESULTS_PARTIAL_DIR / "results_{}.json".format(
 )
 RESULTS_ALL_FILE = RESULTS_DIR / "results.json"
 
-REQUEST_DELAY = 30
+REQUEST_DELAY = 120
 RANDOM_MAP_SELECTION = True
 
 
@@ -48,7 +48,9 @@ def build_teams_json() -> None:
         if name in name_to_id and name != TEAM_NAME
     }
     save_json(TEAMS_FILE, teams)
-    print(f"Built requested_teams.json with {len(teams)} teams: {', '.join(teams.values())}")
+    print(
+        f"Built requested_teams.json with {len(teams)} teams: {', '.join(teams.values())}"
+    )
 
 
 def load_json(path: Path) -> dict:
@@ -70,10 +72,13 @@ def get_priority_maps(results: dict, team_id: str, count: int = 5) -> list[str]:
     team_data = results.get(team_id, {})
     for map_name, map_data in team_data.items():
         if map_name in games_per_map:
-            games_per_map[map_name] += map_data.get("wins", 0) + map_data.get("losses", 0)
+            games_per_map[map_name] += map_data.get("wins", 0) + map_data.get(
+                "losses", 0
+            )
     if RANDOM_MAP_SELECTION:
         # Group maps by game count, shuffle within each tier, then take top count
         from itertools import groupby
+
         sorted_maps = sorted(games_per_map, key=lambda m: games_per_map[m])
         result = []
         for _, group in groupby(sorted_maps, key=lambda m: games_per_map[m]):
@@ -88,9 +93,7 @@ def queue_match(team_id: str, maps: list[str]) -> str | None:
     cmd = ["cambc", "match", "unrated", team_id]
     for m in maps:
         cmd += ["--map", m]
-    result = subprocess.run(
-        cmd, capture_output=True, text=True
-    )
+    result = subprocess.run(cmd, capture_output=True, text=True)
     m = re.search(r"Match ID: ([0-9a-f-]+)", result.stdout)
     if m:
         return m.group(1)

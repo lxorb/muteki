@@ -22,6 +22,7 @@ RESULTS_FILE = ""  # set to a filename under results/ to use a partial result, e
 SCRIPT_DIR = Path(__file__).parent
 TEAM_LIST_FILE = SCRIPT_DIR / "data" / "team_list.json"
 REQUEST_TEAMS_FILE = SCRIPT_DIR / "config" / "request_teams.txt"
+OUTPUT_TEAMS_FILE = SCRIPT_DIR / "config" / "output_teams.txt"
 RESULTS_ALL_FILE = SCRIPT_DIR / "results" / (RESULTS_FILE or "results.json")
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -186,15 +187,16 @@ def main():
 
     # --- Result grid: maps (rows) vs teams (columns) with win % ---
     requested_order: list[str] = []
-    if REQUEST_TEAMS_FILE.exists():
+    if OUTPUT_TEAMS_FILE.exists():
         requested_order = [
             name.strip()
-            for name in REQUEST_TEAMS_FILE.read_text().splitlines()
+            for name in OUTPUT_TEAMS_FILE.read_text().splitlines()
             if name.strip()
         ]
     requested_rank = {name: i for i, name in enumerate(requested_order)}
+    output_set = set(requested_order)
     all_teams = sorted(
-        combined.keys(),
+        [t for t in combined.keys() if not output_set or team_names.get(t, t) in output_set],
         key=lambda t: (
             requested_rank.get(team_names.get(t, t), len(requested_order)),
             team_names.get(t, t),
