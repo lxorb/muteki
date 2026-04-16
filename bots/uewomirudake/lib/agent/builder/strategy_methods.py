@@ -724,6 +724,8 @@ class BuilderStrategyMethodsMixin:
                 continue
             if tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
                 continue
+            if tile.bot.id is not None:
+                continue
             if not any(target_tile.is_core_of(own_team) for target_tile in tile.building.targets):
                 continue
 
