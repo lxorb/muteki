@@ -91,7 +91,37 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         current_round = self.map.current_round
         current_pos = self.map.current_pos
-        candidate_entries: list[tuple[tuple[int, int, int, int], Position, Direction]] = []
+        all_own_supply_link_target_indices_in_vision = (
+            self.map.all_own_supply_link_target_indices_in_vision
+        )
+        enemy_supply_link_target_indices_in_vision = (
+            self.map.enemy_supply_link_target_indices_in_vision
+        )
+        splitter_titanium_cost, splitter_axionite_cost = self.ct.get_splitter_cost()
+        can_afford_splitter = (
+            self.map.titanium >= splitter_titanium_cost
+            and self.map.axionite >= splitter_axionite_cost
+        )
+        conveyor_titanium_cost, conveyor_axionite_cost = self.ct.get_conveyor_cost()
+        can_afford_conveyor = (
+            self.map.titanium >= conveyor_titanium_cost
+            and self.map.axionite >= conveyor_axionite_cost
+        )
+        candidate_entries: list[
+            tuple[tuple[int, int, int, int], Position, EntityType, Direction]
+        ] = []
+
+        if not can_afford_splitter and not can_afford_conveyor:
+            return False
+
+        def is_currently_unsupplied_sentinel(tile) -> bool:
+            return (
+                tile.last_seen_turn == current_round
+                and tile.building.team == own_team
+                and tile.building.entity_type == EntityType.SENTINEL
+                and tile.index not in all_own_supply_link_target_indices_in_vision
+                and tile.index not in enemy_supply_link_target_indices_in_vision
+            )
 
         for tile in self.map.own_supply_links_in_vision:
             if tile.last_seen_turn != current_round:
@@ -117,23 +147,18 @@ class BuilderStrategyMethodsMixin:
                     continue
                 if adjacent_tile.building.entity_type == EntityType.HARVESTER:
                     adjacent_harvesters.append(adjacent_tile)
-                elif adjacent_tile.building.entity_type == EntityType.SENTINEL:
+                elif is_currently_unsupplied_sentinel(adjacent_tile):
                     adjacent_sentinels.append(adjacent_tile)
 
             if not adjacent_harvesters or not adjacent_sentinels:
                 continue
 
-            facing_direction = None
-            harvester_index = None
-            sentinel_index = None
-            for harvester_tile in adjacent_harvesters:
-                direction_to_harvester = self.map.u_get_direction_between(
-                    tile.position,
-                    harvester_tile.position,
-                )
-                if direction_to_harvester is None or direction_to_harvester == Direction.CENTRE:
+            if tile.conveyor_targets_harvester:
+                if not can_afford_conveyor:
                     continue
-
+                harvester_index = min(
+                    harvester_tile.index for harvester_tile in adjacent_harvesters
+                )
                 for sentinel_tile in adjacent_sentinels:
                     direction_to_sentinel = self.map.u_get_direction_between(
                         tile.position,
@@ -144,36 +169,46 @@ class BuilderStrategyMethodsMixin:
                         or direction_to_sentinel == Direction.CENTRE
                     ):
                         continue
-
-                    facing_direction = self.map.u_get_direction_between(
-                        harvester_tile.position,
-                        tile.position,
+                    candidate_entries.append(
+                        (
+                            (
+                                tile.dist_to_self,
+                                tile.index,
+                                harvester_index,
+                                sentinel_tile.index,
+                            ),
+                            tile.position,
+                            EntityType.CONVEYOR,
+                            direction_to_sentinel,
+                        )
                     )
-                    if facing_direction is None or facing_direction == Direction.CENTRE:
-                        continue
-
-                    harvester_index = harvester_tile.index
-                    sentinel_index = sentinel_tile.index
-                    break
-
-                if facing_direction is not None:
-                    break
-
-            if facing_direction is None or harvester_index is None or sentinel_index is None:
                 continue
 
-            candidate_entries.append(
-                (
-                    (
-                        tile.dist_to_self,
-                        tile.index,
-                        harvester_index,
-                        sentinel_index,
-                    ),
+            if not can_afford_splitter:
+                continue
+
+            for harvester_tile in adjacent_harvesters:
+                facing_direction = self.map.u_get_direction_between(
+                    harvester_tile.position,
                     tile.position,
-                    facing_direction,
                 )
-            )
+                if facing_direction is None or facing_direction == Direction.CENTRE:
+                    continue
+
+                for sentinel_tile in adjacent_sentinels:
+                    candidate_entries.append(
+                        (
+                            (
+                                tile.dist_to_self,
+                                tile.index,
+                                harvester_tile.index,
+                                sentinel_tile.index,
+                            ),
+                            tile.position,
+                            EntityType.SPLITTER,
+                            facing_direction,
+                        )
+                    )
 
             if self.round_stopwatch.check_overtime():
                 break
@@ -181,11 +216,10 @@ class BuilderStrategyMethodsMixin:
         if not candidate_entries:
             return False
 
-        titanium_cost, axionite_cost = self.ct.get_splitter_cost()
-        if self.map.titanium < titanium_cost or self.map.axionite < axionite_cost:
-            return False
-
-        _, target_pos, facing_direction = min(candidate_entries, key=lambda item: item[0])
+        _, target_pos, build_entity_type, facing_direction = min(
+            candidate_entries,
+            key=lambda item: item[0],
+        )
         target_tile = self.map.u_get_pos_tile(target_pos)
 
         if (
@@ -194,11 +228,17 @@ class BuilderStrategyMethodsMixin:
         ):
             self.ct.destroy(target_pos)
             target_tile.clear_building()
-            if self.ct.can_build_splitter(target_pos, facing_direction):
+            if build_entity_type == EntityType.SPLITTER:
+                if not self.ct.can_build_splitter(target_pos, facing_direction):
+                    return False
                 self.ct.build_splitter(target_pos, facing_direction)
                 self.last_built_entity_type = EntityType.SPLITTER
                 return True
-            return False
+            if not self.ct.can_build_conveyor(target_pos, facing_direction):
+                return False
+            self.ct.build_conveyor(target_pos, facing_direction)
+            self.last_built_entity_type = EntityType.CONVEYOR
+            return True
 
         return bool(self.u_move_to(target_pos))
 
