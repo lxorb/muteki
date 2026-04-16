@@ -5037,13 +5037,20 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
-    def s_heal_own_building(self, move_towards: bool = True, hold: bool = True):
+    def s_heal_own_building(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+        candidate_radius: float | None = None,
+    ):
         """
         Heal the highest-priority damaged allied tile, preferring immediate heals.
 
         If any damaged allied tile is already healable this turn, only those
         in-range candidates are considered. Otherwise the builder targets the
         remaining visible damaged allied tiles and moves toward the best one.
+        Only tiles within `candidate_radius` Euclidean distance of the builder
+        are considered; by default this is the builder's full vision radius.
         Priorities are: core first, then tiles with a damaged own builder bot
         standing on them, then by building type in this order: bridge,
         conveyor, road, foundry, harvester, armoured conveyor, splitter,
@@ -5051,10 +5058,24 @@ class BuilderStrategyMethodsMixin:
         distance to self and then distance to own core.
         """
         own_team = self.map.own_team
+        current_pos = self.map.current_pos
+        if candidate_radius is None:
+            candidate_radius = math.sqrt(self.ct.get_vision_radius_sq())
+        if candidate_radius < 0:
+            candidate_radius = 0
+        candidate_radius_sq = candidate_radius * candidate_radius
 
-        candidate_tiles = self.map.own_buildings_healable_in_action_range
+        candidate_tiles = [
+            tile
+            for tile in self.map.own_buildings_healable_in_action_range
+            if current_pos.distance_squared(tile.position) <= candidate_radius_sq
+        ]
         if not candidate_tiles:
-            candidate_tiles = self.map.own_buildings_needing_heal
+            candidate_tiles = [
+                tile
+                for tile in self.map.own_buildings_needing_heal
+                if current_pos.distance_squared(tile.position) <= candidate_radius_sq
+            ]
         if not candidate_tiles:
             return False
 
