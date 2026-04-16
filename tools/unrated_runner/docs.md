@@ -40,6 +40,31 @@ Continuously queues unrated matches against configured opponents and records res
 
 Reads `results/results.json` (the cumulative results file) and generates a markdown summary at `outputs/output_<timestamp>.md` with a map-vs-team grid showing the last game result (✅/❌) for each combination, with cumulative win percentages next to each map and team. Also renders a JPG image of the grid where win/loss cell colors fade over time via exponential decay (configurable via `DECAY_LAMBDA` in the script).
 
+## Constants
+
+### main.py
+
+| Constant | Default | Description |
+| --- | --- | --- |
+| `TEAM_NAME` | `"muteki"` | Our team name — automatically excluded from opponents. |
+| `REQUEST_DELAY` | `30` | Seconds between each loop iteration (queue check + new match request). |
+| `RANDOM_MAP_SELECTION` | `True` | When `True`, picks a random map each match. When `False`, cycles through all maps in order. |
+
+### output.py
+
+| Constant | Default | Description |
+| --- | --- | --- |
+| `RENDER_IMAGES` | `True` | Whether to generate the JPG grid image alongside the markdown report. |
+| `HALF_LIFE_MINUTES` | `60` | Controls how fast win/loss cell colors fade toward white. After this many minutes, a cell's color is at 50% intensity. |
+| `MAP_WIN_COLORS` | see code | List of `(threshold, hex_color)` tuples that color map name cells by overall win rate. Evaluated top-down; first threshold the win % meets or exceeds is used. |
+
+### request_top.py
+
+| Constant | Default | Description |
+| --- | --- | --- |
+| `TEAM_NAME` | `"muteki"` | Our team name — excluded from the generated list. |
+| `TOP_N` | `10` | Number of top-rated teams to write to `request_teams.txt`. |
+
 ## Configuration
 
 ### config/request_teams.txt

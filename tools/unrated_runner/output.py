@@ -8,6 +8,15 @@ RENDER_IMAGES = True
 HALF_LIFE_MINUTES = 60
 DECAY_LAMBDA = math.log(2) / (HALF_LIFE_MINUTES / 1440)  # in days^-1
 
+# Map win-rate color cutoffs: (threshold, background_color)
+# Applied top-down; first match wins.
+MAP_WIN_COLORS = [
+    (67, "#C6EFCE"),  # green
+    (50, "#F2FCD9"),  # yellow
+    (33, "#ECB691"),  # orange
+    (0, "#E88A8A"),  # red
+]
+
 SCRIPT_DIR = Path(__file__).parent
 TEAM_LIST_FILE = SCRIPT_DIR / "data" / "team_list.json"
 REQUEST_TEAMS_FILE = SCRIPT_DIR / "config" / "request_teams.txt"
@@ -58,11 +67,22 @@ def blend_to_white(hex_color: str, factor: float) -> str:
     )
 
 
+def map_win_color(pct: float | None) -> str | None:
+    """Return a background color for the given map win percentage, or None."""
+    if pct is None:
+        return None
+    for threshold, color in MAP_WIN_COLORS:
+        if pct >= threshold:
+            return color
+    return MAP_WIN_COLORS[-1][1]
+
+
 def render_table_to_image(
     headers: list[str],
     rows: list[list[str]],
     path: Path,
     cell_times: list[list[int | None]] | None = None,
+    map_win_pcts: list[float | None] | None = None,
 ) -> None:
     import matplotlib.pyplot as plt
     import matplotlib
@@ -125,6 +145,9 @@ def render_table_to_image(
                 cell.set_facecolor(blend_to_white("#FFABB5", factor))
                 cell.set_text_props(color="#9C0006", fontweight="bold")
                 cell.get_text().set_text("L")
+        elif c == 0 and r > 0 and map_win_pcts is not None:
+            bg = map_win_color(map_win_pcts[r - 1])
+            cell.set_facecolor(bg if bg else "white")
         elif r % 2 == 0:
             cell.set_facecolor("#D9E2F3")
         else:
@@ -186,9 +209,12 @@ def main():
 
     rows: list[list[str]] = []
     cell_times: list[list[int | None]] = []
+    map_win_pcts: list[float | None] = []
     for map_name in sorted(all_maps):
         mt = map_totals.get(map_name, {"wins": 0, "losses": 0})
         map_games = mt["wins"] + mt["losses"]
+        map_pct = (mt["wins"] / map_games * 100) if map_games > 0 else None
+        map_win_pcts.append(map_pct)
         map_label = f"{map_name} ({win_pct(mt['wins'], map_games)})"
         row = [map_label]
         row_times: list[int | None] = [None]
@@ -231,6 +257,7 @@ def main():
             rows,
             OUTPUT_DIR / f"output_{now}.jpg",
             cell_times=cell_times,
+            map_win_pcts=map_win_pcts,
         )
 
 
