@@ -2148,6 +2148,7 @@ class BuilderStrategyMethodsMixin:
             return False
         current_tile = self.map.u_get_pos_tile(current_pos)
         tiles_by_index = self.map.tiles_by_index
+        harvester_best_supply_idx_by_index: dict[int, int | None] = {}
 
         def clear_pending_harvester_target() -> None:
             if self.pending_harvester_target_resource == resource:
@@ -2162,6 +2163,13 @@ class BuilderStrategyMethodsMixin:
             if result:
                 print("Build harvester strategy target:", harvester_tile.position)
             return result
+
+        def get_harvester_best_supply_idx(harvester_idx: int) -> int | None:
+            if harvester_idx not in harvester_best_supply_idx_by_index:
+                harvester_best_supply_idx_by_index[harvester_idx] = (
+                    self.map.u_get_harvester_best_supply_tile(harvester_idx)
+                )
+            return harvester_best_supply_idx_by_index[harvester_idx]
 
         def has_orthogonally_adjacent_enemy_building(pos: Position) -> bool:
             adjacent_positions = self.map.u_iter_adjacent_cardinal_positions(
@@ -2219,9 +2227,7 @@ class BuilderStrategyMethodsMixin:
             harvester_tile,
             adjacent_tile,
         ) -> tuple[EntityType | None, Direction | Position | None, bool]:
-            best_supply_idx = self.map.u_get_harvester_best_supply_tile(
-                harvester_tile.index
-            )
+            best_supply_idx = get_harvester_best_supply_idx(harvester_tile.index)
             is_best_supply_tile = adjacent_tile.index == best_supply_idx
             def get_non_bridge_transport_conveyor_plan():
                 conveyor_direction = self.u_best_conveyor_orientation(
@@ -2472,6 +2478,8 @@ class BuilderStrategyMethodsMixin:
         def is_valid_harvester_target(target_tile) -> bool:
             if target_tile.environment != resource:
                 return False
+            if get_harvester_best_supply_idx(target_tile.index) is None:
+                return False
             if not can_use_tile(target_tile):
                 return False
             if (
@@ -2619,6 +2627,8 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime_interval():
                 return False
             if tile.environment != resource:
+                continue
+            if get_harvester_best_supply_idx(tile.index) is None:
                 continue
             if not can_use_tile(tile):
                 continue
