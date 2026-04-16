@@ -17,10 +17,12 @@ MAP_WIN_COLORS = [
     (0, "#E88A8A"),  # red
 ]
 
+RESULTS_FILE = ""  # set to a filename under results/ to use a partial result, e.g. "results_2026-04-16.json"
+
 SCRIPT_DIR = Path(__file__).parent
 TEAM_LIST_FILE = SCRIPT_DIR / "data" / "team_list.json"
 REQUEST_TEAMS_FILE = SCRIPT_DIR / "config" / "request_teams.txt"
-RESULTS_ALL_FILE = SCRIPT_DIR / "results" / "results.json"
+RESULTS_ALL_FILE = SCRIPT_DIR / "results" / (RESULTS_FILE or "results.json")
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
