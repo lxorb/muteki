@@ -1586,7 +1586,23 @@ class BuilderNavigationMixin:
                 and target_tile.is_passable
                 and target_tile.building.team != self.map.own_team
             )
+            adjacent_tiles = tuple(
+                self.map.u_get_pos_tile(adjacent_pos)
+                for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(pos)
+            )
+            adjacent_to_own_harvester = any(
+                adjacent_tile.building.team == self.map.own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                for adjacent_tile in adjacent_tiles
+            )
+            adjacent_to_own_titanium_harvester = any(
+                adjacent_tile.building.team == self.map.own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                and adjacent_tile.environment == Environment.ORE_TITANIUM
+                for adjacent_tile in adjacent_tiles
+            )
             conveyor_feeds_own_harvester = False
+            conveyor_feeds_own_titanium_harvester = False
             if facing_direction is not None and pos != current_pos:
                 conveyor_output_pos = pos.add(facing_direction)
                 if self.map.u_is_in_bounds(conveyor_output_pos):
@@ -1596,23 +1612,25 @@ class BuilderNavigationMixin:
                         and conveyor_output_tile.building.entity_type
                         == EntityType.HARVESTER
                     )
+                    conveyor_feeds_own_titanium_harvester = (
+                        conveyor_feeds_own_harvester
+                        and conveyor_output_tile.environment == Environment.ORE_TITANIUM
+                    )
             barrier_adjacent_to_own_harvester = (
                 building_type == EntityType.BARRIER
-                and any(
-                    adjacent_tile.building.team == self.map.own_team
-                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
-                    for adjacent_tile in (
-                        self.map.u_get_pos_tile(adjacent_pos)
-                        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
-                            pos
-                        )
-                    )
-                )
+                and adjacent_to_own_harvester
             )
             sentinel_substitution_candidate = (
                 conveyor_feeds_own_harvester
                 or safety_conveyor
                 or barrier_adjacent_to_own_harvester
+            )
+            sentinel_substitution_targets_titanium_harvester = (
+                conveyor_feeds_own_titanium_harvester
+                or (
+                    (safety_conveyor or barrier_adjacent_to_own_harvester)
+                    and adjacent_to_own_titanium_harvester
+                )
             )
 
             preferred_building_type = building_type
@@ -1625,6 +1643,7 @@ class BuilderNavigationMixin:
                 )
                 and pos != current_pos
                 and sentinel_substitution_candidate
+                and sentinel_substitution_targets_titanium_harvester
             ):
                 if self.u_can_afford_sentinel(respect_titanium_reserve):
                     sentinel_direction = self.u_get_useful_sentinel_direction(pos)
