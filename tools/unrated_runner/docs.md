@@ -74,6 +74,7 @@ Cells show the change in win percentage points (e.g. `+20%`, `-15%`). `N/A` is s
 | `RESULTS_FILE` | `""` | Filename under `results/` to use as input. When empty (default), uses `results.json`. Set to a partial result filename (e.g. `"results_2026-04-16.json"`) to generate output from a single session. |
 | `RENDER_IMAGES` | `True` | Whether to generate the JPG grid image alongside the markdown report. |
 | `HALF_LIFE_MINUTES` | `60` | Controls how fast win/loss cell colors fade toward white. After this many minutes, a cell's color is at 50% intensity. |
+| `CUTOFF_HOURS` | `12` | Games finished more than this many hours ago are excluded from the report (win/loss counts are recomputed). Set to `0` or `None` to disable. |
 | `MAP_WIN_COLORS` | see code | List of `(threshold, hex_color)` tuples that color map name cells by overall win rate. Evaluated top-down; first threshold the win % meets or exceeds is used. |
 
 ### compare.py
