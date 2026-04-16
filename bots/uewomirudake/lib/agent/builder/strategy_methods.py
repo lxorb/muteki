@@ -707,6 +707,10 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         current_round = self.map.current_round
         current_pos = self.map.current_pos
+        tiles_by_index = self.map.tiles_by_index
+        own_supply_link_source_indices_by_target_index = (
+            self.map.own_supply_link_source_indices_by_target_index_in_vision
+        )
         candidate_entries: list[tuple[tuple[int, int, int], Position]] = []
 
         def get_opposite_direction(direction: Direction) -> Direction:
@@ -728,6 +732,15 @@ class BuilderStrategyMethodsMixin:
                 continue
             if not any(target_tile.is_core_of(own_team) for target_tile in tile.building.targets):
                 continue
+            incoming_source_indices = own_supply_link_source_indices_by_target_index.get(
+                tile.index,
+                (),
+            )
+            if any(
+                tiles_by_index[source_idx].building.entity_type == EntityType.SPLITTER
+                for source_idx in incoming_source_indices
+            ):
+                continue
 
             root = self.map.u_get_supply_chain_id_by_index(tile.index, own_team)
             if root is None:
@@ -740,7 +753,7 @@ class BuilderStrategyMethodsMixin:
 
             passing_conveyor_count = 0
             for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
-                adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+                adjacent_tile = tiles_by_index[adjacent_idx]
                 if adjacent_tile.last_seen_turn != current_round:
                     continue
                 if adjacent_tile.building.team != own_team:
