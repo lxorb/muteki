@@ -5,6 +5,7 @@ from collections.abc import Callable
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
+    ATTACK_TURRET_TYPES,
     ATTACK_TURRET_FEEDER_TYPES,
     BUILD_ACTION_MIN_TITANIUM_BASE,
     BRIDGE_PREFERRED_DIST,
@@ -1414,19 +1415,33 @@ class BuilderNavigationMixin:
             armoured_titanium_cost, armoured_axionite_cost = (
                 self.ct.get_armoured_conveyor_cost()
             )
+            adjacent_to_own_harvester = any(
+                adjacent_tile.building.team == self.map.own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                for adjacent_tile in (
+                    self.map.u_get_pos_tile(adjacent_pos)
+                    for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                        pos
+                    )
+                )
+            )
+            conveyor_targets_own_turret = False
+            if facing_direction is not None and facing_direction != Direction.CENTRE:
+                conveyor_output_pos = pos.add(facing_direction)
+                if self.map.u_is_in_bounds(conveyor_output_pos):
+                    conveyor_output_tile = self.map.u_get_pos_tile(conveyor_output_pos)
+                    conveyor_targets_own_turret = (
+                        conveyor_output_tile.building.team == self.map.own_team
+                        and conveyor_output_tile.building.entity_type
+                        in ATTACK_TURRET_TYPES
+                    )
             if (
                 self.map.titanium >= armoured_titanium_cost
                 and self.map.axionite >= armoured_axionite_cost
                 and self.map.axionite - armoured_axionite_cost >= 1
-                and any(
-                    adjacent_tile.building.team == self.map.own_team
-                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
-                    for adjacent_tile in (
-                        self.map.u_get_pos_tile(adjacent_pos)
-                        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
-                            pos
-                        )
-                    )
+                and (
+                    adjacent_to_own_harvester
+                    or conveyor_targets_own_turret
                 )
             ):
                 building_type = EntityType.ARMOURED_CONVEYOR
