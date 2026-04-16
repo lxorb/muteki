@@ -698,6 +698,16 @@ class Map:
             return self.own_supply_chain_resource_item_count_by_index[root]
         return self.enemy_supply_chain_resource_item_count_by_index[root]
 
+    def u_supply_chain_is_continuable(
+        self,
+        idx: int,
+        team: Team,
+    ) -> bool:
+        return (
+            self.u_get_supply_chain_resource_item_count_by_index(idx, team) > 0
+            or self.u_get_supply_chain_harvester_count_by_index(idx, team) > 0
+        )
+
     def u_supply_chain_has_titanium(
         self,
         idx: int,
@@ -795,21 +805,16 @@ class Map:
             )
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             self._activate_supply_chain_index(tile.index, team)
             if self.round_stopwatch.check_overtime_interval():
                 break
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             for target_tile in tile.building.targets:
                 if (
                     target_tile.last_seen_turn == self.current_round
                     and target_tile.building.team == team
                     and target_tile.building.entity_type in SUPPLY_LINK_TYPES
-                    and target_tile.building.entity_type != EntityType.SPLITTER
                 ):
                     self.u_union_supply_chain_indices(
                         tile.index,
@@ -821,8 +826,6 @@ class Map:
 
         counted_harvester_component_keys: set[int] = set()
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             root = self.u_find_supply_chain_root_by_index(tile.index, team)
             if root is None:
                 continue
@@ -844,6 +847,23 @@ class Map:
                 ):
                     continue
                 pair_key = root * self.tile_count + target_tile.index
+                if pair_key in counted_harvester_component_keys:
+                    continue
+                counted_harvester_component_keys.add(pair_key)
+                supply_chain_harvester_count_by_index[root] += 1
+
+            # Harvesters feed any orthogonally adjacent supplier, even when the
+            # supplier does not target the harvester itself, such as a splitter
+            # facing away from it.
+            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(tile.index):
+                adjacent_tile = self.tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.last_seen_turn != self.current_round
+                    or adjacent_tile.building.team != team
+                    or adjacent_tile.building.entity_type != EntityType.HARVESTER
+                ):
+                    continue
+                pair_key = root * self.tile_count + adjacent_idx
                 if pair_key in counted_harvester_component_keys:
                     continue
                 counted_harvester_component_keys.add(pair_key)
@@ -2804,8 +2824,6 @@ class Map:
             return first_root
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             tile_idx = tile.index
             if active_by_index[tile_idx]:
                 continue
@@ -2825,8 +2843,6 @@ class Map:
                 break
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             tile_idx = tile.index
             for target_tile in tile.building.targets:
                 target_building = target_tile.building
@@ -2834,7 +2850,6 @@ class Map:
                     target_tile.last_seen_turn == current_round
                     and target_building.team == team
                     and target_building.entity_type in SUPPLY_LINK_TYPES
-                    and target_building.entity_type != EntityType.SPLITTER
                 ):
                     union_indices(tile_idx, target_tile.index)
             if check_overtime_interval():
@@ -2842,10 +2857,8 @@ class Map:
 
         counted_harvester_component_keys: set[int] = set()
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
-
-            root = find_root(tile.index)
+            tile_idx = tile.index
+            root = find_root(tile_idx)
             if root is None:
                 continue
 
@@ -2868,6 +2881,22 @@ class Map:
                     and target_building.entity_type == EntityType.HARVESTER
                 ):
                     pair_key = root * tile_count + target_tile.index
+                    if pair_key not in counted_harvester_component_keys:
+                        counted_harvester_component_keys.add(pair_key)
+                        harvester_count_by_index[root] += 1
+
+            # Harvesters feed any orthogonally adjacent supplier, even when the
+            # supplier does not target the harvester itself, such as a splitter
+            # facing away from it.
+            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(tile_idx):
+                adjacent_tile = self.tiles_by_index[adjacent_idx]
+                adjacent_building = adjacent_tile.building
+                if (
+                    adjacent_tile.last_seen_turn == current_round
+                    and adjacent_building.team == team
+                    and adjacent_building.entity_type == EntityType.HARVESTER
+                ):
+                    pair_key = root * tile_count + adjacent_idx
                     if pair_key not in counted_harvester_component_keys:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1

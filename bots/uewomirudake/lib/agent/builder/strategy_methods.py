@@ -1798,6 +1798,10 @@ class BuilderStrategyMethodsMixin:
         tiles_by_index = self.map.tiles_by_index
         get_own_core_dist = self.map.u_get_own_core_dist_by_index
         current_round = self.map.current_round
+        own_supply_link_sources_by_target_index = (
+            self.map.own_supply_link_source_indices_by_target_index_in_vision
+        )
+        continuable_root_cache: dict[int, bool] = {}
 
         def can_use_tile(target_tile) -> bool:
             if target_tile.environment == Environment.WALL:
@@ -1847,6 +1851,51 @@ class BuilderStrategyMethodsMixin:
                 )
             return resources
 
+        def u_get_continuable_supply_chain_label_for_target(
+            target_idx: int,
+        ) -> SupplyChainLabel:
+            source_indices = own_supply_link_sources_by_target_index.get(target_idx)
+            if not source_indices:
+                return SupplyChainLabel.NONE
+
+            qualified_label = SupplyChainLabel.NONE
+            seen_roots: set[int] = set()
+            for source_idx in source_indices:
+                root_idx = self.map.u_get_supply_chain_id_by_index(source_idx, own_team)
+                if root_idx is None or root_idx in seen_roots:
+                    continue
+                seen_roots.add(root_idx)
+
+                is_continuable = continuable_root_cache.get(root_idx)
+                if is_continuable is None:
+                    is_continuable = self.map.u_supply_chain_is_continuable(
+                        source_idx,
+                        own_team,
+                    )
+                    continuable_root_cache[root_idx] = is_continuable
+                if is_continuable:
+                    qualified_label |= tiles_by_index[source_idx].own_supply_chain_label
+
+            return qualified_label
+
+        def u_get_continuable_supply_chain_label_for_supply_tile(
+            source_idx: int,
+        ) -> SupplyChainLabel:
+            root_idx = self.map.u_get_supply_chain_id_by_index(source_idx, own_team)
+            if root_idx is None:
+                return SupplyChainLabel.NONE
+
+            is_continuable = continuable_root_cache.get(root_idx)
+            if is_continuable is None:
+                is_continuable = self.map.u_supply_chain_is_continuable(
+                    source_idx,
+                    own_team,
+                )
+                continuable_root_cache[root_idx] = is_continuable
+            if not is_continuable:
+                return SupplyChainLabel.NONE
+            return tiles_by_index[source_idx].own_supply_chain_label
+
         candidate_entries: list[tuple[tuple[int, int], int, int, int]] = []
         candidate_seen_indices: set[int] = set()
         pending_target_idx: int | None = None
@@ -1866,22 +1915,23 @@ class BuilderStrategyMethodsMixin:
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if can_use_tile(pending_target_tile):
-                candidate_seen_indices.add(pending_target_idx)
-                pending_label = (
-                    self.u_get_supply_chain_label_for_resource(pending_resource)
-                    if pending_resource is not None
-                    else pending_target_tile.own_supply_chain_label
+                pending_label = u_get_continuable_supply_chain_label_for_target(
+                    pending_target_idx
                 )
-                candidate_entries.append(
-                    ((-1, -1), -1, pending_target_idx, int(pending_label))
-                )
+                if pending_label != SupplyChainLabel.NONE:
+                    candidate_seen_indices.add(pending_target_idx)
+                    candidate_entries.append(
+                        ((-1, -1), -1, pending_target_idx, int(pending_label))
+                    )
 
         for encounter_order, target_tile in enumerate(
             self.map.own_missing_supply_links
         ):
             if self.round_stopwatch.check_overtime():
                 break
-            target_label = target_tile.own_supply_chain_label
+            target_label = u_get_continuable_supply_chain_label_for_target(
+                target_tile.index
+            )
             if target_label == SupplyChainLabel.NONE:
                 continue
             if not can_use_tile(target_tile):
@@ -1910,8 +1960,13 @@ class BuilderStrategyMethodsMixin:
             if (
                 splitter_tile.building.team != own_team
                 or splitter_tile.building.entity_type != EntityType.SPLITTER
-                or splitter_tile.own_supply_chain_label == SupplyChainLabel.NONE
             ):
+                continue
+
+            splitter_label = u_get_continuable_supply_chain_label_for_supply_tile(
+                splitter_tile.index
+            )
+            if splitter_label == SupplyChainLabel.NONE:
                 continue
 
             for target_tile in splitter_tile.building.targets:
@@ -1941,7 +1996,7 @@ class BuilderStrategyMethodsMixin:
                         ),
                         splitter_encounter_order,
                         target_idx,
-                        int(splitter_tile.own_supply_chain_label),
+                        int(splitter_label),
                     )
                 )
                 splitter_encounter_order += 1
