@@ -1,0 +1,320 @@
+{
+  "(20, 20, (1, 1))": [
+    "maps/default_small1.map26"
+  ],
+  "(20, 20, (14, 7))": [
+    "maps/face.map26"
+  ],
+  "(20, 20, (16, 3))": [
+    "maps/thread_of_connection.map26"
+  ],
+  "(20, 20, (17, 17))": [
+    "maps/shish_kebab.map26"
+  ],
+  "(20, 20, (18, 18))": [
+    "maps/default_small1.map26"
+  ],
+  "(20, 20, (2, 2))": [
+    "maps/shish_kebab.map26"
+  ],
+  "(20, 20, (3, 16))": [
+    "maps/thread_of_connection.map26"
+  ],
+  "(20, 20, (5, 7))": [
+    "maps/face.map26"
+  ],
+  "(21, 21, (10, 1))": [
+    "maps/default_small2.map26"
+  ],
+  "(21, 21, (10, 19))": [
+    "maps/default_small2.map26"
+  ],
+  "(21, 21, (14, 10))": [
+    "maps/bear_of_doom.map26"
+  ],
+  "(21, 21, (6, 10))": [
+    "maps/bear_of_doom.map26"
+  ],
+  "(21, 29, (16, 4))": [
+    "maps/battlebot.map26"
+  ],
+  "(21, 29, (4, 4))": [
+    "maps/battlebot.map26"
+  ],
+  "(21, 32, (10, 2))": [
+    "maps/clash_arena.map26"
+  ],
+  "(21, 32, (10, 29))": [
+    "maps/clash_arena.map26"
+  ],
+  "(21, 41, (18, 19))": [
+    "maps/first_sound.map26"
+  ],
+  "(21, 41, (2, 19))": [
+    "maps/first_sound.map26"
+  ],
+  "(21, 50, (10, 1))": [
+    "maps/dna.map26"
+  ],
+  "(21, 50, (10, 48))": [
+    "maps/dna.map26"
+  ],
+  "(25, 25, (1, 23))": [
+    "maps/minimaze.map26"
+  ],
+  "(25, 25, (16, 14))": [
+    "maps/arena.map26"
+  ],
+  "(25, 25, (23, 23))": [
+    "maps/minimaze.map26"
+  ],
+  "(25, 25, (8, 10))": [
+    "maps/arena.map26"
+  ],
+  "(27, 45, (13, 1))": [
+    "maps/hourglass.map26"
+  ],
+  "(27, 45, (13, 43))": [
+    "maps/hourglass.map26"
+  ],
+  "(30, 30, (10, 19))": [
+    "maps/default_medium1.map26"
+  ],
+  "(30, 30, (19, 10))": [
+    "maps/default_medium1.map26"
+  ],
+  "(30, 30, (2, 27))": [
+    "maps/cinnamon_roll.map26"
+  ],
+  "(30, 30, (20, 24))": [
+    "maps/shrub.map26"
+  ],
+  "(30, 30, (26, 3))": [
+    "maps/default_medium2.map26"
+  ],
+  "(30, 30, (27, 2))": [
+    "maps/cinnamon_roll.map26"
+  ],
+  "(30, 30, (3, 2))": [
+    "maps/landscape.map26"
+  ],
+  "(30, 30, (3, 27))": [
+    "maps/landscape.map26"
+  ],
+  "(30, 30, (3, 3))": [
+    "maps/default_medium2.map26"
+  ],
+  "(30, 30, (9, 24))": [
+    "maps/shrub.map26"
+  ],
+  "(31, 31, (22, 24))": [
+    "maps/butterfly.map26"
+  ],
+  "(31, 31, (25, 15))": [
+    "maps/corridors.map26"
+  ],
+  "(31, 31, (27, 15))": [
+    "maps/sierpinski_evil.map26"
+  ],
+  "(31, 31, (27, 8))": [
+    "maps/hooks.map26"
+  ],
+  "(31, 31, (3, 15))": [
+    "maps/sierpinski_evil.map26"
+  ],
+  "(31, 31, (3, 22))": [
+    "maps/hooks.map26"
+  ],
+  "(31, 31, (5, 15))": [
+    "maps/corridors.map26"
+  ],
+  "(31, 31, (8, 24))": [
+    "maps/butterfly.map26"
+  ],
+  "(32, 32, (22, 26))": [
+    "maps/wall.map26"
+  ],
+  "(32, 32, (9, 26))": [
+    "maps/wall.map26"
+  ],
+  "(35, 20, (10, 17))": [
+    "maps/gaussian.map26"
+  ],
+  "(35, 20, (24, 17))": [
+    "maps/gaussian.map26"
+  ],
+  "(35, 35, (13, 16))": [
+    "maps/donut.map26"
+  ],
+  "(35, 35, (13, 31))": [
+    "maps/strings.map26"
+  ],
+  "(35, 35, (14, 17))": [
+    "maps/rush_bait.map26"
+  ],
+  "(35, 35, (20, 17))": [
+    "maps/rush_bait.map26"
+  ],
+  "(35, 35, (21, 18))": [
+    "maps/donut.map26"
+  ],
+  "(35, 35, (21, 3))": [
+    "maps/strings.map26"
+  ],
+  "(35, 40, (3, 36))": [
+    "maps/vase.map26"
+  ],
+  "(35, 40, (31, 36))": [
+    "maps/vase.map26"
+  ],
+  "(35, 40, (9, 10))": [
+    "maps/bar_chart.map26"
+  ],
+  "(35, 40, (9, 29))": [
+    "maps/bar_chart.map26"
+  ],
+  "(37, 37, (12, 14))": [
+    "maps/cold.map26"
+  ],
+  "(37, 37, (24, 14))": [
+    "maps/cold.map26"
+  ],
+  "(39, 30, (34, 22))": [
+    "maps/tree_of_life.map26"
+  ],
+  "(39, 30, (4, 22))": [
+    "maps/tree_of_life.map26"
+  ],
+  "(40, 30, (1, 1))": [
+    "maps/tiles.map26"
+  ],
+  "(40, 30, (1, 28))": [
+    "maps/tiles.map26"
+  ],
+  "(40, 40, (11, 25))": [
+    "maps/default_large1.map26"
+  ],
+  "(40, 40, (14, 23))": [
+    "maps/chemistry_class.map26"
+  ],
+  "(40, 40, (25, 23))": [
+    "maps/chemistry_class.map26"
+  ],
+  "(40, 40, (28, 14))": [
+    "maps/default_large1.map26"
+  ],
+  "(40, 40, (3, 36))": [
+    "maps/wasteland.map26"
+  ],
+  "(40, 40, (31, 33))": [
+    "maps/wasteland_oasis.map26"
+  ],
+  "(40, 40, (35, 4))": [
+    "maps/galaxy.map26"
+  ],
+  "(40, 40, (36, 3))": [
+    "maps/wasteland.map26"
+  ],
+  "(40, 40, (4, 35))": [
+    "maps/galaxy.map26"
+  ],
+  "(40, 40, (8, 6))": [
+    "maps/wasteland_oasis.map26"
+  ],
+  "(41, 20, (2, 2))": [
+    "maps/we_love_tetris.map26"
+  ],
+  "(41, 20, (38, 2))": [
+    "maps/we_love_tetris.map26"
+  ],
+  "(41, 30, (10, 16))": [
+    "maps/binary_tree.map26"
+  ],
+  "(41, 30, (30, 16))": [
+    "maps/binary_tree.map26"
+  ],
+  "(43, 43, (3, 8))": [
+    "maps/flowers.map26"
+  ],
+  "(43, 43, (39, 34))": [
+    "maps/flowers.map26"
+  ],
+  "(45, 25, (3, 11))": [
+    "maps/pixel_forest.map26"
+  ],
+  "(45, 25, (41, 13))": [
+    "maps/pixel_forest.map26"
+  ],
+  "(49, 49, (13, 17))": [
+    "maps/pls_buy_cucats_merch.map26"
+  ],
+  "(49, 49, (2, 28))": [
+    "maps/castle_keep.map26"
+  ],
+  "(49, 49, (35, 31))": [
+    "maps/pls_buy_cucats_merch.map26"
+  ],
+  "(49, 49, (46, 28))": [
+    "maps/castle_keep.map26"
+  ],
+  "(50, 20, (3, 1))": [
+    "maps/socket.map26"
+  ],
+  "(50, 20, (3, 18))": [
+    "maps/socket.map26"
+  ],
+  "(50, 30, (3, 16))": [
+    "maps/default_large2.map26"
+  ],
+  "(50, 30, (46, 16))": [
+    "maps/default_large2.map26"
+  ],
+  "(50, 35, (43, 5))": [
+    "maps/git_branches.map26"
+  ],
+  "(50, 35, (6, 5))": [
+    "maps/git_branches.map26"
+  ],
+  "(50, 38, (3, 24))": [
+    "maps/settlement.map26"
+  ],
+  "(50, 38, (46, 24))": [
+    "maps/settlement.map26"
+  ],
+  "(50, 41, (20, 24))": [
+    "maps/starry_night.map26"
+  ],
+  "(50, 41, (29, 16))": [
+    "maps/starry_night.map26"
+  ],
+  "(50, 41, (3, 1))": [
+    "maps/mandelbrot.map26"
+  ],
+  "(50, 41, (3, 39))": [
+    "maps/mandelbrot.map26"
+  ],
+  "(50, 50, (1, 48))": [
+    "maps/metropolitan_dystopia.map26"
+  ],
+  "(50, 50, (11, 17))": [
+    "maps/labyrinth.map26"
+  ],
+  "(50, 50, (14, 23))": [
+    "maps/the_great_divide.map26"
+  ],
+  "(50, 50, (14, 35))": [
+    "maps/cubes.map26"
+  ],
+  "(50, 50, (35, 14))": [
+    "maps/cubes.map26"
+  ],
+  "(50, 50, (35, 26))": [
+    "maps/the_great_divide.map26"
+  ],
+  "(50, 50, (38, 32))": [
+    "maps/labyrinth.map26"
+  ],
+  "(50, 50, (48, 1))": [
+    "maps/metropolitan_dystopia.map26"
+  ]
+}

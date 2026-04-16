@@ -1,0 +1,11 @@
+{
+  "files.exclude": {
+    "**/__pycache__": true
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true
+  },
+  "black-formatter.importStrategy": "fromEnvironment",
+  "python-envs.defaultEnvManager": "ms-python.python:system"
+}

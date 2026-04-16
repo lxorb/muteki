@@ -30,7 +30,7 @@ htmlcov/
 
 # IDE / editor files
 .vscode/*
-!.vscode/settings.json
+!.vscode/settings.example.json
 .idea/*
 !.idea/.gitignore
 !.idea/watcherTasks.xml
@@ -47,3 +47,15 @@ replay_*.json
 # local test bot
 /src/bots/test_bot.py
 /bots/test_bot/
+
+# excluded constants
+/bots/exclude/exclude.py
+
+# unrated runner
+
+# queued match ids (may not be current anymore)
+/tools/unrated_runner/data/queued.json
+# partial results (only useful in the case of conflicts)
+/tools/unrated_runner/results/partial/
+# output logs (can generate at any time)
+/tools/unrated_runner/outputs/

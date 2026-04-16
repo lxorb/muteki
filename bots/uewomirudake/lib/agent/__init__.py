@@ -1,83 +1,95 @@
-import time
-from abc import ABC, abstractmethod
+from collections.abc import Callable
+
+from cambc import Controller
+
+from lib.agent.time import RoundStopwatch
 
 from lib.map import Map
+from lib.map.tile import Tile
 
-from cambc import (
-    Controller,
-    Direction,
-    EntityType,
-    Environment,
-    Position,
-    Team,
-)
+from lib.debug import Stopwatch
 
 
-class Agent(ABC):
-    def __init__(self, ct: Controller):
-        # ----------- Attributes that are automatically updated (in this class) -----------
+class Agent:
+    def __init__(self):
+        self.ct: Controller | None = None
+        self.round_stopwatch: RoundStopwatch | None = RoundStopwatch()
+        self.map: Map = Map(self.round_stopwatch)
+        self.first_turn_initialized: bool = False
 
-        # the controller that is used to communicate with the game
-        self.ct: Controller = ct
+        # Debugging
+        self.stopwatch: Stopwatch = Stopwatch("Agent")
 
-        # unit id
-        self.id: int = self.ct.get_id()
+    def u_run(self, ct: Controller) -> None:
+        self.round_stopwatch.start_round(ct)
 
-        # team: 'a' or 'b'
-        self.team: Team = self.ct.get_team()
+        self.stopwatch.start()
 
-        # auto increased round counter
-        self.round: int = self.ct.get_current_round()
+        self.ct = ct
+        if not self.first_turn_initialized:
+            self.map._first_round_init(ct)
+            self.first_turn_initialized = True
+            self.stopwatch.lap("first round init")
+            self.stopwatch.log()
+        else:
+            self.map.ct = ct
 
-        # the map that is used to store the map data
-        self.map: Map = Map(self.ct)
+        self.map.u_update_vision()
+        self.stopwatch.lap("Map vision")
 
-        # None by constructor; False at the start of run; True at the end of run
-        self.last_turn_completed: bool | None = None
+        self.round_stopwatch.start_bot()
 
-        # time of run execution
-        self.time_delta: float | None = None
-        self.time_start: float | None = None
-        self.time_end: float | None = None
+        self.u_handler()
+        self.stopwatch.lap("Handle agent")
 
+        self.stopwatch.log()
 
-        # global resources from previous round
-        self.resources_prev: tuple[int, int] = self.ct.get_global_resources()
+    def u_get_bound_method(
+        self,
+        method: Callable[..., object] | str,
+    ) -> Callable[..., object]:
+        if isinstance(method, str):
+            return getattr(self, method)
+        if getattr(method, "__self__", None) is self:
+            return method
+        return method.__get__(self, type(self))
 
-        # global resources from the current round
-        self.resources_curr: tuple[int, int] = self.ct.get_global_resources()
+    def u_get_bound_method_and_args(
+        self,
+        strategy_entry: Callable[..., object] | str | tuple[object, ...],
+    ) -> tuple[Callable[..., object], tuple[object, ...]]:
+        if isinstance(strategy_entry, tuple):
+            method, *args = strategy_entry
+        else:
+            method = strategy_entry
+            args = []
+        return self.u_get_bound_method(method), tuple(args)
 
-        # global resource change relative to the previous round
-        self.resources_change: tuple[int, int] = (0, 0)
+    def u_filter_tiles(
+        self,
+        tiles: list[Tile],
+        *predicates: Callable[[Tile], bool],
+    ) -> list[Tile]:
+        filtered_tiles = list(tiles)
+        for predicate in predicates:
+            filtered_tiles = [tile for tile in filtered_tiles if predicate(tile)]
+        return filtered_tiles
 
-        # turn number resource increase (titanium or axionite)
-        self.last_turn_resource_decrease: int = 0
+    def u_prioritize_tiles(
+        self,
+        tiles: list[Tile],
+        *criteria: Callable[[Tile], object],
+    ) -> list[Tile]:
+        if not criteria:
+            return list(tiles)
+        return sorted(
+            tiles,
+            key=lambda tile: tuple(criterion(tile) for criterion in criteria),
+        )
 
-
-    def run(self) -> None:
-        self.last_turn_completed = False
-        self.time_start = time.perf_counter_ns()
-
-        self.map.update()
-
-        self.make_turn()
-
-        self.round += 1
-        self.time_end = time.perf_counter_ns()
-        self.time_delta = (self.time_end or float('inf')) - (self.time_start or float('-inf'))
-        self.last_turn_completed = True
-
-
-    def remaining_time(self) -> float:
+    def u_handler(self):
         """
-        Estimate the remaining local nanosecond budget for the turn.
-
-        The estimate is based on a 2 ms target and the same per-turn start time
-        used by the elapsed-time helper.
+        Execute this agent's per-turn behavior.
+        Should be overridden by each child.
         """
-        return 2_000_000 - time.perf_counter_ns() + self.time_start
-
-
-    @abstractmethod
-    def make_turn(self) -> None:
-        pass
+        raise NotImplementedError
