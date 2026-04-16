@@ -8,6 +8,7 @@ NS_PER_TURN: int = 2_000_000
 SCAVENGER_STRATEGY_ID: str = "scavenger"
 HARASSMENT_STRATEGY_ID: str = "harassment"
 DEFENDER_STRATEGY_ID: str = "defender"
+CORE_DEFENDER_STRATEGY_ID: str = "core_defender"
 
 ### BOT LOGIC ###
 AXIONITE_HARVESTER_MIN_TITANIUM: int = 300

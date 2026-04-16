@@ -54,6 +54,15 @@ _HIJACK_BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
 
 
 class BuilderStrategyMethodsMixin:
+    def s_return_to_core_center(self):
+        own_core_center_pos = self.map.own_core_center_pos
+        if own_core_center_pos is None:
+            self.map.u_calc_core_center_positions()
+            own_core_center_pos = self.map.own_core_center_pos
+        if own_core_center_pos is None:
+            return False
+        return bool(self.u_move_to(own_core_center_pos))
+
     def _is_visible_building_damaged(self, tile) -> bool:
         building = tile.building
         return (

@@ -1,6 +1,7 @@
 from cambc import Environment
 
 from lib.agent.constants import (
+    CORE_DEFENDER_STRATEGY_ID,
     DEFENDER_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
@@ -92,6 +93,12 @@ DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 
+CORE_DEFENDER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_heal_self,),
+    (BuilderStrategyMethodsMixin.s_heal_own_building,),
+    (BuilderStrategyMethodsMixin.s_return_to_core_center,),
+]
+
 HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_gunner_next_to_enemy_core),
@@ -118,6 +125,7 @@ STRATEGIES: dict[str, list[StrategyEntry]] = {
     SCAVENGER_STRATEGY_ID: SCAVENGER_STRATEGY,
     HARASSMENT_STRATEGY_ID: HARASSMENT_STRATEGY,
     DEFENDER_STRATEGY_ID: DEFENDER_STRATEGY,
+    CORE_DEFENDER_STRATEGY_ID: CORE_DEFENDER_STRATEGY,
 }
 
 ### CORE LOGIC ###
@@ -126,7 +134,7 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], str] = {
     (0, -1): SCAVENGER_STRATEGY_ID,
     (1, -1): HARASSMENT_STRATEGY_ID,
     (-1, 0): SCAVENGER_STRATEGY_ID,
-    (0, 0): HARASSMENT_STRATEGY_ID,
+    (0, 0): CORE_DEFENDER_STRATEGY_ID,
     (1, 0): HARASSMENT_STRATEGY_ID,
     (-1, 1): HARASSMENT_STRATEGY_ID,
     (0, 1): HARASSMENT_STRATEGY_ID,
