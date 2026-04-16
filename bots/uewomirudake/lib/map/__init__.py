@@ -2015,9 +2015,21 @@ class Map:
         target_pos: Position,
         radius_sq: int,
     ) -> bool:
-        return (
-            self.u_is_on_gunner_facing_ray(turret_pos, direction, target_pos)
-            and turret_pos.distance_squared(target_pos) <= radius_sq
+        if not self.u_is_in_bounds(target_pos):
+            return False
+
+        target_distance_sq = turret_pos.distance_squared(target_pos)
+        if target_distance_sq == 0 or target_distance_sq > radius_sq:
+            return False
+
+        target_index = self.u_to_index(target_pos)
+        return any(
+            tile.index == target_index
+            for tile in self.u_get_gunner_shootable_tiles(
+                turret_pos,
+                direction,
+                radius_sq,
+            )
         )
 
     def u_get_gunner_ray_tiles(
