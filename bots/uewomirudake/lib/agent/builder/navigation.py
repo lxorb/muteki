@@ -597,7 +597,7 @@ class BuilderNavigationMixin:
             and self.map.axionite >= sentinel_axionite_cost
         )
 
-    def u_get_sentinel_orientation(self, pos: Position) -> Direction:
+    def u_get_direction_toward_enemy_core_center(self, pos: Position) -> Direction:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is None and self.map.enemy_core_center_pos_candidates:
             enemy_core_center_pos = min(
@@ -618,7 +618,7 @@ class BuilderNavigationMixin:
         return direction
 
     def u_get_useful_sentinel_direction(self, pos: Position) -> Direction | None:
-        sentinel_direction = self.u_get_sentinel_orientation(pos)
+        sentinel_direction = self.u_get_direction_toward_enemy_core_center(pos)
         enemy_team = self.map.enemy_team
         sentinel_target_indices = self.map.u_get_attackable_target_indices(
             self.map.u_get_pos_tile(pos).index,

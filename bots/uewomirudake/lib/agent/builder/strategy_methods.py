@@ -3231,7 +3231,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return False
 
-            sentinel_direction = self.u_get_sentinel_orientation(current_pos)
+            sentinel_direction = self.u_get_direction_toward_enemy_core_center(current_pos)
             enemy_core_center_pos = self.map.enemy_core_center_pos
             candidate_entries: list[tuple[tuple[int, int, int, int], Direction]] = []
 
@@ -3330,7 +3330,7 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        sentinel_direction = self.u_get_sentinel_orientation(target_tile.position)
+        sentinel_direction = self.u_get_direction_toward_enemy_core_center(target_tile.position)
         return bool(
             self.u_build_at(
                 target_tile.position,
@@ -4156,7 +4156,7 @@ class BuilderStrategyMethodsMixin:
             if cached_value is not None:
                 return cached_value
 
-            sentinel_direction = self.u_get_sentinel_orientation(tile.position)
+            sentinel_direction = self.u_get_direction_toward_enemy_core_center(tile.position)
             cached_value = any(
                 self.map.u_sentinel_covers_target(
                     tile.position,
@@ -4465,7 +4465,7 @@ class BuilderStrategyMethodsMixin:
                 and self.map.axionite >= sentinel_axionite_cost
             )
             if can_afford_sentinel:
-                sentinel_direction = self.u_get_sentinel_orientation(
+                sentinel_direction = self.u_get_direction_toward_enemy_core_center(
                     target_tile.position
                 )
                 if (
@@ -4585,7 +4585,7 @@ class BuilderStrategyMethodsMixin:
             )
 
         def gunner_targets_enemy_core_directly(target_tile) -> bool:
-            facing_direction = self.u_get_sentinel_orientation(target_tile.position)
+            facing_direction = self.u_get_direction_toward_enemy_core_center(target_tile.position)
             if facing_direction == Direction.CENTRE:
                 return False
             return any(
@@ -4807,7 +4807,7 @@ class BuilderStrategyMethodsMixin:
                     return True
                 continue
 
-            gunner_direction = self.u_get_sentinel_orientation(target_tile.position)
+            gunner_direction = self.u_get_direction_toward_enemy_core_center(target_tile.position)
             if self.u_build_at(
                 target_tile.position,
                 EntityType.GUNNER,
