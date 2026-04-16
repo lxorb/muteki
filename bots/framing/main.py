@@ -9405,7 +9405,6 @@ INITIAL_BB = [
     CoreSpawnTurnEvent(100),
     Bot.run_bb_scavenger,
 ]
-
 CORE_TILE_BB_ROLE = {
     (-1, -1): Bot.run_bb_init_res,
     (0, -1): Bot.run_bb_harassment,
