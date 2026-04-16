@@ -3698,15 +3698,14 @@ class BuilderStrategyMethodsMixin:
         self,
         move_towards: bool = True,
         hold: bool = True,
-        enable_barrier: bool = True,
     ):
         """
         Build on the closest visible enemy resource target, preferring a hijack.
 
         When the targeted enemy supply input is carrying pure titanium, try to
         convert that target tile into an allied supply tile that feeds nearby
-        turrets or downstream allied turret chains before falling back to a
-        barrier when enabled.
+        turrets or downstream allied turret chains. If no hijack build works,
+        return `False` instead of building a barrier.
         """
         own_team = self.map.own_team
         current_round = self.map.current_round
@@ -3714,20 +3713,6 @@ class BuilderStrategyMethodsMixin:
         target_tile = self._u_get_enemy_supply_target_tile()
         if target_tile is None:
             return False
-
-        barrier_build = lambda: (
-            bool(
-                self.u_build_at(
-                    target_tile.position,
-                    EntityType.BARRIER,
-                    hold=hold,
-                    move_towards=move_towards,
-                    attack_enemy_passable=True,
-                )
-            )
-            if enable_barrier
-            else False
-        )
 
         conveyor_titanium_cost, conveyor_axionite_cost = self.ct.get_conveyor_cost()
         can_afford_conveyor = (
@@ -3737,7 +3722,7 @@ class BuilderStrategyMethodsMixin:
         if not can_afford_conveyor or not self._u_target_has_pure_titanium_enemy_supply(
             target_tile.index
         ):
-            return barrier_build()
+            return False
 
         adjacent_own_turrets = self._u_get_hijack_adjacent_own_turrets(target_tile.index)
         if len(adjacent_own_turrets) == 1:
@@ -3889,7 +3874,7 @@ class BuilderStrategyMethodsMixin:
             ):
                 return True
 
-        return barrier_build()
+        return False
 
     def s_block_titanium(
         self,
