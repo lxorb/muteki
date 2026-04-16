@@ -14,6 +14,7 @@ from lib.agent.constants import (
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     DIRECTIONAL_BUILDING_TYPES,
     ENEMY_TURRET_TYPES,
+    HARASSMENT_STRATEGY_ID,
     HARD_AVOID_EXISTING_SUPPLY_CHAIN,
     MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD,
     NONDIRECTIONAL_BUILDING_TYPES,
@@ -60,6 +61,15 @@ class BuilderNavigationMixin:
             >= self.u_get_required_build_titanium_reserve()
         )
 
+    def u_should_respect_titanium_reserve_for_road_build(
+        self,
+        respect_titanium_reserve_for_road_build: bool,
+    ) -> bool:
+        return (
+            respect_titanium_reserve_for_road_build
+            or self.strategy == HARASSMENT_STRATEGY_ID
+        )
+
     def u_reset_bugnav_state(self) -> None:
         self.bugnav_target_key = None
         self.bugnav_follow_wall = False
@@ -102,6 +112,11 @@ class BuilderNavigationMixin:
             self.u_move_with_target(next_direction, target_pos)
             return True
 
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
         road_titanium_cost, _ = self.ct.get_road_cost()
         can_build_road = (
             build_new_roads
@@ -177,6 +192,11 @@ class BuilderNavigationMixin:
             return False
         if self.ct.can_move(move_direction):
             return True
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
         road_titanium_cost, _ = self.ct.get_road_cost()
         return (
             build_new_roads
@@ -226,6 +246,11 @@ class BuilderNavigationMixin:
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             self.u_reset_bugnav_state()
             return False
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
 
         target_key = (
             pos.x,
@@ -370,6 +395,11 @@ class BuilderNavigationMixin:
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             self.u_reset_bugnav_state()
             return False
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
 
         if (
             abs(current_pos.x - pos.x) + abs(current_pos.y - pos.y)
@@ -1302,6 +1332,11 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         if current_pos == pos:
             return False
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
 
         print("Move to target:", pos)
 
