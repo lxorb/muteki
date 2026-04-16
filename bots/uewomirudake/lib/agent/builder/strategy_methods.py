@@ -4545,6 +4545,12 @@ class BuilderStrategyMethodsMixin:
         enemy_team = self.map.enemy_team
         candidate_keys_by_index: dict[int, tuple[int, int, int, int, int]] = {}
         tiles_by_index = self.map.tiles_by_index
+        all_own_supply_link_target_indices_in_vision = (
+            self.map.all_own_supply_link_target_indices_in_vision
+        )
+        enemy_supply_link_target_indices_in_vision = (
+            self.map.enemy_supply_link_target_indices_in_vision
+        )
 
         enemy_core_tiles: list = []
         if self.map.enemy_core_center_pos is not None:
@@ -4561,6 +4567,7 @@ class BuilderStrategyMethodsMixin:
             enemy_core_tiles = list(enemy_core_tile_by_index.values())
         if not enemy_core_tiles:
             return False
+        enemy_core_indices = {core_tile.index for core_tile in enemy_core_tiles}
 
         def can_host_gunner(target_tile) -> bool:
             if target_tile.last_seen_turn != current_round:
@@ -4590,6 +4597,101 @@ class BuilderStrategyMethodsMixin:
                 )
                 for core_tile in enemy_core_tiles
             )
+
+        def adjacent_turret_targets_enemy_core(adjacent_tile) -> bool:
+            facing_direction = adjacent_tile.building.direction
+            if facing_direction is None or facing_direction == Direction.CENTRE:
+                return False
+
+            if adjacent_tile.building.entity_type == EntityType.GUNNER:
+                return any(
+                    self.map.u_gunner_covers_target(
+                        adjacent_tile.position,
+                        facing_direction,
+                        core_tile.position,
+                        GameConstants.GUNNER_VISION_RADIUS_SQ,
+                    )
+                    for core_tile in enemy_core_tiles
+                )
+
+            return any(
+                self.map.u_sentinel_covers_target(
+                    adjacent_tile.position,
+                    facing_direction,
+                    core_tile.position,
+                    GameConstants.SENTINEL_VISION_RADIUS_SQ,
+                )
+                for core_tile in enemy_core_tiles
+            )
+
+        def adjacent_turret_is_unfed_and_targets_enemy_core(adjacent_tile) -> bool:
+            return (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.team == own_team
+                and adjacent_tile.building.entity_type
+                in {EntityType.GUNNER, EntityType.SENTINEL}
+                and adjacent_tile.index
+                not in all_own_supply_link_target_indices_in_vision
+                and adjacent_tile.index
+                not in enemy_supply_link_target_indices_in_vision
+                and adjacent_turret_targets_enemy_core(adjacent_tile)
+            )
+
+        def try_feed_adjacent_core_turret(target_tile) -> bool:
+            adjacent_gunner_tiles = []
+            adjacent_sentinel_tiles = []
+
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                target_tile.index
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if not adjacent_turret_is_unfed_and_targets_enemy_core(adjacent_tile):
+                    continue
+                if adjacent_tile.building.entity_type == EntityType.GUNNER:
+                    adjacent_gunner_tiles.append(adjacent_tile)
+                else:
+                    adjacent_sentinel_tiles.append(adjacent_tile)
+
+            conveyor_target_tile = None
+            if adjacent_gunner_tiles:
+                conveyor_target_tile = min(
+                    adjacent_gunner_tiles,
+                    key=lambda tile: tile.index,
+                )
+            elif adjacent_sentinel_tiles:
+                conveyor_target_tile = min(
+                    adjacent_sentinel_tiles,
+                    key=lambda tile: tile.index,
+                )
+
+            if conveyor_target_tile is None:
+                return False
+
+            conveyor_direction = self.map.u_get_direction_between(
+                target_tile.position,
+                conveyor_target_tile.position,
+            )
+            if conveyor_direction is None:
+                return False
+
+            if self.u_build_at(
+                target_tile.position,
+                EntityType.CONVEYOR,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+                facing_direction=conveyor_direction,
+            ):
+                print(
+                    "Gunner next to enemy core: feed adjacent",
+                    conveyor_target_tile.building.entity_type.value,
+                    conveyor_target_tile.position,
+                    "from",
+                    target_tile.position,
+                )
+                return True
+
+            return False
 
         def step_off_current_build_tile(target_tile) -> bool:
             candidate_entries: list[
@@ -4693,6 +4795,9 @@ class BuilderStrategyMethodsMixin:
         )
         for target_idx in target_indices:
             target_tile = tiles_by_index[target_idx]
+            if try_feed_adjacent_core_turret(target_tile):
+                return True
+
             if target_tile.position == current_pos:
                 if move_towards and step_off_current_build_tile(target_tile):
                     print(
