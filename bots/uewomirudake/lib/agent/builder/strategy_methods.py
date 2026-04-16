@@ -3197,7 +3197,7 @@ class BuilderStrategyMethodsMixin:
     ):
         """
         Destroy the closest visible own harvester or supply-link tile that
-        feeds an enemy turret.
+        feeds an enemy turret, or if none exists, an enemy supply-link tile.
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
@@ -3222,8 +3222,16 @@ class BuilderStrategyMethodsMixin:
                 for target_tile in source_tile.building.targets
             )
 
-        target_tile = None
-        target_dist = None
+        def points_at_enemy_supply_link(source_tile) -> bool:
+            return any(
+                target_tile.building.id is not None
+                and target_tile.building.team != own_team
+                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                for target_tile in source_tile.building.targets
+            )
+
+        enemy_turret_bucket = []
+        enemy_supply_link_bucket = []
         for tile in dict.fromkeys(
             self.map.own_supply_links_in_vision + self.map.own_harvesters_in_vision
         ):
@@ -3233,11 +3241,18 @@ class BuilderStrategyMethodsMixin:
                 EntityType.HARVESTER
             }:
                 continue
-            if not points_at_enemy_turret(tile):
+            if points_at_enemy_turret(tile):
+                enemy_turret_bucket.append(tile)
                 continue
-            if target_dist is None or tile.dist_to_self < target_dist:
-                target_dist = tile.dist_to_self
-                target_tile = tile
+            if points_at_enemy_supply_link(tile):
+                enemy_supply_link_bucket.append(tile)
+
+        candidate_bucket = enemy_turret_bucket or enemy_supply_link_bucket
+        target_tile = min(
+            candidate_bucket,
+            key=lambda tile: tile.dist_to_self,
+            default=None,
+        )
 
         if target_tile is None:
             return False
@@ -3250,41 +3265,6 @@ class BuilderStrategyMethodsMixin:
             target_tile.clear_building()
 
             if rebuild:
-                gunner_titanium_cost, _ = self.ct.get_gunner_cost()
-                incoming_source_indices = (
-                    self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
-                        target_tile.index,
-                        (),
-                    )
-                )
-                has_adjacent_harvester = any(
-                    adjacent_tile.building.team == own_team
-                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
-                    for adjacent_tile in (
-                        self.map.tiles_by_index[adjacent_idx]
-                        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
-                            target_tile.index
-                        )
-                    )
-                )
-                has_titanium_supply_source = any(
-                    self.map.u_supply_chain_has_titanium(source_idx, own_team)
-                    for source_idx in incoming_source_indices
-                )
-
-                if self.map.titanium >= gunner_titanium_cost and (
-                    has_adjacent_harvester or has_titanium_supply_source
-                ):
-                    gunner_direction = self.u_get_gunner_orientation(target_pos)
-                    return self.u_build_at(
-                        target_pos,
-                        EntityType.GUNNER,
-                        hold=False,
-                        move_towards=False,
-                        attack_enemy_passable=False,
-                        facing_direction=gunner_direction,
-                    )
-
                 resource = infer_resource(target_tile)
                 supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
                     target_pos,
