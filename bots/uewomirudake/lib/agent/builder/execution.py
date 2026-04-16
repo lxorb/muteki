@@ -36,6 +36,17 @@ class BuilderExecutionMixin:
         stopwatch.lap("Init logic")
 
         self.last_turn_completed = False
+
+        # PROVISORISCH
+        if self.ct.get_current_round() % 15 == 0:
+            action_radius = 2
+            candidate_positions = self.ct.get_nearby_tiles(action_radius)
+            pos_round = []
+            for pos in candidate_positions:
+                if self.ct.can_build_launcher(pos):
+                    self.ct.build_launcher(pos)
+                    break
+
         for idx in range(start_index, len(strategy_steps)):
             if self.round_stopwatch.check_overtime():
                 stopwatch.lap("Overtime")
@@ -56,7 +67,7 @@ class BuilderExecutionMixin:
                 self.last_turn_completed = True
                 print(f"Executed strategy: {strategy_method.__name__}")
                 stopwatch.log()
-                self.place_marker()
+                self.after_strategy()
                 return True
 
         self.last_turn_completed = True
@@ -64,8 +75,12 @@ class BuilderExecutionMixin:
         stopwatch.log()
 
 
-        self.place_marker()
+        self.after_strategy()
+
         return False
+
+    def after_strategy(self):
+        self.place_marker()
 
     def place_marker(self):
         bot_type = MARKER_STRATEGIES_LIST.index(self.strategy)
