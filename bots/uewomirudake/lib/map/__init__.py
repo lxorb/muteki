@@ -35,7 +35,6 @@ from lib.map.constants import (
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
     WEAPON_TARGET_TYPES,
-    MARKER_STRATEGIES_LIST,
     MARKER_SYMMETRY_LIST
 )
 from lib.map.tile import Tile
@@ -4002,15 +4001,13 @@ class Map:
 
 
     def read_marker(self, num):
-        bot_type     = (num >>  0) & 0b11          #  2 bits
-        symmetry_type= (num >>  2) & 0b11          #  2 bits
-        own_id       = (num >>  4) & 0b11111111    #  8 bits
-        current_round= (num >> 12) & 0b11111111111 # 11 bits
-        target_index = (num >> 23) & 0b111111111111# 12 bits
+        symmetry_type= (num >>  0) & 0b11          #  2 bits
+        own_id       = (num >>  2) & 0b111111      #  6 bits
+        current_round= (num >>  8) & 0b11111111111 # 11 bits
+        target_index = (num >> 19) & 0b111111111111# 12 bits
 
-        strategy = MARKER_STRATEGIES_LIST[bot_type]
         symmetry_mode = MARKER_SYMMETRY_LIST[symmetry_type]
         target_x = target_index % self.INDEX_STRIDE
         target_y = target_index // self.INDEX_STRIDE
 
-        return strategy, symmetry_mode, own_id, current_round, target_x, target_y
+        return symmetry_mode, own_id, current_round, target_x, target_y

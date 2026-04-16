@@ -1,6 +1,6 @@
 from lib.agent.builder.strategies import STRATEGIES
 from lib.debug import Stopwatch
-from lib.map.constants import MARKER_STRATEGIES_LIST, MARKER_SYMMETRY_LIST
+from lib.map.constants import MARKER_SYMMETRY_LIST
 from cambc import Position, EntityType
 
 
@@ -83,24 +83,21 @@ class BuilderExecutionMixin:
         self.place_marker()
 
     def place_marker(self):
-        bot_type = MARKER_STRATEGIES_LIST.index(self.strategy)
-        # 2 bits
         symmetry_type = MARKER_SYMMETRY_LIST.index(self.map.symmetry_mode)
         # 2 bits
-        own_id = self.ct.get_id() # < 256
-        # 8 bits
+        own_id = self.ct.get_id() & 0b111111
+        # 6 bits
         current_round = self.ct.get_current_round()
         # 11 bits
-        target_position = Position(0, 0) # TODO
+        target_position = self.map.own_core_center_pos # TODO
         target_index = target_position.y * self.map.INDEX_STRIDE + target_position.x
-        # 12 bits 
-        
+        # 12 bits
+
         result = 0
-        result |= bot_type
-        result |= symmetry_type << 2
-        result |= own_id << 4
-        result |= current_round << 12
-        result |= target_index << 23
+        result |= symmetry_type
+        result |= own_id << 2
+        result |= current_round << 8
+        result |= target_index << 19
 
         # place a marker in the action radius where possible
         action_radius = 2
@@ -113,7 +110,7 @@ class BuilderExecutionMixin:
                 building_id = self.ct.get_tile_building_id(pos)
                 if building_id is not None and self.ct.get_entity_type(building_id) == EntityType.MARKER and self.ct.get_team(building_id) == self.ct.get_team():
                     content = self.ct.get_marker_value(building_id)
-                    n_Strategy, n_symmetry_mode, n_own_id, n_current_round, n_target_x, n_target_y = self.map.read_marker(content)
+                    n_symmetry_mode, n_own_id, n_current_round, n_target_x, n_target_y = self.map.read_marker(content)
                     pos_round.append((pos, n_current_round))
                     continue
                 self.ct.place_marker(pos, result)

@@ -110,6 +110,8 @@ class Tile:
 
         self.last_patrolled_index: int = -1
 
+        self.has_marker = False
+
     @property
     def own_core_dist(self) -> int:
         return self.map.u_get_own_core_dist_by_index(self.index)
@@ -346,7 +348,7 @@ class Tile:
             self.update_launcher_targets()
     
     def update_launcher_targets(self):
-        if self.bot is not None:
+        if self.bot.id is not None:
             return
         if self.building.entity_type in PASSABLE_TYPES:
             self.map.launcher_own_reachable.append(self)
@@ -369,10 +371,11 @@ class Tile:
         self.update_target_zones_bot()
     
     def handle_marker(self, marker_id):
+        self.has_marker = True
         self.building.id = None
         self.building.entity_type = None
         self.building.team = None
-        strategy, symmetry_mode, own_id, current_round, target_x, target_y = self.map.read_marker(self.map.ct.get_marker_value(marker_id))
+        symmetry_mode, own_id, current_round, target_x, target_y = self.map.read_marker(self.map.ct.get_marker_value(marker_id))
         if self.map.symmetry_mode is None:
             self.map.symmetry_mode = symmetry_mode
         if self.map.is_launcher:

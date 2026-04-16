@@ -4395,3 +4395,18 @@ class BuilderStrategyMethodsMixin:
                 tiles_by_index[waypoint_indices[next_patrol_index]].position
             )
         )
+
+    # --- LAUNCHER WALK-TO (easy to remove: delete this method + strategy entries) ---
+    def s_move_toward_own_launcher(self):
+        closest_launcher = None
+        closest_dist = float("inf")
+        current_pos = self.map.current_pos
+        for tile in self.map.own_buildings_in_vision:
+            if tile.building.entity_type == EntityType.LAUNCHER:
+                dist = current_pos.distance_squared(tile.position)
+                if dist < closest_dist:
+                    closest_dist = dist
+                    closest_launcher = tile
+        if closest_launcher is None:
+            return False
+        return bool(self.u_move_to(closest_launcher.position))

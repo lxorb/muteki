@@ -37,7 +37,10 @@ class TurretAgent(Agent):
         # enemies away from core
         # ally into safe zone (the closer the higher the better)
 
+        print("LAUNCHER PRINTS")
+
         if not self.map.launcher_action_radius_bots:
+            print("---------------")
             return False
         
         candidate_bots = sorted(self.map.launcher_action_radius_bots, key=lambda tile: tile.bot.team != self.map.enemy_team)
@@ -50,31 +53,40 @@ class TurretAgent(Agent):
                 if self.launcher_handle_own(bot_tile):
                     return True
         
+        print("--------------")
         return False
 
     def launcher_handle_own(self, bot_tile):
         if not self.map.launcher_own_reachable:
+            print("XXXXXXXXXXXXXXXXXXX")
             return False
 
         if not bot_tile.bot.id in self.map.id_to_target_pos:
+            print("YYYYYYYYYYYYYYYYYYY")
             return False
 
-        target_tile = self.map.id_to_target_pos[bot_tile.bot.id]
+        target_pos = self.map.id_to_target_pos[bot_tile.bot.id]
 
         reachable_safe = [tile for tile in self.map.launcher_own_reachable if tile in self.map.launcher_safe_zone_tiles]
 
         if not reachable_safe:
+            print("ZZZZZZZZZZZZZZZZZZZ")
             return False
         
-        reachable_safe_sorted = sorted(reachable_safe, key=lambda tile: tile.position.distance_squared(target_tile.position))
+        reachable_safe_sorted = sorted(reachable_safe, key=lambda tile: tile.position.distance_squared(target_pos))
         candidate_tile = reachable_safe_sorted[0]
-        dist_diff = bot_tile.position.distance_squared(target_tile.position) - candidate_tile.position.distance_squared(target_tile.position)
+        dist_diff = bot_tile.position.distance_squared(target_pos) - candidate_tile.position.distance_squared(target_pos)
+        print("DISTANCE DIFF", dist_diff, )
+        print("target", target_pos.x, target_pos.y)
+        print(bot_tile.position.distance_squared(target_pos), candidate_tile.position.distance_squared(target_pos))
         if dist_diff >= LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE:
             if not self.ct.can_launch(bot_tile.position, candidate_tile.position):
                 print("ERROR: Why can't I launch???")
                 return False
             self.ct.launch(bot_tile.position, candidate_tile.position)
             return True
+        else:
+            print("AAAAAAAAAAAAA")
 
         return False
 
