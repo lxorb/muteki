@@ -100,7 +100,9 @@ def queue_match(team_id: str, maps: list[str]) -> str | None:
     cmd = ["cambc", "match", "unrated", team_id]
     for m in maps:
         cmd += ["--map", m]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     m = re.search(r"Match ID: ([0-9a-f-]+)", result.stdout)
     if m:
         return m.group(1)
@@ -108,15 +110,38 @@ def queue_match(team_id: str, maps: list[str]) -> str | None:
     return None
 
 
+def resolve_map_name(name: str, valid_maps: set[str]) -> str | None:
+    """Resolve a possibly-truncated map name to a full name from valid_maps.
+
+    The cambc match-info table truncates long map names with '…' (or '\\ufffd'
+    when the subprocess output is mis-decoded). We fall back to unique-prefix
+    matching against the known map list.
+    """
+    if name in valid_maps:
+        return name
+    stem = name.rstrip("\ufffd…")
+    if not stem:
+        return None
+    candidates = [m for m in valid_maps if m.startswith(stem)]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def check_match(match_id: str) -> list[dict] | None:
     result = subprocess.run(
-        ["cambc", "match", "info", match_id], capture_output=True, text=True
+        ["cambc", "match", "info", match_id],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     output = result.stdout
     # print(repr(output))  # DEBUG: see raw captured output
     if "Status:  complete" not in output:
         return None
 
+    valid_maps = {p.stem for p in MAPS_DIR.glob("*.map26")}
     games = []
     for line in output.splitlines():
         if not line.startswith("|"):
@@ -124,9 +149,14 @@ def check_match(match_id: str) -> list[dict] | None:
         cells = [c.strip() for c in line.split("|")[1:-1]]
         if len(cells) != 5 or not cells[0].isdigit():
             continue
+        raw_map = cells[1]
+        resolved = resolve_map_name(raw_map, valid_maps)
+        if resolved is None:
+            print(f"  WARN: could not resolve map name {raw_map!r}; keeping as-is.")
+            resolved = raw_map
         games.append(
             {
-                "map": cells[1],
+                "map": resolved,
                 "win": TEAM_NAME in cells[2],
                 "condition": cells[3],
                 "turns": int(cells[4]),
@@ -167,7 +197,10 @@ def send_discord_jpg(jpg_path: Path, webhook_url: str) -> bool:
     req = urllib.request.Request(
         webhook_url,
         data=bytes(body),
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "User-Agent": "DiscordBot (https://github.com/lxorb/cbc-muteki, 1.0)",
+        },
         method="POST",
     )
     try:
@@ -231,7 +264,7 @@ def main():
         f"Unrated runner started. {len(match_queue)} queued from previous run. Ctrl+C to stop."
     )
 
-    last_discord_post = time.time()
+    last_discord_post = -1
 
     try:
         while True:
