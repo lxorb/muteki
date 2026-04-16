@@ -581,6 +581,39 @@ class BuilderNavigationMixin:
             return SupplyChainLabel.AXIONITE
         return SupplyChainLabel.NONE
 
+    def u_get_transport_supply_chain_policy(
+        self,
+        supply_chain_label: SupplyChainLabel,
+    ) -> tuple[bool, bool, bool]:
+        is_pure_axionite_supply_chain = supply_chain_label == SupplyChainLabel.AXIONITE
+        return (
+            not is_pure_axionite_supply_chain,
+            is_pure_axionite_supply_chain,
+            is_pure_axionite_supply_chain,
+        )
+
+    def u_get_transport_supplier_build_plan_for_supply_chain(
+        self,
+        pos: Position,
+        resource: Environment,
+        supply_chain_label: SupplyChainLabel,
+    ) -> tuple[EntityType | None, Direction | Position | None]:
+        (
+            prefer_bridge_when_conveyor_targets_existing_chain,
+            avoid_core,
+            prefer_join_existing_supply_chain,
+        ) = self.u_get_transport_supply_chain_policy(supply_chain_label)
+        return self.u_get_transport_supplier_build_plan(
+            pos,
+            resource,
+            prefer_bridge_when_conveyor_targets_existing_chain=(
+                prefer_bridge_when_conveyor_targets_existing_chain
+            ),
+            avoid_core=avoid_core,
+            prefer_join_existing_supply_chain=prefer_join_existing_supply_chain,
+            supply_chain_label=supply_chain_label,
+        )
+
     def u_supply_chain_targets_core(self, resource: Environment) -> bool:
         return True
 
@@ -779,6 +812,7 @@ class BuilderNavigationMixin:
         prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
         avoid_core: bool = False,
         prefer_join_existing_supply_chain: bool = False,
+        supply_chain_label: SupplyChainLabel = SupplyChainLabel.NONE,
     ) -> tuple[EntityType | None, Direction | Position | None]:
         """
         Return the normal transport-oriented supplier plan for `resource` at `pos`.
@@ -812,10 +846,18 @@ class BuilderNavigationMixin:
         source_tile = self.map.u_get_pos_tile(pos)
         conveyor_target_tile = self.map.u_get_pos_tile(pos.add(conveyor_direction))
         bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
+        is_pure_axionite_supply_chain = supply_chain_label == SupplyChainLabel.AXIONITE
         conveyor_targets_existing_supply_chain = (
             conveyor_target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and conveyor_target_tile.building.team == self.map.own_team
             and conveyor_target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+        )
+        conveyor_targets_joinable_supply_chain = (
+            conveyor_targets_existing_supply_chain
+            and self.map.u_supply_chain_is_joinable(
+                conveyor_target_tile.index,
+                self.map.own_team,
+            )
         )
         conveyor_targets_conveyor_feeding_harvester = (
             conveyor_target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
@@ -834,9 +876,11 @@ class BuilderNavigationMixin:
             return (EntityType.BRIDGE, bridge_target)
         if (
             conveyor_targets_existing_supply_chain
+            and not conveyor_targets_joinable_supply_chain
             and not conveyor_targets_conveyor_feeding_harvester
             and not bridge_targets_existing_supply_chain
             and prefer_bridge_when_conveyor_targets_existing_chain
+            and not is_pure_axionite_supply_chain
         ):
             return (EntityType.BRIDGE, bridge_target)
         bridge_dist_covered = (

@@ -96,6 +96,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
         avoid_core: bool = False,
         prefer_join_existing_supply_chain: bool = False,
+        supply_chain_label: SupplyChainLabel = SupplyChainLabel.NONE,
     ) -> SupplierBuildPlan: ...
 
     def u_get_surround_supplier_build_plan(
@@ -109,6 +110,18 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         self,
         resource: Environment,
     ) -> SupplyChainLabel: ...
+
+    def u_get_transport_supply_chain_policy(
+        self,
+        supply_chain_label: SupplyChainLabel,
+    ) -> tuple[bool, bool, bool]: ...
+
+    def u_get_transport_supplier_build_plan_for_supply_chain(
+        self,
+        pos: Position,
+        resource: Environment,
+        supply_chain_label: SupplyChainLabel,
+    ) -> SupplierBuildPlan: ...
 
     def u_best_conveyor_orientation(
         self,

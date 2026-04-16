@@ -1162,14 +1162,15 @@ class BuilderStrategyMethodsMixin:
         transport lane. Every other adjacent tile becomes a defensive conveyor
         that points back into the harvester.
         """
-        if DISABLE_CONVEYORS_POINTING_AT_HARVESTERS:
-            return self.u_get_transport_supplier_build_plan(
-                target_tile.position,
-                resource,
-            )
-
         best_supply_idx = self.map.u_get_harvester_best_supply_tile(harvester_tile.index)
         if target_tile.index == best_supply_idx:
+            return self.u_get_transport_supplier_build_plan_for_supply_chain(
+                target_tile.position,
+                resource,
+                self.u_get_supply_chain_label_for_resource(resource),
+            )
+
+        if DISABLE_CONVEYORS_POINTING_AT_HARVESTERS:
             return self.u_get_transport_supplier_build_plan(
                 target_tile.position,
                 resource,
@@ -2051,23 +2052,16 @@ class BuilderStrategyMethodsMixin:
             target_tile = tiles_by_index[target_idx]
             attempted_target_positions.append(target_tile.position)
             supply_chain_label = SupplyChainLabel(target_label)
-            is_pure_axionite_supply_chain = (
-                supply_chain_label == SupplyChainLabel.AXIONITE
-            )
             for resource in u_get_candidate_resources(
                 target_tile,
                 supply_chain_label,
             ):
-                supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
-                    target_tile.position,
-                    resource,
-                    prefer_bridge_when_conveyor_targets_existing_chain=(
-                        not is_pure_axionite_supply_chain
-                    ),
-                    avoid_core=is_pure_axionite_supply_chain,
-                    prefer_join_existing_supply_chain=(
-                        is_pure_axionite_supply_chain
-                    ),
+                supplier_type, supplier_target = (
+                    self.u_get_transport_supplier_build_plan_for_supply_chain(
+                        target_tile.position,
+                        resource,
+                        supply_chain_label,
+                    )
                 )
                 if supplier_type is None or supplier_target is None:
                     continue
