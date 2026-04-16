@@ -203,7 +203,7 @@ def main():
         all_maps.update(maps.keys())
 
     headers = ["Map"] + [
-        f"{team_names.get(t, t)} ({win_pct(team_totals[t]['wins'], team_totals[t]['wins'] + team_totals[t]['losses'])})"
+        f"{team_names.get(t, t)} ({win_pct(team_totals[t]['wins'], team_totals[t]['wins'] + team_totals[t]['losses'])} N:{team_totals[t]['wins'] + team_totals[t]['losses']})"
         for t in all_teams
     ]
 
@@ -215,7 +215,7 @@ def main():
         map_games = mt["wins"] + mt["losses"]
         map_pct = (mt["wins"] / map_games * 100) if map_games > 0 else None
         map_win_pcts.append(map_pct)
-        map_label = f"{map_name} ({win_pct(mt['wins'], map_games)})"
+        map_label = f"{map_name} ({win_pct(mt['wins'], map_games)} N:{map_games})"
         row = [map_label]
         row_times: list[int | None] = [None]
         for team_id in all_teams:
