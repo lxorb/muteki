@@ -871,9 +871,29 @@ class BuilderNavigationMixin:
             and bridge_target_tile.building.team == self.map.own_team
             and bridge_target_tile.own_supply_chain_label != SupplyChainLabel.NONE
         )
+        conveyor_targets_titanium_supply_chain = (
+            conveyor_targets_existing_supply_chain
+            and bool(
+                conveyor_target_tile.own_supply_chain_label
+                & SupplyChainLabel.TITANIUM
+            )
+        )
+        bridge_targets_titanium_supply_chain = (
+            bridge_targets_existing_supply_chain
+            and bool(
+                bridge_target_tile.own_supply_chain_label
+                & SupplyChainLabel.TITANIUM
+            )
+        )
         if (
             conveyor_target_tile.environment in _RESOURCE_ENVIRONMENTS
             and bridge_target_tile.environment not in _RESOURCE_ENVIRONMENTS
+        ):
+            return (EntityType.BRIDGE, bridge_target)
+        if (
+            is_pure_axionite_supply_chain
+            and bridge_targets_titanium_supply_chain
+            and not conveyor_targets_titanium_supply_chain
         ):
             return (EntityType.BRIDGE, bridge_target)
         if (
