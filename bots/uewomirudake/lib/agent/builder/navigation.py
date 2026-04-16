@@ -16,6 +16,7 @@ from lib.agent.constants import (
     HARD_AVOID_EXISTING_SUPPLY_CHAIN,
     MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD,
     NONDIRECTIONAL_BUILDING_TYPES,
+    REPLACE_ATTACKED_CONVEYOR_MAX_HP,
 )
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
@@ -1740,9 +1741,66 @@ class BuilderNavigationMixin:
         pos: Position,
         move_towards: bool,
         avoid_enemy_turrets: bool = True,
+        allow_low_hp_building_replacement: bool = False,
     ) -> bool:
         current_pos = self.map.current_pos
         if current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ:
+            target_tile = self.map.u_get_pos_tile(pos)
+            if (
+                allow_low_hp_building_replacement
+                and target_tile.building.team == self.map.own_team
+                and target_tile.building.hp is not None
+            ):
+                replacement_entity_type = None
+                replacement_facing_direction = target_tile.building.direction
+
+                if (
+                    target_tile.building.entity_type == EntityType.CONVEYOR
+                    and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                ):
+                    conveyor_titanium_cost, conveyor_axionite_cost = (
+                        self.ct.get_conveyor_cost()
+                    )
+                    if (
+                        self.map.titanium >= conveyor_titanium_cost
+                        and self.map.axionite >= conveyor_axionite_cost
+                        and replacement_facing_direction is not None
+                        and replacement_facing_direction != Direction.CENTRE
+                    ):
+                        replacement_entity_type = EntityType.CONVEYOR
+                elif (
+                    target_tile.building.entity_type == EntityType.GUNNER
+                    and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                ):
+                    gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
+                    if (
+                        self.map.titanium >= gunner_titanium_cost
+                        and self.map.axionite >= gunner_axionite_cost
+                        and replacement_facing_direction is not None
+                        and replacement_facing_direction != Direction.CENTRE
+                    ):
+                        replacement_entity_type = EntityType.GUNNER
+
+                if (
+                    replacement_entity_type is not None
+                    and self.ct.can_destroy(pos)
+                ):
+                    self.ct.destroy(pos)
+                    target_tile.clear_building()
+                    can_build_method = getattr(
+                        self.ct,
+                        f"can_build_{replacement_entity_type.value}",
+                    )
+                    build_method = getattr(
+                        self.ct,
+                        f"build_{replacement_entity_type.value}",
+                    )
+                    if can_build_method(pos, replacement_facing_direction):
+                        build_method(pos, replacement_facing_direction)
+                        self.last_built_entity_type = replacement_entity_type
+                        return True
+                    return False
+
             if not self.ct.can_heal(pos):
                 return False
             self.ct.heal(pos)

@@ -5059,22 +5059,40 @@ class BuilderStrategyMethodsMixin:
         """
         own_team = self.map.own_team
         current_pos = self.map.current_pos
+        all_own_supply_link_target_indices_in_vision = (
+            self.map.all_own_supply_link_target_indices_in_vision
+        )
+        enemy_supply_link_target_indices_in_vision = (
+            self.map.enemy_supply_link_target_indices_in_vision
+        )
         if candidate_radius is None:
             candidate_radius = math.sqrt(self.ct.get_vision_radius_sq())
         if candidate_radius < 0:
             candidate_radius = 0
         candidate_radius_sq = candidate_radius * candidate_radius
 
+        def can_consider_heal_candidate(tile) -> bool:
+            if tile.building.team != own_team:
+                return False
+            if tile.building.entity_type != EntityType.GUNNER:
+                return True
+            return (
+                tile.index in all_own_supply_link_target_indices_in_vision
+                or tile.index in enemy_supply_link_target_indices_in_vision
+            )
+
         candidate_tiles = [
             tile
             for tile in self.map.own_buildings_healable_in_action_range
             if current_pos.distance_squared(tile.position) <= candidate_radius_sq
+            and can_consider_heal_candidate(tile)
         ]
         if not candidate_tiles:
             candidate_tiles = [
                 tile
                 for tile in self.map.own_buildings_needing_heal
                 if current_pos.distance_squared(tile.position) <= candidate_radius_sq
+                and can_consider_heal_candidate(tile)
             ]
         if not candidate_tiles:
             return False
@@ -5115,7 +5133,13 @@ class BuilderStrategyMethodsMixin:
                 tile.own_core_dist,
             ),
         )
-        return bool(self.u_heal_at(target_tile.position, move_towards=move_towards))
+        return bool(
+            self.u_heal_at(
+                target_tile.position,
+                move_towards=move_towards,
+                allow_low_hp_building_replacement=True,
+            )
+        )
 
     def s_move_toward_enemy_core(self):
         """

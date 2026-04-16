@@ -200,6 +200,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         pos: Position,
         move_towards: bool,
         avoid_enemy_turrets: bool = True,
+        allow_low_hp_building_replacement: bool = False,
     ) -> bool: ...
 
 
