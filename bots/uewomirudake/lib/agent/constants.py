@@ -5,7 +5,6 @@ BUILDER_ACTION_RADIUS_SQ: int = 2
 NS_PER_TURN: int = 2_000_000
 
 ### STRATEGY NAMES ###
-INITRES_STRATEGY_ID: str = "initres"
 SCAVENGER_STRATEGY_ID: str = "scavenger"
 HARASSMENT_STRATEGY_ID: str = "harassment"
 DEFENDER_STRATEGY_ID: str = "defender"
