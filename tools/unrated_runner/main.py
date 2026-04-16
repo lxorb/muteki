@@ -1,4 +1,5 @@
 import json
+import random
 import re
 import subprocess
 import time
@@ -27,6 +28,7 @@ RESULTS_SESSION_FILE = RESULTS_PARTIAL_DIR / "results_{}.json".format(
 RESULTS_ALL_FILE = RESULTS_DIR / "results.json"
 
 REQUEST_DELAY = 30
+RANDOM_MAP_SELECTION = True
 
 
 def build_teams_json() -> None:
@@ -61,14 +63,24 @@ def save_json(path: Path, data: dict) -> None:
         json.dump(data, f, indent=4)
 
 
-def get_priority_maps(results: dict, count: int = 5) -> list[str]:
-    """Return the maps with the fewest games played."""
+def get_priority_maps(results: dict, team_id: str, count: int = 5) -> list[str]:
+    """Return the maps with the fewest games played against a specific team."""
     all_maps = [p.stem for p in MAPS_DIR.glob("*.map26")]
     games_per_map: dict[str, int] = {m: 0 for m in all_maps}
-    for team_data in results.values():
-        for map_name, map_data in team_data.items():
-            if map_name in games_per_map:
-                games_per_map[map_name] += map_data.get("wins", 0) + map_data.get("losses", 0)
+    team_data = results.get(team_id, {})
+    for map_name, map_data in team_data.items():
+        if map_name in games_per_map:
+            games_per_map[map_name] += map_data.get("wins", 0) + map_data.get("losses", 0)
+    if RANDOM_MAP_SELECTION:
+        # Group maps by game count, shuffle within each tier, then take top count
+        from itertools import groupby
+        sorted_maps = sorted(games_per_map, key=lambda m: games_per_map[m])
+        result = []
+        for _, group in groupby(sorted_maps, key=lambda m: games_per_map[m]):
+            tier = list(group)
+            random.shuffle(tier)
+            result.extend(tier)
+        return result[:count]
     return sorted(games_per_map, key=lambda m: (games_per_map[m], m))[:count]
 
 
@@ -178,7 +190,7 @@ def main():
                 remaining_teams = team_ids
             team_id = remaining_teams[0]
             queued_teams.add(team_id)
-            priority_maps = get_priority_maps(results_all)
+            priority_maps = get_priority_maps(results_all, team_id)
             print(f"Queuing vs {teams[team_id]} ({team_id}) on {priority_maps}...")
             match_id = queue_match(team_id, priority_maps)
             if match_id:

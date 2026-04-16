@@ -5,7 +5,8 @@ import datetime
 from pathlib import Path
 
 RENDER_IMAGES = True
-DECAY_LAMBDA = 0.1  # exponential decay rate in days^-1 (half-life ≈ ln2/λ ≈ 7 days)
+HALF_LIFE_MINUTES = 15
+DECAY_LAMBDA = math.log(2) / (HALF_LIFE_MINUTES / 1440)  # in days^-1
 
 SCRIPT_DIR = Path(__file__).parent
 TEAM_LIST_FILE = SCRIPT_DIR / "data" / "team_list.json"
@@ -48,7 +49,7 @@ def make_table(headers: list[str], rows: list[list[str]]) -> str:
 
 def blend_to_white(hex_color: str, factor: float) -> str:
     """Blend hex_color toward white. factor=1 is full color, factor=0 is white."""
-    r, g, b = (int(hex_color[i:i+2], 16) for i in (1, 3, 5))
+    r, g, b = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
     return "#{:02X}{:02X}{:02X}".format(
         int(255 + factor * (r - 255)),
         int(255 + factor * (g - 255)),
@@ -57,7 +58,9 @@ def blend_to_white(hex_color: str, factor: float) -> str:
 
 
 def render_table_to_image(
-    headers: list[str], rows: list[list[str]], path: Path,
+    headers: list[str],
+    rows: list[list[str]],
+    path: Path,
     cell_times: list[list[int | None]] | None = None,
 ) -> None:
     import matplotlib.pyplot as plt
@@ -106,7 +109,7 @@ def render_table_to_image(
         if r == 0:
             cell.set_facecolor("#4472C4")
             cell.set_text_props(color="white", fontweight="bold")
-        elif text in ("\u2705", "\u274C"):
+        elif text in ("\u2705", "\u274c"):
             factor = 1.0
             if cell_times is not None and r > 0:
                 ts = cell_times[r - 1][c]
@@ -114,11 +117,11 @@ def render_table_to_image(
                     days = (now_ts - ts) / 86400
                     factor = math.exp(-DECAY_LAMBDA * max(0, days))
             if text == "\u2705":
-                cell.set_facecolor(blend_to_white("#C6EFCE", factor))
+                cell.set_facecolor(blend_to_white("#A9E7B5", factor))
                 cell.set_text_props(color="#006100", fontweight="bold")
                 cell.get_text().set_text("W")
             else:
-                cell.set_facecolor(blend_to_white("#FFC7CE", factor))
+                cell.set_facecolor(blend_to_white("#FFABB5", factor))
                 cell.set_text_props(color="#9C0006", fontweight="bold")
                 cell.get_text().set_text("L")
         elif r % 2 == 0:
@@ -188,7 +191,9 @@ def main():
                         if entry_time >= newest_time:
                             newest_time = entry_time
                             newest_win = v["win"]
-                row.append("✅" if newest_win else "❌" if newest_win is not None else "")
+                row.append(
+                    "✅" if newest_win else "❌" if newest_win is not None else ""
+                )
                 row_times.append(newest_time if newest_time > 0 else None)
         rows.append(row)
         cell_times.append(row_times)
@@ -207,7 +212,8 @@ def main():
 
     if RENDER_IMAGES:
         render_table_to_image(
-            headers, rows,
+            headers,
+            rows,
             OUTPUT_DIR / f"output_{now}.jpg",
             cell_times=cell_times,
         )
