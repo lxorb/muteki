@@ -2049,27 +2049,32 @@ class Map:
 
         return tiles
 
-    def u_get_gunner_open_ray_tiles(
+    def u_get_gunner_shootable_tiles(
         self,
         source_pos: Position,
         direction: Direction,
         radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
     ) -> list[Tile]:
-        open_tiles: list[Tile] = []
+        shootable_tiles: list[Tile] = []
         for target_tile in self.u_get_gunner_ray_tiles(
             source_pos,
             direction,
             radius_sq,
         ):
+            if target_tile.environment == Environment.WALL:
+                break
+
             if (
                 target_tile.building.id is not None
                 and target_tile.building.team == self.own_team
+                and target_tile.building.entity_type != EntityType.ROAD
             ):
                 break
-            open_tiles.append(target_tile)
+
+            shootable_tiles.append(target_tile)
             if self.round_stopwatch.check_overtime_interval():
                 break
-        return open_tiles
+        return shootable_tiles
 
     def u_sentinel_covers_target(
         self,

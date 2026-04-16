@@ -694,7 +694,7 @@ class BuilderNavigationMixin:
             visible_enemy_buildings = 0
             can_target_enemy_core = False
 
-            for target_tile in self.map.u_get_gunner_open_ray_tiles(pos, direction):
+            for target_tile in self.map.u_get_gunner_shootable_tiles(pos, direction):
                 if any(
                     core_tile.position == target_tile.position
                     for core_tile in enemy_core_tiles
