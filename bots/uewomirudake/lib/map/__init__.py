@@ -417,6 +417,22 @@ class Map:
         self.frontier_expand_pending_head = 0
         self.known_own_supply_link_indices: set[int] = set()
 
+        # launcher-specific
+        self.is_launcher = False
+
+        self.launcher_visible_tiles = [] # initialized once
+        self.launcher_action_radius = [] # initialized once
+
+        self.launcher_own_reachable = []
+        self.launcher_enemy_reachable = []
+
+        self.launcher_action_radius_bots = []
+        self.launcher_killer_zone_tiles = [] 
+        self.launcher_safe_zone_tiles = []
+            # these lists are re-updated in EACH ROUND!
+
+        self.id_to_target_pos = {}
+
         self.stopwatch = Stopwatch("Map")
 
     def _reset_turn_state(self) -> None:
@@ -993,6 +1009,11 @@ class Map:
             (self.width, self.height)
         ]
         self._first_round_initialized = True
+        self.is_launcher = (self.ct.get_entity_type() == EntityType.LAUNCHER)
+        if (self.is_launcher):
+            current_pos = self.ct.get_position()
+            self.launcher_visible_tiles = self.u_get_launcher_target_positions(current_pos)
+            self.launcher_action_radius = self.u_get_launcher_pickup_positions(current_pos)
         self._reset_turn_state()
 
     def u_to_index_xy(self, x: int, y: int) -> int:
@@ -1065,6 +1086,14 @@ class Map:
             )
 
         self.stopwatch.start()
+
+        if self.is_launcher:
+            self.launcher_safe_zone_tiles = self.launcher_visible_tiles.copy()
+            self.launcher_killer_zone_tiles = []
+            self.launcher_action_radius_bots = []
+            self.launcher_own_reachable = []
+            self.launcher_enemy_reachable = []
+            self.id_to_target_pos = {}
 
         self._reset_turn_state()
         self.tiles_in_vision = [
@@ -2113,6 +2142,15 @@ class Map:
         source_idx = self.u_to_index(source_pos)
         return [
             self.tiles_by_index[idx] for idx in self.u_iter_neighbor_indices(source_idx)
+        ]
+
+    def u_get_launcher_target_positions(self, source_pos: Position) -> list[Tile]:
+        source_idx = self.u_to_index(source_pos)
+        return [
+            self.tiles_by_index[idx]
+            for idx in self.u_get_attackable_target_indices(
+                source_idx, EntityType.LAUNCHER, Direction.NORTH
+            )
         ]
 
     def u_is_chokepoint(self, pos: Position) -> bool:

@@ -342,6 +342,21 @@ class Tile:
             self.bot.id is None or self.position == self.map.current_pos
         )
 
+        if self.map.is_launcher:
+            self.update_launcher_targets()
+    
+    def update_launcher_targets(self):
+        if self.bot is not None:
+            return
+        if self.building.entity_type in PASSABLE_TYPES:
+            self.map.launcher_own_reachable.append(self)
+            self.map.launcher_enemy_reachable.append(self)
+        elif self.building.entity_type == EntityType.CORE:
+            if self.building.team == self.map.own_team:
+                self.map.launcher_own_reachable.append(self)
+            else:
+                self.map.launcher_enemy_reachable.append(self)
+
     def update_bot(self, id_changed: bool) -> None:
         ct = self.map.ct
         if id_changed:
@@ -349,16 +364,19 @@ class Tile:
             self.bot.team = ct.get_team(self.bot.id)
             self.bot.targets = self.get_targets(self.bot.entity_type, self.bot.id)
         self.bot.hp = ct.get_hp(self.bot.id)
+        if self.map.is_launcher and self in self.map.launcher_action_radius:
+            self.map.launcher_action_radius_bots.append(self)
         self.update_target_zones_bot()
     
     def handle_marker(self, marker_id):
         self.building.id = None
         self.building.entity_type = None
         self.building.team = None
-        if self.map.symmetry_mode is not None:
-            return
         strategy, symmetry_mode, own_id, current_round, target_x, target_y = self.map.read_marker(self.map.ct.get_marker_value(marker_id))
-        self.map.symmetry_mode = symmetry_mode
+        if self.map.symmetry_mode is None:
+            self.map.symmetry_mode = symmetry_mode
+        if self.map.is_launcher:
+            self.map.id_to_target_pos[own_id] = Position(target_x, target_y)
 
 
     def update_building(self, id_changed: bool) -> None:
@@ -569,12 +587,16 @@ class Tile:
                 for target in targets:
                     if team == self.map.own_team:
                         target.in_own_attack_range += delta
+                        if self.map.is_launcher and target in self.map.launcher_visible_tiles and target not in self.map.launcher_killer_zone_tiles:
+                            self.map.launcher_killer_zone_tiles.append(target)
                     else:
                         target.in_enemy_attack_range += delta
                         target.map.enemy_turret_target_by_index[target.index] = int(
                             target.in_enemy_attack_range > 0
                             or target.in_enemy_launcher_pickup_zone > 0
                         )
+                        if self.map.is_launcher and target in self.map.launcher_safe_zone_tiles:
+                            self.map.launcher_safe_zone_tiles.remove(target)
             case EntityType.LAUNCHER:
                 for target in self.map.u_get_launcher_pickup_positions(self.position):
                     if team == self.map.own_team:
@@ -585,6 +607,8 @@ class Tile:
                             target.in_enemy_attack_range > 0
                             or target.in_enemy_launcher_pickup_zone > 0
                         )
+                        if self.map.is_launcher and target in self.map.launcher_safe_zone_tiles:
+                            self.map.launcher_safe_zone_tiles.remove(target)
 
     def update_target_zones_building( self
     ) -> None:

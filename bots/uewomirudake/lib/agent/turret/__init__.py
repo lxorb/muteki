@@ -37,7 +37,13 @@ class TurretAgent(Agent):
         # enemies away from core
         # ally into safe zone (the closer the higher the better)
 
-        return True
+        if not self.map.launcher_action_radius_bots:
+            return True
+        
+        candidate_bots = sorted(self.map.launcher_action_radius_bots, key=lambda tile: tile.bot.team != self.map.enemy_team)
+
+        if candidate_bots[0].bot.team == self.map.enemy_team:
+            pass
 
     def u_gunner_attack(self) -> bool:
         """
