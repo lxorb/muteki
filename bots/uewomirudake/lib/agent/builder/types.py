@@ -93,6 +93,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
     ) -> SupplierBuildPlan: ...
 
     def u_get_surround_supplier_build_plan(

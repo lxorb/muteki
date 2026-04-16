@@ -776,6 +776,7 @@ class BuilderNavigationMixin:
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
     ) -> tuple[EntityType | None, Direction | Position | None]:
         """
         Return the normal transport-oriented supplier plan for `resource` at `pos`.
@@ -826,6 +827,7 @@ class BuilderNavigationMixin:
             conveyor_targets_existing_supply_chain
             and not conveyor_targets_conveyor_feeding_harvester
             and not bridge_targets_existing_supply_chain
+            and prefer_bridge_when_conveyor_targets_existing_chain
         ):
             return (EntityType.BRIDGE, bridge_target)
         bridge_dist_covered = (

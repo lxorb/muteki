@@ -2050,13 +2050,17 @@ class BuilderStrategyMethodsMixin:
             _, _, target_idx, target_label = heappop(candidate_entries)
             target_tile = tiles_by_index[target_idx]
             attempted_target_positions.append(target_tile.position)
+            supply_chain_label = SupplyChainLabel(target_label)
             for resource in u_get_candidate_resources(
                 target_tile,
-                SupplyChainLabel(target_label),
+                supply_chain_label,
             ):
                 supplier_type, supplier_target = self.u_get_transport_supplier_build_plan(
                     target_tile.position,
                     resource,
+                    prefer_bridge_when_conveyor_targets_existing_chain=(
+                        supply_chain_label != SupplyChainLabel.AXIONITE
+                    ),
                 )
                 if supplier_type is None or supplier_target is None:
                     continue

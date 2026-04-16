@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from enum import Enum
 from heapq import heappop, heappush
 import json
+import math
 import marshal
 from pathlib import Path
 import sys
@@ -317,6 +318,12 @@ class Map:
         self.enemy_supply_chain_resource_item_count_by_index = (
             array("H", [0]) * self.INITIAL_MAP_SIZE
         )
+        self.own_supply_chain_max_euclidean_dist_to_self_by_index = (
+            array("f", [0.0]) * self.INITIAL_MAP_SIZE
+        )
+        self.enemy_supply_chain_max_euclidean_dist_to_self_by_index = (
+            array("f", [0.0]) * self.INITIAL_MAP_SIZE
+        )
         self.own_supply_chain_has_titanium_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
@@ -439,6 +446,7 @@ class Map:
             self.own_supply_chain_tile_count_by_index,
             self.own_supply_chain_harvester_count_by_index,
             self.own_supply_chain_resource_item_count_by_index,
+            self.own_supply_chain_max_euclidean_dist_to_self_by_index,
             self.own_supply_chain_has_titanium_by_index,
             self.own_supply_chain_has_raw_axionite_by_index,
             self.own_supply_chain_has_refined_axionite_by_index,
@@ -452,6 +460,7 @@ class Map:
             self.enemy_supply_chain_tile_count_by_index,
             self.enemy_supply_chain_harvester_count_by_index,
             self.enemy_supply_chain_resource_item_count_by_index,
+            self.enemy_supply_chain_max_euclidean_dist_to_self_by_index,
             self.enemy_supply_chain_has_titanium_by_index,
             self.enemy_supply_chain_has_raw_axionite_by_index,
             self.enemy_supply_chain_has_refined_axionite_by_index,
@@ -497,6 +506,7 @@ class Map:
         tile_count_by_index,
         harvester_count_by_index,
         resource_item_count_by_index,
+        max_euclidean_dist_to_self_by_index,
         has_titanium_by_index: bytearray,
         has_raw_axionite_by_index: bytearray,
         has_refined_axionite_by_index: bytearray,
@@ -509,6 +519,7 @@ class Map:
             tile_count_by_index[idx] = 0
             harvester_count_by_index[idx] = 0
             resource_item_count_by_index[idx] = 0
+            max_euclidean_dist_to_self_by_index[idx] = 0.0
             has_titanium_by_index[idx] = 0
             has_raw_axionite_by_index[idx] = 0
             has_refined_axionite_by_index[idx] = 0
@@ -525,6 +536,7 @@ class Map:
                 self.own_supply_chain_tile_count_by_index,
                 self.own_supply_chain_harvester_count_by_index,
                 self.own_supply_chain_resource_item_count_by_index,
+                self.own_supply_chain_max_euclidean_dist_to_self_by_index,
                 self.own_supply_chain_has_titanium_by_index,
                 self.own_supply_chain_has_raw_axionite_by_index,
                 self.own_supply_chain_has_refined_axionite_by_index,
@@ -538,12 +550,18 @@ class Map:
             self.enemy_supply_chain_tile_count_by_index,
             self.enemy_supply_chain_harvester_count_by_index,
             self.enemy_supply_chain_resource_item_count_by_index,
+            self.enemy_supply_chain_max_euclidean_dist_to_self_by_index,
             self.enemy_supply_chain_has_titanium_by_index,
             self.enemy_supply_chain_has_raw_axionite_by_index,
             self.enemy_supply_chain_has_refined_axionite_by_index,
             self.enemy_supply_chain_feeds_own_turret_by_index,
             self.enemy_supply_chain_touched_indices,
         )
+
+    def _u_get_euclidean_dist_to_self_by_index(self, idx: int) -> float:
+        dx = self.index_x_by_index[idx] - self.current_pos.x
+        dy = self.index_y_by_index[idx] - self.current_pos.y
+        return math.hypot(dx, dy)
 
     def _activate_supply_chain_index(self, idx: int, team: Team) -> None:
         (
@@ -553,6 +571,7 @@ class Map:
             tile_count_by_index,
             harvester_count_by_index,
             resource_item_count_by_index,
+            max_euclidean_dist_to_self_by_index,
             has_titanium_by_index,
             has_raw_axionite_by_index,
             has_refined_axionite_by_index,
@@ -567,6 +586,9 @@ class Map:
         tile_count_by_index[idx] = 1
         harvester_count_by_index[idx] = 0
         resource_item_count_by_index[idx] = 0
+        max_euclidean_dist_to_self_by_index[idx] = (
+            self._u_get_euclidean_dist_to_self_by_index(idx)
+        )
         has_titanium_by_index[idx] = 0
         has_raw_axionite_by_index[idx] = 0
         has_refined_axionite_by_index[idx] = 0
@@ -586,6 +608,7 @@ class Map:
             _tile_count_by_index,
             _harvester_count_by_index,
             _resource_item_count_by_index,
+            _max_euclidean_dist_to_self_by_index,
             _has_titanium_by_index,
             _has_raw_axionite_by_index,
             _has_refined_axionite_by_index,
@@ -626,6 +649,7 @@ class Map:
             tile_count_by_index,
             harvester_count_by_index,
             resource_item_count_by_index,
+            max_euclidean_dist_to_self_by_index,
             has_titanium_by_index,
             has_raw_axionite_by_index,
             has_refined_axionite_by_index,
@@ -642,6 +666,10 @@ class Map:
         resource_item_count_by_index[first_root] += resource_item_count_by_index[
             second_root
         ]
+        max_euclidean_dist_to_self_by_index[first_root] = max(
+            max_euclidean_dist_to_self_by_index[first_root],
+            max_euclidean_dist_to_self_by_index[second_root],
+        )
         has_titanium_by_index[first_root] |= has_titanium_by_index[second_root]
         has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[
             second_root
@@ -698,6 +726,18 @@ class Map:
             return self.own_supply_chain_resource_item_count_by_index[root]
         return self.enemy_supply_chain_resource_item_count_by_index[root]
 
+    def u_get_supply_chain_max_euclidean_dist_to_self_by_index(
+        self,
+        idx: int,
+        team: Team,
+    ) -> float:
+        root = self.u_find_supply_chain_root_by_index(idx, team)
+        if root is None:
+            return math.inf
+        if team == self.own_team:
+            return self.own_supply_chain_max_euclidean_dist_to_self_by_index[root]
+        return self.enemy_supply_chain_max_euclidean_dist_to_self_by_index[root]
+
     def u_supply_chain_is_continuable(
         self,
         idx: int,
@@ -706,6 +746,22 @@ class Map:
         return (
             self.u_get_supply_chain_resource_item_count_by_index(idx, team) > 0
             or self.u_get_supply_chain_harvester_count_by_index(idx, team) > 0
+        )
+
+    def u_supply_chain_is_joinable(
+        self,
+        idx: int,
+        team: Team,
+    ) -> bool:
+        root = self.u_find_supply_chain_root_by_index(idx, team)
+        return (
+            root is not None
+            and self.u_get_supply_chain_harvester_count_by_index(idx, team) < 4
+            and self.u_get_supply_chain_max_euclidean_dist_to_self_by_index(
+                idx,
+                team,
+            )
+            <= 3.0
         )
 
     def u_supply_chain_has_titanium(
@@ -2747,6 +2803,9 @@ class Map:
             resource_item_count_by_index = (
                 self.own_supply_chain_resource_item_count_by_index
             )
+            max_euclidean_dist_to_self_by_index = (
+                self.own_supply_chain_max_euclidean_dist_to_self_by_index
+            )
             has_titanium_by_index = self.own_supply_chain_has_titanium_by_index
             has_raw_axionite_by_index = self.own_supply_chain_has_raw_axionite_by_index
             has_refined_axionite_by_index = (
@@ -2763,6 +2822,9 @@ class Map:
             harvester_count_by_index = self.enemy_supply_chain_harvester_count_by_index
             resource_item_count_by_index = (
                 self.enemy_supply_chain_resource_item_count_by_index
+            )
+            max_euclidean_dist_to_self_by_index = (
+                self.enemy_supply_chain_max_euclidean_dist_to_self_by_index
             )
             has_titanium_by_index = self.enemy_supply_chain_has_titanium_by_index
             has_raw_axionite_by_index = (
@@ -2810,6 +2872,10 @@ class Map:
             resource_item_count_by_index[first_root] += resource_item_count_by_index[
                 second_root
             ]
+            max_euclidean_dist_to_self_by_index[first_root] = max(
+                max_euclidean_dist_to_self_by_index[first_root],
+                max_euclidean_dist_to_self_by_index[second_root],
+            )
             has_titanium_by_index[first_root] |= has_titanium_by_index[second_root]
             has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[
                 second_root
@@ -2833,6 +2899,9 @@ class Map:
             tile_count_by_index[tile_idx] = 1
             harvester_count_by_index[tile_idx] = 0
             resource_item_count_by_index[tile_idx] = 0
+            max_euclidean_dist_to_self_by_index[tile_idx] = (
+                self._u_get_euclidean_dist_to_self_by_index(tile_idx)
+            )
             has_titanium_by_index[tile_idx] = 0
             has_raw_axionite_by_index[tile_idx] = 0
             has_refined_axionite_by_index[tile_idx] = 0
