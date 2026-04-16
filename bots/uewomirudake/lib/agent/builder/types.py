@@ -291,7 +291,10 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         enforce_safe: bool = False,
     ) -> BuilderActionResult: ...
 
-    def s_frontier_expand(self) -> BuilderActionResult: ...
+    def s_frontier_expand(
+        self,
+        min_titanium: int = 0,
+    ) -> BuilderActionResult: ...
 
     def s_fix_conveyor(
         self,

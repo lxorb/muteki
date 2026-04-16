@@ -14,6 +14,7 @@ from lib.agent.constants import (
     AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM,
     CORE_DEFENDER_STRATEGY_ID,
     DISABLE_HARASSMENT,
+    ENABLE_AXIONITE_TO_TITANIUM_CONVERSION,
     HARASSMENT_STRATEGY_ID,
     SURRENDER_AT_TURN,
 )
@@ -79,6 +80,8 @@ class CoreAgent(Agent):
         return True
 
     def u_convert_axionite_if_low_on_titanium(self) -> bool:
+        if not ENABLE_AXIONITE_TO_TITANIUM_CONVERSION:
+            return False
         if self.map.titanium >= AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM:
             return False
         _, armoured_conveyor_axionite_cost = getattr(

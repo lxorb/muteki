@@ -49,7 +49,8 @@ SCAVENGER_STRATEGY = [
         True,
         False,
     ),
-    (BuilderStrategyMethodsMixin.s_frontier_expand,),
+    (BuilderStrategyMethodsMixin.s_frontier_expand, 100),
+    (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 
 DEFENDER_STRATEGY = [
@@ -95,6 +96,9 @@ DEFENDER_STRATEGY = [
 
 CORE_DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_heal_self,),
+    (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
+    (BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
+    (BuilderStrategyMethodsMixin.s_replace_damaged_conveyor, True, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (BuilderStrategyMethodsMixin.s_return_to_core_center,),
 ]

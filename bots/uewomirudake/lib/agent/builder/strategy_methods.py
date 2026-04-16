@@ -2900,7 +2900,7 @@ class BuilderStrategyMethodsMixin:
             require_connected=True,
         )
 
-    def s_frontier_expand(self):
+    def s_frontier_expand(self, min_titanium: int = 0):
         """
         Move toward the nearest reachable unseen frontier tile.
 
@@ -2909,6 +2909,9 @@ class BuilderStrategyMethodsMixin:
         If the builder is already standing in enemy turret range, retry once
         without turret avoidance so it does not freeze in place.
         """
+        if self.map.titanium < min_titanium:
+            return False
+
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
 
         def move_along_frontier_path(avoid_enemy_turrets: bool) -> bool:
