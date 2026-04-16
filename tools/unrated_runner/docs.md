@@ -37,6 +37,8 @@ Reads `data/ladder.json` and writes the top 16 teams by rating to `config/reques
 
 Continuously queues unrated matches against configured opponents and records results. Runs in a loop every REQUEST_DELAY seconds until you press **Ctrl+C**. Our own team is automatically excluded from the opponent list.
 
+If `config/discord_interval.txt` contains a positive integer, `main.py` also runs `output.py` and posts the generated JPG to the Discord webhook URL in `config/discord_webhook.txt` every N minutes. If either file is empty/missing or the interval is not a positive integer, this behaviour is disabled.
+
 ### output.py
 
 Reads `results/results.json` (the cumulative results file) and generates a markdown summary at `outputs/output_<timestamp>.md` with a map-vs-team grid showing the last game result (✅/❌) for each combination, with cumulative win percentages next to each map and team. Only teams listed in `config/output_teams.txt` are included as columns. Also renders a JPG image of the grid where win/loss cell colors fade over time via exponential decay (configurable via `DECAY_LAMBDA` in the script).
@@ -105,6 +107,14 @@ Blue Dragon
 
 One team name per line. Controls which teams appear as columns in `output.py` and `compare.py`. Teams not listed here are excluded from the output even if results exist for them. If the file is empty or missing, all teams are shown.
 
+### config/discord_interval.txt
+
+A single line containing a positive integer — the number of minutes between automatic `output.py` runs that post the generated JPG to the Discord webhook. If the file is empty or does not parse as a positive integer, the feature is disabled and `main.py` behaves normally. Re-read each loop iteration, so edits take effect live.
+
+### config/discord_webhook.txt
+
+The Discord webhook URL to post generated JPGs to. Gitignored (treat as a secret). Required when `config/discord_interval.txt` is set; if missing or empty, `main.py` skips the Discord post.
+
 ## Workflow
 
 1. Run `fetch_ladder.py` to download the current ladder.
@@ -134,8 +144,10 @@ unrated_runner/
   compare.py           # result comparison tool
   docs.md              # this file
   config/
-    request_teams.txt  # teams to queue against
-    output_teams.txt   # teams to show in output/compare
+    request_teams.txt    # teams to queue against
+    output_teams.txt     # teams to show in output/compare
+    discord_interval.txt # positive int minutes → auto-run output.py + post JPG to Discord
+    discord_webhook.txt  # Discord webhook URL (gitignored)
   data/
     ladder.json        # raw ladder data from platform API
     team_list.json     # all active teams {id: name}

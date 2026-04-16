@@ -2,7 +2,10 @@ import json
 import random
 import re
 import subprocess
+import sys
 import time
+import urllib.request
+import uuid
 from collections import deque
 from pathlib import Path
 
@@ -16,16 +19,20 @@ CONFIG_DIR = SCRIPT_DIR / "config"
 DATA_DIR = SCRIPT_DIR / "data"
 RESULTS_DIR = SCRIPT_DIR / "results"
 RESULTS_PARTIAL_DIR = RESULTS_DIR / "partial"
-for d in (CONFIG_DIR, DATA_DIR, RESULTS_DIR, RESULTS_PARTIAL_DIR):
+OUTPUT_DIR = SCRIPT_DIR / "outputs"
+for d in (CONFIG_DIR, DATA_DIR, RESULTS_DIR, RESULTS_PARTIAL_DIR, OUTPUT_DIR):
     d.mkdir(exist_ok=True)
 TEAM_LIST_FILE = DATA_DIR / "team_list.json"
 REQUEST_TEAMS_FILE = CONFIG_DIR / "request_teams.txt"
+DISCORD_INTERVAL_FILE = CONFIG_DIR / "discord_interval.txt"
+DISCORD_WEBHOOK_FILE = CONFIG_DIR / "discord_webhook.txt"
 TEAMS_FILE = DATA_DIR / "requested_teams.json"
 QUEUED_FILE = DATA_DIR / "queued.json"
 RESULTS_SESSION_FILE = RESULTS_PARTIAL_DIR / "results_{}.json".format(
     datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 )
 RESULTS_ALL_FILE = RESULTS_DIR / "results.json"
+OUTPUT_SCRIPT = SCRIPT_DIR / "output.py"
 
 REQUEST_DELAY = 120
 RANDOM_MAP_SELECTION = True
@@ -128,6 +135,70 @@ def check_match(match_id: str) -> list[dict] | None:
     return games
 
 
+def read_discord_interval_minutes() -> int | None:
+    """Return a positive integer from discord_interval.txt, or None if unset/invalid."""
+    if not DISCORD_INTERVAL_FILE.exists():
+        return None
+    text = DISCORD_INTERVAL_FILE.read_text().strip()
+    if not text.isdigit():
+        return None
+    n = int(text)
+    return n if n > 0 else None
+
+
+def read_discord_webhook_url() -> str | None:
+    """Return the webhook URL from discord_webhook.txt, or None if unset."""
+    if not DISCORD_WEBHOOK_FILE.exists():
+        return None
+    url = DISCORD_WEBHOOK_FILE.read_text().strip()
+    return url or None
+
+
+def send_discord_jpg(jpg_path: Path, webhook_url: str) -> bool:
+    boundary = uuid.uuid4().hex
+    body = bytearray()
+    body.extend(f"--{boundary}\r\n".encode())
+    body.extend(
+        f'Content-Disposition: form-data; name="file"; filename="{jpg_path.name}"\r\n'.encode()
+    )
+    body.extend(b"Content-Type: image/jpeg\r\n\r\n")
+    body.extend(jpg_path.read_bytes())
+    body.extend(f"\r\n--{boundary}--\r\n".encode())
+    req = urllib.request.Request(
+        webhook_url,
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            resp.read()
+        return True
+    except Exception as e:
+        print(f"  Discord webhook failed: {e}")
+        return False
+
+
+def run_output_and_post() -> None:
+    webhook_url = read_discord_webhook_url()
+    if webhook_url is None:
+        print("  No Discord webhook URL set in config/discord_webhook.txt; skipping.")
+        return
+    result = subprocess.run(
+        [sys.executable, str(OUTPUT_SCRIPT)], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"  output.py failed: {result.stderr.strip() or result.stdout.strip()}")
+        return
+    jpgs = sorted(OUTPUT_DIR.glob("output_*.jpg"), key=lambda p: p.stat().st_mtime)
+    if not jpgs:
+        print("  No output jpg to send.")
+        return
+    latest = jpgs[-1]
+    if send_discord_jpg(latest, webhook_url):
+        print(f"  Sent {latest.name} to Discord.")
+
+
 def record_games(results: dict, team_id: str, match_id: str, games: list[dict]) -> None:
     team = results.setdefault(team_id, {})
     for game in games:
@@ -159,6 +230,8 @@ def main():
     print(
         f"Unrated runner started. {len(match_queue)} queued from previous run. Ctrl+C to stop."
     )
+
+    last_discord_post = time.time()
 
     try:
         while True:
@@ -199,6 +272,15 @@ def main():
             if match_id:
                 print(f"  Queued: {match_id}")
                 match_queue.append((match_id, team_id))
+
+            interval_minutes = read_discord_interval_minutes()
+            if (
+                interval_minutes is not None
+                and time.time() - last_discord_post >= interval_minutes * 60
+            ):
+                print("Running output.py and posting to Discord...")
+                run_output_and_post()
+                last_discord_post = time.time()
 
             time.sleep(REQUEST_DELAY)
     except KeyboardInterrupt:

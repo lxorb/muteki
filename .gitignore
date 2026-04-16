@@ -53,6 +53,8 @@ replay_*.json
 
 # unrated runner
 
+# discord webhook secret
+/tools/unrated_runner/config/discord_webhook.txt
 # queued match ids (may not be current anymore)
 /tools/unrated_runner/data/queued.json
 # partial results (only useful in the case of conflicts)
