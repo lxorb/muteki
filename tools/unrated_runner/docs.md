@@ -11,40 +11,40 @@ matplotlib
 In VSCode, right-click a script and select **Run Python File in Terminal**, or run from a terminal:
 
 ```
+python tools/unrated_runner/fetch_ladder.py
+python tools/unrated_runner/process_ladder.py
+python tools/unrated_runner/request_top.py
 python tools/unrated_runner/main.py
 python tools/unrated_runner/output.py
 ```
 
 ## Scripts
 
+### fetch_ladder.py
+
+Fetches the full ladder from `https://game.battlecode.cam/api/ladder` and saves it to `data/ladder.json`.
+
+### process_ladder.py
+
+Reads `data/ladder.json` and writes all active teams (matchesPlayed > 0) to `data/team_list.json` in `{"id": "name"}` format.
+
+### request_top.py
+
+Reads `data/ladder.json` and writes the top 16 teams by rating to `config/request_teams.txt`, excluding our own team.
+
 ### main.py
 
-Continuously queues unrated matches against configured opponents and records results. Runs in a loop every REQUEST_DELAY seconds until you press **Ctrl+C**.
+Continuously queues unrated matches against configured opponents and records results. Runs in a loop every REQUEST_DELAY seconds until you press **Ctrl+C**. Our own team is automatically excluded from the opponent list.
 
 ### output.py
 
-Reads `results/results.json` (the cumulative results file) and generates a markdown summary at `outputs/output_<timestamp>.md` with a map-vs-team grid showing the last game result (✅/❌) for each combination, with cumulative win percentages next to each map and team.
+Reads `results/results.json` (the cumulative results file) and generates a markdown summary at `outputs/output_<timestamp>.md` with a map-vs-team grid showing the last game result (✅/❌) for each combination, with cumulative win percentages next to each map and team. Also renders a JPG image of the grid where win/loss cell colors fade over time via exponential decay (configurable via `DECAY_LAMBDA` in the script).
 
 ## Configuration
 
-Both config files live in `config/`.
-
-### config/team_list.txt
-
-Master list of all known teams. Format is repeating blocks of three lines: team name, team ID (UUID), then a blank line.
-
-```
-MFF1
-05a96b0d-3ce5-4be8-921b-570dd973994a
-
-Blue Dragon
-023ce802-d72e-44f5-b99e-71a6f97db4b7
-
-```
-
 ### config/request_teams.txt
 
-One team name per line. Only teams listed here (and present in `team_list.txt`) will be queued for matches. Edit this file while `main.py` is running to add or remove opponents on the fly.
+One team name per line. Only teams listed here (and present in `data/team_list.json`) will be queued for matches. Edit this file while `main.py` is running to add or remove opponents on the fly. Can be auto-populated by `request_top.py`.
 
 ```
 MFF1
@@ -53,16 +53,16 @@ Blue Dragon
 
 ## Workflow
 
-1. Fill in `config/team_list.txt` with all teams you might want to play against.
-2. Add the teams you want to run matches against right now to `config/request_teams.txt`.
-3. Run `main.py`. Let it run as long as you want to collect data. It round-robins through all requested teams.
-4. Press **Ctrl+C** to stop. Any pending (not yet completed) matches are saved to `data/queued.json` and will be picked up on the next run.
-5. Run `output.py` to generate a summary report in `outputs/`.
-6. Open the generated markdown file to review win rates and the map-vs-team result grid.
+1. Run `fetch_ladder.py` to download the current ladder.
+2. Run `process_ladder.py` to build the active team list.
+3. Run `request_top.py` to auto-fill `config/request_teams.txt` with the top 16 teams, or edit the file manually.
+4. Run `main.py`. Let it run as long as you want to collect data. It round-robins through all requested teams.
+5. Press **Ctrl+C** to stop. Any pending (not yet completed) matches are saved to `data/queued.json` and will be picked up on the next run.
+6. Run `output.py` to generate a summary report in `outputs/`.
 
 ## How It Works
 
-- Each loop iteration, `main.py` rebuilds the active team list from the config files, checks all pending matches for completion, and queues one new match.
+- Each loop iteration, `main.py` rebuilds the requested team list from `data/team_list.json` and `config/request_teams.txt`, checks all pending matches for completion, and queues one new match.
 - Completed match results are written to both `results/results_<timestamp>.json` (per-session) and `results/results.json` (cumulative). Per-session files are gitignored.
 - The rate limit is 10 unrated matches per 10 minutes. The script handles failures gracefully if the limit is hit.
 - `output.py` reads `results/results.json` to generate its report.
@@ -71,14 +71,18 @@ Blue Dragon
 
 ```
 unrated_runner/
+  fetch_ladder.py      # download ladder from platform API
+  process_ladder.py    # ladder.json → team_list.json (active teams)
+  request_top.py       # auto-fill request_teams.txt with top 16
   main.py              # match runner
   output.py            # report generator
   docs.md              # this file
   config/
-    team_list.txt      # all known teams
     request_teams.txt  # teams to queue against
   data/
-    teams.json         # auto-generated active team list
+    ladder.json        # raw ladder data from platform API
+    team_list.json     # all active teams {id: name}
+    requested_teams.json # auto-generated from team_list + request_teams
     queued.json        # persisted pending matches between runs
   results/
     results.json       # cumulative results (used by output.py)

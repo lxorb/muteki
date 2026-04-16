@@ -17,9 +17,9 @@ RESULTS_DIR = SCRIPT_DIR / "results"
 RESULTS_PARTIAL_DIR = RESULTS_DIR / "partial"
 for d in (CONFIG_DIR, DATA_DIR, RESULTS_DIR, RESULTS_PARTIAL_DIR):
     d.mkdir(exist_ok=True)
-TEAM_LIST_FILE = CONFIG_DIR / "team_list.txt"
+TEAM_LIST_FILE = DATA_DIR / "team_list.json"
 REQUEST_TEAMS_FILE = CONFIG_DIR / "request_teams.txt"
-TEAMS_FILE = DATA_DIR / "teams.json"
+TEAMS_FILE = DATA_DIR / "requested_teams.json"
 QUEUED_FILE = DATA_DIR / "queued.json"
 RESULTS_SESSION_FILE = RESULTS_PARTIAL_DIR / "results_{}.json".format(
     datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -30,29 +30,23 @@ REQUEST_DELAY = 30
 
 
 def build_teams_json() -> None:
-    """Read team_list.txt and request_teams.txt, write matching teams to teams.json."""
-    # Parse team_list.txt: id, name, blank, id, name, blank, ...
-    lines = TEAM_LIST_FILE.read_text().splitlines()
-    all_teams: dict[str, str] = {}
-    i = 0
-    while i + 1 < len(lines):
-        team_name = lines[i].strip()
-        team_id = lines[i + 1].strip()
-        if team_id and team_name:
-            all_teams[team_name] = team_id
-        i += 3
+    """Read team_list.json and request_teams.txt, write matching teams to requested_teams.json."""
+    all_teams: dict[str, str] = load_json(TEAM_LIST_FILE)  # {id: name}
+    name_to_id = {name: tid for tid, name in all_teams.items()}
 
-    # Parse request_teams.txt: one team name per line
     requested = {
         name.strip()
         for name in REQUEST_TEAMS_FILE.read_text().splitlines()
         if name.strip()
     }
 
-    # Build teams.json with requested teams
-    teams = {all_teams[name]: name for name in requested if name in all_teams}
+    teams = {
+        name_to_id[name]: name
+        for name in requested
+        if name in name_to_id and name != TEAM_NAME
+    }
     save_json(TEAMS_FILE, teams)
-    print(f"Built teams.json with {len(teams)} teams: {', '.join(teams.values())}")
+    print(f"Built requested_teams.json with {len(teams)} teams: {', '.join(teams.values())}")
 
 
 def load_json(path: Path) -> dict:
@@ -131,6 +125,7 @@ def record_games(results: dict, team_id: str, match_id: str, games: list[dict]) 
             "win": game["win"],
             "condition": game["condition"],
             "turns": game["turns"],
+            "time": int(time.time()),
         }
 
 
