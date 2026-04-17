@@ -245,7 +245,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_integrate_own_sentinel(
+    def s_integrate_own_turret(
         self,
         move_towards: bool = True,
         hold: bool = True,

@@ -852,21 +852,16 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_integrate_own_sentinel(
+    def s_integrate_own_turret(
         self,
         move_towards: bool = True,
         hold: bool = True,
         candidate_radius: float | None = None,
     ):
         """
-        Replace a nearby non-best harvester-adjacent tile with a sentinel.
-
-        Only considers tiles next to an own harvester that currently has no
-        adjacent own turret, and only when the sentinel would have a useful
-        firing direction.
+        Replace a nearby titanium-harvester-adjacent support tile with a turret.
         """
         own_team = self.map.own_team
-        current_round = self.map.current_round
         current_pos = self.map.current_pos
         tiles_by_index = self.map.tiles_by_index
         if candidate_radius is None:
@@ -875,64 +870,50 @@ class BuilderStrategyMethodsMixin:
             candidate_radius = 0
         candidate_radius_sq = candidate_radius * candidate_radius
 
-        candidate_entries: list[tuple[tuple[int, int, int, int], Position, Direction]] = []
+        candidate_entries: list[
+            tuple[
+                tuple[int, int, int, int],
+                Position,
+                EntityType,
+                Direction,
+                bool,
+            ]
+        ] = []
         candidate_seen_indices: set[int] = set()
 
-        def has_unprotected_adjacent_harvester(tile_index: int) -> bool:
-            for harvester_idx in self.map.u_iter_cardinal_neighbor_indices(tile_index):
-                harvester_tile = tiles_by_index[harvester_idx]
-                if harvester_tile.last_seen_turn != current_round:
-                    continue
-                if (
-                    harvester_tile.building.team != own_team
-                    or harvester_tile.building.entity_type != EntityType.HARVESTER
-                ):
-                    continue
+        def is_own_harvester_feeder_tile(tile) -> bool:
+            return (
+                tile.building.team == own_team
+                and tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+                and any(
+                    target_tile.building.team == own_team
+                    and target_tile.building.entity_type == EntityType.HARVESTER
+                    for target_tile in tile.building.targets
+                )
+            )
 
-                has_adjacent_own_turret = False
-                for neighbor_idx in self.map.u_iter_cardinal_neighbor_indices(
-                    harvester_idx
-                ):
-                    neighbor_tile = tiles_by_index[neighbor_idx]
-                    if (
-                        neighbor_tile.building.team == own_team
-                        and neighbor_tile.building.entity_type in ATTACK_TURRET_TYPES
-                    ):
-                        has_adjacent_own_turret = True
-                        break
-
-                if not has_adjacent_own_turret:
-                    return True
-
-            return False
-
-        for harvester_tile in self.map.own_harvesters_in_vision:
-            if harvester_tile.last_seen_turn != current_round:
+        for harvester_tile in tiles_by_index:
+            if harvester_tile.last_seen_turn < 0:
                 continue
             if (
                 harvester_tile.building.team != own_team
                 or harvester_tile.building.entity_type != EntityType.HARVESTER
+                or harvester_tile.environment != Environment.ORE_TITANIUM
             ):
                 continue
 
-            best_supply_idx = self.map.u_get_harvester_best_supply_tile(
-                harvester_tile.index
-            )
             for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
                 harvester_tile.index
             ):
-                if adjacent_idx == best_supply_idx or adjacent_idx in candidate_seen_indices:
+                if adjacent_idx in candidate_seen_indices:
                     continue
 
                 adjacent_tile = tiles_by_index[adjacent_idx]
-                if adjacent_tile.last_seen_turn != current_round:
+                if adjacent_tile.last_seen_turn < 0:
                     continue
                 if adjacent_tile.position == current_pos or adjacent_tile.bot.id is not None:
                     continue
                 if current_pos.distance_squared(adjacent_tile.position) > candidate_radius_sq:
-                    continue
-
-                if not has_unprotected_adjacent_harvester(adjacent_idx):
                     continue
 
                 is_candidate_tile = (
@@ -941,11 +922,7 @@ class BuilderStrategyMethodsMixin:
                         adjacent_tile.building.team == own_team
                         and adjacent_tile.building.entity_type == EntityType.ROAD
                     )
-                    or (
-                        adjacent_tile.building.team == own_team
-                        and adjacent_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
-                        and adjacent_tile.conveyor_targets_harvester
-                    )
+                    or is_own_harvester_feeder_tile(adjacent_tile)
                     or (
                         adjacent_tile.building.team == own_team
                         and adjacent_tile.building.entity_type == EntityType.BARRIER
@@ -954,12 +931,23 @@ class BuilderStrategyMethodsMixin:
                 if not is_candidate_tile:
                     continue
 
-                sentinel_direction = self.u_get_useful_sentinel_direction(
-                    adjacent_tile.position
+                affordable_turret_plan = (
+                    self._u_get_harvester_adjacent_turret_substitution(
+                        adjacent_tile.position,
+                        True,
+                    )
                 )
-                if sentinel_direction is None:
+                fallback_turret_plan = affordable_turret_plan or (
+                    self._u_get_harvester_adjacent_turret_substitution(
+                        adjacent_tile.position,
+                        True,
+                        require_affordable=False,
+                    )
+                )
+                if fallback_turret_plan is None:
                     continue
 
+                build_entity_type, turret_direction = fallback_turret_plan
                 candidate_seen_indices.add(adjacent_idx)
                 candidate_entries.append(
                     (
@@ -973,7 +961,9 @@ class BuilderStrategyMethodsMixin:
                             adjacent_tile.index,
                         ),
                         adjacent_tile.position,
-                        sentinel_direction,
+                        build_entity_type,
+                        turret_direction,
+                        affordable_turret_plan is not None,
                     )
                 )
 
@@ -986,15 +976,14 @@ class BuilderStrategyMethodsMixin:
         if not candidate_entries:
             return False
 
-        can_afford_sentinel = self.u_can_afford_sentinel(True)
-        for _, target_pos, sentinel_direction in sorted(
+        for _, target_pos, build_entity_type, turret_direction, can_build_now in sorted(
             candidate_entries,
             key=lambda item: item[0],
         ):
             target_tile = self.map.u_get_pos_tile(target_pos)
             in_range = current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
 
-            if not can_afford_sentinel:
+            if not can_build_now:
                 if hold and in_range:
                     return True
                 if not move_towards:
@@ -1006,14 +995,17 @@ class BuilderStrategyMethodsMixin:
             if in_range:
                 if target_tile.building.id is not None:
                     if not self.ct.can_destroy(target_pos):
-                        return False
+                        continue
                     self.ct.destroy(target_pos)
                     target_tile.clear_building()
-                if self.ct.can_build_sentinel(target_pos, sentinel_direction):
-                    self.ct.build_sentinel(target_pos, sentinel_direction)
-                    self.last_built_entity_type = EntityType.SENTINEL
+
+                can_build_method = getattr(self.ct, f"can_build_{build_entity_type.value}")
+                build_method = getattr(self.ct, f"build_{build_entity_type.value}")
+                if can_build_method(target_pos, turret_direction):
+                    build_method(target_pos, turret_direction)
+                    self.last_built_entity_type = build_entity_type
                     return True
-                return False
+                continue
 
             if move_towards and self.u_move_to(target_pos):
                 return True

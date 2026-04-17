@@ -770,8 +770,12 @@ class BuilderNavigationMixin:
         self,
         pos: Position,
         respect_titanium_reserve: bool,
+        require_affordable: bool = True,
     ) -> tuple[EntityType, Direction] | None:
-        if self.u_can_afford_gunner(respect_titanium_reserve):
+        if (
+            not require_affordable
+            or self.u_can_afford_gunner(respect_titanium_reserve)
+        ):
             gunner_direction = self.u_get_gunner_orientation(pos)
             if self._u_gunner_can_target_useful_harvester_adjacent_enemy(
                 pos,
@@ -779,7 +783,10 @@ class BuilderNavigationMixin:
             ):
                 return (EntityType.GUNNER, gunner_direction)
 
-        if self.u_can_afford_sentinel(respect_titanium_reserve):
+        if (
+            not require_affordable
+            or self.u_can_afford_sentinel(respect_titanium_reserve)
+        ):
             sentinel_direction = self.u_get_direction_toward_enemy_core_center(pos)
             if self._u_sentinel_can_target_useful_harvester_adjacent_enemy(
                 pos,
@@ -2003,19 +2010,30 @@ class BuilderNavigationMixin:
                 and adjacent_tile.environment == Environment.ORE_TITANIUM
                 for adjacent_tile in adjacent_tiles
             )
-            conveyor_feeds_own_harvester = False
-            conveyor_feeds_own_titanium_harvester = False
-            if facing_direction is not None and pos != current_pos:
+            conveyor_like_feeds_own_harvester = False
+            conveyor_like_feeds_own_titanium_harvester = False
+            if (
+                building_type in CONVEYOR_ENTITY_TYPES
+                and facing_direction is not None
+                and pos != current_pos
+            ):
                 conveyor_output_pos = pos.add(facing_direction)
                 if self.map.u_is_in_bounds(conveyor_output_pos):
                     conveyor_output_tile = self.map.u_get_pos_tile(conveyor_output_pos)
-                    conveyor_feeds_own_harvester = (
-                        conveyor_output_tile.building.team == self.map.own_team
+                    conveyor_output_is_cardinal_neighbor = (
+                        abs(conveyor_output_pos.x - pos.x)
+                        + abs(conveyor_output_pos.y - pos.y)
+                        == 1
+                    )
+                    conveyor_like_feeds_own_harvester = (
+                        conveyor_output_is_cardinal_neighbor
+                        and conveyor_output_tile.building.team == self.map.own_team
                         and conveyor_output_tile.building.entity_type
                         == EntityType.HARVESTER
                     )
-                    conveyor_feeds_own_titanium_harvester = (
-                        conveyor_feeds_own_harvester
+                    conveyor_like_feeds_own_titanium_harvester = (
+                        conveyor_like_feeds_own_harvester
+                        and adjacent_to_own_titanium_harvester
                         and conveyor_output_tile.environment == Environment.ORE_TITANIUM
                     )
             barrier_adjacent_to_own_harvester = (
@@ -2027,12 +2045,12 @@ class BuilderNavigationMixin:
                 and adjacent_to_own_titanium_harvester
             )
             sentinel_substitution_candidate = (
-                conveyor_feeds_own_harvester
+                conveyor_like_feeds_own_harvester
                 or safety_conveyor
                 or barrier_adjacent_to_own_harvester
             )
             sentinel_substitution_targets_titanium_harvester = (
-                conveyor_feeds_own_titanium_harvester
+                conveyor_like_feeds_own_titanium_harvester
                 or (
                     (safety_conveyor or barrier_adjacent_to_own_harvester)
                     and adjacent_to_own_titanium_harvester
