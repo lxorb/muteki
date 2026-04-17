@@ -186,6 +186,22 @@ class Tile:
         return self.in_enemy_attack_range or self.in_enemy_launcher_pickup_zone
 
     @property
+    def is_enemy_gunner_ray_first_target(self) -> int:
+        return self.map.enemy_gunner_ray_first_target_by_index[self.index]
+
+    @is_enemy_gunner_ray_first_target.setter
+    def is_enemy_gunner_ray_first_target(self, value: int) -> None:
+        self.map.enemy_gunner_ray_first_target_by_index[self.index] = int(value)
+
+    @property
+    def is_enemy_spin_gunner_ray_first_target(self) -> int:
+        return self.map.enemy_spin_gunner_ray_first_target_by_index[self.index]
+
+    @is_enemy_spin_gunner_ray_first_target.setter
+    def is_enemy_spin_gunner_ray_first_target(self, value: int) -> None:
+        self.map.enemy_spin_gunner_ray_first_target_by_index[self.index] = int(value)
+
+    @property
     def conveyor_targets_harvester(self) -> bool:
         return bool(self.map.conveyor_targets_harvester_by_index[self.index])
 

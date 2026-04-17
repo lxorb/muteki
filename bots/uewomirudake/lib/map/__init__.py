@@ -255,7 +255,15 @@ class Map:
         self.intrinsic_passable_by_index = bytearray([1]) * self.INITIAL_MAP_SIZE
         self.bot_present_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_turret_target_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.enemy_gunner_ray_first_target_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
+        self.enemy_spin_gunner_ray_first_target_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.core_distance_dirty_indices: set[int] = set()
+        self.enemy_gunner_ray_first_target_touched_indices: list[int] = []
+        self.enemy_spin_gunner_ray_first_target_touched_indices: list[int] = []
         self.core_distance_enqueued_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_core_source_indices: tuple[int, ...] = ()
         self.enemy_core_source_indices: tuple[int, ...] = ()
@@ -443,6 +451,14 @@ class Map:
                 "Map controller must be set before resetting turn state."
             )
 
+        self._reset_marked_bytearray_indices(
+            self.enemy_gunner_ray_first_target_touched_indices,
+            self.enemy_gunner_ray_first_target_by_index,
+        )
+        self._reset_marked_bytearray_indices(
+            self.enemy_spin_gunner_ray_first_target_touched_indices,
+            self.enemy_spin_gunner_ray_first_target_by_index,
+        )
         self._reset_supply_chain_union_find_arrays(
             self.own_supply_chain_touched_indices,
             self.own_supply_chain_parent_by_index,
@@ -509,6 +525,26 @@ class Map:
         self.own_supply_link_source_indices_by_target_index_in_vision = {}
         self.enemy_supply_link_source_indices_by_target_index_in_vision = {}
         self.frontier_expand_newly_seen_indices = []
+
+    def _reset_marked_bytearray_indices(
+        self,
+        touched_indices: list[int],
+        values: bytearray,
+    ) -> None:
+        for idx in touched_indices:
+            values[idx] = 0
+        touched_indices.clear()
+
+    def _u_mark_bytearray_index(
+        self,
+        touched_indices: list[int],
+        values: bytearray,
+        idx: int,
+    ) -> None:
+        if values[idx]:
+            return
+        values[idx] = 1
+        touched_indices.append(idx)
 
     def _reset_supply_chain_union_find_arrays(
         self,
@@ -821,6 +857,18 @@ class Map:
         if root is None:
             return False
         return bool(self.enemy_supply_chain_feeds_own_turret_by_index[root])
+
+    def u_enemy_tile_is_targeted_by_titanium_supply_chain(
+        self,
+        idx: int,
+    ) -> bool:
+        for source_idx in self.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+            idx,
+            (),
+        ):
+            if self.u_supply_chain_has_titanium(source_idx, self.enemy_team):
+                return True
+        return False
 
     def u_own_supply_chain_feeds_own_turret(
         self,
@@ -1245,6 +1293,7 @@ class Map:
         self.stopwatch.lap("Core positions")
 
         self.u_update_supply_information()
+        self.u_update_enemy_gunner_first_target_caches()
 
         self.stopwatch.lap("Supply info")
 
@@ -2131,6 +2180,34 @@ class Map:
             and delta_y * dir_y > 0
         )
 
+    def u_get_gunner_first_targetable_tile(
+        self,
+        source_pos: Position,
+        direction: Direction,
+        radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
+        current_round: int | None = None,
+    ) -> Tile | None:
+        if current_round is None:
+            current_round = self.current_round
+
+        for tile in self.u_get_gunner_ray_tiles(
+            source_pos,
+            direction,
+            radius_sq,
+        ):
+            if tile.environment == Environment.WALL:
+                return None
+            if tile.is_core_of(self.enemy_team) or tile.is_core_of(self.own_team):
+                return tile
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.bot.id is not None or tile.building.id is not None:
+                return tile
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+        return None
+
     def u_gunner_covers_target(
         self,
         turret_pos: Position,
@@ -2183,6 +2260,60 @@ class Map:
                 break
 
         return tiles
+
+    def u_update_enemy_gunner_first_target_caches(self) -> None:
+        current_round = self.current_round
+
+        for gunner_tile in self.enemy_buildings_in_vision:
+            if gunner_tile.last_seen_turn != current_round:
+                continue
+
+            building = gunner_tile.building
+            if building.entity_type != EntityType.GUNNER:
+                continue
+            if not self.u_enemy_tile_is_targeted_by_titanium_supply_chain(
+                gunner_tile.index
+            ):
+                continue
+
+            radius_sq = building.vision_radius_sq
+            if radius_sq is None:
+                radius_sq = GameConstants.GUNNER_VISION_RADIUS_SQ
+
+            direction = building.direction
+            if direction is not None and direction != Direction.CENTRE:
+                target_tile = self.u_get_gunner_first_targetable_tile(
+                    gunner_tile.position,
+                    direction,
+                    radius_sq,
+                    current_round,
+                )
+                if target_tile is not None:
+                    self._u_mark_bytearray_index(
+                        self.enemy_gunner_ray_first_target_touched_indices,
+                        self.enemy_gunner_ray_first_target_by_index,
+                        target_tile.index,
+                    )
+
+            for direction in Direction:
+                if direction == Direction.CENTRE:
+                    continue
+                target_tile = self.u_get_gunner_first_targetable_tile(
+                    gunner_tile.position,
+                    direction,
+                    radius_sq,
+                    current_round,
+                )
+                if target_tile is None:
+                    continue
+                self._u_mark_bytearray_index(
+                    self.enemy_spin_gunner_ray_first_target_touched_indices,
+                    self.enemy_spin_gunner_ray_first_target_by_index,
+                    target_tile.index,
+                )
+
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
     def u_enemy_titanium_harvester_has_adjacent_own_turret(self, harvester_tile) -> bool:
         if (

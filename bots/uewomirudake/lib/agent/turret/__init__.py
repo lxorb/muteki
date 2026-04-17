@@ -799,6 +799,14 @@ class TurretAgent(BuilderNavigationMixin, Agent):
             if building_type == EntityType.SPLITTER
             else 3
         )
+        damaged_own_supply_tile_with_enemy_builder_bot = (
+            enemy_builder_bot_present
+            and building.id is not None
+            and building.team == own_team
+            and building_type in SUPPLY_LINK_TYPES
+            and building.hp is not None
+            and building.hp < self.ct.get_max_hp(building.id)
+        )
 
         if own_builder_bot_present:
             return None
@@ -1012,14 +1020,11 @@ class TurretAgent(BuilderNavigationMixin, Agent):
                 target_tile.position.y,
             )
 
-        if (
-            building.id is not None
-            and building.team == enemy_team
-            and building_type == EntityType.FOUNDRY
-        ):
+        if damaged_own_supply_tile_with_enemy_builder_bot:
             return (
                 15,
                 building_hp,
+                enemy_builder_bot_hp,
                 target_tile.position.x,
                 target_tile.position.y,
             )
@@ -1027,7 +1032,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.BRIDGE
+            and building_type == EntityType.FOUNDRY
         ):
             return (
                 16,
@@ -1039,7 +1044,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.CONVEYOR
+            and building_type == EntityType.BRIDGE
         ):
             return (
                 17,
@@ -1051,7 +1056,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.SPLITTER
+            and building_type == EntityType.CONVEYOR
         ):
             return (
                 18,
@@ -1063,7 +1068,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.ARMOURED_CONVEYOR
+            and building_type == EntityType.SPLITTER
         ):
             return (
                 19,
@@ -1075,7 +1080,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.LAUNCHER
+            and building_type == EntityType.ARMOURED_CONVEYOR
         ):
             return (
                 20,
@@ -1087,7 +1092,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.HARVESTER
+            and building_type == EntityType.LAUNCHER
         ):
             return (
                 21,
@@ -1099,7 +1104,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.BARRIER
+            and building_type == EntityType.HARVESTER
         ):
             return (
                 22,
@@ -1111,10 +1116,30 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if (
             building.id is not None
             and building.team == enemy_team
-            and building_type == EntityType.ROAD
+            and building_type == EntityType.BARRIER
         ):
             return (
                 23,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if enemy_builder_bot_present:
+            return (
+                24,
+                enemy_builder_bot_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.ROAD
+        ):
+            return (
+                25,
                 building_hp,
                 target_tile.position.x,
                 target_tile.position.y,

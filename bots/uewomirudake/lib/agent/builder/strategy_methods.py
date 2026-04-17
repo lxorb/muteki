@@ -4450,6 +4450,75 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
+    def s_move_out_of_gunner_range(self):
+        current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if not current_tile.is_enemy_gunner_ray_first_target:
+            return False
+
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(False)
+        )
+        road_titanium_cost, _ = self.ct.get_road_cost()
+        best_candidate_tile = None
+        best_candidate_direction = None
+        best_candidate_key = None
+
+        for safe_order, adjacent_pos in enumerate(
+            self.map.u_iter_adjacent_all_positions(current_pos)
+        ):
+            adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+            if adjacent_tile.is_enemy_gunner_ray_first_target:
+                continue
+
+            move_direction = self.map.u_get_direction_between(
+                current_pos,
+                adjacent_pos,
+            )
+            if move_direction is None:
+                continue
+
+            can_move = self.ct.can_move(move_direction)
+            can_build_road = (
+                not can_move
+                and self.ct.can_build_road(adjacent_pos)
+                and (
+                    not respect_titanium_reserve_for_road_build
+                    or self.u_can_spend_titanium_without_falling_below_reserve(
+                        road_titanium_cost
+                    )
+                )
+            )
+            if not can_move and not can_build_road:
+                continue
+
+            key = (
+                1 if adjacent_tile.is_enemy_turret_target_tile else 0,
+                0 if can_move else 1,
+                adjacent_tile.own_core_dist,
+                adjacent_tile.dist_to_self,
+                safe_order,
+                adjacent_tile.index,
+            )
+            if best_candidate_key is None or key < best_candidate_key:
+                best_candidate_key = key
+                best_candidate_tile = adjacent_tile
+                best_candidate_direction = move_direction
+
+        if best_candidate_tile is None or best_candidate_direction is None:
+            return False
+
+        return bool(
+            self.u_try_progress_move_step(
+                best_candidate_tile,
+                best_candidate_direction,
+                best_candidate_tile.position,
+                build_new_roads=True,
+                allow_conveyor_building=False,
+                respect_titanium_reserve_for_road_build=False,
+            )
+        )
+
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,
@@ -4499,6 +4568,7 @@ class BuilderStrategyMethodsMixin:
             current_tile.building.team == self.map.enemy_team
             and current_tile.building.entity_type in SUPPLY_LINK_TYPES
             and sentinel_targets_enemy_core(current_tile)
+            and not current_tile.is_enemy_spin_gunner_ray_first_target
         ):
             if (
                 wait_if_enemy_builder_bots_in_range
@@ -4526,6 +4596,8 @@ class BuilderStrategyMethodsMixin:
             if tile.building.entity_type not in SUPPLY_LINK_TYPES:
                 continue
             if not tile.is_passable:
+                continue
+            if tile.is_enemy_spin_gunner_ray_first_target:
                 continue
 
             last_titanium_turn = tile.building.last_titanium_onit_turn

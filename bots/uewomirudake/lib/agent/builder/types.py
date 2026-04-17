@@ -216,6 +216,8 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
 
     def s_split_supply_sentinel(self) -> BuilderActionResult: ...
 
+    def s_move_out_of_gunner_range(self) -> BuilderActionResult: ...
+
     def s_defend_attacked_harvester(
         self,
         move_towards: bool = True,
