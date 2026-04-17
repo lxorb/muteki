@@ -1182,6 +1182,8 @@ class Map:
 
         self.stopwatch.start()
 
+        self.current_path = []
+
         if self.is_launcher:
             self.launcher_safe_zone_tiles = self.launcher_visible_tiles.copy()
             self.launcher_killer_zone_tiles = []

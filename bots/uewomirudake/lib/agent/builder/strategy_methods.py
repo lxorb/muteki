@@ -5375,7 +5375,7 @@ class BuilderStrategyMethodsMixin:
         return launcher_potential_targets_path_overlap[-1].position
 
     def launcher_targeting_tile(self, tile):
-        neighbor_indices = self.map.u_iter_cardinal_neighbor_indices(tile.index)
+        neighbor_indices = self.map.u_iter_neighbor_indices(tile.index)
         for idx in neighbor_indices:
             neighbor = self.map.tiles_by_index[idx]
             if neighbor.building and neighbor.building.entity_type == EntityType.LAUNCHER and neighbor.building.team == self.map.own_team:

@@ -60,12 +60,12 @@ class TurretAgent(Agent):
             print("XXXXXXXXXXXXXXXXXXX")
             return False
 
-        if not bot_tile.bot.id in self.map.id_to_target_pos_round:
+        if not bot_tile.bot.id & 0b111111 in self.map.id_to_target_pos_round:
             print("YYYYYYYYYYYYYYYYYYY")
             print(self.map.id_to_target_pos_round)
             return False
 
-        target_pos = self.map.id_to_target_pos_round[bot_tile.bot.id][0]
+        target_pos = self.map.id_to_target_pos_round[bot_tile.bot.id & 0b111111][0]
 
         reachable_safe = [tile for tile in self.map.launcher_own_reachable if tile in self.map.launcher_safe_zone_tiles]
 
@@ -76,7 +76,7 @@ class TurretAgent(Agent):
         reachable_safe_sorted = sorted(reachable_safe, key=lambda tile: tile.position.distance_squared(target_pos))
         candidate_tile = reachable_safe_sorted[0]
         dist_diff = bot_tile.position.distance_squared(target_pos) - candidate_tile.position.distance_squared(target_pos)
-        print("DISTANCE DIFF", dist_diff, )
+        print("DISTANCE DIFF", dist_diff)
         print("target", target_pos.x, target_pos.y)
         print(bot_tile.position.distance_squared(target_pos), candidate_tile.position.distance_squared(target_pos))
         if dist_diff >= LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE:
