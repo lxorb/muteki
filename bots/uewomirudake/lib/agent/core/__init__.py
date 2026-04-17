@@ -19,6 +19,11 @@ from lib.agent.constants import (
     SURRENDER_AT_TURN,
 )
 
+_BUILDER_STRATEGY_TILE_ORDER = {
+    relative_offset: order
+    for order, relative_offset in enumerate(BUILDER_STRATEGY_BY_TILE)
+}
+
 
 class CoreAgent(Agent):
     def __init__(self):
@@ -145,11 +150,11 @@ class CoreAgent(Agent):
     def u_get_builder_spawn_candidates(
         self,
         builder_bot_strategy: str,
-    ) -> list[tuple[int, int, int, Direction]]:
+    ) -> list[tuple[int, int, Direction]]:
         core_center_pos = self.map.own_core_center_pos
         if core_center_pos is None:
             return []
-        candidate_spawns: list[tuple[int, int, int, Direction]] = []
+        candidate_spawns: list[tuple[int, int, Direction]] = []
 
         for core_tile in self.map.u_get_core_footprint_positions(core_center_pos):
             relative_offset = (
@@ -172,8 +177,7 @@ class CoreAgent(Agent):
             candidate_spawns.append(
                 (
                     self.spawn_tile_counts[spawn_direction],
-                    core_tile.position.x,
-                    core_tile.position.y,
+                    _BUILDER_STRATEGY_TILE_ORDER[relative_offset],
                     spawn_direction,
                 )
             )
@@ -191,9 +195,9 @@ class CoreAgent(Agent):
         if not candidate_spawns:
             return False
 
-        _, _, _, spawn_direction = min(
+        _, _, spawn_direction = min(
             candidate_spawns,
-            key=lambda candidate: candidate[:3],
+            key=lambda candidate: candidate[:2],
         )
         spawn_pos = core_center_pos.add(spawn_direction)
         self.ct.spawn_builder(spawn_pos)
