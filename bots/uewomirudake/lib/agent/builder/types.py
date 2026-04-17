@@ -29,15 +29,11 @@ class BuilderCommonSelf(Protocol):
     pending_harvester_target_resource: Environment | None
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
-    bugnav_target_key: tuple[object, ...] | None
-    bugnav_follow_wall: bool
-    bugnav_wall_on_left: bool
-    bugnav_best_distance_sq: int
-    bugnav_last_move_direction: Direction | None
     harvesters_built: int
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
+    step_off_core_attempted: bool
 
     def u_filter_tiles(
         self,
@@ -172,16 +168,6 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         respect_titanium_reserve_for_road_build: bool = False,
     ) -> bool: ...
 
-    def u_move_to_bugnav(
-        self,
-        pos: Position,
-        avoid_enemy_turrets: bool = True,
-        build_new_roads: bool = False,
-        allow_conveyor_building: bool = True,
-        reach_builder_action_range: bool = False,
-        respect_titanium_reserve_for_road_build: bool = False,
-    ) -> bool: ...
-
     def u_move_to(
         self,
         pos: Position,
@@ -230,6 +216,10 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_turn_to_harassment(self) -> BuilderActionResult: ...
 
     def s_split_supply_sentinel(self) -> BuilderActionResult: ...
+
+    def s_step_off_core(self) -> BuilderActionResult: ...
+
+    def s_move_out_of_gunner_range(self) -> BuilderActionResult: ...
 
     def s_defend_attacked_harvester(
         self,

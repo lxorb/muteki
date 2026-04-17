@@ -63,10 +63,7 @@ class BuilderStrategyMethodsMixin:
             return False
         return bool(self.u_move_to(own_core_center_pos))
 
-    def u_try_step_away_from_own_core_corner(self) -> bool:
-        if self.strategy != SCAVENGER_STRATEGY_ID:
-            return False
-
+    def s_step_off_core(self):
         own_core_center_pos = self.map.own_core_center_pos
         if own_core_center_pos is None:
             self.map.u_calc_core_center_positions()
@@ -77,28 +74,34 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         dx = current_pos.x - own_core_center_pos.x
         dy = current_pos.y - own_core_center_pos.y
-        if abs(dx) != 1 or abs(dy) != 1:
+        relative_offset = (dx, dy)
+        if relative_offset not in {
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+        }:
             return False
 
-        candidate_positions = (
-            Position(current_pos.x + dx, current_pos.y + dy),
-            Position(current_pos.x + dx, current_pos.y),
-            Position(current_pos.x, current_pos.y + dy),
-        )
-        for target_pos in candidate_positions:
-            if not self.map.u_is_in_bounds(target_pos):
-                continue
-            move_direction = self.map.u_get_direction_between(current_pos, target_pos)
-            if (
-                move_direction is None
-                or move_direction == Direction.CENTRE
-                or not self.ct.can_move(move_direction)
-            ):
-                continue
-            self.u_move_with_target(move_direction, target_pos)
-            return True
+        if self.step_off_core_attempted:
+            return False
+        self.step_off_core_attempted = True
 
-        return False
+        target_pos = Position(current_pos.x + dx, current_pos.y + dy)
+        if not self.map.u_is_in_bounds(target_pos):
+            return False
+
+        return bool(
+            self.u_move_to(
+                target_pos,
+                build_new_roads=True,
+                allow_conveyor_building=False,
+            )
+        )
 
     def _is_visible_building_damaged(self, tile) -> bool:
         building = tile.building
@@ -3000,9 +3003,6 @@ class BuilderStrategyMethodsMixin:
         if self.map.titanium < min_titanium:
             return False
 
-        if self.u_try_step_away_from_own_core_corner():
-            return True
-
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
 
         def move_along_frontier_path(avoid_enemy_turrets: bool) -> bool:
@@ -3292,9 +3292,15 @@ class BuilderStrategyMethodsMixin:
         """
         Destroy the closest visible own harvester or supply-link tile that
         feeds an enemy turret, or if none exists, an enemy supply-link tile.
+        As a lower-priority fallback, own supply-chain tiles that feed enemy
+        barriers, foundries, harvesters, or launchers are only considered when
+        a replacement supplier is plausible.
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
+        conveyor_titanium_cost, _ = self.ct.get_conveyor_cost()
+        bridge_titanium_cost, _ = self.ct.get_bridge_cost()
+        rebuildable_structure_candidate_by_index: dict[int, bool] = {}
 
         def infer_resource(tile) -> Environment:
             supply_chain_label = tile.own_supply_chain_label
@@ -3324,6 +3330,57 @@ class BuilderStrategyMethodsMixin:
                 for target_tile in source_tile.building.targets
             )
 
+        def points_at_enemy_rebuildable_structure(source_tile) -> bool:
+            return any(
+                target_tile.building.id is not None
+                and target_tile.building.team != own_team
+                and target_tile.building.entity_type
+                in {
+                    EntityType.BARRIER,
+                    EntityType.FOUNDRY,
+                    EntityType.HARVESTER,
+                    EntityType.LAUNCHER,
+                }
+                for target_tile in source_tile.building.targets
+            )
+
+        def can_consider_rebuildable_structure_candidate(source_tile) -> bool:
+            cached_result = rebuildable_structure_candidate_by_index.get(
+                source_tile.index
+            )
+            if cached_result is not None:
+                return cached_result
+
+            if (
+                not rebuild
+                or source_tile.building.entity_type not in SUPPLY_LINK_TYPES
+                or source_tile.own_supply_chain_label == SupplyChainLabel.NONE
+            ):
+                rebuildable_structure_candidate_by_index[source_tile.index] = False
+                return False
+
+            resource = infer_resource(source_tile)
+            conveyor_direction = self.u_best_conveyor_orientation(
+                source_tile.position,
+                resource,
+                allow_adjacent_resource_sink=False,
+            )
+            if conveyor_direction is not None:
+                result = self.map.titanium >= conveyor_titanium_cost
+                rebuildable_structure_candidate_by_index[source_tile.index] = result
+                return result
+
+            bridge_target = self.u_best_bridge_target(
+                source_tile.position,
+                resource,
+            )
+            result = (
+                bridge_target is not None
+                and self.map.titanium >= bridge_titanium_cost
+            )
+            rebuildable_structure_candidate_by_index[source_tile.index] = result
+            return result
+
         def try_build_barrier_fallback(target_pos: Position) -> bool:
             return self.u_build_at(
                 target_pos,
@@ -3335,6 +3392,7 @@ class BuilderStrategyMethodsMixin:
 
         enemy_turret_bucket = []
         enemy_supply_link_bucket = []
+        enemy_rebuildable_structure_bucket = []
         for tile in dict.fromkeys(
             self.map.own_supply_links_in_vision + self.map.own_harvesters_in_vision
         ):
@@ -3349,8 +3407,18 @@ class BuilderStrategyMethodsMixin:
                 continue
             if points_at_enemy_supply_link(tile):
                 enemy_supply_link_bucket.append(tile)
+                continue
+            if (
+                points_at_enemy_rebuildable_structure(tile)
+                and can_consider_rebuildable_structure_candidate(tile)
+            ):
+                enemy_rebuildable_structure_bucket.append(tile)
 
-        candidate_bucket = enemy_turret_bucket or enemy_supply_link_bucket
+        candidate_bucket = (
+            enemy_turret_bucket
+            or enemy_supply_link_bucket
+            or enemy_rebuildable_structure_bucket
+        )
         target_tile = min(
             candidate_bucket,
             key=lambda tile: tile.dist_to_self,
@@ -4382,6 +4450,75 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
+    def s_move_out_of_gunner_range(self):
+        current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if not current_tile.is_enemy_gunner_ray_first_target:
+            return False
+
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(False)
+        )
+        road_titanium_cost, _ = self.ct.get_road_cost()
+        best_candidate_tile = None
+        best_candidate_direction = None
+        best_candidate_key = None
+
+        for safe_order, adjacent_pos in enumerate(
+            self.map.u_iter_adjacent_all_positions(current_pos)
+        ):
+            adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+            if adjacent_tile.is_enemy_gunner_ray_first_target:
+                continue
+
+            move_direction = self.map.u_get_direction_between(
+                current_pos,
+                adjacent_pos,
+            )
+            if move_direction is None:
+                continue
+
+            can_move = self.ct.can_move(move_direction)
+            can_build_road = (
+                not can_move
+                and self.ct.can_build_road(adjacent_pos)
+                and (
+                    not respect_titanium_reserve_for_road_build
+                    or self.u_can_spend_titanium_without_falling_below_reserve(
+                        road_titanium_cost
+                    )
+                )
+            )
+            if not can_move and not can_build_road:
+                continue
+
+            key = (
+                1 if adjacent_tile.is_enemy_turret_target_tile else 0,
+                0 if can_move else 1,
+                adjacent_tile.own_core_dist,
+                adjacent_tile.dist_to_self,
+                safe_order,
+                adjacent_tile.index,
+            )
+            if best_candidate_key is None or key < best_candidate_key:
+                best_candidate_key = key
+                best_candidate_tile = adjacent_tile
+                best_candidate_direction = move_direction
+
+        if best_candidate_tile is None or best_candidate_direction is None:
+            return False
+
+        return bool(
+            self.u_try_progress_move_step(
+                best_candidate_tile,
+                best_candidate_direction,
+                best_candidate_tile.position,
+                build_new_roads=True,
+                allow_conveyor_building=False,
+                respect_titanium_reserve_for_road_build=False,
+            )
+        )
+
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,
@@ -4431,6 +4568,7 @@ class BuilderStrategyMethodsMixin:
             current_tile.building.team == self.map.enemy_team
             and current_tile.building.entity_type in SUPPLY_LINK_TYPES
             and sentinel_targets_enemy_core(current_tile)
+            and not current_tile.is_enemy_spin_gunner_ray_first_target
         ):
             if (
                 wait_if_enemy_builder_bots_in_range
@@ -4458,6 +4596,8 @@ class BuilderStrategyMethodsMixin:
             if tile.building.entity_type not in SUPPLY_LINK_TYPES:
                 continue
             if not tile.is_passable:
+                continue
+            if tile.is_enemy_spin_gunner_ray_first_target:
                 continue
 
             last_titanium_turn = tile.building.last_titanium_onit_turn

@@ -16,11 +16,10 @@ from lib.agent.constants import (
     ENEMY_TURRET_TYPES,
     HARASSMENT_STRATEGY_ID,
     HARD_AVOID_EXISTING_SUPPLY_CHAIN,
-    MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD,
     NONDIRECTIONAL_BUILDING_TYPES,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
 )
-from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
+from lib.map.constants import DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
 _BRIDGE_R = int(GameConstants.BRIDGE_TARGET_RADIUS_SQ**0.5) + 1
@@ -39,6 +38,14 @@ _CARDINAL_DIRECTIONS = tuple(
     for direction in Direction
     if direction != Direction.CENTRE and sum(abs(delta) for delta in direction.delta()) == 1
 )
+_ADJACENT_DIRECTION_CANDIDATES_BY_DIRECTION = {
+    direction: (
+        direction,
+        DIRECTIONS[(idx - 1) % len(DIRECTIONS)],
+        DIRECTIONS[(idx + 1) % len(DIRECTIONS)],
+    )
+    for idx, direction in enumerate(DIRECTIONS)
+}
 _EMPTY_SOURCE_INDEX_SET = frozenset()
 
 
@@ -69,24 +76,6 @@ class BuilderNavigationMixin:
             respect_titanium_reserve_for_road_build
             or self.strategy == HARASSMENT_STRATEGY_ID
         )
-
-    def u_reset_bugnav_state(self) -> None:
-        self.bugnav_target_key = None
-        self.bugnav_follow_wall = False
-        self.bugnav_wall_on_left = True
-        self.bugnav_best_distance_sq = INF_DIST
-        self.bugnav_last_move_direction = None
-
-    def u_get_move_target_distance_sq(
-        self,
-        current_pos: Position,
-        target_pos: Position,
-        reach_builder_action_range: bool,
-    ) -> int:
-        distance_sq = current_pos.distance_squared(target_pos)
-        if reach_builder_action_range:
-            return max(0, distance_sq - BUILDER_ACTION_RADIUS_SQ)
-        return distance_sq
 
     def u_move_target_reached(
         self,
@@ -174,214 +163,6 @@ class BuilderNavigationMixin:
             self.u_move_with_target(next_direction, target_pos)
         return True
 
-    def u_can_bugnav_step(
-        self,
-        move_direction: Direction,
-        avoid_enemy_turrets: bool,
-        build_new_roads: bool,
-        respect_titanium_reserve_for_road_build: bool,
-    ) -> bool:
-        current_idx = self.map.u_to_index(self.map.current_pos)
-        next_idx = self.map.u_get_neighbor_index_by_direction(current_idx, move_direction)
-        if next_idx is None:
-            return False
-        next_tile = self.map.tiles_by_index[next_idx]
-        if next_tile.is_core_of(self.map.enemy_team):
-            return False
-        if avoid_enemy_turrets and next_tile.is_enemy_turret_target_tile:
-            return False
-        if self.ct.can_move(move_direction):
-            return True
-        respect_titanium_reserve_for_road_build = (
-            self.u_should_respect_titanium_reserve_for_road_build(
-                respect_titanium_reserve_for_road_build
-            )
-        )
-        road_titanium_cost, _ = self.ct.get_road_cost()
-        return (
-            build_new_roads
-            and self.ct.can_build_road(next_tile.position)
-            and (
-                not respect_titanium_reserve_for_road_build
-                or self.u_can_spend_titanium_without_falling_below_reserve(
-                    road_titanium_cost
-                )
-            )
-        )
-
-    def u_get_bugnav_step_direction(
-        self,
-        start_direction: Direction,
-        wall_on_left: bool,
-        avoid_enemy_turrets: bool,
-        build_new_roads: bool,
-        respect_titanium_reserve_for_road_build: bool,
-    ) -> Direction | None:
-        direction = start_direction
-        for _ in range(8):
-            if self.u_can_bugnav_step(
-                direction,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            ):
-                return direction
-            direction = (
-                direction.rotate_right() if wall_on_left else direction.rotate_left()
-            )
-        return None
-
-    def u_move_to_bugnav(
-        self,
-        pos: Position,
-        avoid_enemy_turrets: bool = True,
-        build_new_roads: bool = True,
-        allow_conveyor_building: bool = True,
-        reach_builder_action_range: bool = False,
-        respect_titanium_reserve_for_road_build: bool = False,
-    ) -> bool:
-        current_pos = self.map.current_pos
-        if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
-            self.u_reset_bugnav_state()
-            return False
-        respect_titanium_reserve_for_road_build = (
-            self.u_should_respect_titanium_reserve_for_road_build(
-                respect_titanium_reserve_for_road_build
-            )
-        )
-
-        target_key = (
-            pos.x,
-            pos.y,
-            avoid_enemy_turrets,
-            build_new_roads,
-            allow_conveyor_building,
-            reach_builder_action_range,
-            respect_titanium_reserve_for_road_build,
-        )
-        if self.bugnav_target_key != target_key:
-            self.u_reset_bugnav_state()
-            self.bugnav_target_key = target_key
-
-        direct_direction = self.map.u_get_direction_between(current_pos, pos)
-        if direct_direction is None or direct_direction == Direction.CENTRE:
-            return False
-
-        current_distance_sq = self.u_get_move_target_distance_sq(
-            current_pos,
-            pos,
-            reach_builder_action_range,
-        )
-        if (
-            self.u_can_bugnav_step(
-                direct_direction,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            and (
-                not self.bugnav_follow_wall
-                or current_distance_sq < self.bugnav_best_distance_sq
-            )
-        ):
-            self.bugnav_follow_wall = False
-            self.bugnav_best_distance_sq = current_distance_sq
-            next_tile = self.map.u_get_pos_tile(current_pos.add(direct_direction))
-            moved = self.u_try_progress_move_step(
-                next_tile,
-                direct_direction,
-                pos,
-                build_new_roads=build_new_roads,
-                allow_conveyor_building=allow_conveyor_building,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            if moved:
-                self.bugnav_last_move_direction = direct_direction
-            return moved
-
-        if not self.bugnav_follow_wall:
-            left_direction = self.u_get_bugnav_step_direction(
-                direct_direction,
-                wall_on_left=True,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            right_direction = self.u_get_bugnav_step_direction(
-                direct_direction,
-                wall_on_left=False,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            if left_direction is None and right_direction is None:
-                return False
-
-            def direction_key(direction: Direction | None) -> tuple[int, int, int]:
-                if direction is None:
-                    return (1, INF_DIST, 1)
-                next_pos = current_pos.add(direction)
-                return (
-                    0,
-                    self.u_get_move_target_distance_sq(
-                        next_pos,
-                        pos,
-                        reach_builder_action_range,
-                    ),
-                    0,
-                )
-
-            self.bugnav_wall_on_left = direction_key(left_direction) <= direction_key(
-                right_direction
-            )
-            self.bugnav_follow_wall = True
-            self.bugnav_best_distance_sq = current_distance_sq
-
-        follow_start_direction = self.bugnav_last_move_direction or direct_direction
-        move_direction = self.u_get_bugnav_step_direction(
-            follow_start_direction,
-            wall_on_left=self.bugnav_wall_on_left,
-            avoid_enemy_turrets=avoid_enemy_turrets,
-            build_new_roads=build_new_roads,
-            respect_titanium_reserve_for_road_build=(
-                respect_titanium_reserve_for_road_build
-            ),
-        )
-        if move_direction is None:
-            return False
-
-        next_tile = self.map.u_get_pos_tile(current_pos.add(move_direction))
-        moved = self.u_try_progress_move_step(
-            next_tile,
-            move_direction,
-            pos,
-            build_new_roads=build_new_roads,
-            allow_conveyor_building=allow_conveyor_building,
-            respect_titanium_reserve_for_road_build=(
-                respect_titanium_reserve_for_road_build
-            ),
-        )
-        if moved:
-            self.bugnav_last_move_direction = move_direction
-            next_distance_sq = self.u_get_move_target_distance_sq(
-                current_pos.add(move_direction),
-                pos,
-                reach_builder_action_range,
-            )
-            if next_distance_sq < self.bugnav_best_distance_sq:
-                self.bugnav_best_distance_sq = next_distance_sq
-        return moved
-
     def u_move_to(
         self,
         pos: Position,
@@ -393,31 +174,12 @@ class BuilderNavigationMixin:
     ) -> bool:
         current_pos = self.map.current_pos
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
-            self.u_reset_bugnav_state()
             return False
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
                 respect_titanium_reserve_for_road_build
             )
         )
-
-        if (
-            abs(current_pos.x - pos.x) + abs(current_pos.y - pos.y)
-            > MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD
-        ):
-            print("Move to target:", pos, "(bugnav)")
-            return self.u_move_to_bugnav(
-                pos,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                allow_conveyor_building=allow_conveyor_building,
-                reach_builder_action_range=reach_builder_action_range,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-
-        self.u_reset_bugnav_state()
         return self.u_move_to_astar(
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,
@@ -696,7 +458,78 @@ class BuilderNavigationMixin:
         return direction
 
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
-        return self.u_get_direction_toward_enemy_core_center(pos)
+        enemy_core_center_pos = self.map.enemy_core_center_pos
+        if enemy_core_center_pos is not None:
+            base_direction = self.map.u_get_direction_between(pos, enemy_core_center_pos)
+        else:
+            own_core_center_pos = self.map.own_core_center_pos
+            if own_core_center_pos is None:
+                self.map.u_calc_core_center_positions()
+                own_core_center_pos = self.map.own_core_center_pos
+            if own_core_center_pos is None:
+                base_direction = Direction.NORTH
+            else:
+                base_direction = self.map.u_get_direction_between(own_core_center_pos, pos)
+
+        if base_direction is None or base_direction == Direction.CENTRE:
+            base_direction = Direction.NORTH
+
+        source_idx = self.map.u_to_index(pos)
+        current_round = self.map.current_round
+        enemy_team = self.map.enemy_team
+        best_direction = base_direction
+        best_key = None
+
+        for candidate_order, direction in enumerate(
+            _ADJACENT_DIRECTION_CANDIDATES_BY_DIRECTION[base_direction]
+        ):
+            enemy_turret_count = 0
+            can_target_enemy_core = 0
+            enemy_harvester_count = 0
+            enemy_supply_chain_count = 0
+            other_enemy_building_count = 0
+
+            for target_idx in self.map.u_get_attackable_target_indices(
+                source_idx,
+                EntityType.SENTINEL,
+                direction,
+            ):
+                target_tile = self.map.tiles_by_index[target_idx]
+                if target_tile.is_core_of(enemy_team):
+                    can_target_enemy_core = 1
+                    continue
+                if (
+                    target_tile.last_seen_turn != current_round
+                    or target_tile.building.team != enemy_team
+                ):
+                    continue
+
+                target_type = target_tile.building.entity_type
+                if target_type in ENEMY_TURRET_TYPES:
+                    enemy_turret_count += 1
+                elif target_type == EntityType.HARVESTER:
+                    enemy_harvester_count += 1
+                elif target_type in SUPPLY_LINK_TYPES:
+                    enemy_supply_chain_count += 1
+                elif target_type is not None:
+                    other_enemy_building_count += 1
+
+            key = (
+                -enemy_turret_count,
+                -can_target_enemy_core,
+                -enemy_harvester_count,
+                -enemy_supply_chain_count,
+                -other_enemy_building_count,
+                candidate_order,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_direction = direction
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return best_direction
 
     def _u_tile_is_targeted_by_supply_chain(
         self,
@@ -1150,6 +983,54 @@ class BuilderNavigationMixin:
         if gunner_direction is not None:
             return (EntityType.GUNNER, gunner_direction)
 
+        current_round = self.map.current_round
+        enemy_team = self.map.enemy_team
+        pos_idx = self.map.u_to_index(pos)
+
+        def has_harvester_adjacent_gunner_lane() -> bool:
+            for neighbor_idx in self.map.u_iter_neighbor_indices(pos_idx):
+                neighbor_tile = self.map.tiles_by_index[neighbor_idx]
+                if neighbor_tile.last_seen_turn != current_round:
+                    continue
+
+                building = neighbor_tile.building
+                if building.id is None:
+                    if neighbor_tile.environment != Environment.EMPTY:
+                        continue
+                elif (
+                    building.team == enemy_team
+                    and building.entity_type == EntityType.ROAD
+                ):
+                    pass
+                elif (
+                    building.team == enemy_team
+                    and building.entity_type in CONVEYOR_ENTITY_TYPES
+                    and neighbor_tile.conveyor_targets_harvester
+                ):
+                    pass
+                else:
+                    continue
+
+                for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                    neighbor_tile.position
+                ):
+                    adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                    if (
+                        adjacent_tile.last_seen_turn == current_round
+                        and adjacent_tile.environment == Environment.ORE_TITANIUM
+                        and adjacent_tile.building.team == enemy_team
+                        and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    ):
+                        return True
+
+                    if self.round_stopwatch.check_overtime():
+                        break
+
+                if self.round_stopwatch.check_overtime():
+                    break
+
+            return False
+
         sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
         gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
         can_afford_sentinel = (
@@ -1160,6 +1041,8 @@ class BuilderNavigationMixin:
             self.map.titanium >= gunner_titanium_cost
             and self.map.axionite >= gunner_axionite_cost
         )
+        if has_harvester_adjacent_gunner_lane():
+            return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
         if not can_afford_sentinel and can_afford_gunner:
             return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
 

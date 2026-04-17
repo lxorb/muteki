@@ -255,7 +255,15 @@ class Map:
         self.intrinsic_passable_by_index = bytearray([1]) * self.INITIAL_MAP_SIZE
         self.bot_present_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_turret_target_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.enemy_gunner_ray_first_target_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
+        self.enemy_spin_gunner_ray_first_target_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.core_distance_dirty_indices: set[int] = set()
+        self.enemy_gunner_ray_first_target_touched_indices: list[int] = []
+        self.enemy_spin_gunner_ray_first_target_touched_indices: list[int] = []
         self.core_distance_enqueued_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_core_source_indices: tuple[int, ...] = ()
         self.enemy_core_source_indices: tuple[int, ...] = ()
@@ -443,6 +451,14 @@ class Map:
                 "Map controller must be set before resetting turn state."
             )
 
+        self._reset_marked_bytearray_indices(
+            self.enemy_gunner_ray_first_target_touched_indices,
+            self.enemy_gunner_ray_first_target_by_index,
+        )
+        self._reset_marked_bytearray_indices(
+            self.enemy_spin_gunner_ray_first_target_touched_indices,
+            self.enemy_spin_gunner_ray_first_target_by_index,
+        )
         self._reset_supply_chain_union_find_arrays(
             self.own_supply_chain_touched_indices,
             self.own_supply_chain_parent_by_index,
@@ -509,6 +525,26 @@ class Map:
         self.own_supply_link_source_indices_by_target_index_in_vision = {}
         self.enemy_supply_link_source_indices_by_target_index_in_vision = {}
         self.frontier_expand_newly_seen_indices = []
+
+    def _reset_marked_bytearray_indices(
+        self,
+        touched_indices: list[int],
+        values: bytearray,
+    ) -> None:
+        for idx in touched_indices:
+            values[idx] = 0
+        touched_indices.clear()
+
+    def _u_mark_bytearray_index(
+        self,
+        touched_indices: list[int],
+        values: bytearray,
+        idx: int,
+    ) -> None:
+        if values[idx]:
+            return
+        values[idx] = 1
+        touched_indices.append(idx)
 
     def _reset_supply_chain_union_find_arrays(
         self,
@@ -821,6 +857,18 @@ class Map:
         if root is None:
             return False
         return bool(self.enemy_supply_chain_feeds_own_turret_by_index[root])
+
+    def u_enemy_tile_is_targeted_by_titanium_supply_chain(
+        self,
+        idx: int,
+    ) -> bool:
+        for source_idx in self.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+            idx,
+            (),
+        ):
+            if self.u_supply_chain_has_titanium(source_idx, self.enemy_team):
+                return True
+        return False
 
     def u_own_supply_chain_feeds_own_turret(
         self,
@@ -1245,6 +1293,7 @@ class Map:
         self.stopwatch.lap("Core positions")
 
         self.u_update_supply_information()
+        self.u_update_enemy_gunner_first_target_caches()
 
         self.stopwatch.lap("Supply info")
 
@@ -1515,6 +1564,8 @@ class Map:
         tiles_by_index = self.tiles_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
+        own_core_center_pos = self.own_core_center_pos
+        enemy_core_center_pos = self.enemy_core_center_pos
         core_entity_type = EntityType.CORE
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
 
@@ -1523,44 +1574,136 @@ class Map:
             x = index_x_by_index[tile_index]
             y = index_y_by_index[tile_index]
             tile_environment = tile.environment
-            tile_is_core = tile.building.entity_type == core_entity_type
+            tile_is_core_center = False
+            if tile.building.entity_type == core_entity_type:
+                tile_is_core_center = (
+                    (own_core_center_pos is not None and x == own_core_center_pos.x and y == own_core_center_pos.y)
+                    or (
+                        enemy_core_center_pos is not None
+                        and x == enemy_core_center_pos.x
+                        and y == enemy_core_center_pos.y
+                    )
+                )
+                if not tile_is_core_center and tile.building.id is not None:
+                    tile_core_center_pos = self.ct.get_position(tile.building.id)
+                    tile_is_core_center = (
+                        tile_core_center_pos.x == x and tile_core_center_pos.y == y
+                    )
             has_known_symmetric_tile = False
 
             if rotation_possible:
+                rotation_x = width_minus_1 - x
+                rotation_y = height_minus_1 - y
                 rotation_idx = (width_minus_1 - x) * index_stride + (height_minus_1 - y)
                 rotation_tile = tiles_by_index[rotation_idx]
                 rotation_environment = rotation_tile.environment
                 if rotation_environment is not None:
                     has_known_symmetric_tile = True
+                    rotation_is_core_center = False
+                    if rotation_tile.building.entity_type == core_entity_type:
+                        rotation_is_core_center = (
+                            (
+                                own_core_center_pos is not None
+                                and rotation_x == own_core_center_pos.x
+                                and rotation_y == own_core_center_pos.y
+                            )
+                            or (
+                                enemy_core_center_pos is not None
+                                and rotation_x == enemy_core_center_pos.x
+                                and rotation_y == enemy_core_center_pos.y
+                            )
+                        )
+                        if (
+                            not rotation_is_core_center
+                            and rotation_tile.building.id is not None
+                        ):
+                            rotation_core_center_pos = self.ct.get_position(
+                                rotation_tile.building.id
+                            )
+                            rotation_is_core_center = (
+                                rotation_core_center_pos.x == rotation_x
+                                and rotation_core_center_pos.y == rotation_y
+                            )
                     if tile_environment != rotation_environment or (
-                        tile_is_core
-                        != (rotation_tile.building.entity_type == core_entity_type)
+                        tile_is_core_center != rotation_is_core_center
                     ):
                         rotation_possible = False
                         possible_count -= 1
 
             if mirror_x_possible:
+                mirror_x_x = x
+                mirror_x_y = height_minus_1 - y
                 mirror_x_idx = x * index_stride + (height_minus_1 - y)
                 mirror_x_tile = tiles_by_index[mirror_x_idx]
                 mirror_x_environment = mirror_x_tile.environment
                 if mirror_x_environment is not None:
                     has_known_symmetric_tile = True
+                    mirror_x_is_core_center = False
+                    if mirror_x_tile.building.entity_type == core_entity_type:
+                        mirror_x_is_core_center = (
+                            (
+                                own_core_center_pos is not None
+                                and mirror_x_x == own_core_center_pos.x
+                                and mirror_x_y == own_core_center_pos.y
+                            )
+                            or (
+                                enemy_core_center_pos is not None
+                                and mirror_x_x == enemy_core_center_pos.x
+                                and mirror_x_y == enemy_core_center_pos.y
+                            )
+                        )
+                        if (
+                            not mirror_x_is_core_center
+                            and mirror_x_tile.building.id is not None
+                        ):
+                            mirror_x_core_center_pos = self.ct.get_position(
+                                mirror_x_tile.building.id
+                            )
+                            mirror_x_is_core_center = (
+                                mirror_x_core_center_pos.x == mirror_x_x
+                                and mirror_x_core_center_pos.y == mirror_x_y
+                            )
                     if tile_environment != mirror_x_environment or (
-                        tile_is_core
-                        != (mirror_x_tile.building.entity_type == core_entity_type)
+                        tile_is_core_center != mirror_x_is_core_center
                     ):
                         mirror_x_possible = False
                         possible_count -= 1
 
             if mirror_y_possible:
+                mirror_y_x = width_minus_1 - x
+                mirror_y_y = y
                 mirror_y_idx = (width_minus_1 - x) * index_stride + y
                 mirror_y_tile = tiles_by_index[mirror_y_idx]
                 mirror_y_environment = mirror_y_tile.environment
                 if mirror_y_environment is not None:
                     has_known_symmetric_tile = True
+                    mirror_y_is_core_center = False
+                    if mirror_y_tile.building.entity_type == core_entity_type:
+                        mirror_y_is_core_center = (
+                            (
+                                own_core_center_pos is not None
+                                and mirror_y_x == own_core_center_pos.x
+                                and mirror_y_y == own_core_center_pos.y
+                            )
+                            or (
+                                enemy_core_center_pos is not None
+                                and mirror_y_x == enemy_core_center_pos.x
+                                and mirror_y_y == enemy_core_center_pos.y
+                            )
+                        )
+                        if (
+                            not mirror_y_is_core_center
+                            and mirror_y_tile.building.id is not None
+                        ):
+                            mirror_y_core_center_pos = self.ct.get_position(
+                                mirror_y_tile.building.id
+                            )
+                            mirror_y_is_core_center = (
+                                mirror_y_core_center_pos.x == mirror_y_x
+                                and mirror_y_core_center_pos.y == mirror_y_y
+                            )
                     if tile_environment != mirror_y_environment or (
-                        tile_is_core
-                        != (mirror_y_tile.building.entity_type == core_entity_type)
+                        tile_is_core_center != mirror_y_is_core_center
                     ):
                         mirror_y_possible = False
                         possible_count -= 1
@@ -2131,6 +2274,34 @@ class Map:
             and delta_y * dir_y > 0
         )
 
+    def u_get_gunner_first_targetable_tile(
+        self,
+        source_pos: Position,
+        direction: Direction,
+        radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
+        current_round: int | None = None,
+    ) -> Tile | None:
+        if current_round is None:
+            current_round = self.current_round
+
+        for tile in self.u_get_gunner_ray_tiles(
+            source_pos,
+            direction,
+            radius_sq,
+        ):
+            if tile.environment == Environment.WALL:
+                return None
+            if tile.is_core_of(self.enemy_team) or tile.is_core_of(self.own_team):
+                return tile
+            if tile.last_seen_turn != current_round:
+                continue
+            if tile.bot.id is not None or tile.building.id is not None:
+                return tile
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+        return None
+
     def u_gunner_covers_target(
         self,
         turret_pos: Position,
@@ -2183,6 +2354,60 @@ class Map:
                 break
 
         return tiles
+
+    def u_update_enemy_gunner_first_target_caches(self) -> None:
+        current_round = self.current_round
+
+        for gunner_tile in self.enemy_buildings_in_vision:
+            if gunner_tile.last_seen_turn != current_round:
+                continue
+
+            building = gunner_tile.building
+            if building.entity_type != EntityType.GUNNER:
+                continue
+            if not self.u_enemy_tile_is_targeted_by_titanium_supply_chain(
+                gunner_tile.index
+            ):
+                continue
+
+            radius_sq = building.vision_radius_sq
+            if radius_sq is None:
+                radius_sq = GameConstants.GUNNER_VISION_RADIUS_SQ
+
+            direction = building.direction
+            if direction is not None and direction != Direction.CENTRE:
+                target_tile = self.u_get_gunner_first_targetable_tile(
+                    gunner_tile.position,
+                    direction,
+                    radius_sq,
+                    current_round,
+                )
+                if target_tile is not None:
+                    self._u_mark_bytearray_index(
+                        self.enemy_gunner_ray_first_target_touched_indices,
+                        self.enemy_gunner_ray_first_target_by_index,
+                        target_tile.index,
+                    )
+
+            for direction in Direction:
+                if direction == Direction.CENTRE:
+                    continue
+                target_tile = self.u_get_gunner_first_targetable_tile(
+                    gunner_tile.position,
+                    direction,
+                    radius_sq,
+                    current_round,
+                )
+                if target_tile is None:
+                    continue
+                self._u_mark_bytearray_index(
+                    self.enemy_spin_gunner_ray_first_target_touched_indices,
+                    self.enemy_spin_gunner_ray_first_target_by_index,
+                    target_tile.index,
+                )
+
+            if self.round_stopwatch.check_overtime_interval():
+                break
 
     def u_enemy_titanium_harvester_has_adjacent_own_turret(self, harvester_tile) -> bool:
         if (

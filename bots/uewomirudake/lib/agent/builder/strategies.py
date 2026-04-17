@@ -10,6 +10,7 @@ from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
 SCAVENGER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_turn_to_harassment,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
@@ -49,11 +50,13 @@ SCAVENGER_STRATEGY = [
         True,
         False,
     ),
+    (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_frontier_expand, 100),
     (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 
 DEFENDER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
@@ -104,6 +107,7 @@ CORE_DEFENDER_STRATEGY = [
 ]
 
 HARASSMENT_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_gunner_next_to_enemy_core),
     (
@@ -119,6 +123,7 @@ HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_attack_key_enemy_supply_chain, True),
     (BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
     (BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
+    (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_toward_enemy_core),
     (BuilderStrategyMethodsMixin.s_patrol_enemy_core,),
     (BuilderStrategyMethodsMixin.s_frontier_expand,),
@@ -145,12 +150,11 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], str] = {
     (0, 0): CORE_DEFENDER_STRATEGY_ID,
 }
 INITIAL_BB_ORDER: list[str] = [
+    SCAVENGER_STRATEGY_ID,
+    SCAVENGER_STRATEGY_ID,
+    SCAVENGER_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
-    SCAVENGER_STRATEGY_ID,
-    SCAVENGER_STRATEGY_ID,
-    # FIRST RESOURCE INCREASE
-    SCAVENGER_STRATEGY_ID,
 ]
 FUTHER_BB_ROTATION: list[str] = [
     SCAVENGER_STRATEGY_ID,
