@@ -1850,8 +1850,8 @@ class BuilderStrategyMethodsMixin:
 
         Uses cached missing-link positions plus any builder-local pending gap
         target, keeps tiles that can host a new supplier, filters to the
-        relevant supply chain(s), prioritizes gaps closer to the core and then
-        the builder, and relies on the transport supplier planner to choose
+        relevant supply chain(s), prioritizes gaps closer to the builder and then
+        the core, and relies on the transport supplier planner to choose
         whether the tile should become a conveyor or a bridge plus its optimal
         target for the inferred resource.
         """
@@ -1963,6 +1963,10 @@ class BuilderStrategyMethodsMixin:
         candidate_entries: list[tuple[tuple[int, int], int, int, int]] = []
         candidate_seen_indices: set[int] = set()
         pending_target_idx: int | None = None
+        pending_candidate_entry: tuple[tuple[int, int], int, int, int] | None = None
+        pending_preferred_entry: tuple[tuple[int, int], int, int, int] | None = None
+        pending_estimated_dist_to_self: int | None = None
+        lowest_candidate_estimated_dist_to_self: int | None = None
         pending_resource = self.pending_missing_supply_link_resource
         if pending_resource is not None:
             pending_target_idx = self.pending_missing_supply_link_index
@@ -1984,8 +1988,28 @@ class BuilderStrategyMethodsMixin:
                 )
                 if pending_label != SupplyChainLabel.NONE:
                     candidate_seen_indices.add(pending_target_idx)
-                    candidate_entries.append(
-                        ((-1, -1), -1, pending_target_idx, int(pending_label))
+                    pending_estimated_dist_to_self = (
+                        self.map.u_get_estimated_dist_to_self_by_index(
+                            pending_target_idx
+                        )
+                    )
+                    lowest_candidate_estimated_dist_to_self = (
+                        pending_estimated_dist_to_self
+                    )
+                    pending_candidate_entry = (
+                        (
+                            pending_estimated_dist_to_self,
+                            get_own_core_dist(pending_target_idx),
+                        ),
+                        -1,
+                        pending_target_idx,
+                        int(pending_label),
+                    )
+                    pending_preferred_entry = (
+                        (-1, -1),
+                        -1,
+                        pending_target_idx,
+                        int(pending_label),
                     )
 
         for encounter_order, target_tile in enumerate(
@@ -2005,11 +2029,19 @@ class BuilderStrategyMethodsMixin:
             if target_idx in candidate_seen_indices:
                 continue
             candidate_seen_indices.add(target_idx)
+            estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
+                target_idx
+            )
+            if (
+                lowest_candidate_estimated_dist_to_self is None
+                or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
+            ):
+                lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
             candidate_entries.append(
                 (
                     (
+                        estimated_dist_to_self,
                         get_own_core_dist(target_idx),
-                        self.map.u_get_estimated_dist_to_self_by_index(target_idx),
                     ),
                     encounter_order,
                     target_idx,
@@ -2052,11 +2084,19 @@ class BuilderStrategyMethodsMixin:
                 if target_idx in candidate_seen_indices:
                     continue
                 candidate_seen_indices.add(target_idx)
+                estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
+                    target_idx
+                )
+                if (
+                    lowest_candidate_estimated_dist_to_self is None
+                    or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
+                ):
+                    lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
                 candidate_entries.append(
                     (
                         (
+                            estimated_dist_to_self,
                             get_own_core_dist(target_idx),
-                            self.map.u_get_estimated_dist_to_self_by_index(target_idx),
                         ),
                         splitter_encounter_order,
                         target_idx,
@@ -2064,6 +2104,18 @@ class BuilderStrategyMethodsMixin:
                     )
                 )
                 splitter_encounter_order += 1
+
+        if pending_candidate_entry is not None:
+            if (
+                lowest_candidate_estimated_dist_to_self is None
+                or pending_estimated_dist_to_self is None
+                or pending_estimated_dist_to_self
+                - lowest_candidate_estimated_dist_to_self
+                < 2
+            ):
+                candidate_entries.append(pending_preferred_entry)
+            else:
+                candidate_entries.append(pending_candidate_entry)
 
         if not candidate_entries:
             return False
