@@ -276,7 +276,7 @@ class Map:
         self.own_core_dist_manhattan_init_next_y = 0
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
-        self.path_heap_buffer: list[tuple[int, int, int, int, int, int]] = []
+        self.path_heap_buffer: list[tuple[int, int, int, int, int, int, int]] = []
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -354,6 +354,9 @@ class Map:
         self.path_seen_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.path_predecessor_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.path_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
+        self.path_first_step_requires_new_road_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.path_cost_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.path_epoch = 0
         self.tiles_by_index: list[Tile] = [
@@ -3794,6 +3797,9 @@ class Map:
         seen_epoch_by_index = self.path_seen_epoch_by_index
         predecessor_by_index = self.path_predecessor_by_index
         first_step_by_index = self.path_first_step_by_index
+        first_step_requires_new_road_by_index = (
+            self.path_first_step_requires_new_road_by_index
+        )
         path_cost_by_index = self.path_cost_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
@@ -3816,6 +3822,7 @@ class Map:
         seen_epoch_by_index[source_idx] = path_epoch
         predecessor_by_index[source_idx] = source_idx
         first_step_by_index[source_idx] = -1
+        first_step_requires_new_road_by_index[source_idx] = 0
         path_cost_by_index[source_idx] = 0
 
         if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
@@ -3872,6 +3879,7 @@ class Map:
             (
                 source_heuristic,
                 0,
+                0,
                 source_own_core_dist,
                 source_x,
                 source_y,
@@ -3888,7 +3896,7 @@ class Map:
                     return None
                 overtime_check_countdown = 16
 
-            _, current_cost, _, _, _, current_idx = heappop_local(frontier)
+            _, current_cost, _, _, _, _, current_idx = heappop_local(frontier)
             if (
                 seen_epoch_by_index[current_idx] != path_epoch
                 or path_cost_by_index[current_idx] != current_cost
@@ -3936,9 +3944,24 @@ class Map:
                     and not intrinsic_passable_by_index[adjacent_idx]
                 ):
                     continue
+                if current_first_step_idx == -1:
+                    first_step_requires_new_road = int(
+                        tiles_by_index[adjacent_idx].building.id is None
+                    )
+                else:
+                    first_step_requires_new_road = (
+                        first_step_requires_new_road_by_index[current_idx]
+                    )
                 if (
                     seen_epoch_by_index[adjacent_idx] == path_epoch
-                    and next_cost >= path_cost_by_index[adjacent_idx]
+                    and (
+                        next_cost > path_cost_by_index[adjacent_idx]
+                        or (
+                            next_cost == path_cost_by_index[adjacent_idx]
+                            and first_step_requires_new_road
+                            >= first_step_requires_new_road_by_index[adjacent_idx]
+                        )
+                    )
                 ):
                     continue
 
@@ -3949,6 +3972,9 @@ class Map:
                     adjacent_idx
                     if current_first_step_idx == -1
                     else current_first_step_idx
+                )
+                first_step_requires_new_road_by_index[adjacent_idx] = (
+                    first_step_requires_new_road
                 )
                 seen_epoch_by_index[adjacent_idx] = path_epoch
                 path_cost_by_index[adjacent_idx] = next_cost
@@ -3996,6 +4022,7 @@ class Map:
                     (
                         next_cost + heuristic,
                         next_cost,
+                        first_step_requires_new_road,
                         own_core_dist,
                         adjacent_x,
                         adjacent_y,
