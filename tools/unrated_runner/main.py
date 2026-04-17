@@ -40,8 +40,8 @@ RANDOM_MAP_SELECTION = True
 
 def build_teams_json() -> None:
     """Read team_list.json and request_teams.txt, write matching teams to requested_teams.json."""
-    all_teams: dict[str, str] = load_json(TEAM_LIST_FILE)  # {id: name}
-    name_to_id = {name: tid for tid, name in all_teams.items()}
+    all_teams: dict[str, dict] = load_json(TEAM_LIST_FILE)  # {id: {name, category, isStudent, region}}
+    name_to_id = {info["name"]: tid for tid, info in all_teams.items()}
 
     requested = {
         name.strip()

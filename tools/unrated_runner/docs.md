@@ -27,11 +27,11 @@ Fetches the full ladder from `https://game.battlecode.cam/api/ladder` and saves 
 
 ### process_ladder.py
 
-Reads `data/ladder.json` and writes all active teams (matchesPlayed > 0) to `data/team_list.json` in `{"id": "name"}` format.
+Reads `data/ladder.json` and writes all active teams (matchesPlayed > 0) to `data/team_list.json` as `{"id": {"name", "category", "isStudent", "region"}}`.
 
 ### request_top.py
 
-Reads `data/ladder.json` and writes the top 16 teams by rating to `config/request_teams.txt`, excluding our own team.
+Reads `data/ladder.json` and writes the top `TOP_N` teams by rating to `config/request_teams.txt`, excluding our own team. Three optional restriction flags (`MAIN_ONLY`, `STUDENTS_ONLY`, `INTERNATIONAL_ONLY`) each further filter the pool when set to `True`; when `False`, that dimension is not restricted.
 
 ### main.py
 
@@ -92,6 +92,9 @@ Cells show the change in win percentage points (e.g. `+20%`, `-15%`). `N/A` is s
 | --- | --- | --- |
 | `TEAM_NAME` | `"muteki"` | Our team name — excluded from the generated list. |
 | `TOP_N` | `10` | Number of top-rated teams to write to `request_teams.txt`. |
+| `MAIN_ONLY` | `False` | If `True`, only include teams in category `"main"`. |
+| `STUDENTS_ONLY` | `False` | If `True`, only include teams where `isStudent` is `True`. |
+| `INTERNATIONAL_ONLY` | `False` | If `True`, only include teams where `region` is `"international"`. |
 
 ## Configuration
 

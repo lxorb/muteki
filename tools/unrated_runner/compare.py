@@ -25,7 +25,8 @@ def load_team_names() -> dict[str, str]:
     if not TEAM_LIST_FILE.exists():
         return {}
     with open(TEAM_LIST_FILE) as f:
-        return json.load(f)
+        data = json.load(f)
+    return {tid: info["name"] for tid, info in data.items()}
 
 
 def load_results(path: Path) -> dict:
