@@ -63,6 +63,7 @@ class BuilderAgent(
 
         self.awaiting_yeet_since = -1
         self.awaiting_yeet_pos = None
+        self.yeet_target_for_own_launcher = None
 
 
     def u_infer_strategy_by_spawning_tile(self):
@@ -111,6 +112,7 @@ class BuilderAgent(
                     print("GIVING UP YEET :(")
             self.awaiting_yeet_since = -1
             self.awaiting_yeet_pos = None
+        self.yeet_target_for_own_launcher = None
 
 
         handled = self.u_execute_strategy()

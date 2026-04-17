@@ -43,7 +43,14 @@ class TurretAgent(Agent):
             print("---------------")
             return False
         
+
+
         candidate_bots = sorted(self.map.launcher_action_radius_bots, key=lambda tile: tile.bot.team != self.map.enemy_team)
+
+        print("bot -> target:", [f"{bot_id}, {value[0]}" for bot_id, value in self.map.id_to_target_pos_round_round.items()])
+        print("candidate bots:", [f"id: {bot.bot.id}" for bot in candidate_bots])
+        print("seen markers:", self.map.seen_markers_for_debugging)
+        print("seen marker ids: ", self.map.seen_ids_for_debugging)
 
         if not self.map.own_core_center_pos:
             for id, value in self.map.id_to_target_pos_round.items():

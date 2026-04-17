@@ -444,6 +444,8 @@ class Map:
         self.launcher_safe_zone_tiles = []
             # these lists are re-updated in EACH ROUND!
 
+        self.seen_markers_for_debugging = []
+        self.seen_ids_for_debugging = []
         self.id_to_target_pos_round_round = {}
 
         self.stopwatch = Stopwatch("Map")
@@ -1183,6 +1185,8 @@ class Map:
         self.stopwatch.start()
 
         self.current_path = []
+        self.seen_markers_for_debugging = []
+        self.seen_ids_for_debugging = []
 
         if self.is_launcher:
             self.launcher_safe_zone_tiles = self.launcher_visible_tiles.copy()

@@ -24,7 +24,7 @@ from lib.agent.constants import (
     LAUNCHER_BUILD_MIN_IMPROVEMENT,
     LAUNCHER_BUILD_MIN_TITANIUM,
 )
-from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST, MAGIC_PATH_LAUNCHER_TARGET_INDEX
+from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
 from lib.map.types import SupplyChainLabel
 
 _ENEMY_CORE_PATROL_OFFSETS = (
@@ -5231,6 +5231,11 @@ class BuilderStrategyMethodsMixin:
             if target_pos is None:
                 return False
             move_target_pos = self.get_move_target(target_pos)
+            self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
+
+            if self.lets_get_yeeted():
+                return True
+
             return bool(
                 self.u_move_to(
                     move_target_pos,
@@ -5260,8 +5265,10 @@ class BuilderStrategyMethodsMixin:
             return False
 
         move_target_pos = self.get_move_target(target_pos)
+        self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
 
-        
+        if self.lets_get_yeeted():
+            return True
 
         return bool(
             self.u_move_to(
@@ -5273,9 +5280,11 @@ class BuilderStrategyMethodsMixin:
     
     def lets_get_yeeted(self):
         if self.ct.get_global_resources()[0] < LAUNCHER_BUILD_MIN_TITANIUM:
+            print("REASON A")
             return False
 
         if not self.map.current_path or len(self.map.current_path) < LAUNCHER_BUILD_MIN_IMPROVEMENT:
+            print("REASON B")
             return False
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
@@ -5293,7 +5302,7 @@ class BuilderStrategyMethodsMixin:
                 continue
             potential_marker_launcher_positions += 1
             for landing_tile in self.map.u_get_launcher_target_positions(pos):
-                if not landing_tle.is_walkable:
+                if not landing_tile.is_walkable:
                     continue
                 path_idx = path_index_by_tile_index.get(landing_tile.index)
                 if path_idx is not None and path_idx > best_improvement:
@@ -5301,18 +5310,24 @@ class BuilderStrategyMethodsMixin:
                     best_pos = pos
 
         if best_pos is None:
+            print("REASON C")
             return False
 
         if potential_marker_launcher_positions < 2:
+            print("REASON D")
             return False
         
         if self.ct.can_build_launcher(best_pos):
             self.ct.build_launcher(best_pos)
+            launcher_tile = self.map.u_get_pos_tile(best_pos)
+            launcher_tile.building.id = -1
+            launcher_tile.building.entity_type = EntityType.LAUNCHER
             self.awaiting_yeet_since = 0
             self.awaiting_yeet_position = self.map.current_pos
+            self.yeet_target_for_own_launcher = best_pos
             return True
 
-        print("COULDN'T BUILD LAUNCHER?? :()")
+        print("REASON E")
         return False
 
 
@@ -5408,30 +5423,39 @@ class BuilderStrategyMethodsMixin:
             return None
         if not self.map.current_path:
             return None
+        if self.yeet_target_for_own_launcher:
+            return self.yeet_target_for_own_launcher
+        
         print("this is the path I am taking guuys :D")
         for tile in self.map.current_path:
             print(tile.position, end= ", ")
 
         # Let's tailor the target to the next launcher we are getting to according to self.map.current_path
         next_launcher_tile = None
-        for tile in self.map.current_path[1:]:
+        for tile in self.map.current_path:
             if tile.in_own_launcher_pickup_zone:
                 next_launcher_tile = self.launcher_targeting_tile(tile)
                 break
         
         if next_launcher_tile is None:
             print("OK SO NO LAUNCHER!!!")
-            return self.map.current_path[MAGIC_PATH_LAUNCHER_TARGET_INDEX].position
+            return None
 
         return self.choose_target_position_by_launcher_tile(next_launcher_tile)
 
     def choose_target_position_by_launcher_tile(self, next_launcher_tile):
         launcher_potential_targets = self.map.u_get_launcher_target_positions(next_launcher_tile.position)
-        launcher_potential_targets_path_overlap = [target for target in launcher_potential_targets if target in self.map.current_path[1:] and target.is_walkable]
-        print("HERE: overlap", launcher_potential_targets_path_overlap )
-        if not launcher_potential_targets_path_overlap:
-            return None
-        return launcher_potential_targets_path_overlap[-1].position
+        reachable = {t for t in launcher_potential_targets if t.is_walkable}
+        print("REACHABLE", [t.position for t in reachable])
+        print("PATH", [t.position for t in self.map.current_path[1:]])
+        for tile in reversed(self.map.current_path[1:]):
+            if tile in reachable:
+                return tile.position
+            for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
+                neighbor_tile = self.map.tiles_by_index[neighbor_idx]
+                if neighbor_tile in reachable:
+                    return neighbor_tile.position
+        return None
 
     def launcher_targeting_tile(self, tile):
         neighbor_indices = self.map.u_iter_neighbor_indices(tile.index)
@@ -5453,7 +5477,6 @@ class BuilderStrategyMethodsMixin:
                 if self.ct.can_place_marker(pos):
                     self.ct.place_marker(pos, self.get_marker_content())
                     return True
-        
         return False
     
     def get_marker_content(self):
