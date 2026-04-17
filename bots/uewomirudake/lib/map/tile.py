@@ -10,7 +10,6 @@ from lib.map.constants import (
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
     WEAPON_TARGET_TYPES,
-    MAXIMUM_MARKER_AGE,
 )
 from lib.map.types import SupplyChainLabel
 
@@ -384,9 +383,8 @@ class Tile:
         if self.map.symmetry_mode is None and symmetry_mode is not None:
             self.update_symmetry_information(symmetry_mode)
         if self.map.is_launcher:
-            self.map.seen_markers_for_debugging.append(self.position)
-            self.map.seen_ids_for_debugging.append(own_id)
-            if (own_id not in self.map.id_to_target_pos_round) or self.map.id_to_target_pos_round[own_id][1] <= current_round:
+            self.map.seen_markers_for_debugging.append(self)
+            if not own_id in self.map.id_to_target_pos_round or self.map.id_to_target_pos_round[own_id][1] < current_round:
                 self.map.id_to_target_pos_round[own_id] = (Position(target_x, target_y), current_round)
 
     def update_symmetry_information(self, symmetry_mode):
@@ -408,15 +406,12 @@ class Tile:
 
     def update_building(self, id_changed: bool) -> None:
         ct = self.map.ct
-        original_entity_type = ct.get_entity_type(self.building.id)
-        if (original_entity_type == EntityType.MARKER):
-            self.handle_marker(self.building.id)
-            
+                
         if id_changed:
             self.building.prev_entity_type = self.building.entity_type
             self.building.prev_targets = self.building.targets.copy()
             self.building.prev_team = self.building.team
-            self.building.entity_type = original_entity_type
+            self.building.entity_type = ct.get_entity_type(self.building.id)
             self.building.team = ct.get_team(self.building.id)
             tracks_targets = self.u_tracks_building_targets()
 
@@ -443,6 +438,9 @@ class Tile:
             )
             self.update_target_zones_building()
 
+        
+        if (self.building.entity_type == EntityType.MARKER):
+            self.handle_marker(self.building.id)
 
 
         else:
