@@ -81,14 +81,14 @@ TURRET_TARGET_PRIORITY = (
     EntityType.CORE,
     "enemy_harvester_without_adjacent_own_turret",
     EntityType.LAUNCHER,
-    "enemy_bot_on_ally_tile",
-    "enemy_bot_on_non_ally_tile",
     EntityType.BRIDGE,
     EntityType.CONVEYOR,
     EntityType.BARRIER,
     EntityType.SPLITTER,
     EntityType.FOUNDRY,
     EntityType.ROAD,
+    "enemy_bot_on_ally_tile",
+    "enemy_bot_on_non_ally_tile",
     EntityType.ARMOURED_CONVEYOR,
 )
 TURRET_TARGET_PRIORITY_RANK = {
