@@ -1564,6 +1564,8 @@ class Map:
         tiles_by_index = self.tiles_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
+        own_core_center_pos = self.own_core_center_pos
+        enemy_core_center_pos = self.enemy_core_center_pos
         core_entity_type = EntityType.CORE
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
 
@@ -1572,44 +1574,136 @@ class Map:
             x = index_x_by_index[tile_index]
             y = index_y_by_index[tile_index]
             tile_environment = tile.environment
-            tile_is_core = tile.building.entity_type == core_entity_type
+            tile_is_core_center = False
+            if tile.building.entity_type == core_entity_type:
+                tile_is_core_center = (
+                    (own_core_center_pos is not None and x == own_core_center_pos.x and y == own_core_center_pos.y)
+                    or (
+                        enemy_core_center_pos is not None
+                        and x == enemy_core_center_pos.x
+                        and y == enemy_core_center_pos.y
+                    )
+                )
+                if not tile_is_core_center and tile.building.id is not None:
+                    tile_core_center_pos = self.ct.get_position(tile.building.id)
+                    tile_is_core_center = (
+                        tile_core_center_pos.x == x and tile_core_center_pos.y == y
+                    )
             has_known_symmetric_tile = False
 
             if rotation_possible:
+                rotation_x = width_minus_1 - x
+                rotation_y = height_minus_1 - y
                 rotation_idx = (width_minus_1 - x) * index_stride + (height_minus_1 - y)
                 rotation_tile = tiles_by_index[rotation_idx]
                 rotation_environment = rotation_tile.environment
                 if rotation_environment is not None:
                     has_known_symmetric_tile = True
+                    rotation_is_core_center = False
+                    if rotation_tile.building.entity_type == core_entity_type:
+                        rotation_is_core_center = (
+                            (
+                                own_core_center_pos is not None
+                                and rotation_x == own_core_center_pos.x
+                                and rotation_y == own_core_center_pos.y
+                            )
+                            or (
+                                enemy_core_center_pos is not None
+                                and rotation_x == enemy_core_center_pos.x
+                                and rotation_y == enemy_core_center_pos.y
+                            )
+                        )
+                        if (
+                            not rotation_is_core_center
+                            and rotation_tile.building.id is not None
+                        ):
+                            rotation_core_center_pos = self.ct.get_position(
+                                rotation_tile.building.id
+                            )
+                            rotation_is_core_center = (
+                                rotation_core_center_pos.x == rotation_x
+                                and rotation_core_center_pos.y == rotation_y
+                            )
                     if tile_environment != rotation_environment or (
-                        tile_is_core
-                        != (rotation_tile.building.entity_type == core_entity_type)
+                        tile_is_core_center != rotation_is_core_center
                     ):
                         rotation_possible = False
                         possible_count -= 1
 
             if mirror_x_possible:
+                mirror_x_x = x
+                mirror_x_y = height_minus_1 - y
                 mirror_x_idx = x * index_stride + (height_minus_1 - y)
                 mirror_x_tile = tiles_by_index[mirror_x_idx]
                 mirror_x_environment = mirror_x_tile.environment
                 if mirror_x_environment is not None:
                     has_known_symmetric_tile = True
+                    mirror_x_is_core_center = False
+                    if mirror_x_tile.building.entity_type == core_entity_type:
+                        mirror_x_is_core_center = (
+                            (
+                                own_core_center_pos is not None
+                                and mirror_x_x == own_core_center_pos.x
+                                and mirror_x_y == own_core_center_pos.y
+                            )
+                            or (
+                                enemy_core_center_pos is not None
+                                and mirror_x_x == enemy_core_center_pos.x
+                                and mirror_x_y == enemy_core_center_pos.y
+                            )
+                        )
+                        if (
+                            not mirror_x_is_core_center
+                            and mirror_x_tile.building.id is not None
+                        ):
+                            mirror_x_core_center_pos = self.ct.get_position(
+                                mirror_x_tile.building.id
+                            )
+                            mirror_x_is_core_center = (
+                                mirror_x_core_center_pos.x == mirror_x_x
+                                and mirror_x_core_center_pos.y == mirror_x_y
+                            )
                     if tile_environment != mirror_x_environment or (
-                        tile_is_core
-                        != (mirror_x_tile.building.entity_type == core_entity_type)
+                        tile_is_core_center != mirror_x_is_core_center
                     ):
                         mirror_x_possible = False
                         possible_count -= 1
 
             if mirror_y_possible:
+                mirror_y_x = width_minus_1 - x
+                mirror_y_y = y
                 mirror_y_idx = (width_minus_1 - x) * index_stride + y
                 mirror_y_tile = tiles_by_index[mirror_y_idx]
                 mirror_y_environment = mirror_y_tile.environment
                 if mirror_y_environment is not None:
                     has_known_symmetric_tile = True
+                    mirror_y_is_core_center = False
+                    if mirror_y_tile.building.entity_type == core_entity_type:
+                        mirror_y_is_core_center = (
+                            (
+                                own_core_center_pos is not None
+                                and mirror_y_x == own_core_center_pos.x
+                                and mirror_y_y == own_core_center_pos.y
+                            )
+                            or (
+                                enemy_core_center_pos is not None
+                                and mirror_y_x == enemy_core_center_pos.x
+                                and mirror_y_y == enemy_core_center_pos.y
+                            )
+                        )
+                        if (
+                            not mirror_y_is_core_center
+                            and mirror_y_tile.building.id is not None
+                        ):
+                            mirror_y_core_center_pos = self.ct.get_position(
+                                mirror_y_tile.building.id
+                            )
+                            mirror_y_is_core_center = (
+                                mirror_y_core_center_pos.x == mirror_y_x
+                                and mirror_y_core_center_pos.y == mirror_y_y
+                            )
                     if tile_environment != mirror_y_environment or (
-                        tile_is_core
-                        != (mirror_y_tile.building.entity_type == core_entity_type)
+                        tile_is_core_center != mirror_y_is_core_center
                     ):
                         mirror_y_possible = False
                         possible_count -= 1
