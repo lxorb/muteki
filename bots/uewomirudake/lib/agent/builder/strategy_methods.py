@@ -5074,11 +5074,12 @@ class BuilderStrategyMethodsMixin:
         remaining visible damaged allied tiles and moves toward the best one.
         Only tiles within `candidate_radius` Euclidean distance of the builder
         are considered; by default this is the builder's full vision radius.
-        Priorities are: core first, then tiles with a damaged own builder bot
-        standing on them, then by building type in this order: bridge,
+        Priorities are: critically damaged core first (at or below one third of
+        max HP), then tiles with a damaged own builder bot standing on them,
+        then by building type in this order: bridge,
         conveyor, road, foundry, harvester, armoured conveyor, splitter,
-        sentinel, gunner, launcher, breach, barrier. Ties are broken by
-        distance to self and then distance to own core.
+        sentinel, gunner, launcher, breach, barrier, noncritical core. Ties
+        are broken by distance to self and then distance to own core.
         """
         own_team = self.map.own_team
         current_pos = self.map.current_pos
@@ -5121,7 +5122,6 @@ class BuilderStrategyMethodsMixin:
             return False
 
         building_type_rank = {
-            EntityType.CORE: 0,
             EntityType.BRIDGE: 2,
             EntityType.CONVEYOR: 3,
             EntityType.ROAD: 4,
@@ -5134,6 +5134,7 @@ class BuilderStrategyMethodsMixin:
             EntityType.LAUNCHER: 11,
             EntityType.BREACH: 12,
             EntityType.BARRIER: 13,
+            EntityType.CORE: 14,
         }
 
         def has_damaged_own_builder(tile) -> bool:
@@ -5143,12 +5144,21 @@ class BuilderStrategyMethodsMixin:
                 and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
             )
 
+        def is_critical_core(tile) -> bool:
+            if (
+                tile.building.entity_type != EntityType.CORE
+                or tile.building.id is None
+                or tile.building.hp is None
+            ):
+                return False
+            return tile.building.hp * 3 <= self.ct.get_max_hp(tile.building.id)
+
         target_tile = min(
             dict.fromkeys(candidate_tiles),
             key=lambda tile: (
                 (
                     0
-                    if tile.building.entity_type == EntityType.CORE
+                    if is_critical_core(tile)
                     else 1 if has_damaged_own_builder(tile) else 2
                 ),
                 building_type_rank.get(tile.building.entity_type, 99),
