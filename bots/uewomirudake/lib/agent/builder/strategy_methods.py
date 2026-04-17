@@ -98,11 +98,10 @@ class BuilderStrategyMethodsMixin:
         return bool(
             self.u_move_to(
                 target_pos,
-                build_new_roads=False,
+                build_new_roads=True,
                 allow_conveyor_building=False,
             )
         )
-        return True
 
     def _is_visible_building_damaged(self, tile) -> bool:
         building = tile.building
