@@ -904,6 +904,54 @@ class BuilderNavigationMixin:
         if gunner_direction is not None:
             return (EntityType.GUNNER, gunner_direction)
 
+        current_round = self.map.current_round
+        enemy_team = self.map.enemy_team
+        pos_idx = self.map.u_to_index(pos)
+
+        def has_harvester_adjacent_gunner_lane() -> bool:
+            for neighbor_idx in self.map.u_iter_neighbor_indices(pos_idx):
+                neighbor_tile = self.map.tiles_by_index[neighbor_idx]
+                if neighbor_tile.last_seen_turn != current_round:
+                    continue
+
+                building = neighbor_tile.building
+                if building.id is None:
+                    if neighbor_tile.environment != Environment.EMPTY:
+                        continue
+                elif (
+                    building.team == enemy_team
+                    and building.entity_type == EntityType.ROAD
+                ):
+                    pass
+                elif (
+                    building.team == enemy_team
+                    and building.entity_type in CONVEYOR_ENTITY_TYPES
+                    and neighbor_tile.conveyor_targets_harvester
+                ):
+                    pass
+                else:
+                    continue
+
+                for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                    neighbor_tile.position
+                ):
+                    adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                    if (
+                        adjacent_tile.last_seen_turn == current_round
+                        and adjacent_tile.environment == Environment.ORE_TITANIUM
+                        and adjacent_tile.building.team == enemy_team
+                        and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    ):
+                        return True
+
+                    if self.round_stopwatch.check_overtime():
+                        break
+
+                if self.round_stopwatch.check_overtime():
+                    break
+
+            return False
+
         sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
         gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
         can_afford_sentinel = (
@@ -914,6 +962,8 @@ class BuilderNavigationMixin:
             self.map.titanium >= gunner_titanium_cost
             and self.map.axionite >= gunner_axionite_cost
         )
+        if has_harvester_adjacent_gunner_lane():
+            return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
         if not can_afford_sentinel and can_afford_gunner:
             return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
 
