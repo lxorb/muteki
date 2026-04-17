@@ -1,4 +1,5 @@
 from cambc import EntityType
+import builtins
 
 ### GAME CONSTANTS ###
 BUILDER_ACTION_RADIUS_SQ: int = 2
@@ -21,6 +22,7 @@ MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD: int = 99999
 BRIDGE_PREFERRED_DIST: int = 6
 FOUNDRY_CAN_REPLACE_BRIDGE: bool = False
 DISABLE_HARASSMENT: bool = False
+ENABLE_PRINTING: bool = False
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 HARD_AVOID_EXISTING_SUPPLY_CHAIN: bool = True
 MAX_CORE_ORE_DIRECT_DIST: int = 20
@@ -175,5 +177,23 @@ try:
             "DISABLE_HARASSMENT",
             DISABLE_HARASSMENT,
         )
+        ENABLE_PRINTING = getattr(
+            exclude,
+            "ENABLE_PRINTING",
+            ENABLE_PRINTING,
+        )
 except Exception:
     pass
+
+
+def _disabled_print(*_args, **_kwargs) -> None:
+    return None
+
+
+if not hasattr(builtins, "_cbc_original_print"):
+    builtins._cbc_original_print = builtins.print
+
+if ENABLE_PRINTING:
+    builtins.print = builtins._cbc_original_print
+else:
+    builtins.print = _disabled_print
