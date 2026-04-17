@@ -4303,7 +4303,7 @@ class BuilderStrategyMethodsMixin:
             if cached_value is not None:
                 return cached_value
 
-            sentinel_direction = self.u_get_direction_toward_enemy_core_center(tile.position)
+            sentinel_direction = self.u_get_sentinel_orientation(tile.position)
             cached_value = any(
                 self.map.u_sentinel_covers_target(
                     tile.position,
@@ -4612,7 +4612,7 @@ class BuilderStrategyMethodsMixin:
                 and self.map.axionite >= sentinel_axionite_cost
             )
             if can_afford_sentinel:
-                sentinel_direction = self.u_get_direction_toward_enemy_core_center(
+                sentinel_direction = self.u_get_sentinel_orientation(
                     target_tile.position
                 )
                 if (

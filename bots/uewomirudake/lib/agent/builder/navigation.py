@@ -695,6 +695,9 @@ class BuilderNavigationMixin:
             return Direction.NORTH
         return direction
 
+    def u_get_sentinel_orientation(self, pos: Position) -> Direction:
+        return self.u_get_direction_toward_enemy_core_center(pos)
+
     def _u_tile_is_targeted_by_supply_chain(
         self,
         tile_idx: int,
@@ -787,7 +790,7 @@ class BuilderNavigationMixin:
             not require_affordable
             or self.u_can_afford_sentinel(respect_titanium_reserve)
         ):
-            sentinel_direction = self.u_get_direction_toward_enemy_core_center(pos)
+            sentinel_direction = self.u_get_sentinel_orientation(pos)
             if self._u_sentinel_can_target_useful_harvester_adjacent_enemy(
                 pos,
                 sentinel_direction,
@@ -797,7 +800,7 @@ class BuilderNavigationMixin:
         return None
 
     def u_get_useful_sentinel_direction(self, pos: Position) -> Direction | None:
-        sentinel_direction = self.u_get_direction_toward_enemy_core_center(pos)
+        sentinel_direction = self.u_get_sentinel_orientation(pos)
         enemy_team = self.map.enemy_team
         sentinel_target_indices = self.map.u_get_attackable_target_indices(
             self.map.u_get_pos_tile(pos).index,
@@ -1162,7 +1165,7 @@ class BuilderNavigationMixin:
 
         return (
             EntityType.SENTINEL,
-            self.u_get_direction_toward_enemy_core_center(pos),
+            self.u_get_sentinel_orientation(pos),
         )
 
     def u_build_turret(
