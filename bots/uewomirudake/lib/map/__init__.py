@@ -2186,8 +2186,10 @@ class Map:
         source_pos: Position,
         direction: Direction,
         radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
+        enemy_supply_chain_feeding_own_turret_blocks: bool = True,
     ) -> list[Tile]:
         shootable_tiles: list[Tile] = []
+        current_round = self.current_round
         for target_tile in self.u_get_gunner_ray_tiles(
             source_pos,
             direction,
@@ -2200,6 +2202,15 @@ class Map:
                 target_tile.building.id is not None
                 and target_tile.building.team == self.own_team
                 and target_tile.building.entity_type != EntityType.ROAD
+            ):
+                break
+
+            if (
+                enemy_supply_chain_feeding_own_turret_blocks
+                and target_tile.last_seen_turn == current_round
+                and target_tile.building.team == self.enemy_team
+                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and self.u_enemy_supply_chain_feeds_own_turret(target_tile.index)
             ):
                 break
 

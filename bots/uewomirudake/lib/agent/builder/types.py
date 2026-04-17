@@ -71,6 +71,11 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         respect_titanium_reserve: bool = False,
     ) -> bool: ...
 
+    def u_can_afford_gunner(
+        self,
+        respect_titanium_reserve: bool = False,
+    ) -> bool: ...
+
     def u_move_with_target(
         self,
         direction: Direction,
