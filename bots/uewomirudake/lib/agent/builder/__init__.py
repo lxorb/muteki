@@ -61,6 +61,10 @@ class BuilderAgent(
         self.enemy_core_proxy_target_pos = None
         self.enemy_core_proxy_base_target_pos = None
 
+        self.awaiting_yeet_since = -1
+        self.awaiting_yeet_pos = None
+
+
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos
         core_center_pos = self.map.own_core_center_pos
@@ -96,6 +100,18 @@ class BuilderAgent(
             )
             self.map.map_json_loaded_print_pending = False
         print(f"Builder strategy: {self.u_get_strategy_name()}")
+
+        if self.awaiting_yeet_since != -1:
+            if self.awaiting_yeet_pos == self.ct.get_position():
+                if self.awaiting_yeet_since < 2:
+                    self.awaiting_yeet_since += 1
+                    print("AWAITING YEET -> SKIP")
+                    return
+                else:
+                    print("GIVING UP YEET :(")
+            self.awaiting_yeet_since = -1
+            self.awaiting_yeet_pos = None
+
 
         handled = self.u_execute_strategy()
         finished_loading_map = self.map.u_update_map()

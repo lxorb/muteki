@@ -40,7 +40,7 @@ class BuilderExecutionMixin:
         self.last_turn_completed = False
 
         # PROVISORISCH
-        if self.strategy == HARASSMENT_STRATEGY_ID and self.ct.get_current_round() % 15 == 0 and self.ct.get_global_resources()[0] > 100:
+        if False and self.strategy == HARASSMENT_STRATEGY_ID and self.ct.get_current_round() % 15 == 0 and self.ct.get_global_resources()[0] > 100:
             action_radius = 2
             candidate_positions = self.ct.get_nearby_tiles(action_radius)
             pos_round = []
@@ -85,7 +85,10 @@ class BuilderExecutionMixin:
         return False
 
     def after_strategy(self):
-        self.place_marker()
+        if self.awaiting_yeet_since != -1:
+            self.place_marker_desperately()
+        else:
+            self.place_marker()
         
 
 

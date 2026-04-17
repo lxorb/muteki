@@ -21,6 +21,8 @@ from lib.agent.constants import (
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
+    LAUNCHER_BUILD_MIN_IMPROVEMENT,
+    LAUNCHER_BUILD_MIN_TITANIUM,
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST, MAGIC_PATH_LAUNCHER_TARGET_INDEX
 from lib.map.types import SupplyChainLabel
@@ -5197,8 +5199,6 @@ class BuilderStrategyMethodsMixin:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         current_pos = self.map.current_pos
 
-        print("DO I KNOW THE SYMMETRY", self.map.symmetry_mode is not None)
-        print("DO I KNOW WHERE THE ENEMY CORE IS???", self.map.enemy_core_center_pos is not None)
 
         if enemy_core_center_pos is not None:
             candidate_tiles = []
@@ -5261,6 +5261,8 @@ class BuilderStrategyMethodsMixin:
 
         move_target_pos = self.get_move_target(target_pos)
 
+        
+
         return bool(
             self.u_move_to(
                 move_target_pos,
@@ -5268,6 +5270,64 @@ class BuilderStrategyMethodsMixin:
                 respect_titanium_reserve_for_road_build=True,
             )
         )
+    
+    def lets_get_yeeted(self):
+        if self.ct.get_global_resources()[0] < LAUNCHER_BUILD_MIN_TITANIUM:
+            return False
+
+        if not self.map.current_path or len(self.map.current_path) < LAUNCHER_BUILD_MIN_IMPROVEMENT:
+            return False
+
+        current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+
+        path_index_by_tile_index = {
+            tile.index: i for i, tile in enumerate(self.map.current_path)
+        }
+
+        best_pos = None
+        potential_marker_launcher_positions = 0
+        best_improvement = LAUNCHER_BUILD_MIN_IMPROVEMENT - 1
+        for pos in self.map.u_iter_adjacent_all_positions(self.map.current_pos):
+            relevant_tile = self.map.u_get_pos_tile(pos)
+            if not self.could_place_marker_or_launcher_here(relevant_tile):
+                continue
+            potential_marker_launcher_positions += 1
+            for landing_tile in self.map.u_get_launcher_target_positions(pos):
+                if not landing_tle.is_walkable:
+                    continue
+                path_idx = path_index_by_tile_index.get(landing_tile.index)
+                if path_idx is not None and path_idx > best_improvement:
+                    best_improvement = path_idx
+                    best_pos = pos
+
+        if best_pos is None:
+            return False
+
+        if potential_marker_launcher_positions < 2:
+            return False
+        
+        if self.ct.can_build_launcher(best_pos):
+            self.ct.build_launcher(best_pos)
+            self.awaiting_yeet_since = 0
+            self.awaiting_yeet_position = self.map.current_pos
+            return True
+
+        print("COULDN'T BUILD LAUNCHER?? :()")
+        return False
+
+
+    def could_place_marker_or_launcher_here(self, tile):
+        if tile.in_own_resource_range != 0:
+            return False
+        if tile.building.id is None or tile.has_marker:
+            return True
+        if tile.building.team != self.map.own_team:
+            return False
+        if tile.building.entity_type == EntityType.ROAD:
+            return True
+        if tile.building.entity_type in CONVEYOR_ENTITY_TYPES and tile.conveyor_targets_harvester:
+            return True
+        return False
 
     def s_patrol_enemy_core(self):
         enemy_core_center_pos = self.map.enemy_core_center_pos
@@ -5382,7 +5442,22 @@ class BuilderStrategyMethodsMixin:
         print("ERROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOR: no launcher found!! wtf ? (strategy_methods.py, launcher_targeting_tile)")
         return None
 
-    def place_marker(self):
+    def place_marker_desperately(self):
+        if self.place_marker():
+            return True
+        for pos in self.map.u_iter_adjacent_all_positions(self.map.current_pos):
+            relevant_tile = self.map.u_get_pos_tile(pos)
+            if self.could_place_marker_or_launcher_here(relevant_tile):
+                if self.ct.can_destroy(pos):
+                    self.ct.destroy(pos)
+                if self.ct.can_place_marker(pos):
+                    self.ct.place_marker(pos, self.get_marker_content())
+                    return True
+        
+        return False
+    
+    def get_marker_content(self):
+        
         symmetry_type = MARKER_SYMMETRY_LIST.index(self.map.symmetry_mode)
         # 2 bits
         own_id = self.ct.get_id() & 0b111111
@@ -5409,6 +5484,13 @@ class BuilderStrategyMethodsMixin:
         result |= current_round << 8
         result |= written_index << 19
 
+        return result
+
+
+    def place_marker(self):
+
+        result = self.get_marker_content()
+
         # place a marker in the action radius where possible
         action_radius = 2
         candidate_positions = self.ct.get_nearby_tiles(action_radius)
@@ -5424,8 +5506,12 @@ class BuilderStrategyMethodsMixin:
                     pos_round.append((pos, n_current_round))
                     continue
                 self.ct.place_marker(pos, result)
-                print(self.map.symmetry_mode, symmetry_type)
-                return;
+                return True
         if pos_round:
             pos_round = sorted(pos_round, key = lambda x: x[1])
             self.ct.place_marker(pos_round[0][0], result)
+            return True
+        
+        return False
+
+
