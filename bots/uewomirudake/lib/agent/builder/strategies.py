@@ -109,7 +109,7 @@ HARASSMENT_STRATEGY = [
     (
         BuilderStrategyMethodsMixin.s_sentinel_next_to_enemy_harvester,
         True,
-        False,
+        True,
         False,
     ),
     (BuilderStrategyMethodsMixin.s_hijack_enemy_supply_chain, True, True),

@@ -3309,13 +3309,35 @@ class BuilderStrategyMethodsMixin:
         """
         Build a sentinel next to the closest visible enemy harvester on titanium.
 
-        Prefer nearby empty tiles, own roads, and optionally passable enemy tiles.
+        Prefer nearby empty tiles, own roads, and optionally passable enemy
+        roads, bridges, or regular conveyors.
         If `move_towards` is false, only act on targets already in action range.
         If `hold` is true, keep the step active once a valid build target exists
         but the team cannot yet afford the sentinel.
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        closest_enemy_builder_bot_pos = self.map.closest_enemy_builder_bot_in_vision_pos
+        enemy_builder_close_enough_for_enemy_road_attack = (
+            closest_enemy_builder_bot_pos is not None
+            and current_pos.distance_squared(closest_enemy_builder_bot_pos) <= 8
+        )
+        if (
+            enemy_builder_close_enough_for_enemy_road_attack
+            and
+            current_tile.building.team != own_team
+            and current_tile.building.entity_type == EntityType.ROAD
+            and current_tile.building.hp is not None
+            and current_tile.building.hp <= 2
+        ):
+            return bool(
+                self.u_attack_passable(
+                    current_pos,
+                    move_towards=False,
+                    destroy_condition=lambda _: True,
+                )
+            )
 
         enemy_harvesters = [
             tile
@@ -3391,6 +3413,7 @@ class BuilderStrategyMethodsMixin:
             return True
 
         tile_kind_by_pos: dict[Position, str | None] = {}
+        ignore_enemy_bridges_and_conveyors = self.map.has_enemy_bot_in_vision
 
         def get_tile_kind(pos: Position) -> str | None:
             if pos not in tile_kind_by_pos:
@@ -3411,7 +3434,23 @@ class BuilderStrategyMethodsMixin:
                     and candidate_tile.building.team != own_team
                     and candidate_tile.is_passable
                 ):
-                    tile_kind_by_pos[pos] = "enemy_passable"
+                    if (
+                        candidate_tile.building.entity_type == EntityType.ROAD
+                        and enemy_builder_close_enough_for_enemy_road_attack
+                    ):
+                        tile_kind_by_pos[pos] = "enemy_road"
+                    elif (
+                        not ignore_enemy_bridges_and_conveyors
+                        and candidate_tile.building.entity_type == EntityType.BRIDGE
+                    ):
+                        tile_kind_by_pos[pos] = "enemy_bridge"
+                    elif (
+                        not ignore_enemy_bridges_and_conveyors
+                        and candidate_tile.building.entity_type == EntityType.CONVEYOR
+                    ):
+                        tile_kind_by_pos[pos] = "enemy_conveyor"
+                    else:
+                        tile_kind_by_pos[pos] = None
                 else:
                     tile_kind_by_pos[pos] = None
             return tile_kind_by_pos[pos]
@@ -3438,7 +3477,13 @@ class BuilderStrategyMethodsMixin:
             kind = get_tile_kind(tile.position)
             if kind is None:
                 continue
-            kind_rank = 0 if kind == "empty" else 1 if kind == "own_road" else 2
+            kind_rank = {
+                "empty": 0,
+                "own_road": 1,
+                "enemy_road": 2,
+                "enemy_bridge": 3,
+                "enemy_conveyor": 4,
+            }[kind]
             key = (tile.dist_to_self, kind_rank)
             if target_key is None or key < target_key:
                 target_key = key

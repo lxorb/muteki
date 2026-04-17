@@ -231,6 +231,7 @@ class Map:
         self.enemy_team: Team | None = None
         self.current_round = -1
         self.current_pos = Position(0, 0)
+        self.turns_on_current_tile = 0
         self.titanium = 0
         self.axionite = 0
         self.compute_dist_to_self = False
@@ -429,6 +430,7 @@ class Map:
         self.frontier_expand_pending_indices: list[int] = []
         self.frontier_expand_pending_head = 0
         self.known_own_supply_link_indices: set[int] = set()
+        self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
 
         self.stopwatch = Stopwatch("Map")
 
@@ -467,11 +469,19 @@ class Map:
             self.enemy_supply_chain_feeds_own_turret_by_index,
         )
 
-        self.current_round = self.ct.get_current_round()
-        self.current_pos = self.ct.get_position()
+        next_round = self.ct.get_current_round()
+        next_pos = self.ct.get_position()
+        if next_round != self.current_round:
+            if self.current_round != -1 and next_pos == self.current_pos:
+                self.turns_on_current_tile += 1
+            else:
+                self.turns_on_current_tile = 0
+        self.current_round = next_round
+        self.current_pos = next_pos
         self.titanium, self.axionite = self.ct.get_global_resources()
 
         self.has_enemy_bot_in_vision = False
+        self.closest_enemy_builder_bot_in_vision_pos = None
         self.tiles_in_vision: list[Tile] = []
         self.newly_seen_tiles_in_vision: list[Tile] = []
         self.titanium_tiles_in_vision: list[Tile] = []
@@ -1264,6 +1274,7 @@ class Map:
 
         known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
         known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
+        closest_enemy_builder_key = None
 
         for tile in self.tiles_in_vision:
             building = tile.building
@@ -1280,6 +1291,15 @@ class Map:
 
             if tile.bot.id is not None and tile.bot.team != self.own_team:
                 self.has_enemy_bot_in_vision = True
+                if tile.bot.entity_type == EntityType.BUILDER_BOT:
+                    key = (
+                        self.current_pos.distance_squared(tile.position),
+                        tile.position.x,
+                        tile.position.y,
+                    )
+                    if closest_enemy_builder_key is None or key < closest_enemy_builder_key:
+                        closest_enemy_builder_key = key
+                        self.closest_enemy_builder_bot_in_vision_pos = tile.position
 
             if building.id is not None:
                 if building.team == self.own_team:
