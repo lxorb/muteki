@@ -990,6 +990,26 @@ class BuilderNavigationMixin:
             respect_titanium_reserve=respect_titanium_reserve,
         )
 
+    def _u_tile_is_targeted_by_titanium_supply_chain(
+        self,
+        tile_idx: int,
+    ) -> bool:
+        for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+            tile_idx,
+            _EMPTY_SOURCE_INDEX_SET,
+        ):
+            if self.map.u_supply_chain_has_titanium(source_idx, self.map.own_team):
+                return True
+
+        for source_idx in self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+            tile_idx,
+            _EMPTY_SOURCE_INDEX_SET,
+        ):
+            if self.map.u_supply_chain_has_titanium(source_idx, self.map.enemy_team):
+                return True
+
+        return False
+
     def u_get_supplier_build_plan(
         self,
         pos: Position,
@@ -2035,6 +2055,13 @@ class BuilderNavigationMixin:
             ):
                 replacement_entity_type = None
                 replacement_facing_direction = target_tile.building.direction
+                targeted_by_titanium_supply_chain = (
+                    target_tile.building.entity_type
+                    in {EntityType.GUNNER, EntityType.SENTINEL}
+                    and self._u_tile_is_targeted_by_titanium_supply_chain(
+                        target_tile.index
+                    )
+                )
 
                 if (
                     target_tile.building.entity_type == EntityType.CONVEYOR
@@ -2053,6 +2080,7 @@ class BuilderNavigationMixin:
                 elif (
                     target_tile.building.entity_type == EntityType.GUNNER
                     and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                    and targeted_by_titanium_supply_chain
                 ):
                     gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
                     if (
@@ -2062,6 +2090,24 @@ class BuilderNavigationMixin:
                         and replacement_facing_direction != Direction.CENTRE
                     ):
                         replacement_entity_type = EntityType.GUNNER
+                elif (
+                    target_tile.building.entity_type == EntityType.SENTINEL
+                    and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                    and targeted_by_titanium_supply_chain
+                ):
+                    replacement_facing_direction = (
+                        self._u_get_adjacent_enemy_turret_gunner_direction(pos)
+                    )
+                    if replacement_facing_direction is not None:
+                        gunner_titanium_cost, gunner_axionite_cost = (
+                            self.ct.get_gunner_cost()
+                        )
+                        if (
+                            self.map.titanium >= gunner_titanium_cost
+                            and self.map.axionite >= gunner_axionite_cost
+                            and replacement_facing_direction != Direction.CENTRE
+                        ):
+                            replacement_entity_type = EntityType.GUNNER
 
                 if (
                     replacement_entity_type is not None
