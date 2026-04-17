@@ -3507,29 +3507,15 @@ class BuilderStrategyMethodsMixin:
     def _u_tile_points_at_index(self, tile, target_idx: int) -> bool:
         return any(target_tile.index == target_idx for target_tile in tile.building.targets)
 
-    def _u_supply_tile_transports_pure_titanium(self, tile) -> bool:
+    def _u_supply_tile_transports_titanium(self, tile) -> bool:
         current_round = self.map.current_round
 
         if tile.building.entity_type == EntityType.SPLITTER:
-            return (
-                tile.building.last_titanium_onit_turn == current_round
-                and tile.building.last_raw_axionite_onit_turn != current_round
-                and tile.building.last_refined_axionite_onit_turn != current_round
-            )
+            return tile.building.last_titanium_onit_turn == current_round
 
-        return (
-            self.map.u_supply_chain_has_titanium(tile.index, self.map.enemy_team)
-            and not self.map.u_supply_chain_has_raw_axionite(
-                tile.index,
-                self.map.enemy_team,
-            )
-            and not self.map.u_supply_chain_has_refined_axionite(
-                tile.index,
-                self.map.enemy_team,
-            )
-        )
+        return self.map.u_supply_chain_has_titanium(tile.index, self.map.enemy_team)
 
-    def _u_target_has_pure_titanium_enemy_supply(self, target_idx: int) -> bool:
+    def _u_target_has_titanium_enemy_supply(self, target_idx: int) -> bool:
         current_round = self.map.current_round
         enemy_team = self.map.enemy_team
         tiles_by_index = self.map.tiles_by_index
@@ -3560,7 +3546,7 @@ class BuilderStrategyMethodsMixin:
                 checked_root_indices.add(root_idx)
 
             found_source = True
-            if not self._u_supply_tile_transports_pure_titanium(source_tile):
+            if not self._u_supply_tile_transports_titanium(source_tile):
                 return False
 
         return found_source
@@ -3828,7 +3814,7 @@ class BuilderStrategyMethodsMixin:
         """
         Block a hijackable enemy supply target by building a barrier on it.
 
-        Uses the same target selection and pure-titanium gate as
+        Uses the same target selection and titanium-presence gate as
         `s_hijack_enemy_supply_chain`, but once the tile qualifies it builds a
         barrier directly instead of considering allied supply-link builds.
         """
@@ -3841,7 +3827,7 @@ class BuilderStrategyMethodsMixin:
             self.map.titanium >= conveyor_titanium_cost
             and self.map.axionite >= conveyor_axionite_cost
         )
-        if not can_afford_conveyor or not self._u_target_has_pure_titanium_enemy_supply(
+        if not can_afford_conveyor or not self._u_target_has_titanium_enemy_supply(
             target_tile.index
         ):
             return False
@@ -3864,7 +3850,7 @@ class BuilderStrategyMethodsMixin:
         """
         Build on the closest visible enemy resource target, preferring a hijack.
 
-        When the targeted enemy supply input is carrying pure titanium, try to
+        When the targeted enemy supply input is carrying titanium, try to
         convert that target tile into an allied supply tile that feeds nearby
         turrets or downstream allied turret chains. If no hijack build works,
         return `False` instead of building a barrier.
@@ -3881,7 +3867,7 @@ class BuilderStrategyMethodsMixin:
             self.map.titanium >= conveyor_titanium_cost
             and self.map.axionite >= conveyor_axionite_cost
         )
-        if not can_afford_conveyor or not self._u_target_has_pure_titanium_enemy_supply(
+        if not can_afford_conveyor or not self._u_target_has_titanium_enemy_supply(
             target_tile.index
         ):
             return False
