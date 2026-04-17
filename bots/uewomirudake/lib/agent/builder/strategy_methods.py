@@ -858,6 +858,13 @@ class BuilderStrategyMethodsMixin:
         hold: bool = True,
         candidate_radius: float | None = None,
     ):
+        """
+        Replace a nearby non-best harvester-adjacent tile with a sentinel.
+
+        Only considers tiles next to an own harvester that currently has no
+        adjacent own turret, and only when the sentinel would have a useful
+        firing direction.
+        """
         own_team = self.map.own_team
         current_round = self.map.current_round
         current_pos = self.map.current_pos
