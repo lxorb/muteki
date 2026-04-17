@@ -2184,6 +2184,26 @@ class Map:
 
         return tiles
 
+    def u_harvester_has_adjacent_same_team_attack_turret(self, harvester_tile) -> bool:
+        harvester_team = harvester_tile.building.team
+        if harvester_team is None:
+            return False
+
+        for adjacent_idx in self.u_iter_neighbor_indices(harvester_tile.index):
+            adjacent_tile = self.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.building.team == harvester_team
+                and adjacent_tile.building.entity_type
+                in {
+                    EntityType.GUNNER,
+                    EntityType.SENTINEL,
+                    EntityType.BREACH,
+                }
+            ):
+                return True
+
+        return False
+
     def u_get_gunner_shootable_tiles(
         self,
         source_pos: Position,
@@ -2199,6 +2219,17 @@ class Map:
             radius_sq,
         ):
             if target_tile.environment == Environment.WALL:
+                break
+
+            if (
+                target_tile.building.entity_type == EntityType.HARVESTER
+                and (
+                    source_pos.distance_squared(target_tile.position) <= 2
+                    or self.u_harvester_has_adjacent_same_team_attack_turret(
+                        target_tile
+                    )
+                )
+            ):
                 break
 
             if (
