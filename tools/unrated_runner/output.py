@@ -7,7 +7,9 @@ from pathlib import Path
 RENDER_IMAGES = True
 HALF_LIFE_MINUTES = 60
 DECAY_LAMBDA = math.log(2) / (HALF_LIFE_MINUTES / 1440)  # in days^-1
-CUTOFF_HOURS: float | None = 12  # ignore games older than this; set to 0 or None to disable
+CUTOFF_HOURS: float | None = (
+    3  # ignore games older than this; set to 0 or None to disable
+)
 
 # Map win-rate color cutoffs: (threshold, background_color)
 # Applied top-down; first match wins.
@@ -232,7 +234,11 @@ def main():
     requested_rank = {name: i for i, name in enumerate(requested_order)}
     output_set = set(requested_order)
     all_teams = sorted(
-        [t for t in combined.keys() if not output_set or team_names.get(t, t) in output_set],
+        [
+            t
+            for t in combined.keys()
+            if not output_set or team_names.get(t, t) in output_set
+        ],
         key=lambda t: (
             requested_rank.get(team_names.get(t, t), len(requested_order)),
             team_names.get(t, t),
