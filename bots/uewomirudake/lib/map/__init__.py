@@ -828,6 +828,18 @@ class Map:
             return False
         return bool(self.own_supply_chain_feeds_own_turret_by_index[root])
 
+    def _u_apply_connected_harvester_resource_flags(
+        self,
+        harvester_tile: Tile,
+        root: int,
+        has_titanium_by_index: bytearray,
+        has_raw_axionite_by_index: bytearray,
+    ) -> None:
+        if harvester_tile.environment == Environment.ORE_TITANIUM:
+            has_titanium_by_index[root] = 1
+        elif harvester_tile.environment == Environment.ORE_AXIONITE:
+            has_raw_axionite_by_index[root] = 1
+
     def u_update_supply_chain_union_find_for_team(self, team: Team) -> None:
         if team == self.own_team:
             supply_links_in_vision = self.own_supply_links_in_vision
@@ -917,6 +929,12 @@ class Map:
                     continue
                 counted_harvester_component_keys.add(pair_key)
                 supply_chain_harvester_count_by_index[root] += 1
+                self._u_apply_connected_harvester_resource_flags(
+                    target_tile,
+                    root,
+                    supply_chain_has_titanium_by_index,
+                    supply_chain_has_raw_axionite_by_index,
+                )
 
             # Harvesters feed any orthogonally adjacent supplier, even when the
             # supplier does not target the harvester itself, such as a splitter
@@ -934,6 +952,12 @@ class Map:
                     continue
                 counted_harvester_component_keys.add(pair_key)
                 supply_chain_harvester_count_by_index[root] += 1
+                self._u_apply_connected_harvester_resource_flags(
+                    adjacent_tile,
+                    root,
+                    supply_chain_has_titanium_by_index,
+                    supply_chain_has_raw_axionite_by_index,
+                )
 
             if supply_chain_feeds_own_turret_by_index is not None:
                 if any(
@@ -2973,6 +2997,12 @@ class Map:
                     if pair_key not in counted_harvester_component_keys:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1
+                        self._u_apply_connected_harvester_resource_flags(
+                            target_tile,
+                            root,
+                            has_titanium_by_index,
+                            has_raw_axionite_by_index,
+                        )
 
             # Harvesters feed any orthogonally adjacent supplier, even when the
             # supplier does not target the harvester itself, such as a splitter
@@ -2989,6 +3019,12 @@ class Map:
                     if pair_key not in counted_harvester_component_keys:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1
+                        self._u_apply_connected_harvester_resource_flags(
+                            adjacent_tile,
+                            root,
+                            has_titanium_by_index,
+                            has_raw_axionite_by_index,
+                        )
 
                 if (
                     not feeds_own_turret
