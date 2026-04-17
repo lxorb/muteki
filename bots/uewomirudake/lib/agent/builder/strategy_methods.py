@@ -22,7 +22,7 @@ from lib.agent.constants import (
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
 )
-from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
+from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST, MAGIC_PATH_LAUNCHER_TARGET_INDEX
 from lib.map.types import SupplyChainLabel
 
 _ENEMY_CORE_PATROL_OFFSETS = (
@@ -5352,9 +5352,34 @@ class BuilderStrategyMethodsMixin:
         print("this is the path I am taking :D")
         for tile in self.map.current_path:
             print(tile.position, end= ", ")
-        return self.ct.get_position()
 
+        # Let's tailor the target to the next launcher we are getting to according to self.map.current_path
+        next_launcher_tile = None
+        for tile in self.map.current_path:
+            if tile.in_own_launcher_pickup_zone:
+                next_launcher_tile = self.launcher_targeting_tile(tile)
+                break
+        
+        if next_launcher_tile is None:
+            return self.map.current_path[MAGIC_PATH_LAUNCHER_TARGET_INDEX].position
 
+        return self.choose_target_tile_by_launcher_tile(next_launcher_tile).position
+
+    def choose_target_tile_by_launcher_tile(self, next_launcher_tile):
+        launcher_potential_targets = self.map.u_get_launcher_target_positions(next_launcher_tile.position)
+        launcher_potential_targets_path_overlap = [target for target in launcher_potential_targets if target in self.map.current_path and target.is_walkable]
+        if not launcher_potential_targets_path_overlap:
+            return self.ct.get_position()
+        return launcher_potential_targets_path_overlap[-1]
+
+    def launcher_targeting_tile(self, tile):
+        neighbor_indices = self.map.u_iter_cardinal_neighbor_indices(tile.index)
+        for idx in neighbor_indices:
+            neighbor = self.map.tiles_by_index[idx]
+            if neighbor.building and neighbor.building.entity_type == EntityType.LAUNCHER and neighbor.building.team == self.map.own_team:
+                return neighbor
+        print("ERROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOR: no launcher found!! wtf ? (strategy_methods.py, launcher_targeting_tile)")
+        return None
 
     def place_marker(self):
         symmetry_type = MARKER_SYMMETRY_LIST.index(self.map.symmetry_mode)
@@ -5363,6 +5388,8 @@ class BuilderStrategyMethodsMixin:
         # 6 bits
         current_round = self.ct.get_current_round()
         # 11 bits
+        print("XXXXXXXXXXXXXXXXX")
+        print("PLACE_MARKER PRINTS INCOMING")
         target_position = self.get_marker_target()
         print("LET ME MOVE TO", target_position, "PLLSSSS")
         

@@ -78,6 +78,7 @@ class Tile:
 
         self.environment: Environment | None = None
         self.is_passable: bool = False
+        self.is_walkable: bool = False
         self.building: TileBuilding = TileBuilding(
             None,
             None,
@@ -291,6 +292,7 @@ class Tile:
         self.is_passable = self._is_intrinsically_passable() and (
             self.bot.id is None or self.position == self.map.current_pos
         )
+        
 
     def u_clear_core_building_state(self, team: Team) -> None:
         if self.building.entity_type == EntityType.CORE and self.building.team == team:
@@ -344,6 +346,7 @@ class Tile:
             self.bot.id is None or self.position == self.map.current_pos
         )
 
+        self.is_walkable = self.building.entity_type in PASSABLE_TYPES or self.is_core_of(self.map.own_team)  
         if self.map.is_launcher:
             self.update_launcher_targets()
     
@@ -441,6 +444,9 @@ class Tile:
                 else []
             )
             self.update_target_zones_building()
+
+
+
         else:
             if self.building.entity_type == EntityType.GUNNER:
                 new_direction = ct.get_direction(self.building.id)
