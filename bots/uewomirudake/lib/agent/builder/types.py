@@ -33,6 +33,7 @@ class BuilderCommonSelf(Protocol):
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
+    step_off_core_attempted: bool
 
     def u_filter_tiles(
         self,
@@ -215,6 +216,8 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_turn_to_harassment(self) -> BuilderActionResult: ...
 
     def s_split_supply_sentinel(self) -> BuilderActionResult: ...
+
+    def s_step_off_core(self) -> BuilderActionResult: ...
 
     def s_move_out_of_gunner_range(self) -> BuilderActionResult: ...
 

@@ -32,6 +32,7 @@ class BuilderAgent(
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
+    step_off_core_attempted: bool
 
     def __init__(self, strategy: str = ""):
         Agent.__init__(self)
@@ -50,6 +51,7 @@ class BuilderAgent(
         self.last_built_entity_type = None
         self.enemy_core_proxy_target_pos = None
         self.enemy_core_proxy_base_target_pos = None
+        self.step_off_core_attempted = False
 
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos
