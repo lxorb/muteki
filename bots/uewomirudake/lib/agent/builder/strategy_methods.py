@@ -3292,9 +3292,15 @@ class BuilderStrategyMethodsMixin:
         """
         Destroy the closest visible own harvester or supply-link tile that
         feeds an enemy turret, or if none exists, an enemy supply-link tile.
+        As a lower-priority fallback, own supply-chain tiles that feed enemy
+        barriers, foundries, harvesters, or launchers are only considered when
+        a replacement supplier is plausible.
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
+        conveyor_titanium_cost, _ = self.ct.get_conveyor_cost()
+        bridge_titanium_cost, _ = self.ct.get_bridge_cost()
+        rebuildable_structure_candidate_by_index: dict[int, bool] = {}
 
         def infer_resource(tile) -> Environment:
             supply_chain_label = tile.own_supply_chain_label
@@ -3324,6 +3330,57 @@ class BuilderStrategyMethodsMixin:
                 for target_tile in source_tile.building.targets
             )
 
+        def points_at_enemy_rebuildable_structure(source_tile) -> bool:
+            return any(
+                target_tile.building.id is not None
+                and target_tile.building.team != own_team
+                and target_tile.building.entity_type
+                in {
+                    EntityType.BARRIER,
+                    EntityType.FOUNDRY,
+                    EntityType.HARVESTER,
+                    EntityType.LAUNCHER,
+                }
+                for target_tile in source_tile.building.targets
+            )
+
+        def can_consider_rebuildable_structure_candidate(source_tile) -> bool:
+            cached_result = rebuildable_structure_candidate_by_index.get(
+                source_tile.index
+            )
+            if cached_result is not None:
+                return cached_result
+
+            if (
+                not rebuild
+                or source_tile.building.entity_type not in SUPPLY_LINK_TYPES
+                or source_tile.own_supply_chain_label == SupplyChainLabel.NONE
+            ):
+                rebuildable_structure_candidate_by_index[source_tile.index] = False
+                return False
+
+            resource = infer_resource(source_tile)
+            conveyor_direction = self.u_best_conveyor_orientation(
+                source_tile.position,
+                resource,
+                allow_adjacent_resource_sink=False,
+            )
+            if conveyor_direction is not None:
+                result = self.map.titanium >= conveyor_titanium_cost
+                rebuildable_structure_candidate_by_index[source_tile.index] = result
+                return result
+
+            bridge_target = self.u_best_bridge_target(
+                source_tile.position,
+                resource,
+            )
+            result = (
+                bridge_target is not None
+                and self.map.titanium >= bridge_titanium_cost
+            )
+            rebuildable_structure_candidate_by_index[source_tile.index] = result
+            return result
+
         def try_build_barrier_fallback(target_pos: Position) -> bool:
             return self.u_build_at(
                 target_pos,
@@ -3335,6 +3392,7 @@ class BuilderStrategyMethodsMixin:
 
         enemy_turret_bucket = []
         enemy_supply_link_bucket = []
+        enemy_rebuildable_structure_bucket = []
         for tile in dict.fromkeys(
             self.map.own_supply_links_in_vision + self.map.own_harvesters_in_vision
         ):
@@ -3349,8 +3407,18 @@ class BuilderStrategyMethodsMixin:
                 continue
             if points_at_enemy_supply_link(tile):
                 enemy_supply_link_bucket.append(tile)
+                continue
+            if (
+                points_at_enemy_rebuildable_structure(tile)
+                and can_consider_rebuildable_structure_candidate(tile)
+            ):
+                enemy_rebuildable_structure_bucket.append(tile)
 
-        candidate_bucket = enemy_turret_bucket or enemy_supply_link_bucket
+        candidate_bucket = (
+            enemy_turret_bucket
+            or enemy_supply_link_bucket
+            or enemy_rebuildable_structure_bucket
+        )
         target_tile = min(
             candidate_bucket,
             key=lambda tile: tile.dist_to_self,
