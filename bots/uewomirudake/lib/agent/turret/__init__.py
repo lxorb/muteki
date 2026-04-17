@@ -73,6 +73,7 @@ class TurretAgent(Agent):
             print("ZZZZZZZZZZZZZZZZZZZ")
             return False
         
+        
         reachable_safe_sorted = sorted(reachable_safe, key=lambda tile: tile.position.distance_squared(target_pos))
         candidate_tile = reachable_safe_sorted[0]
         dist_diff = bot_tile.position.distance_squared(target_pos) - candidate_tile.position.distance_squared(target_pos)
