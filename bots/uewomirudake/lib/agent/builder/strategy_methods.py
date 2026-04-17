@@ -3232,6 +3232,15 @@ class BuilderStrategyMethodsMixin:
                 for target_tile in source_tile.building.targets
             )
 
+        def try_build_barrier_fallback(target_pos: Position) -> bool:
+            return self.u_build_at(
+                target_pos,
+                EntityType.BARRIER,
+                hold=False,
+                move_towards=False,
+                attack_enemy_passable=False,
+            )
+
         enemy_turret_bucket = []
         enemy_supply_link_bucket = []
         for tile in dict.fromkeys(
@@ -3272,6 +3281,8 @@ class BuilderStrategyMethodsMixin:
                     target_pos,
                     resource,
                 )
+                if supplier_type is None or supplier_target is None:
+                    return try_build_barrier_fallback(target_pos)
                 if supplier_type in CONVEYOR_ENTITY_TYPES:
                     if self.u_build_at(
                         target_pos,
@@ -3283,6 +3294,12 @@ class BuilderStrategyMethodsMixin:
                     ):
                         return True
                 elif supplier_type == EntityType.BRIDGE:
+                    bridge_titanium_cost, bridge_axionite_cost = self.ct.get_bridge_cost()
+                    if (
+                        self.map.titanium < bridge_titanium_cost
+                        or self.map.axionite < bridge_axionite_cost
+                    ):
+                        return try_build_barrier_fallback(target_pos)
                     if self.u_build_at(
                         target_pos,
                         supplier_type,
@@ -3292,6 +3309,8 @@ class BuilderStrategyMethodsMixin:
                         target_pos=supplier_target,
                     ):
                         return True
+                else:
+                    return try_build_barrier_fallback(target_pos)
 
             return False
         if move_towards and self.u_move_to(target_pos):
