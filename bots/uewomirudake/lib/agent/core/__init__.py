@@ -12,7 +12,9 @@ from lib.agent.builder.strategies import (
 from lib.agent.constants import (
     AXIONITE_TO_TITANIUM_CONVERSION_MIN_ARMOURED_CONVEYORS,
     AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM,
+    CORE_DEFENDER_STRATEGY_ID,
     DISABLE_HARASSMENT,
+    ENABLE_AXIONITE_TO_TITANIUM_CONVERSION,
     HARASSMENT_STRATEGY_ID,
     SURRENDER_AT_TURN,
 )
@@ -40,16 +42,46 @@ class CoreAgent(Agent):
         self.spawning_order_pos = 0
         self.further_spawn_count = 0
         self.further_spawn_rotation_pos = 0
+        self.core_defender_requested = False
+        self.core_defender_spawned = False
 
     def u_handler(self):
         if self.ct.get_current_round() >= SURRENDER_AT_TURN:
             self.ct.resign()
             return True
         self.u_convert_axionite_if_low_on_titanium()
+        self.u_request_core_defender_on_first_enemy_builder_seen()
+        self.u_spawn_core_defender()
         self.u_spawn_initial_bb()
         self.u_spawn_further_bb()
 
+    def u_request_core_defender_on_first_enemy_builder_seen(self) -> bool:
+        if self.core_defender_requested or self.core_defender_spawned:
+            return False
+
+        for tile in self.map.tiles_in_vision:
+            if (
+                tile.bot.id is not None
+                and tile.bot.team != self.map.own_team
+                and tile.bot.entity_type == EntityType.BUILDER_BOT
+            ):
+                self.core_defender_requested = True
+                return True
+
+        return False
+
+    def u_spawn_core_defender(self) -> bool:
+        if not self.core_defender_requested or self.core_defender_spawned:
+            return False
+        if not self.u_spawn_builder(CORE_DEFENDER_STRATEGY_ID):
+            return False
+
+        self.core_defender_spawned = True
+        return True
+
     def u_convert_axionite_if_low_on_titanium(self) -> bool:
+        if not ENABLE_AXIONITE_TO_TITANIUM_CONVERSION:
+            return False
         if self.map.titanium >= AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM:
             return False
         _, armoured_conveyor_axionite_cost = getattr(

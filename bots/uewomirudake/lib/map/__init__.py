@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from enum import Enum
 from heapq import heappop, heappush
 import json
+import math
 import marshal
 from pathlib import Path
 import sys
@@ -283,6 +284,9 @@ class Map:
         self.own_supply_link_source_indices_by_target_index_in_vision: dict[
             int, set[int]
         ] = {}
+        self.enemy_supply_link_source_indices_by_target_index_in_vision: dict[
+            int, set[int]
+        ] = {}
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_supply_chain_parent_by_index = array(
@@ -313,6 +317,12 @@ class Map:
         self.enemy_supply_chain_resource_item_count_by_index = (
             array("H", [0]) * self.INITIAL_MAP_SIZE
         )
+        self.own_supply_chain_max_euclidean_dist_to_self_by_index = (
+            array("f", [0.0]) * self.INITIAL_MAP_SIZE
+        )
+        self.enemy_supply_chain_max_euclidean_dist_to_self_by_index = (
+            array("f", [0.0]) * self.INITIAL_MAP_SIZE
+        )
         self.own_supply_chain_has_titanium_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
@@ -326,6 +336,9 @@ class Map:
             self.INITIAL_MAP_SIZE
         )
         self.own_supply_chain_has_refined_axionite_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_supply_chain_feeds_own_turret_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
         self.enemy_supply_chain_has_refined_axionite_by_index = bytearray(
@@ -448,9 +461,11 @@ class Map:
             self.own_supply_chain_tile_count_by_index,
             self.own_supply_chain_harvester_count_by_index,
             self.own_supply_chain_resource_item_count_by_index,
+            self.own_supply_chain_max_euclidean_dist_to_self_by_index,
             self.own_supply_chain_has_titanium_by_index,
             self.own_supply_chain_has_raw_axionite_by_index,
             self.own_supply_chain_has_refined_axionite_by_index,
+            self.own_supply_chain_feeds_own_turret_by_index,
         )
         self._reset_supply_chain_union_find_arrays(
             self.enemy_supply_chain_touched_indices,
@@ -460,6 +475,7 @@ class Map:
             self.enemy_supply_chain_tile_count_by_index,
             self.enemy_supply_chain_harvester_count_by_index,
             self.enemy_supply_chain_resource_item_count_by_index,
+            self.enemy_supply_chain_max_euclidean_dist_to_self_by_index,
             self.enemy_supply_chain_has_titanium_by_index,
             self.enemy_supply_chain_has_raw_axionite_by_index,
             self.enemy_supply_chain_has_refined_axionite_by_index,
@@ -493,6 +509,7 @@ class Map:
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
         self.own_supply_link_source_indices_by_target_index_in_vision = {}
+        self.enemy_supply_link_source_indices_by_target_index_in_vision = {}
         self.frontier_expand_newly_seen_indices = []
 
     def _reset_supply_chain_union_find_arrays(
@@ -504,6 +521,7 @@ class Map:
         tile_count_by_index,
         harvester_count_by_index,
         resource_item_count_by_index,
+        max_euclidean_dist_to_self_by_index,
         has_titanium_by_index: bytearray,
         has_raw_axionite_by_index: bytearray,
         has_refined_axionite_by_index: bytearray,
@@ -516,6 +534,7 @@ class Map:
             tile_count_by_index[idx] = 0
             harvester_count_by_index[idx] = 0
             resource_item_count_by_index[idx] = 0
+            max_euclidean_dist_to_self_by_index[idx] = 0.0
             has_titanium_by_index[idx] = 0
             has_raw_axionite_by_index[idx] = 0
             has_refined_axionite_by_index[idx] = 0
@@ -532,10 +551,11 @@ class Map:
                 self.own_supply_chain_tile_count_by_index,
                 self.own_supply_chain_harvester_count_by_index,
                 self.own_supply_chain_resource_item_count_by_index,
+                self.own_supply_chain_max_euclidean_dist_to_self_by_index,
                 self.own_supply_chain_has_titanium_by_index,
                 self.own_supply_chain_has_raw_axionite_by_index,
                 self.own_supply_chain_has_refined_axionite_by_index,
-                None,
+                self.own_supply_chain_feeds_own_turret_by_index,
                 self.own_supply_chain_touched_indices,
             )
         return (
@@ -545,12 +565,18 @@ class Map:
             self.enemy_supply_chain_tile_count_by_index,
             self.enemy_supply_chain_harvester_count_by_index,
             self.enemy_supply_chain_resource_item_count_by_index,
+            self.enemy_supply_chain_max_euclidean_dist_to_self_by_index,
             self.enemy_supply_chain_has_titanium_by_index,
             self.enemy_supply_chain_has_raw_axionite_by_index,
             self.enemy_supply_chain_has_refined_axionite_by_index,
             self.enemy_supply_chain_feeds_own_turret_by_index,
             self.enemy_supply_chain_touched_indices,
         )
+
+    def _u_get_euclidean_dist_to_self_by_index(self, idx: int) -> float:
+        dx = self.index_x_by_index[idx] - self.current_pos.x
+        dy = self.index_y_by_index[idx] - self.current_pos.y
+        return math.hypot(dx, dy)
 
     def _activate_supply_chain_index(self, idx: int, team: Team) -> None:
         (
@@ -560,6 +586,7 @@ class Map:
             tile_count_by_index,
             harvester_count_by_index,
             resource_item_count_by_index,
+            max_euclidean_dist_to_self_by_index,
             has_titanium_by_index,
             has_raw_axionite_by_index,
             has_refined_axionite_by_index,
@@ -574,6 +601,9 @@ class Map:
         tile_count_by_index[idx] = 1
         harvester_count_by_index[idx] = 0
         resource_item_count_by_index[idx] = 0
+        max_euclidean_dist_to_self_by_index[idx] = (
+            self._u_get_euclidean_dist_to_self_by_index(idx)
+        )
         has_titanium_by_index[idx] = 0
         has_raw_axionite_by_index[idx] = 0
         has_refined_axionite_by_index[idx] = 0
@@ -593,6 +623,7 @@ class Map:
             _tile_count_by_index,
             _harvester_count_by_index,
             _resource_item_count_by_index,
+            _max_euclidean_dist_to_self_by_index,
             _has_titanium_by_index,
             _has_raw_axionite_by_index,
             _has_refined_axionite_by_index,
@@ -633,6 +664,7 @@ class Map:
             tile_count_by_index,
             harvester_count_by_index,
             resource_item_count_by_index,
+            max_euclidean_dist_to_self_by_index,
             has_titanium_by_index,
             has_raw_axionite_by_index,
             has_refined_axionite_by_index,
@@ -649,6 +681,10 @@ class Map:
         resource_item_count_by_index[first_root] += resource_item_count_by_index[
             second_root
         ]
+        max_euclidean_dist_to_self_by_index[first_root] = max(
+            max_euclidean_dist_to_self_by_index[first_root],
+            max_euclidean_dist_to_self_by_index[second_root],
+        )
         has_titanium_by_index[first_root] |= has_titanium_by_index[second_root]
         has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[
             second_root
@@ -705,6 +741,44 @@ class Map:
             return self.own_supply_chain_resource_item_count_by_index[root]
         return self.enemy_supply_chain_resource_item_count_by_index[root]
 
+    def u_get_supply_chain_max_euclidean_dist_to_self_by_index(
+        self,
+        idx: int,
+        team: Team,
+    ) -> float:
+        root = self.u_find_supply_chain_root_by_index(idx, team)
+        if root is None:
+            return math.inf
+        if team == self.own_team:
+            return self.own_supply_chain_max_euclidean_dist_to_self_by_index[root]
+        return self.enemy_supply_chain_max_euclidean_dist_to_self_by_index[root]
+
+    def u_supply_chain_is_continuable(
+        self,
+        idx: int,
+        team: Team,
+    ) -> bool:
+        return (
+            self.u_get_supply_chain_resource_item_count_by_index(idx, team) > 0
+            or self.u_get_supply_chain_harvester_count_by_index(idx, team) > 0
+        )
+
+    def u_supply_chain_is_joinable(
+        self,
+        idx: int,
+        team: Team,
+    ) -> bool:
+        root = self.u_find_supply_chain_root_by_index(idx, team)
+        return (
+            root is not None
+            and self.u_get_supply_chain_harvester_count_by_index(idx, team) < 4
+            and self.u_get_supply_chain_max_euclidean_dist_to_self_by_index(
+                idx,
+                team,
+            )
+            <= 3.0
+        )
+
     def u_supply_chain_has_titanium(
         self,
         idx: int,
@@ -750,6 +824,15 @@ class Map:
             return False
         return bool(self.enemy_supply_chain_feeds_own_turret_by_index[root])
 
+    def u_own_supply_chain_feeds_own_turret(
+        self,
+        idx: int,
+    ) -> bool:
+        root = self.u_find_supply_chain_root_by_index(idx, self.own_team)
+        if root is None:
+            return False
+        return bool(self.own_supply_chain_feeds_own_turret_by_index[root])
+
     def u_update_supply_chain_union_find_for_team(self, team: Team) -> None:
         if team == self.own_team:
             supply_links_in_vision = self.own_supply_links_in_vision
@@ -768,7 +851,9 @@ class Map:
             supply_chain_has_refined_axionite_by_index = (
                 self.own_supply_chain_has_refined_axionite_by_index
             )
-            supply_chain_feeds_own_turret_by_index = None
+            supply_chain_feeds_own_turret_by_index = (
+                self.own_supply_chain_feeds_own_turret_by_index
+            )
         else:
             supply_links_in_vision = self.enemy_supply_links_in_vision
             supply_chain_harvester_count_by_index = (
@@ -791,21 +876,16 @@ class Map:
             )
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             self._activate_supply_chain_index(tile.index, team)
             if self.round_stopwatch.check_overtime_interval():
                 break
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             for target_tile in tile.building.targets:
                 if (
                     target_tile.last_seen_turn == self.current_round
                     and target_tile.building.team == team
                     and target_tile.building.entity_type in SUPPLY_LINK_TYPES
-                    and target_tile.building.entity_type != EntityType.SPLITTER
                 ):
                     self.u_union_supply_chain_indices(
                         tile.index,
@@ -817,8 +897,6 @@ class Map:
 
         counted_harvester_component_keys: set[int] = set()
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             root = self.u_find_supply_chain_root_by_index(tile.index, team)
             if root is None:
                 continue
@@ -840,6 +918,23 @@ class Map:
                 ):
                     continue
                 pair_key = root * self.tile_count + target_tile.index
+                if pair_key in counted_harvester_component_keys:
+                    continue
+                counted_harvester_component_keys.add(pair_key)
+                supply_chain_harvester_count_by_index[root] += 1
+
+            # Harvesters feed any orthogonally adjacent supplier, even when the
+            # supplier does not target the harvester itself, such as a splitter
+            # facing away from it.
+            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(tile.index):
+                adjacent_tile = self.tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.last_seen_turn != self.current_round
+                    or adjacent_tile.building.team != team
+                    or adjacent_tile.building.entity_type != EntityType.HARVESTER
+                ):
+                    continue
+                pair_key = root * self.tile_count + adjacent_idx
                 if pair_key in counted_harvester_component_keys:
                     continue
                 counted_harvester_component_keys.add(pair_key)
@@ -2024,9 +2119,21 @@ class Map:
         target_pos: Position,
         radius_sq: int,
     ) -> bool:
-        return (
-            self.u_is_on_gunner_facing_ray(turret_pos, direction, target_pos)
-            and turret_pos.distance_squared(target_pos) <= radius_sq
+        if not self.u_is_in_bounds(target_pos):
+            return False
+
+        target_distance_sq = turret_pos.distance_squared(target_pos)
+        if target_distance_sq == 0 or target_distance_sq > radius_sq:
+            return False
+
+        target_index = self.u_to_index(target_pos)
+        return any(
+            tile.index == target_index
+            for tile in self.u_get_gunner_shootable_tiles(
+                turret_pos,
+                direction,
+                radius_sq,
+            )
         )
 
     def u_get_gunner_ray_tiles(
@@ -2058,27 +2165,32 @@ class Map:
 
         return tiles
 
-    def u_get_gunner_open_ray_tiles(
+    def u_get_gunner_shootable_tiles(
         self,
         source_pos: Position,
         direction: Direction,
         radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
     ) -> list[Tile]:
-        open_tiles: list[Tile] = []
+        shootable_tiles: list[Tile] = []
         for target_tile in self.u_get_gunner_ray_tiles(
             source_pos,
             direction,
             radius_sq,
         ):
+            if target_tile.environment == Environment.WALL:
+                break
+
             if (
                 target_tile.building.id is not None
                 and target_tile.building.team == self.own_team
+                and target_tile.building.entity_type != EntityType.ROAD
             ):
                 break
-            open_tiles.append(target_tile)
+
+            shootable_tiles.append(target_tile)
             if self.round_stopwatch.check_overtime_interval():
                 break
-        return open_tiles
+        return shootable_tiles
 
     def u_sentinel_covers_target(
         self,
@@ -2364,6 +2476,9 @@ class Map:
         own_supply_link_sources_by_target_index = (
             self.own_supply_link_source_indices_by_target_index_in_vision
         )
+        enemy_supply_link_sources_by_target_index = (
+            self.enemy_supply_link_source_indices_by_target_index_in_vision
+        )
 
         own_supply_targets_in_vision.clear()
         enemy_supply_targets_in_vision.clear()
@@ -2373,6 +2488,7 @@ class Map:
         own_target_indices.clear()
         enemy_target_indices.clear()
         own_supply_link_sources_by_target_index.clear()
+        enemy_supply_link_sources_by_target_index.clear()
 
         for supply_link_tile in self.own_supply_links_in_vision:
             building = supply_link_tile.building
@@ -2403,10 +2519,19 @@ class Map:
                 break
 
         for supply_link_tile in self.enemy_supply_links_in_vision:
+            supply_link_idx = supply_link_tile.index
             for target_tile in supply_link_tile.building.targets:
                 if target_tile.environment == Environment.WALL:
                     continue
-                enemy_target_indices.add(target_tile.index)
+                target_idx = target_tile.index
+                enemy_target_indices.add(target_idx)
+                source_indices = enemy_supply_link_sources_by_target_index.get(target_idx)
+                if source_indices is None:
+                    enemy_supply_link_sources_by_target_index[target_idx] = {
+                        supply_link_idx
+                    }
+                else:
+                    source_indices.add(supply_link_idx)
             if check_overtime_interval():
                 break
 
@@ -2715,14 +2840,17 @@ class Map:
             resource_item_count_by_index = (
                 self.own_supply_chain_resource_item_count_by_index
             )
+            max_euclidean_dist_to_self_by_index = (
+                self.own_supply_chain_max_euclidean_dist_to_self_by_index
+            )
             has_titanium_by_index = self.own_supply_chain_has_titanium_by_index
             has_raw_axionite_by_index = self.own_supply_chain_has_raw_axionite_by_index
             has_refined_axionite_by_index = (
                 self.own_supply_chain_has_refined_axionite_by_index
             )
-            feeds_own_turret_by_index = None
+            feeds_own_turret_by_index = self.own_supply_chain_feeds_own_turret_by_index
             touched_indices = self.own_supply_chain_touched_indices
-            is_enemy_team = False
+            turret_team = own_team
         else:
             parent_by_index = self.enemy_supply_chain_parent_by_index
             size_by_index = self.enemy_supply_chain_size_by_index
@@ -2731,6 +2859,9 @@ class Map:
             harvester_count_by_index = self.enemy_supply_chain_harvester_count_by_index
             resource_item_count_by_index = (
                 self.enemy_supply_chain_resource_item_count_by_index
+            )
+            max_euclidean_dist_to_self_by_index = (
+                self.enemy_supply_chain_max_euclidean_dist_to_self_by_index
             )
             has_titanium_by_index = self.enemy_supply_chain_has_titanium_by_index
             has_raw_axionite_by_index = (
@@ -2741,7 +2872,7 @@ class Map:
             )
             feeds_own_turret_by_index = self.enemy_supply_chain_feeds_own_turret_by_index
             touched_indices = self.enemy_supply_chain_touched_indices
-            is_enemy_team = True
+            turret_team = own_team
 
         def find_root(idx: int) -> int | None:
             if not active_by_index[idx]:
@@ -2778,6 +2909,10 @@ class Map:
             resource_item_count_by_index[first_root] += resource_item_count_by_index[
                 second_root
             ]
+            max_euclidean_dist_to_self_by_index[first_root] = max(
+                max_euclidean_dist_to_self_by_index[first_root],
+                max_euclidean_dist_to_self_by_index[second_root],
+            )
             has_titanium_by_index[first_root] |= has_titanium_by_index[second_root]
             has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[
                 second_root
@@ -2792,8 +2927,6 @@ class Map:
             return first_root
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             tile_idx = tile.index
             if active_by_index[tile_idx]:
                 continue
@@ -2803,6 +2936,9 @@ class Map:
             tile_count_by_index[tile_idx] = 1
             harvester_count_by_index[tile_idx] = 0
             resource_item_count_by_index[tile_idx] = 0
+            max_euclidean_dist_to_self_by_index[tile_idx] = (
+                self._u_get_euclidean_dist_to_self_by_index(tile_idx)
+            )
             has_titanium_by_index[tile_idx] = 0
             has_raw_axionite_by_index[tile_idx] = 0
             has_refined_axionite_by_index[tile_idx] = 0
@@ -2813,8 +2949,6 @@ class Map:
                 break
 
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
             tile_idx = tile.index
             for target_tile in tile.building.targets:
                 target_building = target_tile.building
@@ -2822,7 +2956,6 @@ class Map:
                     target_tile.last_seen_turn == current_round
                     and target_building.team == team
                     and target_building.entity_type in SUPPLY_LINK_TYPES
-                    and target_building.entity_type != EntityType.SPLITTER
                 ):
                     union_indices(tile_idx, target_tile.index)
             if check_overtime_interval():
@@ -2830,10 +2963,8 @@ class Map:
 
         counted_harvester_component_keys: set[int] = set()
         for tile in supply_links_in_vision:
-            if tile.building.entity_type == EntityType.SPLITTER:
-                continue
-
-            root = find_root(tile.index)
+            tile_idx = tile.index
+            root = find_root(tile_idx)
             if root is None:
                 continue
 
@@ -2860,11 +2991,26 @@ class Map:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1
 
+            # Harvesters feed any orthogonally adjacent supplier, even when the
+            # supplier does not target the harvester itself, such as a splitter
+            # facing away from it.
+            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(tile_idx):
+                adjacent_tile = self.tiles_by_index[adjacent_idx]
+                adjacent_building = adjacent_tile.building
                 if (
-                    is_enemy_team
-                    and not feeds_own_turret
+                    adjacent_tile.last_seen_turn == current_round
+                    and adjacent_building.team == team
+                    and adjacent_building.entity_type == EntityType.HARVESTER
+                ):
+                    pair_key = root * tile_count + adjacent_idx
+                    if pair_key not in counted_harvester_component_keys:
+                        counted_harvester_component_keys.add(pair_key)
+                        harvester_count_by_index[root] += 1
+
+                if (
+                    not feeds_own_turret
                     and target_tile.last_seen_turn == current_round
-                    and target_building.team == own_team
+                    and target_building.team == turret_team
                     and target_building.entity_type in own_turret_types
                 ):
                     feeds_own_turret = True

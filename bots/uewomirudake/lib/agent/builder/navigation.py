@@ -5,6 +5,7 @@ from collections.abc import Callable
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
+    ATTACK_TURRET_TYPES,
     ATTACK_TURRET_FEEDER_TYPES,
     BUILD_ACTION_MIN_TITANIUM_BASE,
     BRIDGE_PREFERRED_DIST,
@@ -13,9 +14,11 @@ from lib.agent.constants import (
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     DIRECTIONAL_BUILDING_TYPES,
     ENEMY_TURRET_TYPES,
+    HARASSMENT_STRATEGY_ID,
     HARD_AVOID_EXISTING_SUPPLY_CHAIN,
     MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD,
     NONDIRECTIONAL_BUILDING_TYPES,
+    REPLACE_ATTACKED_CONVEYOR_MAX_HP,
 )
 from lib.map.constants import INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
@@ -56,6 +59,15 @@ class BuilderNavigationMixin:
         return (
             self.map.titanium - titanium_cost
             >= self.u_get_required_build_titanium_reserve()
+        )
+
+    def u_should_respect_titanium_reserve_for_road_build(
+        self,
+        respect_titanium_reserve_for_road_build: bool,
+    ) -> bool:
+        return (
+            respect_titanium_reserve_for_road_build
+            or self.strategy == HARASSMENT_STRATEGY_ID
         )
 
     def u_reset_bugnav_state(self) -> None:
@@ -100,6 +112,11 @@ class BuilderNavigationMixin:
             self.u_move_with_target(next_direction, target_pos)
             return True
 
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
         road_titanium_cost, _ = self.ct.get_road_cost()
         can_build_road = (
             build_new_roads
@@ -175,6 +192,11 @@ class BuilderNavigationMixin:
             return False
         if self.ct.can_move(move_direction):
             return True
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
         road_titanium_cost, _ = self.ct.get_road_cost()
         return (
             build_new_roads
@@ -224,6 +246,11 @@ class BuilderNavigationMixin:
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             self.u_reset_bugnav_state()
             return False
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
 
         target_key = (
             pos.x,
@@ -368,6 +395,11 @@ class BuilderNavigationMixin:
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             self.u_reset_bugnav_state()
             return False
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
 
         if (
             abs(current_pos.x - pos.x) + abs(current_pos.y - pos.y)
@@ -581,6 +613,39 @@ class BuilderNavigationMixin:
             return SupplyChainLabel.AXIONITE
         return SupplyChainLabel.NONE
 
+    def u_get_transport_supply_chain_policy(
+        self,
+        supply_chain_label: SupplyChainLabel,
+    ) -> tuple[bool, bool, bool]:
+        is_pure_axionite_supply_chain = supply_chain_label == SupplyChainLabel.AXIONITE
+        return (
+            not is_pure_axionite_supply_chain,
+            is_pure_axionite_supply_chain,
+            is_pure_axionite_supply_chain,
+        )
+
+    def u_get_transport_supplier_build_plan_for_supply_chain(
+        self,
+        pos: Position,
+        resource: Environment,
+        supply_chain_label: SupplyChainLabel,
+    ) -> tuple[EntityType | None, Direction | Position | None]:
+        (
+            prefer_bridge_when_conveyor_targets_existing_chain,
+            avoid_core,
+            prefer_join_existing_supply_chain,
+        ) = self.u_get_transport_supply_chain_policy(supply_chain_label)
+        return self.u_get_transport_supplier_build_plan(
+            pos,
+            resource,
+            prefer_bridge_when_conveyor_targets_existing_chain=(
+                prefer_bridge_when_conveyor_targets_existing_chain
+            ),
+            avoid_core=avoid_core,
+            prefer_join_existing_supply_chain=prefer_join_existing_supply_chain,
+            supply_chain_label=supply_chain_label,
+        )
+
     def u_supply_chain_targets_core(self, resource: Environment) -> bool:
         return True
 
@@ -597,7 +662,7 @@ class BuilderNavigationMixin:
             and self.map.axionite >= sentinel_axionite_cost
         )
 
-    def u_get_sentinel_orientation(self, pos: Position) -> Direction:
+    def u_get_direction_toward_enemy_core_center(self, pos: Position) -> Direction:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is None and self.map.enemy_core_center_pos_candidates:
             enemy_core_center_pos = min(
@@ -618,7 +683,7 @@ class BuilderNavigationMixin:
         return direction
 
     def u_get_useful_sentinel_direction(self, pos: Position) -> Direction | None:
-        sentinel_direction = self.u_get_sentinel_orientation(pos)
+        sentinel_direction = self.u_get_direction_toward_enemy_core_center(pos)
         enemy_team = self.map.enemy_team
         sentinel_target_indices = self.map.u_get_attackable_target_indices(
             self.map.u_get_pos_tile(pos).index,
@@ -694,7 +759,7 @@ class BuilderNavigationMixin:
             visible_enemy_buildings = 0
             can_target_enemy_core = False
 
-            for target_tile in self.map.u_get_gunner_open_ray_tiles(pos, direction):
+            for target_tile in self.map.u_get_gunner_shootable_tiles(pos, direction):
                 if any(
                     core_tile.position == target_tile.position
                     for core_tile in enemy_core_tiles
@@ -776,6 +841,10 @@ class BuilderNavigationMixin:
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
+        supply_chain_label: SupplyChainLabel = SupplyChainLabel.NONE,
     ) -> tuple[EntityType | None, Direction | Position | None]:
         """
         Return the normal transport-oriented supplier plan for `resource` at `pos`.
@@ -789,8 +858,15 @@ class BuilderNavigationMixin:
             pos,
             resource,
             allow_adjacent_resource_sink=False,
+            avoid_core=avoid_core,
+            prefer_join_existing_supply_chain=prefer_join_existing_supply_chain,
         )
-        bridge_target = self.u_best_bridge_target(pos, resource)
+        bridge_target = self.u_best_bridge_target(
+            pos,
+            resource,
+            avoid_core=avoid_core,
+            prefer_join_existing_supply_chain=prefer_join_existing_supply_chain,
+        )
 
         if conveyor_direction is None and bridge_target is None:
             return (None, None)
@@ -802,10 +878,18 @@ class BuilderNavigationMixin:
         source_tile = self.map.u_get_pos_tile(pos)
         conveyor_target_tile = self.map.u_get_pos_tile(pos.add(conveyor_direction))
         bridge_target_tile = self.map.u_get_pos_tile(bridge_target)
+        is_pure_axionite_supply_chain = supply_chain_label == SupplyChainLabel.AXIONITE
         conveyor_targets_existing_supply_chain = (
             conveyor_target_tile.building.entity_type in SUPPLY_LINK_TYPES
             and conveyor_target_tile.building.team == self.map.own_team
             and conveyor_target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+        )
+        conveyor_targets_joinable_supply_chain = (
+            conveyor_targets_existing_supply_chain
+            and self.map.u_supply_chain_is_joinable(
+                conveyor_target_tile.index,
+                self.map.own_team,
+            )
         )
         conveyor_targets_conveyor_feeding_harvester = (
             conveyor_target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
@@ -817,15 +901,38 @@ class BuilderNavigationMixin:
             and bridge_target_tile.building.team == self.map.own_team
             and bridge_target_tile.own_supply_chain_label != SupplyChainLabel.NONE
         )
+        conveyor_targets_titanium_supply_chain = (
+            conveyor_targets_existing_supply_chain
+            and bool(
+                conveyor_target_tile.own_supply_chain_label
+                & SupplyChainLabel.TITANIUM
+            )
+        )
+        bridge_targets_titanium_supply_chain = (
+            bridge_targets_existing_supply_chain
+            and bool(
+                bridge_target_tile.own_supply_chain_label
+                & SupplyChainLabel.TITANIUM
+            )
+        )
         if (
             conveyor_target_tile.environment in _RESOURCE_ENVIRONMENTS
             and bridge_target_tile.environment not in _RESOURCE_ENVIRONMENTS
         ):
             return (EntityType.BRIDGE, bridge_target)
         if (
+            is_pure_axionite_supply_chain
+            and bridge_targets_titanium_supply_chain
+            and not conveyor_targets_titanium_supply_chain
+        ):
+            return (EntityType.BRIDGE, bridge_target)
+        if (
             conveyor_targets_existing_supply_chain
+            and not conveyor_targets_joinable_supply_chain
             and not conveyor_targets_conveyor_feeding_harvester
             and not bridge_targets_existing_supply_chain
+            and prefer_bridge_when_conveyor_targets_existing_chain
+            and not is_pure_axionite_supply_chain
         ):
             return (EntityType.BRIDGE, bridge_target)
         bridge_dist_covered = (
@@ -841,6 +948,8 @@ class BuilderNavigationMixin:
         resource: Environment = Environment.ORE_TITANIUM,
         surround_target_pos: Position | None = None,
         allow_adjacent_resource_sink: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Direction | None:
         """
         Return the best cardinal output direction for a conveyor at this tile.
@@ -852,12 +961,36 @@ class BuilderNavigationMixin:
         source_idx = source_tile.index
         source_core_dist = source_tile.own_core_dist
         tiles_by_index = map.tiles_by_index
+        hard_avoid_existing_supply_chain = (
+            HARD_AVOID_EXISTING_SUPPLY_CHAIN
+            and not prefer_join_existing_supply_chain
+        )
         incoming_supply_sources = (
             map.own_supply_link_source_indices_by_target_index_in_vision.get(
                 source_idx,
                 _EMPTY_SOURCE_INDEX_SET,
             )
         )
+        joinable_existing_supply_chain_cache: dict[int, bool] = {}
+
+        def is_joinable_existing_supply_chain(target_idx: int, target_tile) -> bool:
+            if not (
+                target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and target_tile.building.team == own_team
+                and target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+            ):
+                return False
+
+            root_idx = map.u_get_supply_chain_id_by_index(target_idx, own_team)
+            if root_idx is None:
+                return False
+
+            is_joinable = joinable_existing_supply_chain_cache.get(root_idx)
+            if is_joinable is None:
+                is_joinable = map.u_supply_chain_is_joinable(target_idx, own_team)
+                joinable_existing_supply_chain_cache[root_idx] = is_joinable
+            return is_joinable
+
         if allow_adjacent_resource_sink:
             saw_adjacent_resource = False
             all_adjacent_resources_have_own_conveyor = True
@@ -917,7 +1050,7 @@ class BuilderNavigationMixin:
                     return surround_direction
 
         best_direction = None
-        best_key: tuple[int, int, int, int, int, int, int, int] | None = None
+        best_key: tuple[int, int, int, int, int, int, int, int, int] | None = None
         for direction in _CARDINAL_DIRECTIONS:
             neighbor_idx = map.u_get_neighbor_index_by_direction(source_idx, direction)
             if neighbor_idx is None:
@@ -934,6 +1067,8 @@ class BuilderNavigationMixin:
             elif any(target.position == pos for target in neighbor_tile.building.targets):
                 continue
             if neighbor_tile.is_core_of(own_team):
+                if avoid_core:
+                    continue
                 return direction
 
             category_rank = self.u_get_supplier_tile_category_rank(
@@ -948,13 +1083,17 @@ class BuilderNavigationMixin:
                 and neighbor_tile.building.team == own_team
                 and neighbor_tile.own_supply_chain_label != SupplyChainLabel.NONE
             )
+            is_joinable_existing_supply_chain_tile = (
+                is_existing_supply_chain_tile
+                and is_joinable_existing_supply_chain(neighbor_idx, neighbor_tile)
+            )
             neighbor_core_dist = neighbor_tile.own_core_dist
             if neighbor_core_dist > source_core_dist:
                 continue
             if (
                 neighbor_core_dist == source_core_dist
                 and (
-                    not HARD_AVOID_EXISTING_SUPPLY_CHAIN
+                    not hard_avoid_existing_supply_chain
                     or is_existing_supply_chain_tile
                 )
             ):
@@ -962,7 +1101,15 @@ class BuilderNavigationMixin:
 
             candidate_key = (
                 1 if neighbor_tile.environment in _RESOURCE_ENVIRONMENTS else 0,
-                1 if is_existing_supply_chain_tile else 0,
+                0 if is_joinable_existing_supply_chain_tile else 1,
+                (
+                    0
+                    if (
+                        is_existing_supply_chain_tile
+                        == prefer_join_existing_supply_chain
+                    )
+                    else 1
+                ),
                 1 if neighbor_core_dist == source_core_dist else 0,
                 category_rank,
                 neighbor_core_dist,
@@ -1017,6 +1164,8 @@ class BuilderNavigationMixin:
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Position | None:
         """
         Return the best bridge target tile reachable from this source tile.
@@ -1039,6 +1188,26 @@ class BuilderNavigationMixin:
                 _EMPTY_SOURCE_INDEX_SET,
             )
         )
+        joinable_existing_supply_chain_cache: dict[int, bool] = {}
+
+        def is_joinable_existing_supply_chain(target_idx: int, target_tile) -> bool:
+            if not (
+                target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and target_tile.building.team == own_team
+                and target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+            ):
+                return False
+
+            root_idx = map.u_get_supply_chain_id_by_index(target_idx, own_team)
+            if root_idx is None:
+                return False
+
+            is_joinable = joinable_existing_supply_chain_cache.get(root_idx)
+            if is_joinable is None:
+                is_joinable = map.u_supply_chain_is_joinable(target_idx, own_team)
+                joinable_existing_supply_chain_cache[root_idx] = is_joinable
+            return is_joinable
+
         best_target_pos = None
         best_target_key = None
         for dx, dy in _BRIDGE_TARGET_OFFSETS:
@@ -1065,16 +1234,29 @@ class BuilderNavigationMixin:
                 1 if target_tile.environment in _RESOURCE_ENVIRONMENTS else 0
             )
             if target_tile.is_core_of(own_team):
+                if avoid_core:
+                    continue
                 target_key = (
                     resource_penalty,
+                    0,
+                    0,
+                    0,
                     0,
                     current_pos.distance_squared(target_tile.position),
                     target_tile.position.x,
                     target_tile.position.y,
                     0,
-                    0,
                 )
             else:
+                is_existing_supply_chain_tile = (
+                    target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                    and target_tile.building.team == own_team
+                    and target_tile.own_supply_chain_label != SupplyChainLabel.NONE
+                )
+                is_joinable_existing_supply_chain_tile = (
+                    is_existing_supply_chain_tile
+                    and is_joinable_existing_supply_chain(target_idx, target_tile)
+                )
                 category_rank = self.u_get_bridge_target_category_rank(
                     target_tile,
                     resource,
@@ -1084,6 +1266,15 @@ class BuilderNavigationMixin:
                 target_key = (
                     resource_penalty,
                     1,
+                    0 if is_joinable_existing_supply_chain_tile else 1,
+                    (
+                        0
+                        if (
+                            is_existing_supply_chain_tile
+                            == prefer_join_existing_supply_chain
+                        )
+                        else 1
+                    ),
                     category_rank,
                     target_tile.own_core_dist,
                     0
@@ -1141,6 +1332,11 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         if current_pos == pos:
             return False
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
 
         print("Move to target:", pos)
 
@@ -1180,6 +1376,7 @@ class BuilderNavigationMixin:
         move_towards: bool,
         destroy_condition: Callable[[Position], bool] | None = None,
         avoid_enemy_turrets: bool = True,
+        ignore_conveyor_reserve_if_target_damaged: bool = False,
     ) -> bool:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
@@ -1198,7 +1395,15 @@ class BuilderNavigationMixin:
                     * max(0.0001, self.ct.get_scale_percent() / 100.0)
                 )
             )
-            if current_titanium - attack_titanium_cost < conveyor_titanium_cost:
+            target_is_damaged = target_tile.building.hp < self.ct.get_max_hp(
+                target_tile.building.id
+            )
+            if (
+                not (
+                    ignore_conveyor_reserve_if_target_damaged and target_is_damaged
+                )
+                and current_titanium - attack_titanium_cost < conveyor_titanium_cost
+            ):
                 return False
 
             would_destroy = (
@@ -1265,19 +1470,33 @@ class BuilderNavigationMixin:
             armoured_titanium_cost, armoured_axionite_cost = (
                 self.ct.get_armoured_conveyor_cost()
             )
+            adjacent_to_own_harvester = any(
+                adjacent_tile.building.team == self.map.own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                for adjacent_tile in (
+                    self.map.u_get_pos_tile(adjacent_pos)
+                    for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+                        pos
+                    )
+                )
+            )
+            conveyor_targets_own_turret = False
+            if facing_direction is not None and facing_direction != Direction.CENTRE:
+                conveyor_output_pos = pos.add(facing_direction)
+                if self.map.u_is_in_bounds(conveyor_output_pos):
+                    conveyor_output_tile = self.map.u_get_pos_tile(conveyor_output_pos)
+                    conveyor_targets_own_turret = (
+                        conveyor_output_tile.building.team == self.map.own_team
+                        and conveyor_output_tile.building.entity_type
+                        in ATTACK_TURRET_TYPES
+                    )
             if (
                 self.map.titanium >= armoured_titanium_cost
                 and self.map.axionite >= armoured_axionite_cost
                 and self.map.axionite - armoured_axionite_cost >= 1
-                and any(
-                    adjacent_tile.building.team == self.map.own_team
-                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
-                    for adjacent_tile in (
-                        self.map.u_get_pos_tile(adjacent_pos)
-                        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
-                            pos
-                        )
-                    )
+                and (
+                    adjacent_to_own_harvester
+                    or conveyor_targets_own_turret
                 )
             ):
                 building_type = EntityType.ARMOURED_CONVEYOR
@@ -1367,7 +1586,23 @@ class BuilderNavigationMixin:
                 and target_tile.is_passable
                 and target_tile.building.team != self.map.own_team
             )
+            adjacent_tiles = tuple(
+                self.map.u_get_pos_tile(adjacent_pos)
+                for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(pos)
+            )
+            adjacent_to_own_harvester = any(
+                adjacent_tile.building.team == self.map.own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                for adjacent_tile in adjacent_tiles
+            )
+            adjacent_to_own_titanium_harvester = any(
+                adjacent_tile.building.team == self.map.own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                and adjacent_tile.environment == Environment.ORE_TITANIUM
+                for adjacent_tile in adjacent_tiles
+            )
             conveyor_feeds_own_harvester = False
+            conveyor_feeds_own_titanium_harvester = False
             if facing_direction is not None and pos != current_pos:
                 conveyor_output_pos = pos.add(facing_direction)
                 if self.map.u_is_in_bounds(conveyor_output_pos):
@@ -1377,23 +1612,25 @@ class BuilderNavigationMixin:
                         and conveyor_output_tile.building.entity_type
                         == EntityType.HARVESTER
                     )
+                    conveyor_feeds_own_titanium_harvester = (
+                        conveyor_feeds_own_harvester
+                        and conveyor_output_tile.environment == Environment.ORE_TITANIUM
+                    )
             barrier_adjacent_to_own_harvester = (
                 building_type == EntityType.BARRIER
-                and any(
-                    adjacent_tile.building.team == self.map.own_team
-                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
-                    for adjacent_tile in (
-                        self.map.u_get_pos_tile(adjacent_pos)
-                        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
-                            pos
-                        )
-                    )
-                )
+                and adjacent_to_own_harvester
             )
             sentinel_substitution_candidate = (
                 conveyor_feeds_own_harvester
                 or safety_conveyor
                 or barrier_adjacent_to_own_harvester
+            )
+            sentinel_substitution_targets_titanium_harvester = (
+                conveyor_feeds_own_titanium_harvester
+                or (
+                    (safety_conveyor or barrier_adjacent_to_own_harvester)
+                    and adjacent_to_own_titanium_harvester
+                )
             )
 
             preferred_building_type = building_type
@@ -1406,6 +1643,7 @@ class BuilderNavigationMixin:
                 )
                 and pos != current_pos
                 and sentinel_substitution_candidate
+                and sentinel_substitution_targets_titanium_harvester
             ):
                 if self.u_can_afford_sentinel(respect_titanium_reserve):
                     sentinel_direction = self.u_get_useful_sentinel_direction(pos)
@@ -1592,9 +1830,66 @@ class BuilderNavigationMixin:
         pos: Position,
         move_towards: bool,
         avoid_enemy_turrets: bool = True,
+        allow_low_hp_building_replacement: bool = False,
     ) -> bool:
         current_pos = self.map.current_pos
         if current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ:
+            target_tile = self.map.u_get_pos_tile(pos)
+            if (
+                allow_low_hp_building_replacement
+                and target_tile.building.team == self.map.own_team
+                and target_tile.building.hp is not None
+            ):
+                replacement_entity_type = None
+                replacement_facing_direction = target_tile.building.direction
+
+                if (
+                    target_tile.building.entity_type == EntityType.CONVEYOR
+                    and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                ):
+                    conveyor_titanium_cost, conveyor_axionite_cost = (
+                        self.ct.get_conveyor_cost()
+                    )
+                    if (
+                        self.map.titanium >= conveyor_titanium_cost
+                        and self.map.axionite >= conveyor_axionite_cost
+                        and replacement_facing_direction is not None
+                        and replacement_facing_direction != Direction.CENTRE
+                    ):
+                        replacement_entity_type = EntityType.CONVEYOR
+                elif (
+                    target_tile.building.entity_type == EntityType.GUNNER
+                    and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                ):
+                    gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
+                    if (
+                        self.map.titanium >= gunner_titanium_cost
+                        and self.map.axionite >= gunner_axionite_cost
+                        and replacement_facing_direction is not None
+                        and replacement_facing_direction != Direction.CENTRE
+                    ):
+                        replacement_entity_type = EntityType.GUNNER
+
+                if (
+                    replacement_entity_type is not None
+                    and self.ct.can_destroy(pos)
+                ):
+                    self.ct.destroy(pos)
+                    target_tile.clear_building()
+                    can_build_method = getattr(
+                        self.ct,
+                        f"can_build_{replacement_entity_type.value}",
+                    )
+                    build_method = getattr(
+                        self.ct,
+                        f"build_{replacement_entity_type.value}",
+                    )
+                    if can_build_method(pos, replacement_facing_direction):
+                        build_method(pos, replacement_facing_direction)
+                        self.last_built_entity_type = replacement_entity_type
+                        return True
+                    return False
+
             if not self.ct.can_heal(pos):
                 return False
             self.ct.heal(pos)

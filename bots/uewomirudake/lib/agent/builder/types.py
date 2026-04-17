@@ -77,7 +77,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         target_pos: Position,
     ) -> None: ...
 
-    def u_get_sentinel_orientation(self, pos: Position) -> Direction: ...
+    def u_get_direction_toward_enemy_core_center(self, pos: Position) -> Direction: ...
 
     def u_get_useful_sentinel_direction(self, pos: Position) -> Direction | None: ...
 
@@ -93,6 +93,10 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        prefer_bridge_when_conveyor_targets_existing_chain: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
+        supply_chain_label: SupplyChainLabel = SupplyChainLabel.NONE,
     ) -> SupplierBuildPlan: ...
 
     def u_get_surround_supplier_build_plan(
@@ -107,18 +111,34 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         resource: Environment,
     ) -> SupplyChainLabel: ...
 
+    def u_get_transport_supply_chain_policy(
+        self,
+        supply_chain_label: SupplyChainLabel,
+    ) -> tuple[bool, bool, bool]: ...
+
+    def u_get_transport_supplier_build_plan_for_supply_chain(
+        self,
+        pos: Position,
+        resource: Environment,
+        supply_chain_label: SupplyChainLabel,
+    ) -> SupplierBuildPlan: ...
+
     def u_best_conveyor_orientation(
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
         surround_target_pos: Position | None = None,
         allow_adjacent_resource_sink: bool = True,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Direction | None: ...
 
     def u_best_bridge_target(
         self,
         pos: Position,
         resource: Environment = Environment.ORE_TITANIUM,
+        avoid_core: bool = False,
+        prefer_join_existing_supply_chain: bool = False,
     ) -> Position | None: ...
     def u_move_to_astar(
         self,
@@ -156,6 +176,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         move_towards: bool,
         destroy_condition: Callable[[Position], bool] | None = None,
         avoid_enemy_turrets: bool = True,
+        ignore_conveyor_reserve_if_target_damaged: bool = False,
     ) -> bool: ...
 
     def u_build_at(
@@ -179,6 +200,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         pos: Position,
         move_towards: bool,
         avoid_enemy_turrets: bool = True,
+        allow_low_hp_building_replacement: bool = False,
     ) -> bool: ...
 
 
@@ -269,7 +291,10 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         enforce_safe: bool = False,
     ) -> BuilderActionResult: ...
 
-    def s_frontier_expand(self) -> BuilderActionResult: ...
+    def s_frontier_expand(
+        self,
+        min_titanium: int = 0,
+    ) -> BuilderActionResult: ...
 
     def s_fix_conveyor(
         self,
@@ -296,6 +321,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         hold: bool = False,
     ) -> BuilderActionResult: ...
 
+    def s_hijack_enemy_supply_chain(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ) -> BuilderActionResult: ...
+
     def s_block_enemy_supply_chain(
         self,
         move_towards: bool = True,
@@ -312,6 +343,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_attack_enemy_harvester_supply_link(
         self,
         move_towards: bool = True,
+        require_no_enemy_bbs_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_attack_key_enemy_supply_chain(
@@ -320,10 +352,11 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         wait_if_enemy_builder_bots_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_build_enemy_supplied_sentinel(
+    def s_build_enemy_supplied_turret(
         self,
         move_towards: bool = True,
         hold: bool = True,
+        candidate_radius: float | None = None,
     ) -> BuilderActionResult: ...
 
     def s_gunner_next_to_enemy_core(
