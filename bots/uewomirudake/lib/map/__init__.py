@@ -2184,15 +2184,17 @@ class Map:
 
         return tiles
 
-    def u_harvester_has_adjacent_same_team_attack_turret(self, harvester_tile) -> bool:
-        harvester_team = harvester_tile.building.team
-        if harvester_team is None:
+    def u_enemy_titanium_harvester_has_adjacent_own_turret(self, harvester_tile) -> bool:
+        if (
+            harvester_tile.building.team != self.enemy_team
+            or harvester_tile.environment != Environment.ORE_TITANIUM
+        ):
             return False
 
         for adjacent_idx in self.u_iter_neighbor_indices(harvester_tile.index):
             adjacent_tile = self.tiles_by_index[adjacent_idx]
             if (
-                adjacent_tile.building.team == harvester_team
+                adjacent_tile.building.team == self.own_team
                 and adjacent_tile.building.entity_type
                 in {
                     EntityType.GUNNER,
@@ -2225,7 +2227,7 @@ class Map:
                 target_tile.building.entity_type == EntityType.HARVESTER
                 and (
                     source_pos.distance_squared(target_tile.position) <= 2
-                    or self.u_harvester_has_adjacent_same_team_attack_turret(
+                    or self.u_enemy_titanium_harvester_has_adjacent_own_turret(
                         target_tile
                     )
                 )

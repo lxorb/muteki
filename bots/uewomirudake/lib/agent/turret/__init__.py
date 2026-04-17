@@ -8,6 +8,7 @@ from lib.agent.constants import (
     LAUNCHER_THROWABLE_PRIORITY_RANK,
     TURRET_TARGET_PRIORITY_RANK,
 )
+from lib.map.constants import SUPPLY_LINK_TYPES
 
 
 class TurretAgent(BuilderNavigationMixin, Agent):
@@ -255,16 +256,55 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         return self.u_get_gunner_first_targetable_tile(ray_tiles, current_round)
 
     def u_gunner_should_attack_target(self, target_tile) -> bool:
+        if target_tile.bot.id is not None and target_tile.bot.team == self.map.own_team:
+            return False
+        if (
+            target_tile.bot.id is not None
+            and target_tile.bot.team != self.map.own_team
+        ):
+            return True
+        if target_tile.is_core_of(self.map.enemy_team):
+            return True
+        return self.u_gunner_should_attack_enemy_building(
+            target_tile,
+            allow_marker=True,
+        )
+
+    def u_gunner_should_attack_enemy_building(
+        self,
+        target_tile,
+        allow_marker: bool,
+    ) -> bool:
+        marker_entity_type = getattr(EntityType, "MARKER", None)
+        if (
+            target_tile.building.id is None
+            or target_tile.building.team == self.map.own_team
+        ):
+            return False
+        if (
+            not allow_marker
+            and target_tile.building.entity_type == marker_entity_type
+        ):
+            return False
+        if (
+            target_tile.bot.id is not None
+            and target_tile.bot.team == self.map.own_team
+        ):
+            return False
+        if (
+            target_tile.building.entity_type == EntityType.HARVESTER
+            and target_tile.environment == Environment.ORE_TITANIUM
+            and self.u_enemy_harvester_has_adjacent_allied_turret(target_tile)
+        ):
+            return False
+        if (
+            target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and self.map.u_enemy_supply_chain_feeds_own_turret(target_tile.index)
+        ):
+            return False
         return (
-            (
-                target_tile.bot.id is not None
-                and target_tile.bot.team != self.map.own_team
-            )
-            or target_tile.is_core_of(self.map.enemy_team)
-            or (
-                target_tile.building.id is not None
-                and target_tile.building.team != self.map.own_team
-            )
+            target_tile.building.id is not None
+            and target_tile.building.team != self.map.own_team
         )
 
     def u_gunner_should_clear_own_road(
@@ -278,17 +318,15 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         return self.u_gunner_should_clear_for_followup_target(followup_target)
 
     def u_gunner_should_clear_for_followup_target(self, target_tile) -> bool:
-        marker_entity_type = getattr(EntityType, "MARKER", None)
         return (
             (
                 target_tile.bot.id is not None
                 and target_tile.bot.team != self.map.own_team
             )
             or target_tile.is_core_of(self.map.enemy_team)
-            or (
-                target_tile.building.id is not None
-                and target_tile.building.team != self.map.own_team
-                and target_tile.building.entity_type != marker_entity_type
+            or self.u_gunner_should_attack_enemy_building(
+                target_tile,
+                allow_marker=False,
             )
         )
 
@@ -358,6 +396,16 @@ class TurretAgent(BuilderNavigationMixin, Agent):
             adjacent_tile = self.map.tiles_by_index[adjacent_idx]
             if (
                 adjacent_tile.building.team == harvester_team
+                and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                return True
+        return False
+
+    def u_enemy_harvester_has_adjacent_allied_turret(self, harvester_tile) -> bool:
+        for adjacent_idx in self.map.u_iter_neighbor_indices(harvester_tile.index):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.building.team == self.map.own_team
                 and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
             ):
                 return True
