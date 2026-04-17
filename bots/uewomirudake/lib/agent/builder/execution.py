@@ -3,7 +3,6 @@ from lib.debug import Stopwatch
 from lib.agent.constants import (
     HARASSMENT_STRATEGY_ID,
 )
-from lib.map.constants import MARKER_SYMMETRY_LIST
 from cambc import Position, EntityType
 
 

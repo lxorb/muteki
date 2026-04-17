@@ -22,7 +22,7 @@ from lib.agent.constants import (
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
 )
-from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
+from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
 from lib.map.types import SupplyChainLabel
 
 _ENEMY_CORE_PATROL_OFFSETS = (
@@ -5261,7 +5261,6 @@ class BuilderStrategyMethodsMixin:
 
         move_target_pos = self.get_move_target(target_pos)
 
-        print("LET ME MOVE TO", move_target_pos, "PLLSSSS")
         return bool(
             self.u_move_to(
                 move_target_pos,
@@ -5347,6 +5346,15 @@ class BuilderStrategyMethodsMixin:
     def get_marker_target(self):
         if self.strategy != HARASSMENT_STRATEGY_ID:
             return self.ct.get_position()
+        if not self.map.current_path:
+            print("NO PATH RN !!!")
+            return self.ct.get_position()
+        print("this is the path I am taking :D")
+        for tile in self.map.current_path:
+            print(tile.position, end= ", ")
+        return self.ct.get_position()
+
+
 
     def place_marker(self):
         symmetry_type = MARKER_SYMMETRY_LIST.index(self.map.symmetry_mode)
@@ -5356,7 +5364,7 @@ class BuilderStrategyMethodsMixin:
         current_round = self.ct.get_current_round()
         # 11 bits
         target_position = self.get_marker_target()
-        target_position = self.ct.get_position() 
+        print("LET ME MOVE TO", target_position, "PLLSSSS")
         
         target_index = target_position.y * self.map.INDEX_STRIDE + target_position.x
         print("putting on the marker that I want to move to ", target_position, ":D")
