@@ -63,6 +63,43 @@ class BuilderStrategyMethodsMixin:
             return False
         return bool(self.u_move_to(own_core_center_pos))
 
+    def u_try_step_away_from_own_core_corner(self) -> bool:
+        if self.strategy != SCAVENGER_STRATEGY_ID:
+            return False
+
+        own_core_center_pos = self.map.own_core_center_pos
+        if own_core_center_pos is None:
+            self.map.u_calc_core_center_positions()
+            own_core_center_pos = self.map.own_core_center_pos
+        if own_core_center_pos is None:
+            return False
+
+        current_pos = self.map.current_pos
+        dx = current_pos.x - own_core_center_pos.x
+        dy = current_pos.y - own_core_center_pos.y
+        if abs(dx) != 1 or abs(dy) != 1:
+            return False
+
+        candidate_positions = (
+            Position(current_pos.x + dx, current_pos.y + dy),
+            Position(current_pos.x + dx, current_pos.y),
+            Position(current_pos.x, current_pos.y + dy),
+        )
+        for target_pos in candidate_positions:
+            if not self.map.u_is_in_bounds(target_pos):
+                continue
+            move_direction = self.map.u_get_direction_between(current_pos, target_pos)
+            if (
+                move_direction is None
+                or move_direction == Direction.CENTRE
+                or not self.ct.can_move(move_direction)
+            ):
+                continue
+            self.u_move_with_target(move_direction, target_pos)
+            return True
+
+        return False
+
     def _is_visible_building_damaged(self, tile) -> bool:
         building = tile.building
         return (
@@ -2962,6 +2999,9 @@ class BuilderStrategyMethodsMixin:
         """
         if self.map.titanium < min_titanium:
             return False
+
+        if self.u_try_step_away_from_own_core_corner():
+            return True
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
 
