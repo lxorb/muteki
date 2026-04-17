@@ -5349,7 +5349,7 @@ class BuilderStrategyMethodsMixin:
         if not self.map.current_path:
             print("NO PATH RN !!!")
             return self.ct.get_position()
-        print("this is the path I am taking :D")
+        print("this is the path I am taking guuys :D")
         for tile in self.map.current_path:
             print(tile.position, end= ", ")
 
