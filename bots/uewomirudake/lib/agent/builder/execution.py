@@ -89,7 +89,7 @@ class BuilderExecutionMixin:
         # 6 bits
         current_round = self.ct.get_current_round()
         # 11 bits
-        target_position = self.map.own_core_center_pos # TODO
+        target_position = self.map.enemy_core_center_pos if self.map.enemy_core_center_pos is not None else self.ct.get_position() # TODO
         target_index = target_position.y * self.map.INDEX_STRIDE + target_position.x
         # 12 bits
 
