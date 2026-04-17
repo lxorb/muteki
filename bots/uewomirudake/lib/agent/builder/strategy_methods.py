@@ -5355,22 +5355,24 @@ class BuilderStrategyMethodsMixin:
 
         # Let's tailor the target to the next launcher we are getting to according to self.map.current_path
         next_launcher_tile = None
-        for tile in self.map.current_path:
+        for tile in self.map.current_path[1:]:
             if tile.in_own_launcher_pickup_zone:
                 next_launcher_tile = self.launcher_targeting_tile(tile)
                 break
         
         if next_launcher_tile is None:
+            print("OK SO NO LAUNCHER!!!")
             return self.map.current_path[MAGIC_PATH_LAUNCHER_TARGET_INDEX].position
 
-        return self.choose_target_tile_by_launcher_tile(next_launcher_tile).position
+        return self.choose_target_position_by_launcher_tile(next_launcher_tile)
 
-    def choose_target_tile_by_launcher_tile(self, next_launcher_tile):
+    def choose_target_position_by_launcher_tile(self, next_launcher_tile):
         launcher_potential_targets = self.map.u_get_launcher_target_positions(next_launcher_tile.position)
-        launcher_potential_targets_path_overlap = [target for target in launcher_potential_targets if target in self.map.current_path and target.is_walkable]
+        launcher_potential_targets_path_overlap = [target for target in launcher_potential_targets if target in self.map.current_path[1:] and target.is_walkable]
+        print("HERE: overlap", launcher_potential_targets_path_overlap )
         if not launcher_potential_targets_path_overlap:
             return self.ct.get_position()
-        return launcher_potential_targets_path_overlap[-1]
+        return launcher_potential_targets_path_overlap[-1].position
 
     def launcher_targeting_tile(self, tile):
         neighbor_indices = self.map.u_iter_cardinal_neighbor_indices(tile.index)

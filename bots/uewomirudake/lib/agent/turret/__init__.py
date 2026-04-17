@@ -62,6 +62,7 @@ class TurretAgent(Agent):
 
         if not bot_tile.bot.id in self.map.id_to_target_pos_round:
             print("YYYYYYYYYYYYYYYYYYY")
+            print(self.map.id_to_target_pos_round)
             return False
 
         target_pos = self.map.id_to_target_pos_round[bot_tile.bot.id][0]

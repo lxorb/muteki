@@ -125,7 +125,7 @@ surrendering early in submissions.
 import sys
 from pathlib import Path
 
-SURRENDER_AT_TURN: int = 100
+SURRENDER_AT_TURN: int = 200
 
 try:
     exclude_module_dir: str | None = None
