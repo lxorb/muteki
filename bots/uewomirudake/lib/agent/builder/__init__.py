@@ -1,4 +1,4 @@
-from cambc import Controller, Direction, EntityType, Environment, Position
+from cambc import Controller, EntityType, Environment, Position
 
 from lib.agent import Agent
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
@@ -28,11 +28,6 @@ class BuilderAgent(
     pending_harvester_target_resource: Environment | None
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
-    bugnav_target_key: tuple[object, ...] | None
-    bugnav_follow_wall: bool
-    bugnav_wall_on_left: bool
-    bugnav_best_distance_sq: int
-    bugnav_last_move_direction: Direction | None
     harvesters_built: int
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
@@ -51,11 +46,6 @@ class BuilderAgent(
         self.pending_harvester_target_resource = None
         self.enemy_core_patrol_index = 0
         self.enemy_core_checkpoint_index = -1
-        self.bugnav_target_key = None
-        self.bugnav_follow_wall = False
-        self.bugnav_wall_on_left = True
-        self.bugnav_best_distance_sq = 10**9
-        self.bugnav_last_move_direction = None
         self.harvesters_built = 0
         self.last_built_entity_type = None
         self.enemy_core_proxy_target_pos = None

@@ -16,7 +16,6 @@ from lib.agent.constants import (
     ENEMY_TURRET_TYPES,
     HARASSMENT_STRATEGY_ID,
     HARD_AVOID_EXISTING_SUPPLY_CHAIN,
-    MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD,
     NONDIRECTIONAL_BUILDING_TYPES,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
 )
@@ -69,24 +68,6 @@ class BuilderNavigationMixin:
             respect_titanium_reserve_for_road_build
             or self.strategy == HARASSMENT_STRATEGY_ID
         )
-
-    def u_reset_bugnav_state(self) -> None:
-        self.bugnav_target_key = None
-        self.bugnav_follow_wall = False
-        self.bugnav_wall_on_left = True
-        self.bugnav_best_distance_sq = INF_DIST
-        self.bugnav_last_move_direction = None
-
-    def u_get_move_target_distance_sq(
-        self,
-        current_pos: Position,
-        target_pos: Position,
-        reach_builder_action_range: bool,
-    ) -> int:
-        distance_sq = current_pos.distance_squared(target_pos)
-        if reach_builder_action_range:
-            return max(0, distance_sq - BUILDER_ACTION_RADIUS_SQ)
-        return distance_sq
 
     def u_move_target_reached(
         self,
@@ -174,214 +155,6 @@ class BuilderNavigationMixin:
             self.u_move_with_target(next_direction, target_pos)
         return True
 
-    def u_can_bugnav_step(
-        self,
-        move_direction: Direction,
-        avoid_enemy_turrets: bool,
-        build_new_roads: bool,
-        respect_titanium_reserve_for_road_build: bool,
-    ) -> bool:
-        current_idx = self.map.u_to_index(self.map.current_pos)
-        next_idx = self.map.u_get_neighbor_index_by_direction(current_idx, move_direction)
-        if next_idx is None:
-            return False
-        next_tile = self.map.tiles_by_index[next_idx]
-        if next_tile.is_core_of(self.map.enemy_team):
-            return False
-        if avoid_enemy_turrets and next_tile.is_enemy_turret_target_tile:
-            return False
-        if self.ct.can_move(move_direction):
-            return True
-        respect_titanium_reserve_for_road_build = (
-            self.u_should_respect_titanium_reserve_for_road_build(
-                respect_titanium_reserve_for_road_build
-            )
-        )
-        road_titanium_cost, _ = self.ct.get_road_cost()
-        return (
-            build_new_roads
-            and self.ct.can_build_road(next_tile.position)
-            and (
-                not respect_titanium_reserve_for_road_build
-                or self.u_can_spend_titanium_without_falling_below_reserve(
-                    road_titanium_cost
-                )
-            )
-        )
-
-    def u_get_bugnav_step_direction(
-        self,
-        start_direction: Direction,
-        wall_on_left: bool,
-        avoid_enemy_turrets: bool,
-        build_new_roads: bool,
-        respect_titanium_reserve_for_road_build: bool,
-    ) -> Direction | None:
-        direction = start_direction
-        for _ in range(8):
-            if self.u_can_bugnav_step(
-                direction,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            ):
-                return direction
-            direction = (
-                direction.rotate_right() if wall_on_left else direction.rotate_left()
-            )
-        return None
-
-    def u_move_to_bugnav(
-        self,
-        pos: Position,
-        avoid_enemy_turrets: bool = True,
-        build_new_roads: bool = True,
-        allow_conveyor_building: bool = True,
-        reach_builder_action_range: bool = False,
-        respect_titanium_reserve_for_road_build: bool = False,
-    ) -> bool:
-        current_pos = self.map.current_pos
-        if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
-            self.u_reset_bugnav_state()
-            return False
-        respect_titanium_reserve_for_road_build = (
-            self.u_should_respect_titanium_reserve_for_road_build(
-                respect_titanium_reserve_for_road_build
-            )
-        )
-
-        target_key = (
-            pos.x,
-            pos.y,
-            avoid_enemy_turrets,
-            build_new_roads,
-            allow_conveyor_building,
-            reach_builder_action_range,
-            respect_titanium_reserve_for_road_build,
-        )
-        if self.bugnav_target_key != target_key:
-            self.u_reset_bugnav_state()
-            self.bugnav_target_key = target_key
-
-        direct_direction = self.map.u_get_direction_between(current_pos, pos)
-        if direct_direction is None or direct_direction == Direction.CENTRE:
-            return False
-
-        current_distance_sq = self.u_get_move_target_distance_sq(
-            current_pos,
-            pos,
-            reach_builder_action_range,
-        )
-        if (
-            self.u_can_bugnav_step(
-                direct_direction,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            and (
-                not self.bugnav_follow_wall
-                or current_distance_sq < self.bugnav_best_distance_sq
-            )
-        ):
-            self.bugnav_follow_wall = False
-            self.bugnav_best_distance_sq = current_distance_sq
-            next_tile = self.map.u_get_pos_tile(current_pos.add(direct_direction))
-            moved = self.u_try_progress_move_step(
-                next_tile,
-                direct_direction,
-                pos,
-                build_new_roads=build_new_roads,
-                allow_conveyor_building=allow_conveyor_building,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            if moved:
-                self.bugnav_last_move_direction = direct_direction
-            return moved
-
-        if not self.bugnav_follow_wall:
-            left_direction = self.u_get_bugnav_step_direction(
-                direct_direction,
-                wall_on_left=True,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            right_direction = self.u_get_bugnav_step_direction(
-                direct_direction,
-                wall_on_left=False,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-            if left_direction is None and right_direction is None:
-                return False
-
-            def direction_key(direction: Direction | None) -> tuple[int, int, int]:
-                if direction is None:
-                    return (1, INF_DIST, 1)
-                next_pos = current_pos.add(direction)
-                return (
-                    0,
-                    self.u_get_move_target_distance_sq(
-                        next_pos,
-                        pos,
-                        reach_builder_action_range,
-                    ),
-                    0,
-                )
-
-            self.bugnav_wall_on_left = direction_key(left_direction) <= direction_key(
-                right_direction
-            )
-            self.bugnav_follow_wall = True
-            self.bugnav_best_distance_sq = current_distance_sq
-
-        follow_start_direction = self.bugnav_last_move_direction or direct_direction
-        move_direction = self.u_get_bugnav_step_direction(
-            follow_start_direction,
-            wall_on_left=self.bugnav_wall_on_left,
-            avoid_enemy_turrets=avoid_enemy_turrets,
-            build_new_roads=build_new_roads,
-            respect_titanium_reserve_for_road_build=(
-                respect_titanium_reserve_for_road_build
-            ),
-        )
-        if move_direction is None:
-            return False
-
-        next_tile = self.map.u_get_pos_tile(current_pos.add(move_direction))
-        moved = self.u_try_progress_move_step(
-            next_tile,
-            move_direction,
-            pos,
-            build_new_roads=build_new_roads,
-            allow_conveyor_building=allow_conveyor_building,
-            respect_titanium_reserve_for_road_build=(
-                respect_titanium_reserve_for_road_build
-            ),
-        )
-        if moved:
-            self.bugnav_last_move_direction = move_direction
-            next_distance_sq = self.u_get_move_target_distance_sq(
-                current_pos.add(move_direction),
-                pos,
-                reach_builder_action_range,
-            )
-            if next_distance_sq < self.bugnav_best_distance_sq:
-                self.bugnav_best_distance_sq = next_distance_sq
-        return moved
-
     def u_move_to(
         self,
         pos: Position,
@@ -393,31 +166,12 @@ class BuilderNavigationMixin:
     ) -> bool:
         current_pos = self.map.current_pos
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
-            self.u_reset_bugnav_state()
             return False
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
                 respect_titanium_reserve_for_road_build
             )
         )
-
-        if (
-            abs(current_pos.x - pos.x) + abs(current_pos.y - pos.y)
-            > MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD
-        ):
-            print("Move to target:", pos, "(bugnav)")
-            return self.u_move_to_bugnav(
-                pos,
-                avoid_enemy_turrets=avoid_enemy_turrets,
-                build_new_roads=build_new_roads,
-                allow_conveyor_building=allow_conveyor_building,
-                reach_builder_action_range=reach_builder_action_range,
-                respect_titanium_reserve_for_road_build=(
-                    respect_titanium_reserve_for_road_build
-                ),
-            )
-
-        self.u_reset_bugnav_state()
         return self.u_move_to_astar(
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,

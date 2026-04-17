@@ -29,11 +29,6 @@ class BuilderCommonSelf(Protocol):
     pending_harvester_target_resource: Environment | None
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
-    bugnav_target_key: tuple[object, ...] | None
-    bugnav_follow_wall: bool
-    bugnav_wall_on_left: bool
-    bugnav_best_distance_sq: int
-    bugnav_last_move_direction: Direction | None
     harvesters_built: int
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
@@ -163,16 +158,6 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         prefer_join_existing_supply_chain: bool = False,
     ) -> Position | None: ...
     def u_move_to_astar(
-        self,
-        pos: Position,
-        avoid_enemy_turrets: bool = True,
-        build_new_roads: bool = False,
-        allow_conveyor_building: bool = True,
-        reach_builder_action_range: bool = False,
-        respect_titanium_reserve_for_road_build: bool = False,
-    ) -> bool: ...
-
-    def u_move_to_bugnav(
         self,
         pos: Position,
         avoid_enemy_turrets: bool = True,
