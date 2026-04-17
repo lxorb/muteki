@@ -797,6 +797,199 @@ class BuilderNavigationMixin:
 
         return min(direction_scores, key=lambda item: item[0])[1]
 
+    def _u_get_adjacent_enemy_turret_gunner_direction(
+        self,
+        pos: Position,
+    ) -> Direction | None:
+        current_round = self.map.current_round
+        enemy_team = self.map.enemy_team
+        pos_tile = self.map.u_get_pos_tile(pos)
+        pos_idx = pos_tile.index
+        adjacent_enemy_turret_present = False
+
+        for adjacent_idx in self.map.u_iter_neighbor_indices(pos_idx):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.team == enemy_team
+                and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                adjacent_enemy_turret_present = True
+                break
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not adjacent_enemy_turret_present:
+            return None
+
+        feeder_directions: list[Direction] = []
+        for building_tile in self.map.own_buildings_in_vision:
+            if (
+                building_tile.building.entity_type in ATTACK_TURRET_FEEDER_TYPES
+                and any(
+                    target_tile.position == pos
+                    for target_tile in building_tile.building.targets
+                )
+            ):
+                feeder_direction = self.map.u_get_direction_between(
+                    building_tile.position,
+                    pos,
+                )
+                if feeder_direction is not None:
+                    feeder_directions.append(feeder_direction)
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        blocked_direction = (
+            feeder_directions[0] if len(feeder_directions) == 1 else None
+        )
+        candidate_directions = [
+            direction
+            for direction in Direction
+            if direction != Direction.CENTRE and direction != blocked_direction
+        ]
+        if not candidate_directions:
+            return None
+
+        direction_order = {
+            direction: idx
+            for idx, direction in enumerate(Direction)
+            if direction != Direction.CENTRE
+        }
+        build_source_indices = (
+            self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                pos_idx,
+                (),
+            )
+        )
+        direction_scores: list[tuple[tuple[int, int, int, int, int], Direction]] = []
+
+        for direction in candidate_directions:
+            best_target_key = None
+            for target_tile in self.map.u_get_gunner_shootable_tiles(pos, direction):
+                if (
+                    target_tile.last_seen_turn != current_round
+                    or target_tile.building.team != enemy_team
+                ):
+                    continue
+
+                target_type = target_tile.building.entity_type
+                if target_type not in {EntityType.GUNNER, EntityType.SENTINEL}:
+                    continue
+
+                target_source_indices = (
+                    self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                        target_tile.index,
+                        (),
+                    )
+                )
+                target_is_fed = bool(target_source_indices)
+                source_targets_own_gunner = bool(build_source_indices) and any(
+                    source_idx in build_source_indices
+                    for source_idx in target_source_indices
+                )
+
+                priority_rank = 5
+                if (
+                    target_type == EntityType.GUNNER
+                    and target_is_fed
+                    and source_targets_own_gunner
+                ):
+                    priority_rank = 0
+                elif target_type == EntityType.GUNNER and target_is_fed:
+                    priority_rank = 1
+                elif target_type == EntityType.SENTINEL and target_is_fed:
+                    priority_rank = 2
+                elif target_type == EntityType.GUNNER:
+                    priority_rank = 3
+                elif target_type == EntityType.SENTINEL:
+                    priority_rank = 4
+
+                target_hp = (
+                    target_tile.building.hp
+                    if target_tile.building.hp is not None
+                    else INF_DIST
+                )
+                target_key = (
+                    priority_rank,
+                    target_hp,
+                    pos.distance_squared(target_tile.position),
+                    target_tile.position.x,
+                    target_tile.position.y,
+                )
+                if best_target_key is None or target_key < best_target_key:
+                    best_target_key = target_key
+
+                if self.round_stopwatch.check_overtime():
+                    break
+
+            if best_target_key is None:
+                continue
+
+            direction_scores.append(
+                (
+                    (*best_target_key, direction_order[direction]),
+                    direction,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not direction_scores:
+            return self.u_get_gunner_orientation(pos)
+
+        return min(direction_scores, key=lambda item: item[0])[1]
+
+    def u_get_turret_build_plan(
+        self,
+        pos: Position,
+    ) -> tuple[EntityType, Direction]:
+        gunner_direction = self._u_get_adjacent_enemy_turret_gunner_direction(pos)
+        if gunner_direction is not None:
+            return (EntityType.GUNNER, gunner_direction)
+
+        sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
+        gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
+        can_afford_sentinel = (
+            self.map.titanium >= sentinel_titanium_cost
+            and self.map.axionite >= sentinel_axionite_cost
+        )
+        can_afford_gunner = (
+            self.map.titanium >= gunner_titanium_cost
+            and self.map.axionite >= gunner_axionite_cost
+        )
+        if not can_afford_sentinel and can_afford_gunner:
+            return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
+
+        return (
+            EntityType.SENTINEL,
+            self.u_get_direction_toward_enemy_core_center(pos),
+        )
+
+    def u_build_turret(
+        self,
+        pos: Position,
+        hold: bool,
+        move_towards: bool,
+        attack_enemy_passable: bool,
+        avoid_enemy_turrets: bool = True,
+        respect_titanium_reserve: bool = False,
+    ) -> bool:
+        building_type, facing_direction = self.u_get_turret_build_plan(pos)
+        return self.u_build_at(
+            pos,
+            building_type,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=attack_enemy_passable,
+            facing_direction=facing_direction,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            respect_titanium_reserve=respect_titanium_reserve,
+        )
+
     def u_get_supplier_build_plan(
         self,
         pos: Position,

@@ -83,6 +83,21 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction: ...
 
+    def u_get_turret_build_plan(
+        self,
+        pos: Position,
+    ) -> tuple[EntityType, Direction]: ...
+
+    def u_build_turret(
+        self,
+        pos: Position,
+        hold: bool,
+        move_towards: bool,
+        attack_enemy_passable: bool,
+        avoid_enemy_turrets: bool = True,
+        respect_titanium_reserve: bool = False,
+    ) -> bool: ...
+
     def u_get_supplier_build_plan(
         self,
         pos: Position,
@@ -314,7 +329,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         rebuild: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_sentinel_next_to_enemy_harvester(
+    def s_turret_next_to_enemy_harvester(
         self,
         move_towards: bool = True,
         attack_enemy_passable: bool = False,

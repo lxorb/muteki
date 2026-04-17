@@ -3300,20 +3300,20 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_sentinel_next_to_enemy_harvester(
+    def s_turret_next_to_enemy_harvester(
         self,
         move_towards: bool = True,
         attack_enemy_passable: bool = False,
         hold: bool = False,
     ):
         """
-        Build a sentinel next to the closest visible enemy harvester on titanium.
+        Build a turret next to the closest visible enemy harvester on titanium.
 
         Prefer nearby empty tiles, own roads, and optionally passable enemy
         roads, bridges, or regular conveyors.
         If `move_towards` is false, only act on targets already in action range.
         If `hold` is true, keep the step active once a valid build target exists
-        but the team cannot yet afford the sentinel.
+        but the team cannot yet afford the chosen turret.
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
@@ -3362,7 +3362,9 @@ class BuilderStrategyMethodsMixin:
             ):
                 return False
 
-            titanium_cost, axionite_cost = self.ct.get_sentinel_cost()
+            build_entity_type, turret_direction = self.u_get_turret_build_plan(current_pos)
+            get_cost_method = getattr(self.ct, f"get_{build_entity_type.value}_cost")
+            titanium_cost, axionite_cost = get_cost_method()
             if (
                 self.ct.get_action_cooldown() != 0
                 or self.map.titanium < titanium_cost
@@ -3370,7 +3372,6 @@ class BuilderStrategyMethodsMixin:
             ):
                 return False
 
-            sentinel_direction = self.u_get_direction_toward_enemy_core_center(current_pos)
             enemy_core_center_pos = self.map.enemy_core_center_pos
             candidate_entries: list[tuple[tuple[int, int, int, int], Direction]] = []
 
@@ -3403,9 +3404,11 @@ class BuilderStrategyMethodsMixin:
 
             _, move_direction = min(candidate_entries)
             self.u_move_with_target(move_direction, current_pos)
-            if self.ct.can_build_sentinel(current_pos, sentinel_direction):
-                self.ct.build_sentinel(current_pos, sentinel_direction)
-                self.last_built_entity_type = EntityType.SENTINEL
+            can_build_method = getattr(self.ct, f"can_build_{build_entity_type.value}")
+            build_method = getattr(self.ct, f"build_{build_entity_type.value}")
+            if can_build_method(current_pos, turret_direction):
+                build_method(current_pos, turret_direction)
+                self.last_built_entity_type = build_entity_type
                 return True
             return True
 
@@ -3492,15 +3495,12 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        sentinel_direction = self.u_get_direction_toward_enemy_core_center(target_tile.position)
         return bool(
-            self.u_build_at(
+            self.u_build_turret(
                 target_tile.position,
-                EntityType.SENTINEL,
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=attack_enemy_passable,
-                facing_direction=sentinel_direction,
             )
         )
 
