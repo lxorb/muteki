@@ -5345,10 +5345,9 @@ class BuilderStrategyMethodsMixin:
 
     def get_marker_target(self):
         if self.strategy != HARASSMENT_STRATEGY_ID:
-            return self.ct.get_position()
+            return None
         if not self.map.current_path:
-            print("NO PATH RN !!!")
-            return self.ct.get_position()
+            return None
         print("this is the path I am taking guuys :D")
         for tile in self.map.current_path:
             print(tile.position, end= ", ")
@@ -5371,7 +5370,7 @@ class BuilderStrategyMethodsMixin:
         launcher_potential_targets_path_overlap = [target for target in launcher_potential_targets if target in self.map.current_path[1:] and target.is_walkable]
         print("HERE: overlap", launcher_potential_targets_path_overlap )
         if not launcher_potential_targets_path_overlap:
-            return self.ct.get_position()
+            return None
         return launcher_potential_targets_path_overlap[-1].position
 
     def launcher_targeting_tile(self, tile):
@@ -5393,9 +5392,14 @@ class BuilderStrategyMethodsMixin:
         print("XXXXXXXXXXXXXXXXX")
         print("PLACE_MARKER PRINTS INCOMING")
         target_position = self.get_marker_target()
+        if target_position is not None:
+            written_position = target_position
+        else:
+            written_position = self.map.own_core_center_pos
+
         print("LET ME MOVE TO", target_position, "PLLSSSS")
         
-        target_index = target_position.y * self.map.INDEX_STRIDE + target_position.x
+        written_index = written_position.y * self.map.INDEX_STRIDE + written_position.x
         print("putting on the marker that I want to move to ", target_position, ":D")
         # 12 bits
 
@@ -5403,7 +5407,7 @@ class BuilderStrategyMethodsMixin:
         result |= symmetry_type
         result |= own_id << 2
         result |= current_round << 8
-        result |= target_index << 19
+        result |= written_index << 19
 
         # place a marker in the action radius where possible
         action_radius = 2

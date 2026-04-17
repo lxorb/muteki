@@ -387,8 +387,6 @@ class Tile:
                 self.map.id_to_target_pos_round[own_id] = (Position(target_x, target_y), current_round)
 
     def update_symmetry_information(self, symmetry_mode):
-        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
         self.map.symmetry_mode = symmetry_mode
         self.map.symmetry_mode_candidates = [symmetry_mode]
         self.map.enemy_core_center_pos_candidates = [
@@ -399,14 +397,11 @@ class Tile:
         remaining_positions = {pos for _, pos in self.map.enemy_core_center_pos_candidates}
         print(remaining_positions)
         if len(remaining_positions) == 1:
-            print("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
             self.map.enemy_core_center_pos = next(iter(remaining_positions))
             self.map.enemy_core_source_indices = self.map.u_set_core_source_indices(
                 self.map.enemy_team,
                 self.map.enemy_core_center_pos,
             )
-        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 
     def update_building(self, id_changed: bool) -> None:
         ct = self.map.ct

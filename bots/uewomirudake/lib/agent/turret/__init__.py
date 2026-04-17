@@ -45,6 +45,14 @@ class TurretAgent(Agent):
         
         candidate_bots = sorted(self.map.launcher_action_radius_bots, key=lambda tile: tile.bot.team != self.map.enemy_team)
 
+        if not self.map.own_core_center_pos:
+            for id, value in self.map.id_to_target_pos_round.items():
+                if self.map.tiles_by_index[value[0].y * self.map.INDEX_STRIDE + value[0].x] not in self.map.launcher_visible_tiles:
+                    print("UPDATING OWN CORE POS")
+                    self.map.own_core_center_pos = value[0]
+                    break
+
+
         for bot_tile in candidate_bots:
             if bot_tile.bot.team == self.map.enemy_team:
                 if self.launcher_handle_enemy(bot_tile): 
@@ -60,36 +68,30 @@ class TurretAgent(Agent):
             print("XXXXXXXXXXXXXXXXXXX")
             return False
 
-        if not bot_tile.bot.id & 0b111111 in self.map.id_to_target_pos_round:
+        if not (bot_tile.bot.id & 0b111111 in self.map.id_to_target_pos_round):
             print("YYYYYYYYYYYYYYYYYYY")
             print(self.map.id_to_target_pos_round)
             return False
 
-        target_pos = self.map.id_to_target_pos_round[bot_tile.bot.id & 0b111111][0]
+        written_position = self.map.id_to_target_pos_round[bot_tile.bot.id & 0b111111][0]
+        written_idx = written_position.y * self.map.INDEX_STRIDE + written_position.x
+
+        if self.map.tiles_by_index[written_idx] not in self.map.launcher_visible_tiles:
+            return False
 
         reachable_safe = [tile for tile in self.map.launcher_own_reachable if tile in self.map.launcher_safe_zone_tiles]
+        
+        target_tile = self.map.tiles_by_index[written_idx]
 
-        if not reachable_safe:
-            print("ZZZZZZZZZZZZZZZZZZZ")
+        if not reachable_safe or target_tile not in reachable_safe:
+            print("sorry, can't take you to", target_tile.position)
             return False
-        
-        
-        reachable_safe_sorted = sorted(reachable_safe, key=lambda tile: tile.position.distance_squared(target_pos))
-        candidate_tile = reachable_safe_sorted[0]
-        dist_diff = bot_tile.position.distance_squared(target_pos) - candidate_tile.position.distance_squared(target_pos)
-        print("DISTANCE DIFF", dist_diff)
-        print("target", target_pos.x, target_pos.y)
-        print(bot_tile.position.distance_squared(target_pos), candidate_tile.position.distance_squared(target_pos))
-        if dist_diff >= LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE:
-            if not self.ct.can_launch(bot_tile.position, candidate_tile.position):
-                print("ERROR: Why can't I launch???")
-                return False
-            self.ct.launch(bot_tile.position, candidate_tile.position)
-            return True
-        else:
-            print("AAAAAAAAAAAAA")
 
-        return False
+        if not self.ct.can_launch(bot_tile.position, target_tile.position):
+            print("ERROR: Why can't I launch???")
+            return False
+        self.ct.launch(bot_tile.position, target_tile.position)
+        return True
 
     def launcher_handle_enemy(self, bot_tile):
 
@@ -122,6 +124,8 @@ class TurretAgent(Agent):
         return True
     
     def yeet_enemy_away(self, bot_tile):
+        if not self.map.own_core_center_pos:
+            return False
         sorted_reachable_tiles = sorted(self.map.launcher_enemy_reachable, key = lambda tile: -tile.position.distance_squared(self.map.own_core_center_pos))
         candidate_tile = sorted_reachable_tiles[0]
         dist_diff = candidate_tile.position.distance_squared(self.map.own_core_center_pos) - bot_tile.position.distance_squared(self.map.own_core_center_pos)
