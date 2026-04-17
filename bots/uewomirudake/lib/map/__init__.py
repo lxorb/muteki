@@ -443,7 +443,7 @@ class Map:
         self.launcher_safe_zone_tiles = []
             # these lists are re-updated in EACH ROUND!
 
-        self.id_to_target_pos = {}
+        self.id_to_target_pos_round_round = {}
 
         self.stopwatch = Stopwatch("Map")
 
@@ -1187,7 +1187,7 @@ class Map:
             self.launcher_action_radius_bots = []
             self.launcher_own_reachable = []
             self.launcher_enemy_reachable = []
-            self.id_to_target_pos = {}
+            self.id_to_target_pos_round = {}
 
         self._reset_turn_state()
         self.tiles_in_vision = [

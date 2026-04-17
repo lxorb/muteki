@@ -49,7 +49,6 @@ SCAVENGER_STRATEGY = [
         True,
         False,
     ),
-    (BuilderStrategyMethodsMixin.s_move_toward_own_launcher,),  # launcher walk-to
     (BuilderStrategyMethodsMixin.s_frontier_expand, 100),
     (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
@@ -92,7 +91,6 @@ DEFENDER_STRATEGY = [
         False,
         True,
     ),
-    (BuilderStrategyMethodsMixin.s_move_toward_own_launcher,),  # launcher walk-to
     (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 

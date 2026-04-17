@@ -376,25 +376,34 @@ class Tile:
         self.building.entity_type = None
         self.building.team = None
         symmetry_mode, own_id, current_round, target_x, target_y = self.map.read_marker(self.map.ct.get_marker_value(marker_id))
+        #print("read symmetry_mode from position", self.position, "is", symmetry_mode)
         if self.map.symmetry_mode is None and symmetry_mode is not None:
             self.update_symmetry_information(symmetry_mode)
         if self.map.is_launcher:
-            self.map.id_to_target_pos[own_id] = Position(target_x, target_y)
+            if not own_id in self.map.id_to_target_pos_round or self.map.id_to_target_pos_round[own_id][1] < current_round:
+                self.map.id_to_target_pos_round[own_id] = (Position(target_x, target_y), current_round)
 
     def update_symmetry_information(self, symmetry_mode):
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
         self.map.symmetry_mode = symmetry_mode
         self.map.symmetry_mode_candidates = [symmetry_mode]
         self.map.enemy_core_center_pos_candidates = [
             (mode, pos) for mode, pos in self.map.enemy_core_center_pos_candidates
             if mode == symmetry_mode
         ]
+        print(self.map.enemy_core_center_pos_candidates)
         remaining_positions = {pos for _, pos in self.map.enemy_core_center_pos_candidates}
+        print(remaining_positions)
         if len(remaining_positions) == 1:
+            print("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
             self.map.enemy_core_center_pos = next(iter(remaining_positions))
             self.map.enemy_core_source_indices = self.map.u_set_core_source_indices(
                 self.map.enemy_team,
                 self.map.enemy_core_center_pos,
             )
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 
     def update_building(self, id_changed: bool) -> None:
         ct = self.map.ct

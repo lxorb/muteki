@@ -1,5 +1,8 @@
 from lib.agent.builder.strategies import STRATEGIES
 from lib.debug import Stopwatch
+from lib.agent.constants import (
+    HARASSMENT_STRATEGY_ID,
+)
 from lib.map.constants import MARKER_SYMMETRY_LIST
 from cambc import Position, EntityType
 
@@ -45,7 +48,10 @@ class BuilderExecutionMixin:
             for pos in candidate_positions:
                 if self.ct.can_build_launcher(pos):
                     self.ct.build_launcher(pos)
-                    break
+                    self.after_strategy()
+                    self.last_turn_completed = True
+                    return True
+                    
 
         for idx in range(start_index, len(strategy_steps)):
             if self.round_stopwatch.check_overtime():
@@ -89,8 +95,26 @@ class BuilderExecutionMixin:
         # 6 bits
         current_round = self.ct.get_current_round()
         # 11 bits
-        target_position = self.map.enemy_core_center_pos if self.map.enemy_core_center_pos is not None else self.ct.get_position() # TODO
+        target_position = self.ct.get_position() # TODO
+        if self.strategy == HARASSMENT_STRATEGY_ID:
+            if self.map.enemy_core_center_pos is not None:
+                target_position = self.map.enemy_core_center_pos
+            else:
+                # logic copied from: strategy_methods.py, s_move_toward_enemy_core
+                tmp = min(
+                {
+                    pos for _, pos in self.map.enemy_core_center_pos_candidates
+                },
+                key=lambda pos: (
+                    self.map.u_get_estimated_dist_to_self(pos),
+                    pos.x,
+                    pos.y,
+                    ),
+                    default=None,
+                )
+                target_position = self.get_move_target(tmp)
         target_index = target_position.y * self.map.INDEX_STRIDE + target_position.x
+        print("putting on the marker that I want to move to ", target_position, ":D")
         # 12 bits
 
         result = 0

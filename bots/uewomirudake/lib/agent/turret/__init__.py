@@ -53,7 +53,6 @@ class TurretAgent(Agent):
                 if self.launcher_handle_own(bot_tile):
                     return True
         
-        print("--------------")
         return False
 
     def launcher_handle_own(self, bot_tile):
@@ -61,11 +60,11 @@ class TurretAgent(Agent):
             print("XXXXXXXXXXXXXXXXXXX")
             return False
 
-        if not bot_tile.bot.id in self.map.id_to_target_pos:
+        if not bot_tile.bot.id in self.map.id_to_target_pos_round:
             print("YYYYYYYYYYYYYYYYYYY")
             return False
 
-        target_pos = self.map.id_to_target_pos[bot_tile.bot.id]
+        target_pos = self.map.id_to_target_pos_round[bot_tile.bot.id][0]
 
         reachable_safe = [tile for tile in self.map.launcher_own_reachable if tile in self.map.launcher_safe_zone_tiles]
 
