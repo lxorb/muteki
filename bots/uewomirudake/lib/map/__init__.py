@@ -354,6 +354,7 @@ class Map:
         self.path_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.path_cost_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.path_epoch = 0
+        self.current_path: list[Tile] = []
         self.tiles_by_index: list[Tile] = [
             Tile(Position(x, y), self)
             for x in range(self.INITIAL_WIDTH)
@@ -3875,8 +3876,10 @@ class Map:
                 if goal_dy < 0:
                     goal_dy = -goal_dy
                 if goal_dx * goal_dx + goal_dy * goal_dy <= 2:
+                    self._store_current_path(current_idx, source_idx)
                     return current_idx
             elif current_idx == target_idx:
+                self._store_current_path(current_idx, source_idx)
                 return current_idx
 
             neighbor_base = current_idx * max_neighbor_count
@@ -3973,7 +3976,23 @@ class Map:
                     ),
                 )
 
+        self.current_path = []
         return None
+
+    def _store_current_path(self, reached_idx: int, source_idx: int):
+        tiles_by_index = self.tiles_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        path = [tiles_by_index[reached_idx]]
+        walk_idx = reached_idx
+        while walk_idx != source_idx:
+            previous_idx = predecessor_by_index[walk_idx]
+            if previous_idx == -1:
+                self.current_path = []
+                return
+            path.append(tiles_by_index[previous_idx])
+            walk_idx = previous_idx
+        path.reverse()
+        self.current_path = path
 
     def u_calculate_shortest_path_to_frontier(
         self,

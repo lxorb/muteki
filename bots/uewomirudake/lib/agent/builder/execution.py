@@ -88,61 +88,8 @@ class BuilderExecutionMixin:
     def after_strategy(self):
         self.place_marker()
 
-    def place_marker(self):
-        symmetry_type = MARKER_SYMMETRY_LIST.index(self.map.symmetry_mode)
-        # 2 bits
-        own_id = self.ct.get_id() & 0b111111
-        # 6 bits
-        current_round = self.ct.get_current_round()
-        # 11 bits
-        target_position = self.ct.get_position() # TODO
-        if self.strategy == HARASSMENT_STRATEGY_ID:
-            if self.map.enemy_core_center_pos is not None:
-                target_position = self.map.enemy_core_center_pos
-            else:
-                # logic copied from: strategy_methods.py, s_move_toward_enemy_core
-                tmp = min(
-                {
-                    pos for _, pos in self.map.enemy_core_center_pos_candidates
-                },
-                key=lambda pos: (
-                    self.map.u_get_estimated_dist_to_self(pos),
-                    pos.x,
-                    pos.y,
-                    ),
-                    default=None,
-                )
-                target_position = self.get_move_target(tmp)
-        target_index = target_position.y * self.map.INDEX_STRIDE + target_position.x
-        print("putting on the marker that I want to move to ", target_position, ":D")
-        # 12 bits
 
-        result = 0
-        result |= symmetry_type
-        result |= own_id << 2
-        result |= current_round << 8
-        result |= target_index << 19
 
-        # place a marker in the action radius where possible
-        action_radius = 2
-        candidate_positions = self.ct.get_nearby_tiles(action_radius)
-        pos_round = []
-        for pos in candidate_positions:
-            if self.ct.can_place_marker(pos):
-                # cannot use the information in the map, since we store marker as "nothing"
-                # it is never possible that a marker we are building over contains better information about symmetry -> updated in update_vision
-                building_id = self.ct.get_tile_building_id(pos)
-                if building_id is not None and self.ct.get_entity_type(building_id) == EntityType.MARKER and self.ct.get_team(building_id) == self.ct.get_team():
-                    content = self.ct.get_marker_value(building_id)
-                    n_symmetry_mode, n_own_id, n_current_round, n_target_x, n_target_y = self.map.read_marker(content)
-                    pos_round.append((pos, n_current_round))
-                    continue
-                self.ct.place_marker(pos, result)
-                print(self.map.symmetry_mode, symmetry_type)
-                return;
-        if pos_round:
-            pos_round = sorted(pos_round, key = lambda x: x[1])
-            self.ct.place_marker(pos_round[0][0], result)
 
 
 
