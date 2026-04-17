@@ -1,6 +1,7 @@
-from cambc import EntityType, Environment, Position
+from cambc import Direction, EntityType, Environment, Position
 
 from lib.agent import Agent
+from lib.agent.builder.navigation import BuilderNavigationMixin
 from lib.agent.constants import (
     ATTACK_TURRET_TYPES,
     CONVEYOR_ENTITY_TYPES,
@@ -9,7 +10,7 @@ from lib.agent.constants import (
 )
 
 
-class TurretAgent(Agent):
+class TurretAgent(BuilderNavigationMixin, Agent):
     def __init__(self):
         super().__init__()
 
@@ -30,7 +31,8 @@ class TurretAgent(Agent):
 
     def u_gunner_attack(self) -> bool:
         """
-        Fire according to the engine's current gunner target selection.
+        Rotate toward a better lane when justified, otherwise fire according to
+        the engine's current gunner target selection.
 
         The engine's `get_gunner_target()` is used as one hint, but target
         selection is resolved locally from the firing ray so every tile in the
@@ -60,6 +62,20 @@ class TurretAgent(Agent):
         vision_radius_sq = current_tile.building.vision_radius_sq
         if vision_radius_sq is None:
             vision_radius_sq = self.ct.get_vision_radius_sq()
+        current_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+            current_pos,
+            direction,
+            vision_radius_sq,
+        )
+        if self.u_try_rotate_gunner(
+            current_pos,
+            direction,
+            current_shootable_tiles,
+            vision_radius_sq,
+            current_round,
+        ):
+            return True
+
         ray_tiles = self.map.u_get_gunner_ray_tiles(
             current_pos,
             direction,
@@ -113,6 +129,123 @@ class TurretAgent(Agent):
                 return True
 
         return False
+
+    def u_try_rotate_gunner(
+        self,
+        current_pos: Position,
+        current_direction: Direction,
+        current_shootable_tiles,
+        vision_radius_sq: int,
+        current_round: int,
+    ) -> bool:
+        enemy_building_in_current_direction = any(
+            self.u_is_visible_enemy_building_tile(tile, current_round)
+            for tile in current_shootable_tiles
+        )
+        enemy_turret_in_current_direction = any(
+            self.u_is_visible_enemy_turret_tile(tile, current_round)
+            for tile in current_shootable_tiles
+        )
+        should_try_rotate = not enemy_building_in_current_direction
+        best_direction = None
+        best_shootable_tiles = None
+
+        if not should_try_rotate and not enemy_turret_in_current_direction:
+            best_direction = self.u_get_gunner_orientation(current_pos)
+            if best_direction != current_direction:
+                best_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+                    current_pos,
+                    best_direction,
+                    vision_radius_sq,
+                )
+                should_try_rotate = any(
+                    self.u_is_enemy_turret_connected_to_supply_chain(
+                        tile,
+                        current_round,
+                    )
+                    for tile in best_shootable_tiles
+                )
+
+        if not should_try_rotate:
+            return False
+
+        if best_direction is None:
+            best_direction = self.u_get_gunner_orientation(current_pos)
+        if best_direction == current_direction or best_direction == Direction.CENTRE:
+            return False
+        if not self.ct.can_rotate(best_direction):
+            return False
+
+        if best_shootable_tiles is None:
+            best_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+                current_pos,
+                best_direction,
+                vision_radius_sq,
+            )
+        if not any(
+            self.u_is_nontrivial_enemy_gunner_rotation_target(tile, current_round)
+            for tile in best_shootable_tiles
+        ):
+            return False
+
+        self.ct.rotate(best_direction)
+        return True
+
+    def u_is_visible_enemy_building_tile(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        if tile.is_core_of(self.map.enemy_team):
+            return True
+        return (
+            tile.last_seen_turn == current_round
+            and tile.building.id is not None
+            and tile.building.team == self.map.enemy_team
+        )
+
+    def u_is_visible_enemy_turret_tile(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        return (
+            tile.last_seen_turn == current_round
+            and tile.building.id is not None
+            and tile.building.team == self.map.enemy_team
+            and tile.building.entity_type in ATTACK_TURRET_TYPES
+        )
+
+    def u_is_enemy_turret_connected_to_supply_chain(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        return self.u_is_visible_enemy_turret_tile(
+            tile,
+            current_round,
+        ) and self._u_tile_is_targeted_by_supply_chain(tile.index)
+
+    def u_is_nontrivial_enemy_gunner_rotation_target(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        if tile.is_core_of(self.map.enemy_team):
+            return True
+        if tile.last_seen_turn != current_round:
+            return False
+        if tile.bot.id is not None and tile.bot.team == self.map.enemy_team:
+            return True
+        return (
+            tile.building.id is not None
+            and tile.building.team == self.map.enemy_team
+            and tile.building.entity_type
+            not in (
+                EntityType.ROAD,
+                EntityType.BARRIER,
+            )
+        )
 
     def u_get_gunner_target_tile(
         self,

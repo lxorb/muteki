@@ -662,6 +662,19 @@ class BuilderNavigationMixin:
             and self.map.axionite >= sentinel_axionite_cost
         )
 
+    def u_can_afford_gunner(self, respect_titanium_reserve: bool = False) -> bool:
+        gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
+        return (
+            (
+                not respect_titanium_reserve
+                or self.u_can_spend_titanium_without_falling_below_reserve(
+                    gunner_titanium_cost
+                )
+            )
+            and self.map.titanium >= gunner_titanium_cost
+            and self.map.axionite >= gunner_axionite_cost
+        )
+
     def u_get_direction_toward_enemy_core_center(self, pos: Position) -> Direction:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is None and self.map.enemy_core_center_pos_candidates:
@@ -682,8 +695,112 @@ class BuilderNavigationMixin:
             return Direction.NORTH
         return direction
 
+    def u_get_sentinel_orientation(self, pos: Position) -> Direction:
+        return self.u_get_direction_toward_enemy_core_center(pos)
+
+    def _u_tile_is_targeted_by_supply_chain(
+        self,
+        tile_idx: int,
+    ) -> bool:
+        return bool(
+            self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                tile_idx,
+                _EMPTY_SOURCE_INDEX_SET,
+            )
+            or self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                tile_idx,
+                _EMPTY_SOURCE_INDEX_SET,
+            )
+        )
+
+    def _u_supply_tile_transports_titanium(self, tile) -> bool:
+        if tile.building.entity_type not in SUPPLY_LINK_TYPES:
+            return False
+        if tile.building.entity_type == EntityType.SPLITTER:
+            return tile.building.last_titanium_onit_turn == self.map.current_round
+        if tile.building.team is None:
+            return False
+        return self.map.u_supply_chain_has_titanium(
+            tile.index,
+            tile.building.team,
+        )
+
+    def _u_tile_is_useful_harvester_adjacent_turret_target(self, tile) -> bool:
+        enemy_team = self.map.enemy_team
+        if tile.is_core_of(enemy_team):
+            return True
+        if tile.building.team != enemy_team:
+            return False
+        return tile.building.entity_type in (
+            *ATTACK_TURRET_TYPES,
+            EntityType.CONVEYOR,
+            EntityType.ARMOURED_CONVEYOR,
+            EntityType.BRIDGE,
+            EntityType.SPLITTER,
+            EntityType.FOUNDRY,
+            EntityType.LAUNCHER,
+            EntityType.HARVESTER,
+        )
+
+    def _u_gunner_can_target_useful_harvester_adjacent_enemy(
+        self,
+        pos: Position,
+        direction: Direction,
+    ) -> bool:
+        return any(
+            self._u_tile_is_useful_harvester_adjacent_turret_target(target_tile)
+            for target_tile in self.map.u_get_gunner_shootable_tiles(pos, direction)
+        )
+
+    def _u_sentinel_can_target_useful_harvester_adjacent_enemy(
+        self,
+        pos: Position,
+        direction: Direction,
+    ) -> bool:
+        source_idx = self.map.u_to_index(pos)
+        for target_idx in self.map.u_get_attackable_target_indices(
+            source_idx,
+            EntityType.SENTINEL,
+            direction,
+        ):
+            if self._u_tile_is_useful_harvester_adjacent_turret_target(
+                self.map.tiles_by_index[target_idx]
+            ):
+                return True
+        return False
+
+    def _u_get_harvester_adjacent_turret_substitution(
+        self,
+        pos: Position,
+        respect_titanium_reserve: bool,
+        require_affordable: bool = True,
+    ) -> tuple[EntityType, Direction] | None:
+        if (
+            not require_affordable
+            or self.u_can_afford_gunner(respect_titanium_reserve)
+        ):
+            gunner_direction = self.u_get_gunner_orientation(pos)
+            if self._u_gunner_can_target_useful_harvester_adjacent_enemy(
+                pos,
+                gunner_direction,
+            ):
+                return (EntityType.GUNNER, gunner_direction)
+
+        if (
+            not require_affordable
+            or self.u_can_afford_sentinel(respect_titanium_reserve)
+        ):
+            sentinel_direction = self.u_get_sentinel_orientation(pos)
+            if self._u_sentinel_can_target_useful_harvester_adjacent_enemy(
+                pos,
+                sentinel_direction,
+            ):
+                return (EntityType.SENTINEL, sentinel_direction)
+
+        return None
+
     def u_get_useful_sentinel_direction(self, pos: Position) -> Direction | None:
-        sentinel_direction = self.u_get_direction_toward_enemy_core_center(pos)
+        sentinel_direction = self.u_get_sentinel_orientation(pos)
         enemy_team = self.map.enemy_team
         sentinel_target_indices = self.map.u_get_attackable_target_indices(
             self.map.u_get_pos_tile(pos).index,
@@ -705,21 +822,207 @@ class BuilderNavigationMixin:
         return None
 
     def u_get_gunner_orientation(self, pos: Position) -> Direction:
-        """
-        Choose the gunner facing that best shoots down an open firing lane.
+        current_round = self.map.current_round
+        enemy_team = self.map.enemy_team
+        source_idx = self.map.u_to_index(pos)
+        direction_order = {
+            direction: idx
+            for idx, direction in enumerate(Direction)
+            if direction != Direction.CENTRE
+        }
+        candidate_entries: list[dict[str, object]] = []
 
-        If exactly one own feeder targets this tile, avoid facing back toward
-        it. Among the remaining directions, prefer lanes that hit more enemy
-        turrets before the first allied building, then lanes that can hit the
-        enemy core, then lanes that hit more enemy buildings.
-        """
-        feeder_directions: list[Direction] = []
-        enemy_core_tiles = (
-            self.map.u_get_core_footprint_positions(self.map.enemy_core_center_pos)
-            if self.map.enemy_core_center_pos is not None
-            else []
+        def tile_points_at_self(tile) -> bool:
+            return any(target_tile.index == source_idx for target_tile in tile.building.targets)
+
+        def is_visible_enemy_tile(tile) -> bool:
+            if tile.is_core_of(enemy_team):
+                return True
+            if tile.last_seen_turn != current_round:
+                return False
+            if tile.bot.id is not None and tile.bot.team == enemy_team:
+                return True
+            return tile.building.id is not None and tile.building.team == enemy_team
+
+        def is_visible_enemy_supply_tile(tile) -> bool:
+            return (
+                tile.last_seen_turn == current_round
+                and tile.building.team == enemy_team
+                and tile.building.entity_type in SUPPLY_LINK_TYPES
+            )
+
+        def first_tile_health(tile) -> int:
+            if tile.bot.id is not None and tile.bot.team == enemy_team:
+                return tile.bot.hp if tile.bot.hp is not None else INF_DIST
+            if tile.is_core_of(enemy_team) or tile.building.team == enemy_team:
+                return tile.building.hp if tile.building.hp is not None else INF_DIST
+            return INF_DIST
+
+        def filter_candidates(predicate: Callable[[dict[str, object]], bool]) -> None:
+            nonlocal candidate_entries
+            filtered_entries = [
+                candidate_entry
+                for candidate_entry in candidate_entries
+                if predicate(candidate_entry)
+            ]
+            if filtered_entries:
+                candidate_entries = filtered_entries
+
+        for direction in Direction:
+            if direction == Direction.CENTRE:
+                continue
+
+            shootable_tiles = self.map.u_get_gunner_shootable_tiles(pos, direction)
+            if not shootable_tiles:
+                continue
+
+            if not any(is_visible_enemy_tile(target_tile) for target_tile in shootable_tiles):
+                continue
+
+            if any(
+                target_tile.last_seen_turn == current_round
+                and target_tile.building.team == enemy_team
+                and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+                and tile_points_at_self(target_tile)
+                for target_tile in shootable_tiles
+            ):
+                continue
+
+            first_tile = shootable_tiles[0]
+            if (
+                first_tile.last_seen_turn == current_round
+                and first_tile.building.team == enemy_team
+                and first_tile.building.entity_type == EntityType.BRIDGE
+                and tile_points_at_self(first_tile)
+            ):
+                continue
+
+            candidate_entries.append(
+                {
+                    "direction": direction,
+                    "shootable_tiles": shootable_tiles,
+                    "first_tile": first_tile,
+                    "direction_order": direction_order[direction],
+                    "first_tile_health": first_tile_health(first_tile),
+                }
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return self.u_get_direction_toward_enemy_core_center(pos)
+
+        filter_candidates(
+            lambda candidate_entry: (
+                candidate_entry["first_tile"].last_seen_turn == current_round
+                and candidate_entry["first_tile"].building.team == enemy_team
+                and candidate_entry["first_tile"].building.entity_type == EntityType.GUNNER
+                and self._u_tile_is_targeted_by_titanium_supply_chain(
+                    candidate_entry["first_tile"].index
+                )
+            )
+        )
+        filter_candidates(
+            lambda candidate_entry: (
+                candidate_entry["first_tile"].last_seen_turn == current_round
+                and candidate_entry["first_tile"].building.team == enemy_team
+                and candidate_entry["first_tile"].building.entity_type
+                == EntityType.SENTINEL
+                and self._u_tile_is_targeted_by_titanium_supply_chain(
+                    candidate_entry["first_tile"].index
+                )
+            )
+        )
+        filter_candidates(
+            lambda candidate_entry: (
+                candidate_entry["first_tile"].last_seen_turn == current_round
+                and candidate_entry["first_tile"].building.team == enemy_team
+                and candidate_entry["first_tile"].building.entity_type == EntityType.BREACH
+                and self._u_tile_is_targeted_by_supply_chain(
+                    candidate_entry["first_tile"].index
+                )
+            )
+        )
+        filter_candidates(
+            lambda candidate_entry: any(
+                target_tile.last_seen_turn == current_round
+                and target_tile.building.team == enemy_team
+                and target_tile.building.entity_type == EntityType.GUNNER
+                and self._u_tile_is_targeted_by_titanium_supply_chain(target_tile.index)
+                for target_tile in candidate_entry["shootable_tiles"][1:]
+            )
+        )
+        filter_candidates(
+            lambda candidate_entry: any(
+                target_tile.last_seen_turn == current_round
+                and target_tile.building.team == enemy_team
+                and target_tile.building.entity_type == EntityType.SENTINEL
+                and self._u_tile_is_targeted_by_titanium_supply_chain(target_tile.index)
+                for target_tile in candidate_entry["shootable_tiles"][1:]
+            )
+        )
+        filter_candidates(
+            lambda candidate_entry: any(
+                target_tile.last_seen_turn == current_round
+                and target_tile.building.team == enemy_team
+                and target_tile.building.entity_type == EntityType.BREACH
+                and self._u_tile_is_targeted_by_supply_chain(target_tile.index)
+                for target_tile in candidate_entry["shootable_tiles"][1:]
+            )
+        )
+        filter_candidates(
+            lambda candidate_entry: any(
+                is_visible_enemy_supply_tile(target_tile)
+                and self._u_supply_tile_transports_titanium(target_tile)
+                for target_tile in candidate_entry["shootable_tiles"]
+            )
+        )
+        filter_candidates(
+            lambda candidate_entry: candidate_entry["first_tile"].is_core_of(enemy_team)
+        )
+        filter_candidates(
+            lambda candidate_entry: any(
+                target_tile.is_core_of(enemy_team)
+                for target_tile in candidate_entry["shootable_tiles"][1:]
+            )
         )
 
+        return min(
+            candidate_entries,
+            key=lambda candidate_entry: (
+                candidate_entry["first_tile_health"],
+                candidate_entry["direction_order"],
+            ),
+        )["direction"]
+
+    def _u_get_adjacent_enemy_turret_gunner_direction(
+        self,
+        pos: Position,
+    ) -> Direction | None:
+        current_round = self.map.current_round
+        enemy_team = self.map.enemy_team
+        pos_tile = self.map.u_get_pos_tile(pos)
+        pos_idx = pos_tile.index
+        adjacent_enemy_turret_present = False
+
+        for adjacent_idx in self.map.u_iter_neighbor_indices(pos_idx):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.team == enemy_team
+                and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                adjacent_enemy_turret_present = True
+                break
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not adjacent_enemy_turret_present:
+            return None
+
+        feeder_directions: list[Direction] = []
         for building_tile in self.map.own_buildings_in_vision:
             if (
                 building_tile.building.entity_type in ATTACK_TURRET_FEEDER_TYPES
@@ -746,45 +1049,87 @@ class BuilderNavigationMixin:
             for direction in Direction
             if direction != Direction.CENTRE and direction != blocked_direction
         ]
+        if not candidate_directions:
+            return None
 
         direction_order = {
             direction: idx
             for idx, direction in enumerate(Direction)
             if direction != Direction.CENTRE
         }
-        direction_scores: list[tuple[tuple[int, ...], Direction]] = []
+        build_source_indices = (
+            self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                pos_idx,
+                (),
+            )
+        )
+        direction_scores: list[tuple[tuple[int, int, int, int, int], Direction]] = []
 
         for direction in candidate_directions:
-            visible_enemy_turrets = 0
-            visible_enemy_buildings = 0
-            can_target_enemy_core = False
-
+            best_target_key = None
             for target_tile in self.map.u_get_gunner_shootable_tiles(pos, direction):
-                if any(
-                    core_tile.position == target_tile.position
-                    for core_tile in enemy_core_tiles
-                ):
-                    can_target_enemy_core = True
-
                 if (
-                    target_tile.building.id is not None
-                    and target_tile.building.team == self.map.enemy_team
+                    target_tile.last_seen_turn != current_round
+                    or target_tile.building.team != enemy_team
                 ):
-                    visible_enemy_buildings += 1
-                    if target_tile.building.entity_type in ENEMY_TURRET_TYPES:
-                        visible_enemy_turrets += 1
+                    continue
+
+                target_type = target_tile.building.entity_type
+                if target_type not in {EntityType.GUNNER, EntityType.SENTINEL}:
+                    continue
+
+                target_source_indices = (
+                    self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                        target_tile.index,
+                        (),
+                    )
+                )
+                target_is_fed = bool(target_source_indices)
+                source_targets_own_gunner = bool(build_source_indices) and any(
+                    source_idx in build_source_indices
+                    for source_idx in target_source_indices
+                )
+
+                priority_rank = 5
+                if (
+                    target_type == EntityType.GUNNER
+                    and target_is_fed
+                    and source_targets_own_gunner
+                ):
+                    priority_rank = 0
+                elif target_type == EntityType.GUNNER and target_is_fed:
+                    priority_rank = 1
+                elif target_type == EntityType.SENTINEL and target_is_fed:
+                    priority_rank = 2
+                elif target_type == EntityType.GUNNER:
+                    priority_rank = 3
+                elif target_type == EntityType.SENTINEL:
+                    priority_rank = 4
+
+                target_hp = (
+                    target_tile.building.hp
+                    if target_tile.building.hp is not None
+                    else INF_DIST
+                )
+                target_key = (
+                    priority_rank,
+                    target_hp,
+                    pos.distance_squared(target_tile.position),
+                    target_tile.position.x,
+                    target_tile.position.y,
+                )
+                if best_target_key is None or target_key < best_target_key:
+                    best_target_key = target_key
 
                 if self.round_stopwatch.check_overtime():
                     break
 
+            if best_target_key is None:
+                continue
+
             direction_scores.append(
                 (
-                    (
-                        -visible_enemy_turrets,
-                        0 if can_target_enemy_core else 1,
-                        -visible_enemy_buildings,
-                        direction_order[direction],
-                    ),
+                    (*best_target_key, direction_order[direction]),
                     direction,
                 )
             )
@@ -793,9 +1138,76 @@ class BuilderNavigationMixin:
                 break
 
         if not direction_scores:
-            return candidate_directions[0]
+            return self.u_get_gunner_orientation(pos)
 
         return min(direction_scores, key=lambda item: item[0])[1]
+
+    def u_get_turret_build_plan(
+        self,
+        pos: Position,
+    ) -> tuple[EntityType, Direction]:
+        gunner_direction = self._u_get_adjacent_enemy_turret_gunner_direction(pos)
+        if gunner_direction is not None:
+            return (EntityType.GUNNER, gunner_direction)
+
+        sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
+        gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
+        can_afford_sentinel = (
+            self.map.titanium >= sentinel_titanium_cost
+            and self.map.axionite >= sentinel_axionite_cost
+        )
+        can_afford_gunner = (
+            self.map.titanium >= gunner_titanium_cost
+            and self.map.axionite >= gunner_axionite_cost
+        )
+        if not can_afford_sentinel and can_afford_gunner:
+            return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
+
+        return (
+            EntityType.SENTINEL,
+            self.u_get_sentinel_orientation(pos),
+        )
+
+    def u_build_turret(
+        self,
+        pos: Position,
+        hold: bool,
+        move_towards: bool,
+        attack_enemy_passable: bool,
+        avoid_enemy_turrets: bool = True,
+        respect_titanium_reserve: bool = False,
+    ) -> bool:
+        building_type, facing_direction = self.u_get_turret_build_plan(pos)
+        return self.u_build_at(
+            pos,
+            building_type,
+            hold=hold,
+            move_towards=move_towards,
+            attack_enemy_passable=attack_enemy_passable,
+            facing_direction=facing_direction,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            respect_titanium_reserve=respect_titanium_reserve,
+        )
+
+    def _u_tile_is_targeted_by_titanium_supply_chain(
+        self,
+        tile_idx: int,
+    ) -> bool:
+        for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+            tile_idx,
+            _EMPTY_SOURCE_INDEX_SET,
+        ):
+            if self.map.u_supply_chain_has_titanium(source_idx, self.map.own_team):
+                return True
+
+        for source_idx in self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+            tile_idx,
+            _EMPTY_SOURCE_INDEX_SET,
+        ):
+            if self.map.u_supply_chain_has_titanium(source_idx, self.map.enemy_team):
+                return True
+
+        return False
 
     def u_get_supplier_build_plan(
         self,
@@ -1601,32 +2013,47 @@ class BuilderNavigationMixin:
                 and adjacent_tile.environment == Environment.ORE_TITANIUM
                 for adjacent_tile in adjacent_tiles
             )
-            conveyor_feeds_own_harvester = False
-            conveyor_feeds_own_titanium_harvester = False
-            if facing_direction is not None and pos != current_pos:
+            conveyor_like_feeds_own_harvester = False
+            conveyor_like_feeds_own_titanium_harvester = False
+            if (
+                building_type in CONVEYOR_ENTITY_TYPES
+                and facing_direction is not None
+                and pos != current_pos
+            ):
                 conveyor_output_pos = pos.add(facing_direction)
                 if self.map.u_is_in_bounds(conveyor_output_pos):
                     conveyor_output_tile = self.map.u_get_pos_tile(conveyor_output_pos)
-                    conveyor_feeds_own_harvester = (
-                        conveyor_output_tile.building.team == self.map.own_team
+                    conveyor_output_is_cardinal_neighbor = (
+                        abs(conveyor_output_pos.x - pos.x)
+                        + abs(conveyor_output_pos.y - pos.y)
+                        == 1
+                    )
+                    conveyor_like_feeds_own_harvester = (
+                        conveyor_output_is_cardinal_neighbor
+                        and conveyor_output_tile.building.team == self.map.own_team
                         and conveyor_output_tile.building.entity_type
                         == EntityType.HARVESTER
                     )
-                    conveyor_feeds_own_titanium_harvester = (
-                        conveyor_feeds_own_harvester
+                    conveyor_like_feeds_own_titanium_harvester = (
+                        conveyor_like_feeds_own_harvester
+                        and adjacent_to_own_titanium_harvester
                         and conveyor_output_tile.environment == Environment.ORE_TITANIUM
                     )
             barrier_adjacent_to_own_harvester = (
                 building_type == EntityType.BARRIER
                 and adjacent_to_own_harvester
             )
+            barrier_adjacent_to_own_titanium_harvester = (
+                building_type == EntityType.BARRIER
+                and adjacent_to_own_titanium_harvester
+            )
             sentinel_substitution_candidate = (
-                conveyor_feeds_own_harvester
+                conveyor_like_feeds_own_harvester
                 or safety_conveyor
                 or barrier_adjacent_to_own_harvester
             )
             sentinel_substitution_targets_titanium_harvester = (
-                conveyor_feeds_own_titanium_harvester
+                conveyor_like_feeds_own_titanium_harvester
                 or (
                     (safety_conveyor or barrier_adjacent_to_own_harvester)
                     and adjacent_to_own_titanium_harvester
@@ -1637,19 +2064,27 @@ class BuilderNavigationMixin:
             preferred_facing_direction = facing_direction
             if (
                 allow_sentinel_next_to_harvester_instead_conveyor
-                and (
-                    building_type in CONVEYOR_ENTITY_TYPES
-                    or building_type == EntityType.BARRIER
-                )
                 and pos != current_pos
-                and sentinel_substitution_candidate
-                and sentinel_substitution_targets_titanium_harvester
             ):
-                if self.u_can_afford_sentinel(respect_titanium_reserve):
-                    sentinel_direction = self.u_get_useful_sentinel_direction(pos)
-                    if sentinel_direction is not None:
-                        preferred_building_type = EntityType.SENTINEL
-                        preferred_facing_direction = sentinel_direction
+                should_try_turret_substitution = (
+                    barrier_adjacent_to_own_titanium_harvester
+                    or (
+                        building_type in CONVEYOR_ENTITY_TYPES
+                        and sentinel_substitution_candidate
+                        and sentinel_substitution_targets_titanium_harvester
+                    )
+                )
+                if should_try_turret_substitution:
+                    turret_substitution = (
+                        self._u_get_harvester_adjacent_turret_substitution(
+                            pos,
+                            respect_titanium_reserve,
+                        )
+                    )
+                    if turret_substitution is not None:
+                        preferred_building_type, preferred_facing_direction = (
+                            turret_substitution
+                        )
             log_step("in range prebuild")
             if (
                 target_tile.building.team == self.map.own_team
@@ -1842,6 +2277,13 @@ class BuilderNavigationMixin:
             ):
                 replacement_entity_type = None
                 replacement_facing_direction = target_tile.building.direction
+                targeted_by_titanium_supply_chain = (
+                    target_tile.building.entity_type
+                    in {EntityType.GUNNER, EntityType.SENTINEL}
+                    and self._u_tile_is_targeted_by_titanium_supply_chain(
+                        target_tile.index
+                    )
+                )
 
                 if (
                     target_tile.building.entity_type == EntityType.CONVEYOR
@@ -1860,6 +2302,7 @@ class BuilderNavigationMixin:
                 elif (
                     target_tile.building.entity_type == EntityType.GUNNER
                     and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                    and targeted_by_titanium_supply_chain
                 ):
                     gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
                     if (
@@ -1869,6 +2312,24 @@ class BuilderNavigationMixin:
                         and replacement_facing_direction != Direction.CENTRE
                     ):
                         replacement_entity_type = EntityType.GUNNER
+                elif (
+                    target_tile.building.entity_type == EntityType.SENTINEL
+                    and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
+                    and targeted_by_titanium_supply_chain
+                ):
+                    replacement_facing_direction = (
+                        self._u_get_adjacent_enemy_turret_gunner_direction(pos)
+                    )
+                    if replacement_facing_direction is not None:
+                        gunner_titanium_cost, gunner_axionite_cost = (
+                            self.ct.get_gunner_cost()
+                        )
+                        if (
+                            self.map.titanium >= gunner_titanium_cost
+                            and self.map.axionite >= gunner_axionite_cost
+                            and replacement_facing_direction != Direction.CENTRE
+                        ):
+                            replacement_entity_type = EntityType.GUNNER
 
                 if (
                     replacement_entity_type is not None

@@ -852,14 +852,16 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_integrate_own_sentinel(
+    def s_integrate_own_turret(
         self,
         move_towards: bool = True,
         hold: bool = True,
         candidate_radius: float | None = None,
     ):
+        """
+        Replace a nearby titanium-harvester-adjacent support tile with a turret.
+        """
         own_team = self.map.own_team
-        current_round = self.map.current_round
         current_pos = self.map.current_pos
         tiles_by_index = self.map.tiles_by_index
         if candidate_radius is None:
@@ -868,64 +870,50 @@ class BuilderStrategyMethodsMixin:
             candidate_radius = 0
         candidate_radius_sq = candidate_radius * candidate_radius
 
-        candidate_entries: list[tuple[tuple[int, int, int, int], Position, Direction]] = []
+        candidate_entries: list[
+            tuple[
+                tuple[int, int, int, int],
+                Position,
+                EntityType,
+                Direction,
+                bool,
+            ]
+        ] = []
         candidate_seen_indices: set[int] = set()
 
-        def has_unprotected_adjacent_harvester(tile_index: int) -> bool:
-            for harvester_idx in self.map.u_iter_cardinal_neighbor_indices(tile_index):
-                harvester_tile = tiles_by_index[harvester_idx]
-                if harvester_tile.last_seen_turn != current_round:
-                    continue
-                if (
-                    harvester_tile.building.team != own_team
-                    or harvester_tile.building.entity_type != EntityType.HARVESTER
-                ):
-                    continue
+        def is_own_harvester_feeder_tile(tile) -> bool:
+            return (
+                tile.building.team == own_team
+                and tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+                and any(
+                    target_tile.building.team == own_team
+                    and target_tile.building.entity_type == EntityType.HARVESTER
+                    for target_tile in tile.building.targets
+                )
+            )
 
-                has_adjacent_own_turret = False
-                for neighbor_idx in self.map.u_iter_cardinal_neighbor_indices(
-                    harvester_idx
-                ):
-                    neighbor_tile = tiles_by_index[neighbor_idx]
-                    if (
-                        neighbor_tile.building.team == own_team
-                        and neighbor_tile.building.entity_type in ATTACK_TURRET_TYPES
-                    ):
-                        has_adjacent_own_turret = True
-                        break
-
-                if not has_adjacent_own_turret:
-                    return True
-
-            return False
-
-        for harvester_tile in self.map.own_harvesters_in_vision:
-            if harvester_tile.last_seen_turn != current_round:
+        for harvester_tile in tiles_by_index:
+            if harvester_tile.last_seen_turn < 0:
                 continue
             if (
                 harvester_tile.building.team != own_team
                 or harvester_tile.building.entity_type != EntityType.HARVESTER
+                or harvester_tile.environment != Environment.ORE_TITANIUM
             ):
                 continue
 
-            best_supply_idx = self.map.u_get_harvester_best_supply_tile(
-                harvester_tile.index
-            )
             for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
                 harvester_tile.index
             ):
-                if adjacent_idx == best_supply_idx or adjacent_idx in candidate_seen_indices:
+                if adjacent_idx in candidate_seen_indices:
                     continue
 
                 adjacent_tile = tiles_by_index[adjacent_idx]
-                if adjacent_tile.last_seen_turn != current_round:
+                if adjacent_tile.last_seen_turn < 0:
                     continue
                 if adjacent_tile.position == current_pos or adjacent_tile.bot.id is not None:
                     continue
                 if current_pos.distance_squared(adjacent_tile.position) > candidate_radius_sq:
-                    continue
-
-                if not has_unprotected_adjacent_harvester(adjacent_idx):
                     continue
 
                 is_candidate_tile = (
@@ -934,11 +922,7 @@ class BuilderStrategyMethodsMixin:
                         adjacent_tile.building.team == own_team
                         and adjacent_tile.building.entity_type == EntityType.ROAD
                     )
-                    or (
-                        adjacent_tile.building.team == own_team
-                        and adjacent_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
-                        and adjacent_tile.conveyor_targets_harvester
-                    )
+                    or is_own_harvester_feeder_tile(adjacent_tile)
                     or (
                         adjacent_tile.building.team == own_team
                         and adjacent_tile.building.entity_type == EntityType.BARRIER
@@ -947,12 +931,23 @@ class BuilderStrategyMethodsMixin:
                 if not is_candidate_tile:
                     continue
 
-                sentinel_direction = self.u_get_useful_sentinel_direction(
-                    adjacent_tile.position
+                affordable_turret_plan = (
+                    self._u_get_harvester_adjacent_turret_substitution(
+                        adjacent_tile.position,
+                        True,
+                    )
                 )
-                if sentinel_direction is None:
+                fallback_turret_plan = affordable_turret_plan or (
+                    self._u_get_harvester_adjacent_turret_substitution(
+                        adjacent_tile.position,
+                        True,
+                        require_affordable=False,
+                    )
+                )
+                if fallback_turret_plan is None:
                     continue
 
+                build_entity_type, turret_direction = fallback_turret_plan
                 candidate_seen_indices.add(adjacent_idx)
                 candidate_entries.append(
                     (
@@ -966,7 +961,9 @@ class BuilderStrategyMethodsMixin:
                             adjacent_tile.index,
                         ),
                         adjacent_tile.position,
-                        sentinel_direction,
+                        build_entity_type,
+                        turret_direction,
+                        affordable_turret_plan is not None,
                     )
                 )
 
@@ -979,15 +976,14 @@ class BuilderStrategyMethodsMixin:
         if not candidate_entries:
             return False
 
-        can_afford_sentinel = self.u_can_afford_sentinel(True)
-        for _, target_pos, sentinel_direction in sorted(
+        for _, target_pos, build_entity_type, turret_direction, can_build_now in sorted(
             candidate_entries,
             key=lambda item: item[0],
         ):
             target_tile = self.map.u_get_pos_tile(target_pos)
             in_range = current_pos.distance_squared(target_pos) <= BUILDER_ACTION_RADIUS_SQ
 
-            if not can_afford_sentinel:
+            if not can_build_now:
                 if hold and in_range:
                     return True
                 if not move_towards:
@@ -999,14 +995,17 @@ class BuilderStrategyMethodsMixin:
             if in_range:
                 if target_tile.building.id is not None:
                     if not self.ct.can_destroy(target_pos):
-                        return False
+                        continue
                     self.ct.destroy(target_pos)
                     target_tile.clear_building()
-                if self.ct.can_build_sentinel(target_pos, sentinel_direction):
-                    self.ct.build_sentinel(target_pos, sentinel_direction)
-                    self.last_built_entity_type = EntityType.SENTINEL
+
+                can_build_method = getattr(self.ct, f"can_build_{build_entity_type.value}")
+                build_method = getattr(self.ct, f"build_{build_entity_type.value}")
+                if can_build_method(target_pos, turret_direction):
+                    build_method(target_pos, turret_direction)
+                    self.last_built_entity_type = build_entity_type
                     return True
-                return False
+                continue
 
             if move_towards and self.u_move_to(target_pos):
                 return True
@@ -1851,8 +1850,8 @@ class BuilderStrategyMethodsMixin:
 
         Uses cached missing-link positions plus any builder-local pending gap
         target, keeps tiles that can host a new supplier, filters to the
-        relevant supply chain(s), prioritizes gaps closer to the core and then
-        the builder, and relies on the transport supplier planner to choose
+        relevant supply chain(s), prioritizes gaps closer to the builder and then
+        the core, and relies on the transport supplier planner to choose
         whether the tile should become a conveyor or a bridge plus its optimal
         target for the inferred resource.
         """
@@ -1964,6 +1963,10 @@ class BuilderStrategyMethodsMixin:
         candidate_entries: list[tuple[tuple[int, int], int, int, int]] = []
         candidate_seen_indices: set[int] = set()
         pending_target_idx: int | None = None
+        pending_candidate_entry: tuple[tuple[int, int], int, int, int] | None = None
+        pending_preferred_entry: tuple[tuple[int, int], int, int, int] | None = None
+        pending_estimated_dist_to_self: int | None = None
+        lowest_candidate_estimated_dist_to_self: int | None = None
         pending_resource = self.pending_missing_supply_link_resource
         if pending_resource is not None:
             pending_target_idx = self.pending_missing_supply_link_index
@@ -1985,8 +1988,28 @@ class BuilderStrategyMethodsMixin:
                 )
                 if pending_label != SupplyChainLabel.NONE:
                     candidate_seen_indices.add(pending_target_idx)
-                    candidate_entries.append(
-                        ((-1, -1), -1, pending_target_idx, int(pending_label))
+                    pending_estimated_dist_to_self = (
+                        self.map.u_get_estimated_dist_to_self_by_index(
+                            pending_target_idx
+                        )
+                    )
+                    lowest_candidate_estimated_dist_to_self = (
+                        pending_estimated_dist_to_self
+                    )
+                    pending_candidate_entry = (
+                        (
+                            pending_estimated_dist_to_self,
+                            get_own_core_dist(pending_target_idx),
+                        ),
+                        -1,
+                        pending_target_idx,
+                        int(pending_label),
+                    )
+                    pending_preferred_entry = (
+                        (-1, -1),
+                        -1,
+                        pending_target_idx,
+                        int(pending_label),
                     )
 
         for encounter_order, target_tile in enumerate(
@@ -2006,11 +2029,19 @@ class BuilderStrategyMethodsMixin:
             if target_idx in candidate_seen_indices:
                 continue
             candidate_seen_indices.add(target_idx)
+            estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
+                target_idx
+            )
+            if (
+                lowest_candidate_estimated_dist_to_self is None
+                or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
+            ):
+                lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
             candidate_entries.append(
                 (
                     (
+                        estimated_dist_to_self,
                         get_own_core_dist(target_idx),
-                        self.map.u_get_estimated_dist_to_self_by_index(target_idx),
                     ),
                     encounter_order,
                     target_idx,
@@ -2053,11 +2084,19 @@ class BuilderStrategyMethodsMixin:
                 if target_idx in candidate_seen_indices:
                     continue
                 candidate_seen_indices.add(target_idx)
+                estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
+                    target_idx
+                )
+                if (
+                    lowest_candidate_estimated_dist_to_self is None
+                    or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
+                ):
+                    lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
                 candidate_entries.append(
                     (
                         (
+                            estimated_dist_to_self,
                             get_own_core_dist(target_idx),
-                            self.map.u_get_estimated_dist_to_self_by_index(target_idx),
                         ),
                         splitter_encounter_order,
                         target_idx,
@@ -2065,6 +2104,18 @@ class BuilderStrategyMethodsMixin:
                     )
                 )
                 splitter_encounter_order += 1
+
+        if pending_candidate_entry is not None:
+            if (
+                lowest_candidate_estimated_dist_to_self is None
+                or pending_estimated_dist_to_self is None
+                or pending_estimated_dist_to_self
+                - lowest_candidate_estimated_dist_to_self
+                < 2
+            ):
+                candidate_entries.append(pending_preferred_entry)
+            else:
+                candidate_entries.append(pending_candidate_entry)
 
         if not candidate_entries:
             return False
@@ -3233,6 +3284,15 @@ class BuilderStrategyMethodsMixin:
                 for target_tile in source_tile.building.targets
             )
 
+        def try_build_barrier_fallback(target_pos: Position) -> bool:
+            return self.u_build_at(
+                target_pos,
+                EntityType.BARRIER,
+                hold=False,
+                move_towards=False,
+                attack_enemy_passable=False,
+            )
+
         enemy_turret_bucket = []
         enemy_supply_link_bucket = []
         for tile in dict.fromkeys(
@@ -3273,6 +3333,8 @@ class BuilderStrategyMethodsMixin:
                     target_pos,
                     resource,
                 )
+                if supplier_type is None or supplier_target is None:
+                    return try_build_barrier_fallback(target_pos)
                 if supplier_type in CONVEYOR_ENTITY_TYPES:
                     if self.u_build_at(
                         target_pos,
@@ -3284,6 +3346,12 @@ class BuilderStrategyMethodsMixin:
                     ):
                         return True
                 elif supplier_type == EntityType.BRIDGE:
+                    bridge_titanium_cost, bridge_axionite_cost = self.ct.get_bridge_cost()
+                    if (
+                        self.map.titanium < bridge_titanium_cost
+                        or self.map.axionite < bridge_axionite_cost
+                    ):
+                        return try_build_barrier_fallback(target_pos)
                     if self.u_build_at(
                         target_pos,
                         supplier_type,
@@ -3293,6 +3361,8 @@ class BuilderStrategyMethodsMixin:
                         target_pos=supplier_target,
                     ):
                         return True
+                else:
+                    return try_build_barrier_fallback(target_pos)
 
             return False
         if move_towards and self.u_move_to(target_pos):
@@ -3300,22 +3370,44 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
-    def s_sentinel_next_to_enemy_harvester(
+    def s_turret_next_to_enemy_harvester(
         self,
         move_towards: bool = True,
         attack_enemy_passable: bool = False,
         hold: bool = False,
     ):
         """
-        Build a sentinel next to the closest visible enemy harvester on titanium.
+        Build a turret next to the closest visible enemy harvester on titanium.
 
-        Prefer nearby empty tiles, own roads, and optionally passable enemy tiles.
+        Prefer nearby empty tiles, own roads, and optionally passable enemy
+        roads, bridges, or regular conveyors.
         If `move_towards` is false, only act on targets already in action range.
         If `hold` is true, keep the step active once a valid build target exists
-        but the team cannot yet afford the sentinel.
+        but the team cannot yet afford the chosen turret.
         """
         current_pos = self.map.current_pos
         own_team = self.map.own_team
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        closest_enemy_builder_bot_pos = self.map.closest_enemy_builder_bot_in_vision_pos
+        enemy_builder_close_enough_for_enemy_road_attack = (
+            closest_enemy_builder_bot_pos is not None
+            and current_pos.distance_squared(closest_enemy_builder_bot_pos) <= 8
+        )
+        if (
+            enemy_builder_close_enough_for_enemy_road_attack
+            and
+            current_tile.building.team != own_team
+            and current_tile.building.entity_type == EntityType.ROAD
+            and current_tile.building.hp is not None
+            and current_tile.building.hp <= 2
+        ):
+            return bool(
+                self.u_attack_passable(
+                    current_pos,
+                    move_towards=False,
+                    destroy_condition=lambda _: True,
+                )
+            )
 
         enemy_harvesters = [
             tile
@@ -3340,7 +3432,9 @@ class BuilderStrategyMethodsMixin:
             ):
                 return False
 
-            titanium_cost, axionite_cost = self.ct.get_sentinel_cost()
+            build_entity_type, turret_direction = self.u_get_turret_build_plan(current_pos)
+            get_cost_method = getattr(self.ct, f"get_{build_entity_type.value}_cost")
+            titanium_cost, axionite_cost = get_cost_method()
             if (
                 self.ct.get_action_cooldown() != 0
                 or self.map.titanium < titanium_cost
@@ -3348,7 +3442,6 @@ class BuilderStrategyMethodsMixin:
             ):
                 return False
 
-            sentinel_direction = self.u_get_direction_toward_enemy_core_center(current_pos)
             enemy_core_center_pos = self.map.enemy_core_center_pos
             candidate_entries: list[tuple[tuple[int, int, int, int], Direction]] = []
 
@@ -3381,9 +3474,11 @@ class BuilderStrategyMethodsMixin:
 
             _, move_direction = min(candidate_entries)
             self.u_move_with_target(move_direction, current_pos)
-            if self.ct.can_build_sentinel(current_pos, sentinel_direction):
-                self.ct.build_sentinel(current_pos, sentinel_direction)
-                self.last_built_entity_type = EntityType.SENTINEL
+            can_build_method = getattr(self.ct, f"can_build_{build_entity_type.value}")
+            build_method = getattr(self.ct, f"build_{build_entity_type.value}")
+            if can_build_method(current_pos, turret_direction):
+                build_method(current_pos, turret_direction)
+                self.last_built_entity_type = build_entity_type
                 return True
             return True
 
@@ -3391,6 +3486,7 @@ class BuilderStrategyMethodsMixin:
             return True
 
         tile_kind_by_pos: dict[Position, str | None] = {}
+        ignore_enemy_bridges_and_conveyors = self.map.has_enemy_bot_in_vision
 
         def get_tile_kind(pos: Position) -> str | None:
             if pos not in tile_kind_by_pos:
@@ -3411,7 +3507,23 @@ class BuilderStrategyMethodsMixin:
                     and candidate_tile.building.team != own_team
                     and candidate_tile.is_passable
                 ):
-                    tile_kind_by_pos[pos] = "enemy_passable"
+                    if (
+                        candidate_tile.building.entity_type == EntityType.ROAD
+                        and enemy_builder_close_enough_for_enemy_road_attack
+                    ):
+                        tile_kind_by_pos[pos] = "enemy_road"
+                    elif (
+                        not ignore_enemy_bridges_and_conveyors
+                        and candidate_tile.building.entity_type == EntityType.BRIDGE
+                    ):
+                        tile_kind_by_pos[pos] = "enemy_bridge"
+                    elif (
+                        not ignore_enemy_bridges_and_conveyors
+                        and candidate_tile.building.entity_type == EntityType.CONVEYOR
+                    ):
+                        tile_kind_by_pos[pos] = "enemy_conveyor"
+                    else:
+                        tile_kind_by_pos[pos] = None
                 else:
                     tile_kind_by_pos[pos] = None
             return tile_kind_by_pos[pos]
@@ -3438,7 +3550,13 @@ class BuilderStrategyMethodsMixin:
             kind = get_tile_kind(tile.position)
             if kind is None:
                 continue
-            kind_rank = 0 if kind == "empty" else 1 if kind == "own_road" else 2
+            kind_rank = {
+                "empty": 0,
+                "own_road": 1,
+                "enemy_road": 2,
+                "enemy_bridge": 3,
+                "enemy_conveyor": 4,
+            }[kind]
             key = (tile.dist_to_self, kind_rank)
             if target_key is None or key < target_key:
                 target_key = key
@@ -3447,44 +3565,27 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        sentinel_direction = self.u_get_direction_toward_enemy_core_center(target_tile.position)
         return bool(
-            self.u_build_at(
+            self.u_build_turret(
                 target_tile.position,
-                EntityType.SENTINEL,
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=attack_enemy_passable,
-                facing_direction=sentinel_direction,
             )
         )
 
     def _u_tile_points_at_index(self, tile, target_idx: int) -> bool:
         return any(target_tile.index == target_idx for target_tile in tile.building.targets)
 
-    def _u_supply_tile_transports_pure_titanium(self, tile) -> bool:
+    def _u_supply_tile_transports_titanium(self, tile) -> bool:
         current_round = self.map.current_round
 
         if tile.building.entity_type == EntityType.SPLITTER:
-            return (
-                tile.building.last_titanium_onit_turn == current_round
-                and tile.building.last_raw_axionite_onit_turn != current_round
-                and tile.building.last_refined_axionite_onit_turn != current_round
-            )
+            return tile.building.last_titanium_onit_turn == current_round
 
-        return (
-            self.map.u_supply_chain_has_titanium(tile.index, self.map.enemy_team)
-            and not self.map.u_supply_chain_has_raw_axionite(
-                tile.index,
-                self.map.enemy_team,
-            )
-            and not self.map.u_supply_chain_has_refined_axionite(
-                tile.index,
-                self.map.enemy_team,
-            )
-        )
+        return self.map.u_supply_chain_has_titanium(tile.index, self.map.enemy_team)
 
-    def _u_target_has_pure_titanium_enemy_supply(self, target_idx: int) -> bool:
+    def _u_target_has_titanium_enemy_supply(self, target_idx: int) -> bool:
         current_round = self.map.current_round
         enemy_team = self.map.enemy_team
         tiles_by_index = self.map.tiles_by_index
@@ -3515,7 +3616,7 @@ class BuilderStrategyMethodsMixin:
                 checked_root_indices.add(root_idx)
 
             found_source = True
-            if not self._u_supply_tile_transports_pure_titanium(source_tile):
+            if not self._u_supply_tile_transports_titanium(source_tile):
                 return False
 
         return found_source
@@ -3783,7 +3884,7 @@ class BuilderStrategyMethodsMixin:
         """
         Block a hijackable enemy supply target by building a barrier on it.
 
-        Uses the same target selection and pure-titanium gate as
+        Uses the same target selection and titanium-presence gate as
         `s_hijack_enemy_supply_chain`, but once the tile qualifies it builds a
         barrier directly instead of considering allied supply-link builds.
         """
@@ -3796,7 +3897,7 @@ class BuilderStrategyMethodsMixin:
             self.map.titanium >= conveyor_titanium_cost
             and self.map.axionite >= conveyor_axionite_cost
         )
-        if not can_afford_conveyor or not self._u_target_has_pure_titanium_enemy_supply(
+        if not can_afford_conveyor or not self._u_target_has_titanium_enemy_supply(
             target_tile.index
         ):
             return False
@@ -3819,7 +3920,7 @@ class BuilderStrategyMethodsMixin:
         """
         Build on the closest visible enemy resource target, preferring a hijack.
 
-        When the targeted enemy supply input is carrying pure titanium, try to
+        When the targeted enemy supply input is carrying titanium, try to
         convert that target tile into an allied supply tile that feeds nearby
         turrets or downstream allied turret chains. If no hijack build works,
         return `False` instead of building a barrier.
@@ -3836,7 +3937,7 @@ class BuilderStrategyMethodsMixin:
             self.map.titanium >= conveyor_titanium_cost
             and self.map.axionite >= conveyor_axionite_cost
         )
-        if not can_afford_conveyor or not self._u_target_has_pure_titanium_enemy_supply(
+        if not can_afford_conveyor or not self._u_target_has_titanium_enemy_supply(
             target_tile.index
         ):
             return False
@@ -4273,7 +4374,7 @@ class BuilderStrategyMethodsMixin:
             if cached_value is not None:
                 return cached_value
 
-            sentinel_direction = self.u_get_direction_toward_enemy_core_center(tile.position)
+            sentinel_direction = self.u_get_sentinel_orientation(tile.position)
             cached_value = any(
                 self.map.u_sentinel_covers_target(
                     tile.position,
@@ -4582,7 +4683,7 @@ class BuilderStrategyMethodsMixin:
                 and self.map.axionite >= sentinel_axionite_cost
             )
             if can_afford_sentinel:
-                sentinel_direction = self.u_get_direction_toward_enemy_core_center(
+                sentinel_direction = self.u_get_sentinel_orientation(
                     target_tile.position
                 )
                 if (
@@ -5043,11 +5144,12 @@ class BuilderStrategyMethodsMixin:
         remaining visible damaged allied tiles and moves toward the best one.
         Only tiles within `candidate_radius` Euclidean distance of the builder
         are considered; by default this is the builder's full vision radius.
-        Priorities are: core first, then tiles with a damaged own builder bot
-        standing on them, then by building type in this order: bridge,
+        Priorities are: critically damaged core first (at or below one third of
+        max HP), then tiles with a damaged own builder bot standing on them,
+        then by building type in this order: bridge,
         conveyor, road, foundry, harvester, armoured conveyor, splitter,
-        sentinel, gunner, launcher, breach, barrier. Ties are broken by
-        distance to self and then distance to own core.
+        sentinel, gunner, launcher, breach, barrier, noncritical core. Ties
+        are broken by distance to self and then distance to own core.
         """
         own_team = self.map.own_team
         current_pos = self.map.current_pos
@@ -5090,7 +5192,6 @@ class BuilderStrategyMethodsMixin:
             return False
 
         building_type_rank = {
-            EntityType.CORE: 0,
             EntityType.BRIDGE: 2,
             EntityType.CONVEYOR: 3,
             EntityType.ROAD: 4,
@@ -5103,6 +5204,7 @@ class BuilderStrategyMethodsMixin:
             EntityType.LAUNCHER: 11,
             EntityType.BREACH: 12,
             EntityType.BARRIER: 13,
+            EntityType.CORE: 14,
         }
 
         def has_damaged_own_builder(tile) -> bool:
@@ -5112,12 +5214,21 @@ class BuilderStrategyMethodsMixin:
                 and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
             )
 
+        def is_critical_core(tile) -> bool:
+            if (
+                tile.building.entity_type != EntityType.CORE
+                or tile.building.id is None
+                or tile.building.hp is None
+            ):
+                return False
+            return tile.building.hp * 3 <= self.ct.get_max_hp(tile.building.id)
+
         target_tile = min(
             dict.fromkeys(candidate_tiles),
             key=lambda tile: (
                 (
                     0
-                    if tile.building.entity_type == EntityType.CORE
+                    if is_critical_core(tile)
                     else 1 if has_damaged_own_builder(tile) else 2
                 ),
                 building_type_rank.get(tile.building.entity_type, 99),

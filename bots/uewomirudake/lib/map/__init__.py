@@ -231,6 +231,7 @@ class Map:
         self.enemy_team: Team | None = None
         self.current_round = -1
         self.current_pos = Position(0, 0)
+        self.turns_on_current_tile = 0
         self.titanium = 0
         self.axionite = 0
         self.compute_dist_to_self = False
@@ -429,6 +430,7 @@ class Map:
         self.frontier_expand_pending_indices: list[int] = []
         self.frontier_expand_pending_head = 0
         self.known_own_supply_link_indices: set[int] = set()
+        self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
 
         self.stopwatch = Stopwatch("Map")
 
@@ -467,11 +469,19 @@ class Map:
             self.enemy_supply_chain_feeds_own_turret_by_index,
         )
 
-        self.current_round = self.ct.get_current_round()
-        self.current_pos = self.ct.get_position()
+        next_round = self.ct.get_current_round()
+        next_pos = self.ct.get_position()
+        if next_round != self.current_round:
+            if self.current_round != -1 and next_pos == self.current_pos:
+                self.turns_on_current_tile += 1
+            else:
+                self.turns_on_current_tile = 0
+        self.current_round = next_round
+        self.current_pos = next_pos
         self.titanium, self.axionite = self.ct.get_global_resources()
 
         self.has_enemy_bot_in_vision = False
+        self.closest_enemy_builder_bot_in_vision_pos = None
         self.tiles_in_vision: list[Tile] = []
         self.newly_seen_tiles_in_vision: list[Tile] = []
         self.titanium_tiles_in_vision: list[Tile] = []
@@ -818,6 +828,18 @@ class Map:
             return False
         return bool(self.own_supply_chain_feeds_own_turret_by_index[root])
 
+    def _u_apply_connected_harvester_resource_flags(
+        self,
+        harvester_tile: Tile,
+        root: int,
+        has_titanium_by_index: bytearray,
+        has_raw_axionite_by_index: bytearray,
+    ) -> None:
+        if harvester_tile.environment == Environment.ORE_TITANIUM:
+            has_titanium_by_index[root] = 1
+        elif harvester_tile.environment == Environment.ORE_AXIONITE:
+            has_raw_axionite_by_index[root] = 1
+
     def u_update_supply_chain_union_find_for_team(self, team: Team) -> None:
         if team == self.own_team:
             supply_links_in_vision = self.own_supply_links_in_vision
@@ -907,6 +929,12 @@ class Map:
                     continue
                 counted_harvester_component_keys.add(pair_key)
                 supply_chain_harvester_count_by_index[root] += 1
+                self._u_apply_connected_harvester_resource_flags(
+                    target_tile,
+                    root,
+                    supply_chain_has_titanium_by_index,
+                    supply_chain_has_raw_axionite_by_index,
+                )
 
             # Harvesters feed any orthogonally adjacent supplier, even when the
             # supplier does not target the harvester itself, such as a splitter
@@ -924,6 +952,12 @@ class Map:
                     continue
                 counted_harvester_component_keys.add(pair_key)
                 supply_chain_harvester_count_by_index[root] += 1
+                self._u_apply_connected_harvester_resource_flags(
+                    adjacent_tile,
+                    root,
+                    supply_chain_has_titanium_by_index,
+                    supply_chain_has_raw_axionite_by_index,
+                )
 
             if supply_chain_feeds_own_turret_by_index is not None:
                 if any(
@@ -1264,6 +1298,7 @@ class Map:
 
         known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
         known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
+        closest_enemy_builder_key = None
 
         for tile in self.tiles_in_vision:
             building = tile.building
@@ -1280,6 +1315,15 @@ class Map:
 
             if tile.bot.id is not None and tile.bot.team != self.own_team:
                 self.has_enemy_bot_in_vision = True
+                if tile.bot.entity_type == EntityType.BUILDER_BOT:
+                    key = (
+                        self.current_pos.distance_squared(tile.position),
+                        tile.position.x,
+                        tile.position.y,
+                    )
+                    if closest_enemy_builder_key is None or key < closest_enemy_builder_key:
+                        closest_enemy_builder_key = key
+                        self.closest_enemy_builder_bot_in_vision_pos = tile.position
 
             if building.id is not None:
                 if building.team == self.own_team:
@@ -2142,8 +2186,10 @@ class Map:
         source_pos: Position,
         direction: Direction,
         radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
+        enemy_supply_chain_feeding_own_turret_blocks: bool = True,
     ) -> list[Tile]:
         shootable_tiles: list[Tile] = []
+        current_round = self.current_round
         for target_tile in self.u_get_gunner_ray_tiles(
             source_pos,
             direction,
@@ -2156,6 +2202,15 @@ class Map:
                 target_tile.building.id is not None
                 and target_tile.building.team == self.own_team
                 and target_tile.building.entity_type != EntityType.ROAD
+            ):
+                break
+
+            if (
+                enemy_supply_chain_feeding_own_turret_blocks
+                and target_tile.last_seen_turn == current_round
+                and target_tile.building.team == self.enemy_team
+                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and self.u_enemy_supply_chain_feeds_own_turret(target_tile.index)
             ):
                 break
 
@@ -2953,6 +3008,12 @@ class Map:
                     if pair_key not in counted_harvester_component_keys:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1
+                        self._u_apply_connected_harvester_resource_flags(
+                            target_tile,
+                            root,
+                            has_titanium_by_index,
+                            has_raw_axionite_by_index,
+                        )
 
             # Harvesters feed any orthogonally adjacent supplier, even when the
             # supplier does not target the harvester itself, such as a splitter
@@ -2969,6 +3030,12 @@ class Map:
                     if pair_key not in counted_harvester_component_keys:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1
+                        self._u_apply_connected_harvester_resource_flags(
+                            adjacent_tile,
+                            root,
+                            has_titanium_by_index,
+                            has_raw_axionite_by_index,
+                        )
 
                 if (
                     not feeds_own_turret

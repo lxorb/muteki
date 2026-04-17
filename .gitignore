@@ -43,6 +43,7 @@ Thumbs.db
 *.replay*
 /profiles/
 replay_*.json
+/tools/replay_parser/last_replay.parsed.json
 
 # local test bot
 /src/bots/test_bot.py
