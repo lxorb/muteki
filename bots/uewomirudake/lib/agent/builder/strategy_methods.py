@@ -5642,7 +5642,7 @@ class BuilderStrategyMethodsMixin:
         stack = [walkable_for_all[0]]
         while stack:
             idx = stack.pop()
-            for nidx in self.map.u_iter_neighbor_indices(idx)ohh:
+            for nidx in self.map.u_iter_neighbor_indices(idx):
                 if nidx in seen or nidx in blocked_for_enemy or nidx not in vision_set:
                     continue
                 seen.add(nidx)
