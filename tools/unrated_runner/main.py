@@ -358,8 +358,11 @@ def main():
                 graph_interval_minutes is not None
                 and time.time() - last_graph_post >= graph_interval_minutes * 60
             ):
-                print("Running graph.py and posting to Discord...")
-                run_graph_and_post()
+                if results_all:
+                    print("Running graph.py and posting to Discord...")
+                    run_graph_and_post()
+                else:
+                    print("  No game data yet; skipping graph.py.")
                 last_graph_post = time.time()
 
             time.sleep(REQUEST_DELAY)
