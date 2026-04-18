@@ -2,6 +2,7 @@ from heapq import heapify, heappop
 import math
 import time
 
+from lib.debug import Stopwatch
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
@@ -5311,6 +5312,8 @@ class BuilderStrategyMethodsMixin:
         return False
     
     def lets_get_yeeted(self):
+        sw = Stopwatch("lets_get_yeeted")
+        sw.start()
 
         if self.ct.get_global_resources()[0] < LAUNCHER_BUILD_MIN_TITANIUM:
             if ENABLE_PRINTING: print("REASON A")
@@ -5324,12 +5327,16 @@ class BuilderStrategyMethodsMixin:
         if current_tile.in_own_launcher_pickup_zone != 0:
             return False
 
+        sw.lap("early checks")
+
         path_index_by_tile_index = {}
         for i, tile in enumerate(self.map.current_path):
             path_index_by_tile_index[tile.index] = i
             for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
                 if neighbor_idx not in path_index_by_tile_index:
                     path_index_by_tile_index[neighbor_idx] = i
+
+        sw.lap("build path index")
 
         best_pos = None
         best_target = None
@@ -5352,6 +5359,8 @@ class BuilderStrategyMethodsMixin:
                     best_pos = pos
                     best_target = landing_tile
 
+        sw.lap("search landing tiles")
+
         if best_pos is None:
             if ENABLE_PRINTING: print("REASON C")
             return False
@@ -5369,9 +5378,13 @@ class BuilderStrategyMethodsMixin:
             self.awaiting_yeet_pos = self.map.current_pos
             self.yeet_target_for_own_launcher = best_target.position
             if ENABLE_PRINTING: print("ARE U SURE IT IS WALKABLE?", best_target.is_walkable)
+            sw.lap("build launcher")
+            if ENABLE_PRINTING: sw.log()
             return True
 
         if ENABLE_PRINTING: print("REASON E")
+        sw.lap("done")
+        if ENABLE_PRINTING: sw.log()
         return False
 
 
