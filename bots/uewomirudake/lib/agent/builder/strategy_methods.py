@@ -936,96 +936,45 @@ class BuilderStrategyMethodsMixin:
                 bool,
             ]
         ] = []
-        candidate_seen_indices: set[int] = set()
+        for adjacent_idx in self.map.own_titanium_harvester_adjacent_candidate_indices:
+            adjacent_tile = tiles_by_index[adjacent_idx]
+            if adjacent_tile.position == current_pos or adjacent_tile.bot.id is not None:
+                continue
+            if current_pos.distance_squared(adjacent_tile.position) > candidate_radius_sq:
+                continue
 
-        def is_own_harvester_feeder_tile(tile) -> bool:
-            return (
-                tile.building.team == own_team
-                and tile.building.entity_type in CONVEYOR_ENTITY_TYPES
-                and any(
-                    target_tile.building.team == own_team
-                    and target_tile.building.entity_type == EntityType.HARVESTER
-                    for target_tile in tile.building.targets
+            affordable_turret_plan = self._u_get_harvester_adjacent_turret_substitution(
+                adjacent_tile.position,
+                True,
+            )
+            fallback_turret_plan = affordable_turret_plan or (
+                self._u_get_harvester_adjacent_turret_substitution(
+                    adjacent_tile.position,
+                    True,
+                    require_affordable=False,
                 )
             )
-
-        for harvester_tile in tiles_by_index:
-            if harvester_tile.last_seen_turn < 0:
-                continue
-            if (
-                harvester_tile.building.team != own_team
-                or harvester_tile.building.entity_type != EntityType.HARVESTER
-                or harvester_tile.environment != Environment.ORE_TITANIUM
-            ):
+            if fallback_turret_plan is None:
                 continue
 
-            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
-                harvester_tile.index
-            ):
-                if adjacent_idx in candidate_seen_indices:
-                    continue
-
-                adjacent_tile = tiles_by_index[adjacent_idx]
-                if adjacent_tile.last_seen_turn < 0:
-                    continue
-                if adjacent_tile.position == current_pos or adjacent_tile.bot.id is not None:
-                    continue
-                if current_pos.distance_squared(adjacent_tile.position) > candidate_radius_sq:
-                    continue
-
-                is_candidate_tile = (
-                    adjacent_tile.building.id is None
-                    or (
-                        adjacent_tile.building.team == own_team
-                        and adjacent_tile.building.entity_type == EntityType.ROAD
-                    )
-                    or is_own_harvester_feeder_tile(adjacent_tile)
-                    or (
-                        adjacent_tile.building.team == own_team
-                        and adjacent_tile.building.entity_type == EntityType.BARRIER
-                    )
-                )
-                if not is_candidate_tile:
-                    continue
-
-                affordable_turret_plan = (
-                    self._u_get_harvester_adjacent_turret_substitution(
-                        adjacent_tile.position,
-                        True,
-                    )
-                )
-                fallback_turret_plan = affordable_turret_plan or (
-                    self._u_get_harvester_adjacent_turret_substitution(
-                        adjacent_tile.position,
-                        True,
-                        require_affordable=False,
-                    )
-                )
-                if fallback_turret_plan is None:
-                    continue
-
-                build_entity_type, turret_direction = fallback_turret_plan
-                candidate_seen_indices.add(adjacent_idx)
-                candidate_entries.append(
+            build_entity_type, turret_direction = fallback_turret_plan
+            candidate_entries.append(
+                (
                     (
-                        (
-                            0
-                            if current_pos.distance_squared(adjacent_tile.position)
-                            <= BUILDER_ACTION_RADIUS_SQ
-                            else 1,
-                            adjacent_tile.dist_to_self,
-                            adjacent_tile.own_core_dist,
-                            adjacent_tile.index,
-                        ),
-                        adjacent_tile.position,
-                        build_entity_type,
-                        turret_direction,
-                        affordable_turret_plan is not None,
-                    )
+                        0
+                        if current_pos.distance_squared(adjacent_tile.position)
+                        <= BUILDER_ACTION_RADIUS_SQ
+                        else 1,
+                        adjacent_tile.dist_to_self,
+                        adjacent_tile.own_core_dist,
+                        adjacent_tile.index,
+                    ),
+                    adjacent_tile.position,
+                    build_entity_type,
+                    turret_direction,
+                    affordable_turret_plan is not None,
                 )
-
-                if self.round_stopwatch.check_overtime():
-                    break
+            )
 
             if self.round_stopwatch.check_overtime():
                 break

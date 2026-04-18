@@ -477,6 +477,11 @@ class Map:
         self.stale_builder_passability_tracked_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
+        self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
+        self.own_titanium_harvester_adjacent_candidate_mark_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_titanium_harvester_adjacent_candidate_touched_indices: list[int] = []
         self.known_own_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
 
@@ -499,6 +504,10 @@ class Map:
         self._reset_marked_bytearray_indices(
             self.vision_bfs_passable_touched_indices,
             self.vision_bfs_passable_by_index,
+        )
+        self._reset_marked_bytearray_indices(
+            self.own_titanium_harvester_adjacent_candidate_touched_indices,
+            self.own_titanium_harvester_adjacent_candidate_mark_by_index,
         )
         self._reset_supply_chain_union_find_arrays(
             self.own_supply_chain_touched_indices,
@@ -568,6 +577,7 @@ class Map:
         self.own_buildings_needing_heal: list[Tile] = []
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
+        self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
         self.visible_builder_bot_ids_by_index = {}
         self.visible_building_ids_by_index = {}
         self.all_own_supply_link_target_indices_in_vision = set()
@@ -1590,9 +1600,59 @@ class Map:
             known_accessible_axionite_indices,
             self.parsed_axionite_indices,
         )
+        self.u_update_own_titanium_harvester_adjacent_candidate_cache()
         self.stopwatch.lap("Visible caches: accessible ore")
         self.u_update_frontier_expand_cache()
         self.stopwatch.lap("Visible caches: frontier")
+
+    def u_update_own_titanium_harvester_adjacent_candidate_cache(self) -> None:
+        current_round = self.current_round
+        own_team = self.own_team
+        candidate_indices = self.own_titanium_harvester_adjacent_candidate_indices
+        candidate_mark_by_index = (
+            self.own_titanium_harvester_adjacent_candidate_mark_by_index
+        )
+        candidate_touched_indices = (
+            self.own_titanium_harvester_adjacent_candidate_touched_indices
+        )
+        conveyor_targets_harvester_by_index = self.conveyor_targets_harvester_by_index
+        tiles_by_index = self.tiles_by_index
+
+        for harvester_tile in self.own_harvesters_in_vision:
+            if harvester_tile.environment != Environment.ORE_TITANIUM:
+                continue
+
+            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(harvester_tile.index):
+                if candidate_mark_by_index[adjacent_idx]:
+                    continue
+
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.last_seen_turn != current_round:
+                    continue
+
+                adjacent_building = adjacent_tile.building
+                is_candidate_tile = (
+                    adjacent_building.id is None
+                    or (
+                        adjacent_building.team == own_team
+                        and adjacent_building.entity_type == EntityType.ROAD
+                    )
+                    or (
+                        adjacent_building.team == own_team
+                        and adjacent_building.entity_type in CONVEYOR_ENTITY_TYPES
+                        and conveyor_targets_harvester_by_index[adjacent_idx]
+                    )
+                    or (
+                        adjacent_building.team == own_team
+                        and adjacent_building.entity_type == EntityType.BARRIER
+                    )
+                )
+                if not is_candidate_tile:
+                    continue
+
+                candidate_mark_by_index[adjacent_idx] = 1
+                candidate_touched_indices.append(adjacent_idx)
+                candidate_indices.append(adjacent_idx)
 
     def u_update_frontier_expand_cache(self) -> None:
         pending_indices = self.frontier_expand_pending_indices
