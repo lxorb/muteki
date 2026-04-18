@@ -25,6 +25,9 @@ from lib.agent.constants import (
     LAUNCHER_BUILD_MIN_IMPROVEMENT,
     LAUNCHER_BUILD_MIN_TITANIUM,
     LAUNCHER_WAIT_MIN_DISTANCE,
+    MIN_LAUNCHER_CHOKING_DIST_FROM_CORE,
+    COOLDOWN_TO_LAUNCHER_CHOKING,
+    LAUNCHER_CHOKING_MIN_TITANIUM 
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
 from lib.map.types import SupplyChainLabel
@@ -5235,6 +5238,9 @@ class BuilderStrategyMethodsMixin:
             move_target_pos = self.get_move_target(target_pos)
             self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
 
+            if self.lets_choke_them():
+                return True
+
             if self.lets_get_yeeted():
                 return True
 
@@ -5269,6 +5275,9 @@ class BuilderStrategyMethodsMixin:
         move_target_pos = self.get_move_target(target_pos)
         self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
 
+        if self.lets_choke_them():
+            return True
+
         if self.lets_get_yeeted():
             return True
 
@@ -5280,7 +5289,24 @@ class BuilderStrategyMethodsMixin:
             )
         )
     
+    def lets_choke_them(self):
+        if self.choking_launcher_cooldown != 0:
+            return False
+        if self.ct.get_global_resources()[0] < LAUNCHER_CHOKING_MIN_TITANIUM:
+            return False
+        for neighbor_idx in self.map.u_iter_neighbor_indices(self.map.u_to_index(self.map.current_pos)):
+            neighbor_tile = self.map.tiles_by_index[neighbor_idx]
+            if neighbor_tile.in_own_launcher_pickup_zone != 0:
+                continue
+            if self.is_launcher_choke_point(neighbor_tile):
+                if self.ct.can_build_launcher(neighbor_tile.position) and self.map.own_core_center_pos.distance_squared(neighbor_tile.position) >= MIN_LAUNCHER_CHOKING_DIST_FROM_CORE:
+                    self.ct.build_launcher(neighbor_tile.position)
+                    self.choking_launcher_cooldown = COOLDOWN_TO_LAUNCHER_CHOKING
+                    return True
+        return False
+    
     def lets_get_yeeted(self):
+
         if self.ct.get_global_resources()[0] < LAUNCHER_BUILD_MIN_TITANIUM:
             if ENABLE_PRINTING: print("REASON A")
             return False
@@ -5307,6 +5333,8 @@ class BuilderStrategyMethodsMixin:
         # same as in choose_target_position_by_launcher_tile, just with imporvement quantification
         for pos in self.map.u_iter_adjacent_all_positions(self.map.current_pos):
             relevant_tile = self.map.u_get_pos_tile(pos)
+            if relevant_tile.in_own_launcher_pickup_zone != 0:
+                continue
             if not self.could_place_marker_or_launcher_here(relevant_tile):
                 continue
             potential_marker_launcher_positions += 1
@@ -5565,3 +5593,32 @@ class BuilderStrategyMethodsMixin:
         return False
 
 
+    
+    def is_launcher_choke_point(self, tile):
+        """
+        Sample the 8 tiles at Chebyshev distance 2 (N, NE, E, SE, S, SW, W, NW).
+        Count passable runs cyclically; 2+ runs = the launcher's 3x3 footprint
+        would split local connectivity.
+        """
+        cx, cy = tile.position.x, tile.position.y
+        w, h = self.map.width, self.map.height
+        passable = self.map.intrinsic_passable_by_index
+        u_to_index_xy = self.map.u_to_index_xy
+
+        def p(x, y):
+            if x < 0 or y < 0 or x >= w or y >= h:
+                return False
+            return bool(passable[u_to_index_xy(x, y)])
+
+        ring = [
+            p(cx,     cy - 2),  # N
+            p(cx + 2, cy - 2),  # NE
+            p(cx + 2, cy),      # E
+            p(cx + 2, cy + 2),  # SE
+            p(cx,     cy + 2),  # S
+            p(cx - 2, cy + 2),  # SW
+            p(cx - 2, cy),      # W
+            p(cx - 2, cy - 2),  # NW
+        ]
+        transitions = sum(1 for i in range(8) if ring[i] and not ring[i - 1])
+        return transitions >= 2

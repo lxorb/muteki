@@ -66,6 +66,7 @@ class BuilderAgent(
         self.awaiting_yeet_pos = None
         self.yeet_target_for_own_launcher = None
         self.yeet_target = False
+        self.choking_launcher_cooldown = 0
 
 
     def u_infer_strategy_by_spawning_tile(self):
@@ -118,6 +119,8 @@ class BuilderAgent(
             self.awaiting_yeet_since = -1
             self.awaiting_yeet_pos = None
         self.yeet_target_for_own_launcher = None
+        if self.choking_launcher_cooldown != 0:
+            self.choking_launcher_cooldown -= 1
 
 
         handled = self.u_execute_strategy()
