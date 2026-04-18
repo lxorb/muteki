@@ -1124,76 +1124,20 @@ class BuilderNavigationMixin:
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is not None:
-            base_direction = self.map.u_get_direction_between(pos, enemy_core_center_pos)
+            direction = self.map.u_get_direction_between(pos, enemy_core_center_pos)
         else:
             own_core_center_pos = self.map.own_core_center_pos
             if own_core_center_pos is None:
                 self.map.u_calc_core_center_positions()
                 own_core_center_pos = self.map.own_core_center_pos
             if own_core_center_pos is None:
-                base_direction = Direction.NORTH
+                direction = Direction.NORTH
             else:
-                base_direction = self.map.u_get_direction_between(own_core_center_pos, pos)
+                direction = self.map.u_get_direction_between(own_core_center_pos, pos)
 
-        if base_direction is None or base_direction == Direction.CENTRE:
-            base_direction = Direction.NORTH
-
-        source_idx = self.map.u_to_index(pos)
-        current_round = self.map.current_round
-        enemy_team = self.map.enemy_team
-        best_direction = base_direction
-        best_key = None
-
-        for candidate_order, direction in enumerate(
-            _ADJACENT_DIRECTION_CANDIDATES_BY_DIRECTION[base_direction]
-        ):
-            enemy_turret_count = 0
-            can_target_enemy_core = 0
-            enemy_harvester_count = 0
-            enemy_supply_chain_count = 0
-            other_enemy_building_count = 0
-
-            for target_idx in self.map.u_get_attackable_target_indices(
-                source_idx,
-                EntityType.SENTINEL,
-                direction,
-            ):
-                target_tile = self.map.tiles_by_index[target_idx]
-                if target_tile.is_core_of(enemy_team):
-                    can_target_enemy_core = 1
-                    continue
-                if (
-                    target_tile.last_seen_turn != current_round
-                    or target_tile.building.team != enemy_team
-                ):
-                    continue
-
-                target_type = target_tile.building.entity_type
-                if target_type in ENEMY_TURRET_TYPES:
-                    enemy_turret_count += 1
-                elif target_type == EntityType.HARVESTER:
-                    enemy_harvester_count += 1
-                elif target_type in SUPPLY_LINK_TYPES:
-                    enemy_supply_chain_count += 1
-                elif target_type is not None:
-                    other_enemy_building_count += 1
-
-            key = (
-                -enemy_turret_count,
-                -can_target_enemy_core,
-                -enemy_harvester_count,
-                -enemy_supply_chain_count,
-                -other_enemy_building_count,
-                candidate_order,
-            )
-            if best_key is None or key < best_key:
-                best_key = key
-                best_direction = direction
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return best_direction
+        if direction is None or direction == Direction.CENTRE:
+            return Direction.NORTH
+        return direction
 
     def _u_tile_is_targeted_by_supply_chain(
         self,

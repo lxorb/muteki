@@ -10,6 +10,7 @@ from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
 SCAVENGER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_turn_to_harassment,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
@@ -50,12 +51,12 @@ SCAVENGER_STRATEGY = [
         True,
         False,
     ),
-    (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_frontier_expand, 100),
     (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 
 DEFENDER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
@@ -107,6 +108,7 @@ CORE_DEFENDER_STRATEGY = [
 ]
 
 HARASSMENT_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
     (BuilderStrategyMethodsMixin.s_gunner_next_to_enemy_core),
@@ -153,12 +155,12 @@ INITIAL_BB_ORDER: list[str] = [
     SCAVENGER_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
-    HARASSMENT_STRATEGY_ID,
-    HARASSMENT_STRATEGY_ID,
+    # HARASSMENT_STRATEGY_ID,
+    # HARASSMENT_STRATEGY_ID,
 ]
 FUTHER_BB_ROTATION: list[str] = [
-    SCAVENGER_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
+    SCAVENGER_STRATEGY_ID,
 ]
 FURTHER_BB_MIN_TURN: int = 50
 FURTHER_BB_MIN_TITANIUM: int = 200
