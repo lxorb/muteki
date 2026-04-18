@@ -52,6 +52,7 @@ PARSED_TILE_TYPE_CORE = 5
 
 MAP_UPDATE_MIN_REMAINING_MUS = 100
 PRELOADED_MAP_INDEX_STRIDE = 50
+STALE_BUILDER_BOT_PASSABILITY_THRESHOLD = 10
 
 
 def _iter_existing_parent_roots(path: Path) -> Iterable[Path]:
@@ -241,10 +242,17 @@ class Map:
         }
         self.index_x_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.index_y_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
+        self.vision_reachable_turn_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
+        self.vision_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
+        self.vision_max_dist_to_self_this_turn = 0
+        self.is_caged = False
+        self.stale_builder_bot_passability_threshold = (
+            STALE_BUILDER_BOT_PASSABILITY_THRESHOLD
+        )
         self.own_core_dist_by_index = (
             array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
         )
@@ -254,6 +262,9 @@ class Map:
         self.core_distance_passable_by_index = bytearray([1]) * self.INITIAL_MAP_SIZE
         self.intrinsic_passable_by_index = bytearray([1]) * self.INITIAL_MAP_SIZE
         self.bot_present_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.builder_bot_stationary_turns_by_index = (
+            array("H", [0]) * self.INITIAL_MAP_SIZE
+        )
         self.enemy_turret_target_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_gunner_ray_first_target_by_index = bytearray(
             self.INITIAL_MAP_SIZE
@@ -440,6 +451,10 @@ class Map:
         self.frontier_expand_newly_seen_indices: list[int] = []
         self.frontier_expand_pending_indices: list[int] = []
         self.frontier_expand_pending_head = 0
+        self.stale_builder_passability_touched_indices: list[int] = []
+        self.stale_builder_passability_tracked_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.known_own_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
 
@@ -498,6 +513,16 @@ class Map:
         self.current_round = next_round
         self.current_pos = next_pos
         self.titanium, self.axionite = self.ct.get_global_resources()
+
+        if self.stale_builder_passability_touched_indices:
+            for idx in self.stale_builder_passability_touched_indices:
+                self.stale_builder_passability_tracked_by_index[idx] = 0
+                tile = self.tiles_by_index[idx]
+                tile.u_refresh_intrinsic_passability()
+                tile.is_passable = tile._is_intrinsically_passable() and (
+                    tile.bot.id is None or tile.position == self.current_pos
+                )
+            self.stale_builder_passability_touched_indices.clear()
 
         self.has_enemy_bot_in_vision = False
         self.closest_enemy_builder_bot_in_vision_pos = None
@@ -1111,6 +1136,78 @@ class Map:
 
         self._build_attackable_target_offset_cache()
 
+    def u_prune_enemy_core_center_pos_candidates(self) -> None:
+        if self.enemy_core_center_pos is not None:
+            return
+        if not self.enemy_core_center_pos_candidates:
+            return
+
+        current_round = self.current_round
+        parsed_map_tile_type_by_index = self.parsed_map_tile_type_by_index
+        pruned_enemy_core_center_pos_candidates = []
+        inferred_enemy_core_center_pos = None
+
+        for mode, center_pos in self.enemy_core_center_pos_candidates:
+            footprint_overlaps_current_vision = False
+            footprint_contains_enemy_core = False
+            candidate_is_impossible = False
+
+            for candidate_tile in self.u_get_core_footprint_positions(center_pos):
+                if (
+                    parsed_map_tile_type_by_index is not None
+                    and parsed_map_tile_type_by_index[candidate_tile.index]
+                    == PARSED_TILE_TYPE_WALL
+                ) or candidate_tile.environment == Environment.WALL:
+                    candidate_is_impossible = True
+                    break
+
+                if candidate_tile.last_seen_turn != current_round:
+                    continue
+                footprint_overlaps_current_vision = True
+                if (
+                    candidate_tile.building.entity_type == EntityType.CORE
+                    and candidate_tile.building.team == self.enemy_team
+                ):
+                    footprint_contains_enemy_core = True
+                    inferred_enemy_core_center_pos = center_pos
+                    break
+
+            if candidate_is_impossible:
+                continue
+            if not footprint_overlaps_current_vision or footprint_contains_enemy_core:
+                pruned_enemy_core_center_pos_candidates.append((mode, center_pos))
+
+        if inferred_enemy_core_center_pos is not None:
+            self.enemy_core_center_pos_candidates = [
+                (mode, pos)
+                for mode, pos in pruned_enemy_core_center_pos_candidates
+                if pos == inferred_enemy_core_center_pos
+            ]
+            self.enemy_core_center_pos = inferred_enemy_core_center_pos
+            self.enemy_core_source_indices = self.u_set_core_source_indices(
+                self.enemy_team,
+                self.enemy_core_center_pos,
+            )
+            return
+
+        if len(pruned_enemy_core_center_pos_candidates) == len(
+            self.enemy_core_center_pos_candidates
+        ):
+            return
+
+        self.enemy_core_center_pos_candidates = (
+            pruned_enemy_core_center_pos_candidates
+        )
+        remaining_positions = {
+            pos for _, pos in self.enemy_core_center_pos_candidates
+        }
+        if len(remaining_positions) == 1:
+            self.enemy_core_center_pos = next(iter(remaining_positions))
+            self.enemy_core_source_indices = self.u_set_core_source_indices(
+                self.enemy_team,
+                self.enemy_core_center_pos,
+            )
+
     def _build_attackable_target_offset_cache(self) -> None:
         max_width = self.INITIAL_WIDTH
         max_height = self.INITIAL_HEIGHT
@@ -1494,54 +1591,7 @@ class Map:
         if self.symmetry_mode is not None:
             return
 
-        current_round = self.current_round
-        if self.enemy_core_center_pos is None and self.enemy_core_center_pos_candidates:
-            pruned_enemy_core_center_pos_candidates = []
-            inferred_enemy_core_center_pos = None
-            for mode, center_pos in self.enemy_core_center_pos_candidates:
-                footprint_overlaps_current_vision = False
-                footprint_contains_enemy_core = False
-                for candidate_tile in self.u_get_core_footprint_positions(center_pos):
-                    if candidate_tile.last_seen_turn != current_round:
-                        continue
-                    footprint_overlaps_current_vision = True
-                    if (
-                        candidate_tile.building.entity_type == EntityType.CORE
-                        and candidate_tile.building.team == self.enemy_team
-                    ):
-                        footprint_contains_enemy_core = True
-                        inferred_enemy_core_center_pos = center_pos
-                        break
-
-                if not footprint_overlaps_current_vision or footprint_contains_enemy_core:
-                    pruned_enemy_core_center_pos_candidates.append((mode, center_pos))
-
-            if inferred_enemy_core_center_pos is not None:
-                self.enemy_core_center_pos_candidates = [
-                    (mode, pos)
-                    for mode, pos in pruned_enemy_core_center_pos_candidates
-                    if pos == inferred_enemy_core_center_pos
-                ]
-                self.enemy_core_center_pos = inferred_enemy_core_center_pos
-                self.enemy_core_source_indices = self.u_set_core_source_indices(
-                    self.enemy_team,
-                    self.enemy_core_center_pos,
-                )
-            elif len(pruned_enemy_core_center_pos_candidates) != len(
-                self.enemy_core_center_pos_candidates
-            ):
-                self.enemy_core_center_pos_candidates = (
-                    pruned_enemy_core_center_pos_candidates
-                )
-                remaining_positions = {
-                    pos for _, pos in self.enemy_core_center_pos_candidates
-                }
-                if len(remaining_positions) == 1:
-                    self.enemy_core_center_pos = next(iter(remaining_positions))
-                    self.enemy_core_source_indices = self.u_set_core_source_indices(
-                        self.enemy_team,
-                        self.enemy_core_center_pos,
-                    )
+        self.u_prune_enemy_core_center_pos_candidates()
 
         newly_seen_tiles = self.newly_seen_tiles_in_vision
         if not newly_seen_tiles:
@@ -1741,13 +1791,7 @@ class Map:
             for mode, symmetric_location in self.enemy_core_center_pos_candidates
             if mode in self.symmetry_mode_candidates
         ]
-        remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
-        if len(remaining_positions) == 1:
-            self.enemy_core_center_pos = next(iter(remaining_positions))
-            self.enemy_core_source_indices = self.u_set_core_source_indices(
-                self.enemy_team,
-                self.enemy_core_center_pos,
-            )
+        self.u_prune_enemy_core_center_pos_candidates()
 
     def u_get_pos_tile(self, pos: Position) -> Tile:
         return self.tiles_by_index[self.u_to_index(pos)]
@@ -1954,13 +1998,7 @@ class Map:
                 for mode, pos in all_enemy_core_center_pos_candidates
                 if mode in self.symmetry_mode_candidates
             ]
-        remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
-        if len(remaining_positions) == 1:
-            self.enemy_core_center_pos = next(iter(remaining_positions))
-            self.enemy_core_source_indices = self.u_set_core_source_indices(
-                self.enemy_team,
-                self.enemy_core_center_pos,
-            )
+        self.u_prune_enemy_core_center_pos_candidates()
         return True
 
     def u_get_parsed_map_data_path(self, map_path: str) -> Path:
@@ -3713,62 +3751,108 @@ class Map:
         self.u_reset_own_core_distance_manhattan_initialization()
         return True
 
+    def u_is_vision_reachable_by_index(self, idx: int) -> bool:
+        return self.vision_reachable_turn_by_index[idx] == self.current_round
+
+    def u_get_next_step_towards_vision_reachable(
+        self,
+        target_pos: Position,
+    ) -> Tile | None:
+        if not self.u_is_in_bounds(target_pos):
+            return None
+        target_idx = self.u_to_index(target_pos)
+        if not self.u_is_vision_reachable_by_index(target_idx):
+            return None
+        next_step_idx = self.vision_first_step_by_index[target_idx]
+        if next_step_idx < 0:
+            return None
+        return self.tiles_by_index[next_step_idx]
+
     def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
+        if self.u_is_vision_reachable_by_index(idx):
+            return self.dist_to_self_by_index[idx]
+
         current_idx = self.u_to_index(self.current_pos)
         dx = abs(self.index_x_by_index[idx] - self.index_x_by_index[current_idx])
         dy = abs(self.index_y_by_index[idx] - self.index_y_by_index[current_idx])
-        return dx if dx >= dy else dy
+        estimated_dist = dx if dx >= dy else dy
+        if self.tiles_by_index[idx].last_seen_turn == self.current_round:
+            return self.vision_max_dist_to_self_this_turn + estimated_dist + 1
+        return estimated_dist
 
     def u_get_estimated_dist_to_self(self, pos: Position) -> int:
         return self.u_get_estimated_dist_to_self_by_index(self.u_to_index(pos))
 
-    def u_refresh_dist_to_self(self) -> None:
+    def u_refresh_vision_reachable_dist_to_self(self) -> None:
         source_idx = self.u_to_index(self.current_pos)
-        if (
-            self.last_dist_to_self_source_idx == source_idx
-            and self.dist_to_self_epoch != 0
-        ):
-            return
-
-        self.dist_to_self_epoch += 1
-        dist_to_self_epoch = self.dist_to_self_epoch
+        current_round = self.current_round
         self.last_dist_to_self_source_idx = source_idx
+        self.vision_max_dist_to_self_this_turn = 0
+        self.is_caged = True
         queue = self.distance_queue_buffer_by_index
         queue.clear()
         queue.append(source_idx)
         queue_head = 0
-        self.dist_to_self_epoch_by_index[source_idx] = dist_to_self_epoch
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        vision_first_step_by_index = self.vision_first_step_by_index
+        vision_reachable_turn_by_index[source_idx] = current_round
         self.dist_to_self_by_index[source_idx] = 0
+        vision_first_step_by_index[source_idx] = -1
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
         active_mask_by_index = self.active_mask_by_index
         intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        bot_present_by_index = self.bot_present_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
-        dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
+        tiles_by_index = self.tiles_by_index
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        overtime_check_countdown = 32
 
         while queue_head < len(queue):
             current_idx = queue[queue_head]
             queue_head += 1
             current_dist = dist_to_self_by_index[current_idx]
+            if current_dist > self.vision_max_dist_to_self_this_turn:
+                self.vision_max_dist_to_self_this_turn = current_dist
+            current_first_step_idx = vision_first_step_by_index[current_idx]
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[neighbor_idx]:
+                    continue
+                if tiles_by_index[neighbor_idx].last_seen_turn != current_round:
+                    self.is_caged = False
+                    continue
                 if (
-                    not active_mask_by_index[neighbor_idx]
-                    or not intrinsic_passable_by_index[neighbor_idx]
-                    or dist_to_self_epoch_by_index[neighbor_idx] == dist_to_self_epoch
+                    not intrinsic_passable_by_index[neighbor_idx]
+                    or vision_reachable_turn_by_index[neighbor_idx] == current_round
+                    or (
+                        current_idx == source_idx
+                        and bot_present_by_index[neighbor_idx]
+                    )
                 ):
                     continue
 
-                dist_to_self_epoch_by_index[neighbor_idx] = dist_to_self_epoch
+                vision_reachable_turn_by_index[neighbor_idx] = current_round
                 dist_to_self_by_index[neighbor_idx] = current_dist + 1
+                vision_first_step_by_index[neighbor_idx] = (
+                    neighbor_idx
+                    if current_first_step_idx == -1
+                    else current_first_step_idx
+                )
                 queue.append(neighbor_idx)
 
-            if self.round_stopwatch.check_overtime_interval():
-                break
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    break
+                overtime_check_countdown = 32
+
+    def u_refresh_dist_to_self(self) -> None:
+        self.u_refresh_vision_reachable_dist_to_self()
 
     def u_calculate_shortest_path(
         self,
@@ -4415,6 +4499,8 @@ class Map:
     def u_update_distances(self) -> None:
         sw = Stopwatch("Map distances")
         sw.start()
+        self.u_refresh_vision_reachable_dist_to_self()
+        sw.lap("Self distance field")
 
         if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
             self.u_apply_parsed_own_core_dist_to_tiles(self.tiles_in_vision)
@@ -4424,8 +4510,6 @@ class Map:
             sw.lap("Own core field")
             sw.log()
             return
-
-        sw.lap("Self distance field")
 
         dirty_indices = tuple(self.core_distance_dirty_indices)
         has_pending_own_core_dist_incremental_update = bool(

@@ -468,6 +468,53 @@ class BuilderNavigationMixin:
             self.u_move_with_target(next_direction, target_pos)
         return True
 
+    def u_try_greedy_manhattan_move_toward(
+        self,
+        target_pos: Position,
+        avoid_enemy_turrets: bool = True,
+    ) -> bool:
+        current_pos = self.map.current_pos
+        current_dist = (
+            abs(current_pos.x - target_pos.x)
+            + abs(current_pos.y - target_pos.y)
+        )
+        best_direction: Direction | None = None
+        best_score: tuple[int, int, int] | None = None
+
+        for direction in DIRECTIONS:
+            if direction == Direction.CENTRE:
+                continue
+            if not self.ct.can_move(direction):
+                continue
+
+            next_pos = current_pos.add(direction)
+            if not self.map.u_is_in_bounds(next_pos):
+                continue
+            next_idx = self.map.u_to_index(next_pos)
+            if (
+                avoid_enemy_turrets
+                and self.map.enemy_turret_target_by_index[next_idx]
+            ):
+                continue
+            next_dist = abs(next_pos.x - target_pos.x) + abs(next_pos.y - target_pos.y)
+            if next_dist >= current_dist:
+                continue
+
+            score = (
+                next_dist,
+                self.map.u_get_own_core_dist_by_index(next_idx),
+                next_idx,
+            )
+            if best_score is None or score < best_score:
+                best_score = score
+                best_direction = direction
+
+        if best_direction is None:
+            return False
+
+        self.u_move_with_target(best_direction, target_pos)
+        return True
+
     def u_move_to(
         self,
         pos: Position,
@@ -480,6 +527,26 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             return False
+        if not self.map.u_is_in_bounds(pos):
+            return False
+        target_idx = self.map.u_to_index(pos)
+        target_is_vision_reachable = self.map.u_is_vision_reachable_by_index(target_idx)
+        if not reach_builder_action_range and target_is_vision_reachable:
+            next_tile = self.map.u_get_next_step_towards_vision_reachable(pos)
+            if next_tile is not None:
+                next_direction = self.map.u_get_direction_between(
+                    current_pos,
+                    next_tile.position,
+                )
+                if next_direction is not None and self.ct.can_move(next_direction):
+                    self.u_move_with_target(next_direction, pos)
+                    return True
+                return False
+        if self.map.is_caged and not target_is_vision_reachable:
+            return self.u_try_greedy_manhattan_move_toward(
+                pos,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+            )
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
                 respect_titanium_reserve_for_road_build
