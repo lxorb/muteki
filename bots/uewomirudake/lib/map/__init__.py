@@ -1438,14 +1438,123 @@ class Map:
         self.stopwatch.lap("Reset + nearby queries")
 
         processed_tiles_in_vision = []
+        known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
+        known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
+        closest_enemy_builder_key = None
+        own_team = self.own_team
+        current_pos = self.current_pos
+        conveyor_targets_harvester_by_index = self.conveyor_targets_harvester_by_index
+        own_buildings_in_vision = self.own_buildings_in_vision
+        enemy_buildings_in_vision = self.enemy_buildings_in_vision
+        own_buildings_healable_in_action_range = (
+            self.own_buildings_healable_in_action_range
+        )
+        own_buildings_needing_heal = self.own_buildings_needing_heal
+        own_supply_links_in_vision = self.own_supply_links_in_vision
+        enemy_supply_links_in_vision = self.enemy_supply_links_in_vision
+        own_harvesters_in_vision = self.own_harvesters_in_vision
+        enemy_harvesters_in_vision = self.enemy_harvesters_in_vision
         for tile in self.tiles_in_vision:
             tile.update_attributes()
             processed_tiles_in_vision.append(tile)
+            building = tile.building
+            conveyor_targets_harvester_by_index[tile.index] = 0
+
+            if building.entity_type in {
+                EntityType.CONVEYOR,
+                EntityType.ARMOURED_CONVEYOR,
+            }:
+                for target_tile in building.targets:
+                    if target_tile.building.entity_type == EntityType.HARVESTER:
+                        conveyor_targets_harvester_by_index[tile.index] = 1
+                        break
+
+            if tile.bot.id is not None and tile.bot.team != own_team:
+                self.has_enemy_bot_in_vision = True
+                if tile.bot.entity_type == EntityType.BUILDER_BOT:
+                    key = (
+                        current_pos.distance_squared(tile.position),
+                        tile.position.x,
+                        tile.position.y,
+                    )
+                    if (
+                        closest_enemy_builder_key is None
+                        or key < closest_enemy_builder_key
+                    ):
+                        closest_enemy_builder_key = key
+                        self.closest_enemy_builder_bot_in_vision_pos = tile.position
+
+            if building.id is not None:
+                if building.team == own_team:
+                    own_buildings_in_vision.append(tile)
+                else:
+                    enemy_buildings_in_vision.append(tile)
+
+                if building.team == own_team:
+                    building_damaged = building.hp < self.ct.get_max_hp(building.id)
+                    if (
+                        building.entity_type
+                        in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR}
+                        and building.hp > 16
+                    ):
+                        building_damaged = False
+                    own_bot_damaged = (
+                        tile.bot.id is not None
+                        and tile.bot.team == own_team
+                        and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
+                    )
+                    if building_damaged or own_bot_damaged:
+                        if self.ct.can_heal(tile.position):
+                            own_buildings_healable_in_action_range.append(tile)
+                        else:
+                            own_buildings_needing_heal.append(tile)
+
+                if building.entity_type in SUPPLY_LINK_TYPES:
+                    if building.team == own_team:
+                        own_supply_links_in_vision.append(tile)
+                    else:
+                        enemy_supply_links_in_vision.append(tile)
+
+                if building.entity_type == EntityType.HARVESTER:
+                    if building.team == own_team:
+                        own_harvesters_in_vision.append(tile)
+                    else:
+                        enemy_harvesters_in_vision.append(tile)
+
+            if tile.environment == Environment.ORE_TITANIUM:
+                if building.id is None or (
+                    building.team == own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    known_accessible_titanium_indices.add(tile.index)
+                else:
+                    known_accessible_titanium_indices.discard(tile.index)
+            else:
+                known_accessible_titanium_indices.discard(tile.index)
+
+            if tile.environment == Environment.ORE_AXIONITE:
+                if building.id is None or (
+                    building.team == own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    known_accessible_axionite_indices.add(tile.index)
+                else:
+                    known_accessible_axionite_indices.discard(tile.index)
+            else:
+                known_accessible_axionite_indices.discard(tile.index)
 
             if self.round_stopwatch.check_overtime_interval():
                 break
 
         self.tiles_in_vision = processed_tiles_in_vision
+        self.known_accessible_titanium_indices = self.u_order_known_resource_indices(
+            known_accessible_titanium_indices,
+            self.parsed_titanium_indices,
+        )
+        self.known_accessible_axionite_indices = self.u_order_known_resource_indices(
+            known_accessible_axionite_indices,
+            self.parsed_axionite_indices,
+        )
 
         self.stopwatch.lap("Tile attributes")
 
@@ -1515,110 +1624,13 @@ class Map:
         self.u_update_symmetry_from_visible_tiles()
         self.stopwatch.lap("Visible caches: symmetry")
 
-        known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
-        known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
-        closest_enemy_builder_key = None
-
-        for tile in self.tiles_in_vision:
-            building = tile.building
-            self.conveyor_targets_harvester_by_index[tile.index] = 0
-
-            if building.entity_type in {
-                EntityType.CONVEYOR,
-                EntityType.ARMOURED_CONVEYOR,
-            }:
-                for target_tile in building.targets:
-                    if target_tile.building.entity_type == EntityType.HARVESTER:
-                        self.conveyor_targets_harvester_by_index[tile.index] = 1
-                        break
-
-            if tile.bot.id is not None and tile.bot.team != self.own_team:
-                self.has_enemy_bot_in_vision = True
-                if tile.bot.entity_type == EntityType.BUILDER_BOT:
-                    key = (
-                        self.current_pos.distance_squared(tile.position),
-                        tile.position.x,
-                        tile.position.y,
-                    )
-                    if closest_enemy_builder_key is None or key < closest_enemy_builder_key:
-                        closest_enemy_builder_key = key
-                        self.closest_enemy_builder_bot_in_vision_pos = tile.position
-
-            if building.id is not None:
-                if building.team == self.own_team:
-                    self.own_buildings_in_vision.append(tile)
-                else:
-                    self.enemy_buildings_in_vision.append(tile)
-
-                if building.entity_type == EntityType.CORE:
-                    self.u_update_visible_core_center(tile)
-
-                if building.team == self.own_team:
-                    building_damaged = building.hp < self.ct.get_max_hp(building.id)
-                    if (
-                        building.entity_type
-                        in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR}
-                        and building.hp > 16
-                    ):
-                        building_damaged = False
-                    own_bot_damaged = (
-                        tile.bot.id is not None
-                        and tile.bot.team == self.own_team
-                        and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
-                    )
-                    if building_damaged or own_bot_damaged:
-                        if self.ct.can_heal(tile.position):
-                            self.own_buildings_healable_in_action_range.append(tile)
-                        else:
-                            self.own_buildings_needing_heal.append(tile)
-
-                if building.entity_type in SUPPLY_LINK_TYPES:
-                    if building.team == self.own_team:
-                        self.own_supply_links_in_vision.append(tile)
-                    else:
-                        self.enemy_supply_links_in_vision.append(tile)
-
-                if building.entity_type == EntityType.HARVESTER:
-                    if building.team == self.own_team:
-                        self.own_harvesters_in_vision.append(tile)
-                    else:
-                        self.enemy_harvesters_in_vision.append(tile)
-
-            if tile.environment == Environment.ORE_TITANIUM:
-                if building.id is None or (
-                    building.team == self.own_team
-                    and building.entity_type != EntityType.HARVESTER
-                ):
-                    known_accessible_titanium_indices.add(tile.index)
-                else:
-                    known_accessible_titanium_indices.discard(tile.index)
-            else:
-                known_accessible_titanium_indices.discard(tile.index)
-
-            if tile.environment == Environment.ORE_AXIONITE:
-                if building.id is None or (
-                    building.team == self.own_team
-                    and building.entity_type != EntityType.HARVESTER
-                ):
-                    known_accessible_axionite_indices.add(tile.index)
-                else:
-                    known_accessible_axionite_indices.discard(tile.index)
-            else:
-                known_accessible_axionite_indices.discard(tile.index)
-
-            if self.round_stopwatch.check_overtime_interval():
-                break
-
         self.stopwatch.lap("Visible caches: classify")
-
-        self.known_accessible_titanium_indices = self.u_order_known_resource_indices(
-            known_accessible_titanium_indices,
-            self.parsed_titanium_indices,
-        )
-        self.known_accessible_axionite_indices = self.u_order_known_resource_indices(
-            known_accessible_axionite_indices,
-            self.parsed_axionite_indices,
-        )
+        for tile in self.own_buildings_in_vision:
+            if tile.building.entity_type == EntityType.CORE:
+                self.u_update_visible_core_center(tile)
+        for tile in self.enemy_buildings_in_vision:
+            if tile.building.entity_type == EntityType.CORE:
+                self.u_update_visible_core_center(tile)
         self.u_update_own_titanium_harvester_adjacent_candidate_cache()
         self.stopwatch.lap("Visible caches: accessible ore")
         self.u_update_frontier_expand_cache()
