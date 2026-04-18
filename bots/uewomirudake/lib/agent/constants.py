@@ -4,7 +4,7 @@ from lib.map.types import SymmetryMode
 ### GAME CONSTANTS ###
 BUILDER_ACTION_RADIUS_SQ: int = 2
 NS_PER_TURN: int = 2_000_000
-ENABLE_PRINTING: bool = True
+ENABLE_PRINTING: bool = False
 
 ### STRATEGY NAMES ###
 SCAVENGER_STRATEGY_ID: str = "scavenger"
@@ -133,7 +133,7 @@ surrendering early in submissions.
 import sys
 from pathlib import Path
 
-SURRENDER_AT_TURN: int = 200
+SURRENDER_AT_TURN: int = 20000
 
 try:
     exclude_module_dir: str | None = None
@@ -188,6 +188,11 @@ try:
             exclude,
             "DISABLE_HARASSMENT",
             DISABLE_HARASSMENT,
+        )
+        ENABLE_PRINTING = getattr(
+            exclude,
+            "ENABLE_PRINTING",
+            ENABLE_PRINTING,
         )
 except Exception:
     pass

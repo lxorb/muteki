@@ -5239,8 +5239,8 @@ class BuilderStrategyMethodsMixin:
             move_target_pos = self.get_move_target(target_pos)
             self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
 
-            if self.lets_choke_them():
-                return True
+            # if self.lets_choke_them():
+            #     return True
 
             if self.lets_get_yeeted():
                 return True
@@ -5276,8 +5276,8 @@ class BuilderStrategyMethodsMixin:
         move_target_pos = self.get_move_target(target_pos)
         self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
 
-        if self.lets_choke_them():
-            return True
+        # if self.lets_choke_them():
+        #    return True
 
         if self.lets_get_yeeted():
             return True
@@ -5606,11 +5606,6 @@ class BuilderStrategyMethodsMixin:
 
     
     def is_launcher_choke_point(self, tile):
-        """
-        BFS from current_pos through bot's vision tiles.
-        Blocked = tile + its 8 neighbors (the 3x3 launcher zone) + non-passable tiles.
-        If any passable vision tile is unreachable, it's a chokepoint.
-        """
         blocked_for_enemy = set(self.map.u_iter_neighbor_indices(tile.index))
         blocked_for_enemy.add(tile.index)
 
@@ -5634,7 +5629,7 @@ class BuilderStrategyMethodsMixin:
         stack = [walkable_for_all[0]]
         while stack:
             idx = stack.pop()
-            for nidx in self.map.u_iter_neighbor_indices(idx):
+            for nidx in self.map.u_iter_neighbor_indices(idx)ohh:
                 if nidx in seen or nidx in blocked_for_enemy or nidx not in vision_set:
                     continue
                 seen.add(nidx)
