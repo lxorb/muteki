@@ -47,7 +47,28 @@ def load_videos_json() -> dict:
     return {}
 
 
+def update_stats(data: dict) -> None:
+    total_games = 0
+    total_losses = 0
+    losses_by_condition = {}
+    for key, entry in data.items():
+        if key == "_stats":
+            continue
+        for g in entry.get("games", []):
+            total_games += 1
+            if g.get("result") == "loss":
+                total_losses += 1
+                cond = g.get("condition", "unknown")
+                losses_by_condition[cond] = losses_by_condition.get(cond, 0) + 1
+    data["_stats"] = {
+        "total_games": total_games,
+        "total_losses": total_losses,
+        "losses_by_condition": losses_by_condition,
+    }
+
+
 def save_videos_json(data: dict) -> None:
+    update_stats(data)
     with open(VIDEOS_JSON, "w") as f:
         json.dump(data, f, indent=2)
         f.write("\n")
@@ -113,14 +134,27 @@ def fetch_match_info(match_id: str) -> tuple[str, str, str, str, list[tuple[int,
     result = "win" if int(own_score) > int(enemy_score) else "loss"
 
     games = []
+    game_details = []
     for row in soup.select("tbody tr"):
         cells = row.find_all("td")
         if len(cells) >= 5:
             game_nr = int(cells[0].text.strip())
+            map_name = cells[1].text.strip()
+            winner = cells[2].text.strip()
+            condition = cells[3].text.strip()
             turns = int(cells[4].text.strip())
             games.append((game_nr, turns))
+            game_result = "win" if winner == OWN_TEAM else "loss"
+            game_details.append({
+                "game": game_nr,
+                "map": map_name,
+                "winner": winner,
+                "condition": condition,
+                "turns": turns,
+                "result": game_result,
+            })
 
-    return date, enemy_team, team_names, score, result, games
+    return date, enemy_team, team_names, score, result, games, game_details
 
 
 def set_round(driver, round_nr: int) -> None:
@@ -190,7 +224,7 @@ def screenshot_chunk(
                             else:
                                 ratio = instant_rate / _progress["rate_ema"]
                                 if 0.33 < ratio < 3.0:
-                                    alpha = 0.03
+                                    alpha = 0.005
                                     _progress["rate_ema"] = alpha * instant_rate + (1 - alpha) * _progress["rate_ema"]
                         _progress["last_time"] = now
                         rate = _progress["rate_ema"]
@@ -235,7 +269,7 @@ def process_match(match_id: str) -> None:
         print(f"  Already processed by {videos_data[match_id]['user']}, skipping.")
         return
 
-    date, enemy_team, team_names, score, result, games = fetch_match_info(match_id)
+    date, enemy_team, team_names, score, result, games, game_details = fetch_match_info(match_id)
     print(f"  Teams: {' vs '.join(team_names)}, Date: {date}, Score: {score} ({result}), Games: {games}")
 
     image_dir = os.path.join(SCRIPT_DIR, "images")
@@ -312,12 +346,19 @@ def process_match(match_id: str) -> None:
 
     # Mark match as processed
     videos_data = load_videos_json()  # reload in case another process updated it
+    losses_by_condition = {}
+    for g in game_details:
+        if g["result"] == "loss":
+            cond = g["condition"]
+            losses_by_condition[cond] = losses_by_condition.get(cond, 0) + 1
     videos_data[match_id] = {
         "user": getpass.getuser(),
         "date": date,
         "enemy": enemy_team,
         "score": score,
         "result": result,
+        "games": game_details,
+        "losses_by_condition": losses_by_condition,
     }
     save_videos_json(videos_data)
     print(f"  Recorded {match_id} in videos.json")
@@ -343,6 +384,39 @@ if __name__ == "__main__":
 
     match_ids = fetch_match_ids(TEAM_ID)
     videos_data = load_videos_json()
+
+    # Migrate old entries missing new fields
+    REQUIRED_KEYS = {"user", "date", "enemy", "score", "result", "games", "losses_by_condition"}
+    migrated = 0
+    for mid, entry in list(videos_data.items()):
+        if mid == "_stats":
+            continue
+        # Remove deprecated keys
+        entry.pop("teams", None)
+        missing = REQUIRED_KEYS - set(entry.keys())
+        if missing:
+            print(f"[{_timestamp()}] Backfilling {mid}: missing {missing}")
+            try:
+                _, enemy, _, score, result, _, game_details = fetch_match_info(mid)
+                entry.setdefault("enemy", enemy)
+                entry.setdefault("score", score)
+                entry.setdefault("result", result)
+                entry.setdefault("games", game_details)
+                entry.setdefault("user", "unknown")
+                entry.setdefault("date", "unknown")
+                lbc = {}
+                for g in entry.get("games", []):
+                    if g.get("result") == "loss":
+                        cond = g.get("condition", "unknown")
+                        lbc[cond] = lbc.get(cond, 0) + 1
+                entry.setdefault("losses_by_condition", lbc)
+                migrated += 1
+            except Exception as e:
+                print(f"  Failed to backfill {mid}: {e}")
+    if migrated:
+        save_videos_json(videos_data)
+        print(f"[{_timestamp()}] Backfilled {migrated} entries.")
+
     new_ids = [mid for mid in match_ids if mid not in videos_data]
 
     print(f"Found {len(match_ids)} matches, {len(new_ids)} new to process.\n")
@@ -353,3 +427,4 @@ if __name__ == "__main__":
             process_match(match_id)
         except Exception as e:
             print(f"  ERROR processing {match_id}: {e}\n")
+

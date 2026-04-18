@@ -4,13 +4,219 @@
     "date": "2026-04-18",
     "enemy": "bwaaa",
     "score": "1-4",
-    "result": "loss"
+    "result": "loss",
+    "losses_by_condition": {
+      "Axionite Collected": 1,
+      "Core Destroyed": 3
+    },
+    "games": [
+      {
+        "game": 1,
+        "map": "hourglass",
+        "winner": "bwaaa",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "chess",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 270,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 1128,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "shrub",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 1206,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "clash_arena",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 350,
+        "result": "loss"
+      }
+    ]
   },
   "3c540196-05e7-4430-a75f-245da5aa8d17": {
     "user": "einbocha",
     "date": "2026-04-18",
     "enemy": "Comp Practical Analysis Enjoyers",
     "score": "4-1",
-    "result": "loss"
+    "result": "loss",
+    "losses_by_condition": {
+      "Axionite Collected": 2,
+      "Titanium Collected": 2
+    },
+    "games": [
+      {
+        "game": 1,
+        "map": "shrub",
+        "winner": "Comp Practical Analysis Enjoyers",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "wall",
+        "winner": "Comp Practical Analysis Enjoyers",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "settlement",
+        "winner": "Comp Practical Analysis Enjoyers",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "galaxy",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 484,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "corridors",
+        "winner": "Comp Practical Analysis Enjoyers",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ]
+  },
+  "f025a932-2265-42e2-a0a1-426495658dbe": {
+    "user": "einbocha",
+    "date": "2026-04-18",
+    "enemy": "bwaaa",
+    "score": "1-4",
+    "result": "loss",
+    "losses_by_condition": {
+      "Core Destroyed": 4
+    },
+    "games": [
+      {
+        "game": 1,
+        "map": "coffee",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 531,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "cold",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 211,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "corridors",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 196,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "cubes",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 135,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "default_large1",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 146,
+        "result": "loss"
+      }
+    ]
+  },
+  "4d6a76ae-660b-47d1-a56f-c9775537dd65": {
+    "user": "einbocha",
+    "date": "2026-04-18",
+    "enemy": "Kessoku Band",
+    "score": "4-1",
+    "result": "loss",
+    "losses_by_condition": {
+      "Axionite Collected": 2,
+      "Titanium Collected": 2
+    },
+    "games": [
+      {
+        "game": 1,
+        "map": "the_great_divide",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "drawing_circles_is_hard",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "butterfly",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "default_medium1",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "donut",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ]
+  },
+  "_stats": {
+    "total_games": 20,
+    "total_losses": 16,
+    "losses_by_condition": {
+      "Axionite Collected": 5,
+      "Core Destroyed": 7,
+      "Titanium Collected": 4
+    }
   }
 }
