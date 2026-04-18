@@ -4975,7 +4975,7 @@ class Map:
 
         best_frontier_idx = -1
         best_entry_idx = -1
-        best_score: tuple[int, int, int, int, int, int] | None = None
+        best_score: tuple[int, int, int, int, int] | None = None
 
         for frontier_idx in frontier_indices:
             if not active_mask_by_index[frontier_idx]:
@@ -5024,12 +5024,11 @@ class Map:
                 continue
 
             candidate_score = (
-                frontier_entry_score[0],
-                u_get_own_core_dist_by_index(frontier_idx),
                 frontier_x_multiplier * index_x_by_index[frontier_idx],
                 frontier_y_multiplier * index_y_by_index[frontier_idx],
                 frontier_entry_score[1],
                 frontier_entry_score[2],
+                u_get_own_core_dist_by_index(frontier_idx),
             )
             if best_score is None or candidate_score < best_score:
                 best_score = candidate_score

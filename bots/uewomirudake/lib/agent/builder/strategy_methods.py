@@ -3030,10 +3030,11 @@ class BuilderStrategyMethodsMixin:
         Move toward the nearest reachable unseen frontier tile.
 
         Reuses the current-turn in-vision BFS to rank reachable frontier
-        candidates, preferring the closest frontier layer and then lower
-        own-core distance and stable coordinates among ties. Scavengers bias
-        the coordinate tie-break by their spawn quadrant so the diagonal
-        scavengers spread toward different corners more consistently.
+        candidates, preferring the scavenger-biased frontier coordinates,
+        then the entry-tile coordinates, with own-core distance only as the
+        final tie-breaker. Scavengers bias the coordinate tie-break by their
+        spawn quadrant so the diagonal scavengers spread toward different
+        corners more consistently.
         If the builder is already standing in enemy turret range, retry once
         without turret avoidance so it does not freeze in place.
         """
