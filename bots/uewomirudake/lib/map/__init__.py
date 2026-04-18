@@ -54,6 +54,11 @@ MAP_UPDATE_MIN_REMAINING_MUS = 100
 PRELOADED_MAP_INDEX_STRIDE = 50
 STALE_BUILDER_BOT_PASSABILITY_THRESHOLD = 10
 
+MAP_ENVIRONMENT_OTHER = 0
+MAP_ENVIRONMENT_WALL = 1
+MAP_ENVIRONMENT_TITANIUM = 2
+MAP_ENVIRONMENT_AXIONITE = 3
+
 
 def _iter_existing_parent_roots(path: Path) -> Iterable[Path]:
     try:
@@ -242,6 +247,8 @@ class Map:
         }
         self.index_x_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.index_y_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
+        self.last_seen_turn_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.environment_code_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.vision_reachable_turn_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.vision_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
@@ -453,6 +460,8 @@ class Map:
         self.frontier_expand_newly_seen_indices: list[int] = []
         self.frontier_expand_pending_indices: list[int] = []
         self.frontier_expand_pending_head = 0
+        self.vision_bfs_passable_touched_indices: list[int] = []
+        self.vision_bfs_passable_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.stale_builder_passability_touched_indices: list[int] = []
         self.stale_builder_passability_tracked_by_index = bytearray(
             self.INITIAL_MAP_SIZE
@@ -475,6 +484,10 @@ class Map:
         self._reset_marked_bytearray_indices(
             self.enemy_spin_gunner_ray_first_target_touched_indices,
             self.enemy_spin_gunner_ray_first_target_by_index,
+        )
+        self._reset_marked_bytearray_indices(
+            self.vision_bfs_passable_touched_indices,
+            self.vision_bfs_passable_by_index,
         )
         self._reset_supply_chain_union_find_arrays(
             self.own_supply_chain_touched_indices,
@@ -2188,6 +2201,15 @@ class Map:
             return Environment.EMPTY
         return None
 
+    def u_get_environment_code(self, environment: Environment | None) -> int:
+        if environment == Environment.WALL:
+            return MAP_ENVIRONMENT_WALL
+        if environment == Environment.ORE_TITANIUM:
+            return MAP_ENVIRONMENT_TITANIUM
+        if environment == Environment.ORE_AXIONITE:
+            return MAP_ENVIRONMENT_AXIONITE
+        return MAP_ENVIRONMENT_OTHER
+
     def u_get_parsed_own_core_dist_by_index(self, idx: int) -> int:
         if self.parsed_map_own_core_dist_by_index is None:
             return INF_DIST
@@ -2228,6 +2250,9 @@ class Map:
                 )
                 if parsed_environment is not None:
                     tile.environment = parsed_environment
+                    self.environment_code_by_index[idx] = self.u_get_environment_code(
+                        parsed_environment
+                    )
                 tile.u_refresh_core_distance_passability()
                 tile.u_refresh_intrinsic_passability()
                 tile.own_core_dist = parsed_dist
@@ -3795,8 +3820,11 @@ class Map:
         self.is_caged = True
         queue = self.distance_queue_buffer_by_index
         queue.clear()
-        queue.append(source_idx)
+        queue_append = queue.append
         queue_head = 0
+        source_neighbor_base = source_idx * self.MAX_NEIGHBOR_COUNT
+        source_neighbor_count = self.neighbor_count_by_index[source_idx]
+        source_dist = 1
         vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
         vision_first_step_by_index = self.vision_first_step_by_index
         vision_reachable_turn_by_index[source_idx] = current_round
@@ -3806,12 +3834,37 @@ class Map:
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
         active_mask_by_index = self.active_mask_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        last_seen_turn_by_index = self.last_seen_turn_by_index
+        environment_code_by_index = self.environment_code_by_index
+        vision_bfs_passable_by_index = self.vision_bfs_passable_by_index
         bot_present_by_index = self.bot_present_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
-        tiles_by_index = self.tiles_by_index
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
         overtime_check_countdown = 32
+
+        source_environment_code = environment_code_by_index[source_idx]
+        if source_environment_code == MAP_ENVIRONMENT_TITANIUM:
+            self.found_vision_reachable_titanium_this_turn = True
+        elif source_environment_code == MAP_ENVIRONMENT_AXIONITE:
+            self.found_vision_reachable_axionite_this_turn = True
+
+        for offset in range(source_neighbor_count):
+            neighbor_idx = neighbor_indices_by_index[source_neighbor_base + offset]
+            if not active_mask_by_index[neighbor_idx]:
+                continue
+            if last_seen_turn_by_index[neighbor_idx] != current_round:
+                self.is_caged = False
+                continue
+            if (
+                not vision_bfs_passable_by_index[neighbor_idx]
+                or bot_present_by_index[neighbor_idx]
+            ):
+                continue
+
+            vision_reachable_turn_by_index[neighbor_idx] = current_round
+            dist_to_self_by_index[neighbor_idx] = source_dist
+            vision_first_step_by_index[neighbor_idx] = neighbor_idx
+            queue_append(neighbor_idx)
 
         while queue_head < len(queue):
             current_idx = queue[queue_head]
@@ -3819,12 +3872,13 @@ class Map:
             current_dist = dist_to_self_by_index[current_idx]
             if current_dist > self.vision_max_dist_to_self_this_turn:
                 self.vision_max_dist_to_self_this_turn = current_dist
-            current_environment = tiles_by_index[current_idx].environment
-            if current_environment == Environment.ORE_TITANIUM:
+            current_environment_code = environment_code_by_index[current_idx]
+            if current_environment_code == MAP_ENVIRONMENT_TITANIUM:
                 self.found_vision_reachable_titanium_this_turn = True
-            elif current_environment == Environment.ORE_AXIONITE:
+            elif current_environment_code == MAP_ENVIRONMENT_AXIONITE:
                 self.found_vision_reachable_axionite_this_turn = True
             current_first_step_idx = vision_first_step_by_index[current_idx]
+            next_dist = current_dist + 1
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
@@ -3832,27 +3886,19 @@ class Map:
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[neighbor_idx]:
                     continue
-                if tiles_by_index[neighbor_idx].last_seen_turn != current_round:
+                if last_seen_turn_by_index[neighbor_idx] != current_round:
                     self.is_caged = False
                     continue
                 if (
-                    not intrinsic_passable_by_index[neighbor_idx]
+                    not vision_bfs_passable_by_index[neighbor_idx]
                     or vision_reachable_turn_by_index[neighbor_idx] == current_round
-                    or (
-                        current_idx == source_idx
-                        and bot_present_by_index[neighbor_idx]
-                    )
                 ):
                     continue
 
                 vision_reachable_turn_by_index[neighbor_idx] = current_round
-                dist_to_self_by_index[neighbor_idx] = current_dist + 1
-                vision_first_step_by_index[neighbor_idx] = (
-                    neighbor_idx
-                    if current_first_step_idx == -1
-                    else current_first_step_idx
-                )
-                queue.append(neighbor_idx)
+                dist_to_self_by_index[neighbor_idx] = next_dist
+                vision_first_step_by_index[neighbor_idx] = current_first_step_idx
+                queue_append(neighbor_idx)
 
             overtime_check_countdown -= 1
             if overtime_check_countdown == 0:

@@ -331,6 +331,10 @@ class Tile:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)
         self.last_seen_turn = current_round
+        self.map.last_seen_turn_by_index[self.index] = current_round
+        self.map.environment_code_by_index[self.index] = self.map.u_get_environment_code(
+            self.environment
+        )
 
         bot_id = self.map.visible_builder_bot_ids_by_index.get(self.index)
         building_id = self.map.visible_building_ids_by_index.get(self.index)
@@ -378,6 +382,12 @@ class Tile:
 
         self.u_refresh_core_distance_passability()
         self.u_refresh_intrinsic_passability()
+        if self._is_intrinsically_passable():
+            self.map._u_mark_bytearray_index(
+                self.map.vision_bfs_passable_touched_indices,
+                self.map.vision_bfs_passable_by_index,
+                self.index,
+            )
         self.is_passable = self._is_intrinsically_passable() and (
             self.bot.id is None or self.position == self.map.current_pos
         )
