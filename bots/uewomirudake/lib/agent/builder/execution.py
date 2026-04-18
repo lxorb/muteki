@@ -1,6 +1,7 @@
 from lib.agent.builder.strategies import STRATEGIES
 from lib.debug import Stopwatch
 from lib.agent.constants import (
+    ENABLE_PRINTING,
     HARASSMENT_STRATEGY_ID,
 )
 from cambc import Position, EntityType
@@ -70,7 +71,7 @@ class BuilderExecutionMixin:
 
             if acted:
                 self.last_turn_completed = True
-                print(f"Executed strategy: {strategy_method.__name__}")
+                if ENABLE_PRINTING: print(f"Executed strategy: {strategy_method.__name__}")
                 stopwatch.log()
                 self.after_strategy()
                 return True

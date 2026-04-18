@@ -1,6 +1,7 @@
 from cambc import Controller, Direction, EntityType, Environment, Position
 
 from lib.agent import Agent
+from lib.agent.constants import ENABLE_PRINTING
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
 from lib.map import Map
 
@@ -90,30 +91,30 @@ class BuilderAgent(
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
         if self.map.is_map_known:
-            print(
+            if ENABLE_PRINTING: print(
                 f"Inferred map: {self.map.known_map_path} "
                 f"(map inference loading took "
                 f"{self.map.map_inference_time_ns / 1_000_000:.2f} ms)."
             )
         if self.map.map_json_loaded_print_pending:
-            print(
+            if ENABLE_PRINTING: print(
                 "Finished loading parsed map data into map object. "
                 f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
             )
             self.map.map_json_loaded_print_pending = False
-        print(f"Builder strategy: {self.u_get_strategy_name()}")
+        if ENABLE_PRINTING: print(f"Builder strategy: {self.u_get_strategy_name()}")
 
-        print("AWAITING YEET SINCE", self.awaiting_yeet_since)
+        if ENABLE_PRINTING: print("AWAITING YEET SINCE", self.awaiting_yeet_since)
         if self.awaiting_yeet_since != -1:
-            print(self.awaiting_yeet_pos)
-            print(self.ct.get_position())
+            if ENABLE_PRINTING: print(self.awaiting_yeet_pos)
+            if ENABLE_PRINTING: print(self.ct.get_position())
             if self.awaiting_yeet_pos == self.ct.get_position():
                 if self.awaiting_yeet_since < 2:
                     self.awaiting_yeet_since += 1
-                    print("AWAITING YEET -> SKIP")
+                    if ENABLE_PRINTING: print("AWAITING YEET -> SKIP")
                     return
                 else:
-                    print("GIVING UP YEET :(")
+                    if ENABLE_PRINTING: print("GIVING UP YEET :(")
             self.awaiting_yeet_since = -1
             self.awaiting_yeet_pos = None
         self.yeet_target_for_own_launcher = None
@@ -122,7 +123,7 @@ class BuilderAgent(
         handled = self.u_execute_strategy()
         finished_loading_map = self.map.u_update_map()
         if finished_loading_map:
-            print(
+            if ENABLE_PRINTING: print(
                 "Finished loading parsed map data into map object. "
                 f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
             )

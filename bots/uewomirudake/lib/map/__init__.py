@@ -21,6 +21,7 @@ from cambc import (
 )
 
 from lib.agent.time import ALLOCATED_MAP_AND_BOT_TIME_MUS, RoundStopwatch
+from lib.agent.constants import ENABLE_PRINTING
 
 from lib.map.constants import (
     BUILDER_ACTION_OFFSETS,
@@ -1912,7 +1913,7 @@ class Map:
         if not candidate_maps:
             return
         if len(candidate_maps) > 1:
-            print(f"Map inference ambiguous for {key}: {candidate_maps}")
+            if ENABLE_PRINTING: print(f"Map inference ambiguous for {key}: {candidate_maps}")
             return
 
         inferred_map_path = candidate_maps[0]
@@ -1920,7 +1921,7 @@ class Map:
         if parsed_map_data is None:
             parsed_map_path = self.u_get_parsed_map_data_path(inferred_map_path)
             if not parsed_map_path.exists():
-                print(
+                if ENABLE_PRINTING: print(
                     f"Parsed map data missing for inferred map {inferred_map_path}: "
                     f"{parsed_map_path}"
                 )

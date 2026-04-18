@@ -4,6 +4,7 @@ from lib.map.types import SymmetryMode
 ### GAME CONSTANTS ###
 BUILDER_ACTION_RADIUS_SQ: int = 2
 NS_PER_TURN: int = 2_000_000
+ENABLE_PRINTING: bool = False
 
 ### STRATEGY NAMES ###
 SCAVENGER_STRATEGY_ID: str = "scavenger"
@@ -112,7 +113,8 @@ LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_armoured_conveyor"] = (
 )
 LAUNCHER_YEET_AWAY_MIN_DISTANCE = 2
 LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE = 2
-LAUNCHER_BUILD_MIN_IMPROVEMENT = 3
+LAUNCHER_BUILD_MIN_IMPROVEMENT = 5
+LAUNCHER_WAIT_MIN_DISTANCE = 5
 LAUNCHER_BUILD_MIN_TITANIUM = 100
 
 
@@ -127,7 +129,7 @@ surrendering early in submissions.
 import sys
 from pathlib import Path
 
-SURRENDER_AT_TURN: int = 200
+SURRENDER_AT_TURN: int = 20000
 
 try:
     exclude_module_dir: str | None = None

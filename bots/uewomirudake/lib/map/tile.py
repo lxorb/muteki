@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from cambc import Direction, EntityType, Environment, Position, ResourceType, Team
+from lib.agent.constants import ENABLE_PRINTING
 from lib.map.constants import (
     CORE_DIST_INF,
     INF_DIST,
@@ -394,9 +395,9 @@ class Tile:
             (mode, pos) for mode, pos in self.map.enemy_core_center_pos_candidates
             if mode == symmetry_mode
         ]
-        print(self.map.enemy_core_center_pos_candidates)
+        if ENABLE_PRINTING: print(self.map.enemy_core_center_pos_candidates)
         remaining_positions = {pos for _, pos in self.map.enemy_core_center_pos_candidates}
-        print(remaining_positions)
+        if ENABLE_PRINTING: print(remaining_positions)
         if len(remaining_positions) == 1:
             self.map.enemy_core_center_pos = next(iter(remaining_positions))
             self.map.enemy_core_source_indices = self.map.u_set_core_source_indices(

@@ -5,6 +5,7 @@ from collections.abc import Callable
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
+    ENABLE_PRINTING,
     ATTACK_TURRET_TYPES,
     ATTACK_TURRET_FEEDER_TYPES,
     BUILD_ACTION_MIN_TITANIUM_BASE,
@@ -405,7 +406,7 @@ class BuilderNavigationMixin:
             abs(current_pos.x - pos.x) + abs(current_pos.y - pos.y)
             > MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD
         ):
-            print("Move to target:", pos, "(bugnav)")
+            if ENABLE_PRINTING: print("Move to target:", pos, "(bugnav)")
             return self.u_move_to_bugnav(
                 pos,
                 avoid_enemy_turrets=avoid_enemy_turrets,
@@ -434,7 +435,7 @@ class BuilderNavigationMixin:
         direction: Direction,
         target_pos: Position,
     ) -> None:
-        print(
+        if ENABLE_PRINTING: print(
             "Move target:",
             target_pos,
             "via",
@@ -1338,7 +1339,7 @@ class BuilderNavigationMixin:
             )
         )
 
-        print("Move to target:", pos)
+        if ENABLE_PRINTING: print("Move to target:", pos)
 
         if reach_builder_action_range:
             next_tile = self.map.u_get_next_step_to_builder_action_range_astar(
@@ -1447,7 +1448,7 @@ class BuilderNavigationMixin:
         def log_step(label: str) -> None:
             nonlocal last_step_ns
             now_ns = time.perf_counter_ns()
-            print(
+            if ENABLE_PRINTING: print(
                 "Build_at timing:",
                 label,
                 f"{(now_ns - last_step_ns) / 1_000_000:.3f} ms",
@@ -1456,7 +1457,7 @@ class BuilderNavigationMixin:
 
         def finish(result: bool, label: str) -> bool:
             log_step(label)
-            print(
+            if ENABLE_PRINTING: print(
                 "Build_at timing: total",
                 f"{(time.perf_counter_ns() - total_start_ns) / 1_000_000:.3f} ms",
             )
@@ -1503,7 +1504,7 @@ class BuilderNavigationMixin:
 
         if building_type in CONVEYOR_ENTITY_TYPES and not allow_conveyor_building:
             return finish(False, "reject conveyor build")
-        print(
+        if ENABLE_PRINTING: print(
             "Build target:",
             building_type,
             "at",

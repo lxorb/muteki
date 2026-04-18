@@ -5,6 +5,7 @@ import time
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
+    ENABLE_PRINTING,
     ATTACK_TURRET_TYPES,
     AXIONITE_HARVESTER_MIN_TITANIUM,
     AXIONITE_HARVESTER_MIN_TURN,
@@ -23,6 +24,7 @@ from lib.agent.constants import (
     SURROUND_HARVESTER_ENTITY_TYPE,
     LAUNCHER_BUILD_MIN_IMPROVEMENT,
     LAUNCHER_BUILD_MIN_TITANIUM,
+    LAUNCHER_WAIT_MIN_DISTANCE,
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
 from lib.map.types import SupplyChainLabel
@@ -1649,14 +1651,14 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
-        print(
+        if ENABLE_PRINTING: print(
             "Protect harvester timing: candidate scan",
             f"{elapsed_ms(candidate_scan_start_ns):.3f} ms,",
             "candidates",
             len(candidate_entries),
         )
         if not candidate_entries:
-            print(
+            if ENABLE_PRINTING: print(
                 "Protect harvester timing: total",
                 f"{elapsed_ms(total_start_ns):.3f} ms",
             )
@@ -1664,7 +1666,7 @@ class BuilderStrategyMethodsMixin:
 
         sort_start_ns = time.perf_counter_ns()
         candidate_entries.sort(key=lambda entry: entry[0])
-        print(
+        if ENABLE_PRINTING: print(
             "Protect harvester timing: sort",
             f"{elapsed_ms(sort_start_ns):.3f} ms",
         )
@@ -1680,7 +1682,7 @@ class BuilderStrategyMethodsMixin:
             candidate_start_ns = time.perf_counter_ns()
             harvester_tile = tiles_by_index[harvester_idx]
             target_tile = tiles_by_index[target_idx]
-            print(
+            if ENABLE_PRINTING: print(
                 "Protect harvester timing: trying candidate",
                 harvester_tile.position,
                 "via",
@@ -1695,7 +1697,7 @@ class BuilderStrategyMethodsMixin:
                 }
                 and should_build_harvester
             ):
-                print(
+                if ENABLE_PRINTING: print(
                     "Protect harvester timing: resource-tile check",
                     f"{elapsed_ms(resource_tile_check_start_ns):.3f} ms",
                 )
@@ -1707,27 +1709,27 @@ class BuilderStrategyMethodsMixin:
                     move_towards=move_towards,
                     attack_enemy_passable=False,
                 ):
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: harvester build_at",
                         f"{elapsed_ms(build_start_ns):.3f} ms",
                     )
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: candidate total",
                         f"{elapsed_ms(candidate_start_ns):.3f} ms",
                     )
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: total",
                         f"{elapsed_ms(total_start_ns):.3f} ms",
                     )
                     return True
-                print(
+                if ENABLE_PRINTING: print(
                     "Protect harvester timing: harvester build_at",
                     f"{elapsed_ms(build_start_ns):.3f} ms",
                 )
                 if self.round_stopwatch.check_overtime():
                     break
                 continue
-            print(
+            if ENABLE_PRINTING: print(
                 "Protect harvester timing: resource-tile check",
                 f"{elapsed_ms(resource_tile_check_start_ns):.3f} ms",
             )
@@ -1743,7 +1745,7 @@ class BuilderStrategyMethodsMixin:
                     EntityType.CONVEYOR,
                     harvester_direction,
                 )
-            print(
+            if ENABLE_PRINTING: print(
                 "Protect harvester timing: supplier plan",
                 f"{elapsed_ms(supplier_plan_start_ns):.3f} ms",
             )
@@ -1769,7 +1771,7 @@ class BuilderStrategyMethodsMixin:
                         if self.round_stopwatch.check_overtime():
                             break
                         continue
-                print(
+                if ENABLE_PRINTING: print(
                     "Protect harvester timing: conveyor retarget",
                     f"{elapsed_ms(retarget_start_ns):.3f} ms",
                 )
@@ -1783,20 +1785,20 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=False,
                     facing_direction=supplier_target,
                 ):
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: conveyor build_at",
                         f"{elapsed_ms(build_start_ns):.3f} ms",
                     )
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: candidate total",
                         f"{elapsed_ms(candidate_start_ns):.3f} ms",
                     )
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: total",
                         f"{elapsed_ms(total_start_ns):.3f} ms",
                     )
                     return True
-                print(
+                if ENABLE_PRINTING: print(
                     "Protect harvester timing: conveyor build_at",
                     f"{elapsed_ms(build_start_ns):.3f} ms",
                 )
@@ -1810,25 +1812,25 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=False,
                     target_pos=supplier_target,
                 ):
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: bridge build_at",
                         f"{elapsed_ms(build_start_ns):.3f} ms",
                     )
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: candidate total",
                         f"{elapsed_ms(candidate_start_ns):.3f} ms",
                     )
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Protect harvester timing: total",
                         f"{elapsed_ms(total_start_ns):.3f} ms",
                     )
                     return True
-                print(
+                if ENABLE_PRINTING: print(
                     "Protect harvester timing: bridge build_at",
                     f"{elapsed_ms(build_start_ns):.3f} ms",
                 )
 
-            print(
+            if ENABLE_PRINTING: print(
                 "Protect harvester timing: candidate total",
                 f"{elapsed_ms(candidate_start_ns):.3f} ms",
             )
@@ -1836,7 +1838,7 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
-        print(
+        if ENABLE_PRINTING: print(
             "Protect harvester timing: total",
             f"{elapsed_ms(total_start_ns):.3f} ms",
         )
@@ -2122,7 +2124,7 @@ class BuilderStrategyMethodsMixin:
                 break
 
         if not candidate_entries and attempted_target_positions:
-            print(
+            if ENABLE_PRINTING: print(
                 "Build missing supply link: no valid conveyor or bridge for",
                 attempted_target_positions,
             )
@@ -2192,7 +2194,7 @@ class BuilderStrategyMethodsMixin:
 
         def finish_with_harvester_target(result: bool, harvester_tile) -> bool:
             if result:
-                print("Build harvester strategy target:", harvester_tile.position)
+                if ENABLE_PRINTING: print("Build harvester strategy target:", harvester_tile.position)
             return result
 
         def get_harvester_best_supply_idx(harvester_idx: int) -> int | None:
@@ -4570,7 +4572,7 @@ class BuilderStrategyMethodsMixin:
             target_tile = tiles_by_index[target_idx]
             if target_tile.position == current_pos:
                 if move_towards and step_off_current_build_tile(target_tile):
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Build enemy supplied turret: step off",
                         target_tile.position,
                     )
@@ -4616,7 +4618,7 @@ class BuilderStrategyMethodsMixin:
                     EntityType.GUNNER,
                     EntityType.SENTINEL,
                 }:
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Build enemy supplied turret: built",
                         self.last_built_entity_type.value,
                         "at",
@@ -4628,14 +4630,14 @@ class BuilderStrategyMethodsMixin:
                     current_pos.distance_squared(target_tile.position)
                     > BUILDER_ACTION_RADIUS_SQ
                 ):
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Build enemy supplied turret: move toward",
                         target_tile.position,
                         "for",
                         build_entity_type.value,
                     )
                 else:
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Build enemy supplied turret: hold for",
                         target_tile.position,
                         "with",
@@ -4801,7 +4803,7 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=False,
                 facing_direction=conveyor_direction,
             ):
-                print(
+                if ENABLE_PRINTING: print(
                     "Gunner next to enemy core: feed adjacent",
                     conveyor_target_tile.building.entity_type.value,
                     conveyor_target_tile.position,
@@ -4919,7 +4921,7 @@ class BuilderStrategyMethodsMixin:
 
             if target_tile.position == current_pos:
                 if move_towards and step_off_current_build_tile(target_tile):
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Gunner next to enemy core: step off",
                         target_tile.position,
                     )
@@ -4936,7 +4938,7 @@ class BuilderStrategyMethodsMixin:
                 facing_direction=gunner_direction,
             ):
                 if self.last_built_entity_type == EntityType.GUNNER:
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Gunner next to enemy core: built at",
                         target_tile.position,
                         "facing",
@@ -4946,12 +4948,12 @@ class BuilderStrategyMethodsMixin:
                     current_pos.distance_squared(target_tile.position)
                     > BUILDER_ACTION_RADIUS_SQ
                 ):
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Gunner next to enemy core: move toward",
                         target_tile.position,
                     )
                 else:
-                    print(
+                    if ENABLE_PRINTING: print(
                         "Gunner next to enemy core: hold for",
                         target_tile.position,
                     )
@@ -5280,20 +5282,23 @@ class BuilderStrategyMethodsMixin:
     
     def lets_get_yeeted(self):
         if self.ct.get_global_resources()[0] < LAUNCHER_BUILD_MIN_TITANIUM:
-            print("REASON A")
+            if ENABLE_PRINTING: print("REASON A")
             return False
 
         if not self.map.current_path or len(self.map.current_path) < LAUNCHER_BUILD_MIN_IMPROVEMENT:
-            print("REASON B")
+            if ENABLE_PRINTING: print("REASON B")
             return False
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        if current_tile.in_own_launcher_pickup_zone != 0:
+            return False
 
-        path_index_by_tile_index = {        }
+        path_index_by_tile_index = {}
         for i, tile in enumerate(self.map.current_path):
-            path_index_by_tile_index[tile] = i
+            path_index_by_tile_index[tile.index] = i
             for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
-                path_index_by_tile_index[neighbor_idx] = i
+                if neighbor_idx not in path_index_by_tile_index:
+                    path_index_by_tile_index[neighbor_idx] = i
 
         best_pos = None
         best_target = None
@@ -5315,11 +5320,11 @@ class BuilderStrategyMethodsMixin:
                     best_target = landing_tile
 
         if best_pos is None:
-            print("REASON C")
+            if ENABLE_PRINTING: print("REASON C")
             return False
 
         if potential_marker_launcher_positions < 2:
-            print("REASON D")
+            if ENABLE_PRINTING: print("REASON D")
             return False
         
         if self.ct.can_build_launcher(best_pos):
@@ -5330,10 +5335,10 @@ class BuilderStrategyMethodsMixin:
             self.awaiting_yeet_since = 0
             self.awaiting_yeet_pos = self.map.current_pos
             self.yeet_target_for_own_launcher = best_target.position
-            print("ARE U SURE IT IS WALKABLE?", best_target.is_walkable)
+            if ENABLE_PRINTING: print("ARE U SURE IT IS WALKABLE?", best_target.is_walkable)
             return True
 
-        print("REASON E")
+        if ENABLE_PRINTING: print("REASON E")
         return False
 
 
@@ -5431,9 +5436,9 @@ class BuilderStrategyMethodsMixin:
         if self.yeet_target_for_own_launcher:
             return self.yeet_target_for_own_launcher
         
-        print("this is the path I am taking guuys :D")
+        if ENABLE_PRINTING: print("this is the path I am taking guuys :D")
         for tile in self.map.current_path:
-            print(tile.position, end= ", ")
+            if ENABLE_PRINTING: print(tile.position, end= ", ")
 
         # Let's tailor the target to the next launcher we are getting to according to self.map.current_path
         for tile in self.map.current_path[:4]:
@@ -5443,14 +5448,14 @@ class BuilderStrategyMethodsMixin:
                     if target_candidate:
                         return target_candidate
         
-        print("OK SO NO GOOD LAUNCHER!!!")
+        if ENABLE_PRINTING: print("OK SO NO GOOD LAUNCHER!!!")
         return None
 
     def choose_target_position_by_launcher_tile(self, next_launcher_tile):
         launcher_potential_targets = self.map.u_get_launcher_target_positions(next_launcher_tile.position)
         reachable = {t for t in launcher_potential_targets if t.is_walkable}
-        print("REACHABLE", [t.position for t in reachable])
-        print("PATH", [t.position for t in self.map.current_path[1:]])
+        if ENABLE_PRINTING: print("REACHABLE", [t.position for t in reachable])
+        if ENABLE_PRINTING: print("PATH", [t.position for t in self.map.current_path[1:]])
         for tile in reversed(self.map.current_path[1:]):
             if tile in reachable:
                 return tile.position
@@ -5468,7 +5473,7 @@ class BuilderStrategyMethodsMixin:
             if neighbor.building and neighbor.building.entity_type == EntityType.LAUNCHER and neighbor.building.team == self.map.own_team:
                 toBeReturned.append(neighbor)
         if not toBeReturned:
-            print("ERROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOR: no launcher found!! wtf ? (strategy_methods.py, launcher_targeting_tile)")
+            if ENABLE_PRINTING: print("ERROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOR: no launcher found!! wtf ? (strategy_methods.py, launcher_targeting_tile)")
         return toBeReturned
 
     def place_marker_desperately(self):
@@ -5492,18 +5497,22 @@ class BuilderStrategyMethodsMixin:
         # 6 bits
         current_round = self.ct.get_current_round()
         # 11 bits
-        print("XXXXXXXXXXXXXXXXX")
-        print("PLACE_MARKER PRINTS INCOMING")
+        if ENABLE_PRINTING: print("XXXXXXXXXXXXXXXXX")
+        if ENABLE_PRINTING: print("PLACE_MARKER PRINTS INCOMING")
         target_position = self.get_marker_target()
         if target_position is not None:
             written_position = target_position
+            if self.map.tiles_by_index[self.map.u_to_index(self.map.current_pos)].in_own_launcher_pickup_zone != 0:
+                if target_position.distance_squared(self.map.current_pos) >= LAUNCHER_WAIT_MIN_DISTANCE:
+                    self.awaiting_yeet_since = 0
+                    self.awaiting_yeet_pos = self.map.current_pos
         else:
             written_position = self.map.own_core_center_pos
 
-        print("LET ME MOVE TO", target_position, "PLLSSSS")
+        if ENABLE_PRINTING: print("LET ME MOVE TO", target_position, "PLLSSSS")
         
         written_index = written_position.x * self.map.INDEX_STRIDE + written_position.y
-        print("putting on the marker that I want to move to ", target_position, ":D")
+        if ENABLE_PRINTING: print("putting on the marker that I want to move to ", target_position, ":D")
         # 12 bits
 
         result = 0

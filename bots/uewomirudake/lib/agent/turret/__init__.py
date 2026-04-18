@@ -2,6 +2,7 @@ from cambc import EntityType, Environment, Position
 
 from lib.agent import Agent
 from lib.agent.constants import (
+    ENABLE_PRINTING,
     ATTACK_TURRET_TYPES,
     CONVEYOR_ENTITY_TYPES,
     LAUNCHER_THROWABLE_PRIORITY_RANK,
@@ -37,72 +38,72 @@ class TurretAgent(Agent):
         # enemies away from core
         # ally into safe zone (the closer the higher the better)
 
-        print("LAUNCHER PRINTS")
+        if ENABLE_PRINTING: print("LAUNCHER PRINTS")
 
         if not self.map.launcher_action_radius_bots:
-            print("---------------")
+            if ENABLE_PRINTING: print("---------------")
             return False
         
 
 
         candidate_bots = sorted(self.map.launcher_action_radius_bots, key=lambda tile: tile.bot.team != self.map.enemy_team)
 
-        print("bot -> target:", [f"{bot_id}, {value[0]}" for bot_id, value in self.map.id_to_target_pos_round.items()])
-        print("candidate bots:", [f"id: {bot.bot.id}" for bot in candidate_bots])
+        if ENABLE_PRINTING: print("bot -> target:", [f"{bot_id}, {value[0]}" for bot_id, value in self.map.id_to_target_pos_round.items()])
+        if ENABLE_PRINTING: print("candidate bots:", [f"id: {bot.bot.id}" for bot in candidate_bots])
         # print("seen markers:", self.map.seen_markers_for_debugging)
-        print("seen marker ids: ", self.map.seen_ids_for_debugging)
+        if ENABLE_PRINTING: print("seen marker ids: ", self.map.seen_ids_for_debugging)
 
         if not self.map.own_core_center_pos:
             for id, value in self.map.id_to_target_pos_round.items():
                 if self.map.tiles_by_index[value[0].y * self.map.INDEX_STRIDE + value[0].x] not in self.map.launcher_visible_tiles:
-                    print("UPDATING OWN CORE POS")
+                    if ENABLE_PRINTING: print("UPDATING OWN CORE POS")
                     self.map.own_core_center_pos = value[0]
                     break
 
 
         for bot_tile in candidate_bots:
-            print("trying to send", bot_tile.bot.id, "somewhere")
+            if ENABLE_PRINTING: print("trying to send", bot_tile.bot.id, "somewhere")
             if bot_tile.bot.team == self.map.enemy_team:
                 if self.launcher_handle_enemy(bot_tile): 
                     return True
             elif bot_tile.bot.team == self.map.own_team:
-                print("debug print AAA")
+                if ENABLE_PRINTING: print("debug print AAA")
                 if self.launcher_handle_own(bot_tile):
                     return True
-                print("not sent :(")
+                if ENABLE_PRINTING: print("not sent :(")
         
         return False
 
     def launcher_handle_own(self, bot_tile):
         if not self.map.launcher_own_reachable:
-            print("XXXXXXXXXXXXXXXXXXX")
+            if ENABLE_PRINTING: print("XXXXXXXXXXXXXXXXXXX")
             return False
 
         if not (bot_tile.bot.id & 0b111111 in self.map.id_to_target_pos_round):
-            print("YYYYYYYYYYYYYYYYYYY")
-            print(self.map.id_to_target_pos_round)
+            if ENABLE_PRINTING: print("YYYYYYYYYYYYYYYYYYY")
+            if ENABLE_PRINTING: print(self.map.id_to_target_pos_round)
             return False
 
         written_position = self.map.id_to_target_pos_round[bot_tile.bot.id & 0b111111][0]
         written_idx = self.map.u_to_index(written_position)
 
         if self.map.tiles_by_index[written_idx] not in self.map.launcher_visible_tiles:
-            print("target position:", written_position)
-            print([tile.position for tile in self.map.launcher_visible_tiles])
-            print("ZZZZZZZZZZZZZZZ")
+            if ENABLE_PRINTING: print("target position:", written_position)
+            if ENABLE_PRINTING: print([tile.position for tile in self.map.launcher_visible_tiles])
+            if ENABLE_PRINTING: print("ZZZZZZZZZZZZZZZ")
             return False
 
-        print("debug print: been here 1")
+        if ENABLE_PRINTING: print("debug print: been here 1")
         reachable_safe = [tile for tile in self.map.launcher_own_reachable if tile in self.map.launcher_safe_zone_tiles]
         
         target_tile = self.map.tiles_by_index[written_idx]
 
         if not reachable_safe or target_tile not in reachable_safe:
-            print("sorry, can't take you to", target_tile.position)
+            if ENABLE_PRINTING: print("sorry, can't take you to", target_tile.position)
             return False
 
         if not self.ct.can_launch(bot_tile.position, target_tile.position):
-            print("ERROR: Why can't I launch???")
+            if ENABLE_PRINTING: print("ERROR: Why can't I launch???")
             return False
         self.ct.launch(bot_tile.position, target_tile.position)
         return True
@@ -131,10 +132,10 @@ class TurretAgent(Agent):
         reachable_killer_candidates = sorted(reachable_killer_candidates, key = lambda tile: -tile.in_own_attack_range)
         target = reachable_killer_candidates[0]
         if not self.ct.can_launch(bot_tile.position, target.position):
-            print("ERROR: Why can't I launch???")
+            if ENABLE_PRINTING: print("ERROR: Why can't I launch???")
             return False
         self.ct.launch(bot_tile.position, target.position)
-        print("LAUNCHER ACTION: let enemy burn")
+        if ENABLE_PRINTING: print("LAUNCHER ACTION: let enemy burn")
         return True
     
     def yeet_enemy_away(self, bot_tile):
@@ -145,10 +146,10 @@ class TurretAgent(Agent):
         dist_diff = candidate_tile.position.distance_squared(self.map.own_core_center_pos) - bot_tile.position.distance_squared(self.map.own_core_center_pos)
         if dist_diff >= LAUNCHER_YEET_AWAY_MIN_DISTANCE:
             if not self.ct.can_launch(bot_tile.position, candidate_tile.position):
-                print("ERROR: Why can't I launch???")
+                if ENABLE_PRINTING: print("ERROR: Why can't I launch???")
                 return False
             self.ct.launch(bot_tile.position, candidate_tile.position)
-            print("LAUNCHER ACTION: yeet enemy away")
+            if ENABLE_PRINTING: print("LAUNCHER ACTION: yeet enemy away")
             return True
         return False
 
@@ -173,7 +174,7 @@ class TurretAgent(Agent):
         if direction is None:
             direction = self.ct.get_direction()
         if direction is None:
-            print(
+            if ENABLE_PRINTING: print(
                 "Gunner next target:",
                 None,
                 "building:",
@@ -192,7 +193,7 @@ class TurretAgent(Agent):
             vision_radius_sq,
         )
         target_tile = self.u_get_gunner_target_tile(ray_tiles, current_round)
-        print(
+        if ENABLE_PRINTING: print(
             "Gunner next target:",
             None if target_tile is None else target_tile.position,
             "building:",
