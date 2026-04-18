@@ -2279,8 +2279,14 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         if resource == Environment.ORE_TITANIUM:
             ore_indices = self.map.known_accessible_titanium_indices
+            restrict_to_vision_reachable = (
+                self.map.found_vision_reachable_titanium_this_turn
+            )
         elif resource == Environment.ORE_AXIONITE:
             ore_indices = self.map.known_accessible_axionite_indices
+            restrict_to_vision_reachable = (
+                self.map.found_vision_reachable_axionite_this_turn
+            )
         else:
             return False
         current_tile = self.map.u_get_pos_tile(current_pos)
@@ -2746,8 +2752,14 @@ class BuilderStrategyMethodsMixin:
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if (
+                (
+                    not restrict_to_vision_reachable
+                    or self.map.u_is_vision_reachable_by_index(pending_target_idx)
+                )
+                and (
                 pending_target_tile.last_seen_turn == self.map.current_round
                 and is_valid_harvester_target(pending_target_tile)
+                )
             ):
                 return finish_with_harvester_target(
                     try_progress_harvester_target(
@@ -2764,6 +2776,11 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime_interval():
                 return False
             if tile.environment != resource:
+                continue
+            if (
+                restrict_to_vision_reachable
+                and not self.map.u_is_vision_reachable_by_index(tile.index)
+            ):
                 continue
             if get_harvester_best_supply_idx(tile.index) is None:
                 continue
@@ -3012,10 +3029,11 @@ class BuilderStrategyMethodsMixin:
         """
         Move toward the nearest reachable unseen frontier tile.
 
-        Uses a single BFS from the builder to find the closest frontier layer,
-        preferring lower own-core distance and stable coordinates among ties.
-        Scavengers bias the coordinate tie-break by their spawn quadrant so the
-        diagonal scavengers spread toward different corners more consistently.
+        Reuses the current-turn in-vision BFS to rank reachable frontier
+        candidates, preferring the closest frontier layer and then lower
+        own-core distance and stable coordinates among ties. Scavengers bias
+        the coordinate tie-break by their spawn quadrant so the diagonal
+        scavengers spread toward different corners more consistently.
         If the builder is already standing in enemy turret range, retry once
         without turret avoidance so it does not freeze in place.
         """
