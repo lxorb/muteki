@@ -296,7 +296,14 @@ class Map:
         self.own_core_dist_initialized = False
         self.own_core_dist_init_started = False
         self.own_core_dist_exact_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.own_core_dist_init_heap: list[tuple[int, int]] = []
+        self.own_core_dist_init_buckets: tuple[list[int], list[int], list[int]] = (
+            [],
+            [],
+            [],
+        )
+        self.own_core_dist_init_bucket_heads = [0, 0, 0]
+        self.own_core_dist_init_current_dist = 0
+        self.own_core_dist_init_pending_count = 0
         self.own_core_dist_incremental_queue: list[int] = []
         self.own_core_dist_incremental_queue_head = 0
         self.own_core_dist_incremental_dirty_queue: list[int] = []
@@ -2289,7 +2296,7 @@ class Map:
         self.map_update_time_ns += time.perf_counter_ns() - start_time_ns
         self.own_core_dist_initialized = True
         self.own_core_dist_init_started = False
-        self.own_core_dist_init_heap.clear()
+        self.u_reset_own_core_distance_init_buckets()
         self.u_reset_own_core_distance_incremental_update()
         self.u_reset_own_core_distance_manhattan_initialization()
         self.u_clear_core_distance_dirty_indices()
@@ -3445,6 +3452,16 @@ class Map:
         self.core_distance_seed_enqueued_by_index[idx] = 1
         seed_queue.append(idx)
 
+    def u_reset_own_core_distance_init_buckets(self) -> None:
+        for bucket in self.own_core_dist_init_buckets:
+            bucket.clear()
+        bucket_heads = self.own_core_dist_init_bucket_heads
+        bucket_heads[0] = 0
+        bucket_heads[1] = 0
+        bucket_heads[2] = 0
+        self.own_core_dist_init_current_dist = 0
+        self.own_core_dist_init_pending_count = 0
+
     def u_reset_own_core_distance_incremental_update(self) -> None:
         self.core_distance_enqueued_by_index[:] = b"\x00" * len(
             self.core_distance_enqueued_by_index
@@ -3591,7 +3608,7 @@ class Map:
         self.own_core_dist_exact_by_index[:] = b"\x00" * len(
             self.own_core_dist_exact_by_index
         )
-        self.own_core_dist_init_heap.clear()
+        self.u_reset_own_core_distance_init_buckets()
 
     def u_start_own_core_distance_initialization(self) -> bool:
         if not self.own_core_source_indices:
@@ -3600,13 +3617,16 @@ class Map:
         self.u_reset_own_core_distance_initialization()
         self.own_core_dist_init_started = True
         distance_by_index = self.own_core_dist_by_index
-        frontier = self.own_core_dist_init_heap
+        bucket_zero = self.own_core_dist_init_buckets[0]
+        pending_count = 0
         for source_idx in self.own_core_source_indices:
             if distance_by_index[source_idx] == 0:
                 continue
             distance_by_index[source_idx] = 0
-            heappush(frontier, (0, source_idx))
-        return bool(frontier)
+            bucket_zero.append(source_idx)
+            pending_count += 1
+        self.own_core_dist_init_pending_count = pending_count
+        return pending_count > 0
 
     def u_continue_own_core_distance_initialization(
         self,
@@ -3624,7 +3644,10 @@ class Map:
 
         distance_by_index = self.own_core_dist_by_index
         exact_by_index = self.own_core_dist_exact_by_index
-        frontier = self.own_core_dist_init_heap
+        buckets = self.own_core_dist_init_buckets
+        bucket_heads = self.own_core_dist_init_bucket_heads
+        current_dist = self.own_core_dist_init_current_dist
+        pending_count = self.own_core_dist_init_pending_count
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
@@ -3633,8 +3656,26 @@ class Map:
         core_distance_passable_by_index = self.core_distance_passable_by_index
         finalized_nodes = 0
 
-        while frontier and finalized_nodes < max_finalized_nodes:
-            current_dist, current_idx = heappop(frontier)
+        while pending_count and finalized_nodes < max_finalized_nodes:
+            bucket_idx = current_dist % 3
+            bucket = buckets[bucket_idx]
+            bucket_head = bucket_heads[bucket_idx]
+            while bucket_head >= len(bucket):
+                bucket.clear()
+                bucket_heads[bucket_idx] = 0
+                current_dist += 1
+                if not pending_count:
+                    break
+                bucket_idx = current_dist % 3
+                bucket = buckets[bucket_idx]
+                bucket_head = bucket_heads[bucket_idx]
+
+            if not pending_count:
+                break
+
+            current_idx = bucket[bucket_head]
+            bucket_heads[bucket_idx] = bucket_head + 1
+            pending_count -= 1
             if (
                 exact_by_index[current_idx]
                 or current_dist != distance_by_index[current_idx]
@@ -3662,12 +3703,16 @@ class Map:
                     continue
 
                 distance_by_index[neighbor_idx] = next_dist
-                heappush(frontier, (next_dist, neighbor_idx))
+                buckets[next_dist % 3].append(neighbor_idx)
+                pending_count += 1
 
             if self.round_stopwatch.check_overtime_interval():
                 break
 
-        if not frontier:
+        self.own_core_dist_init_current_dist = current_dist
+        self.own_core_dist_init_pending_count = pending_count
+
+        if not pending_count:
             self.own_core_dist_initialized = True
 
         return self.own_core_dist_initialized
@@ -3778,7 +3823,7 @@ class Map:
                 self.own_core_dist_exact_by_index
             )
             self.own_core_dist_init_started = False
-            self.own_core_dist_init_heap.clear()
+            self.u_reset_own_core_distance_init_buckets()
             self.u_reset_own_core_distance_incremental_update()
             self.own_core_dist_manhattan_init_started = True
             self.own_core_dist_manhattan_init_next_x = 0
