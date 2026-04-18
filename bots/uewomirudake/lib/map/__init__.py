@@ -281,10 +281,14 @@ class Map:
         self.enemy_spin_gunner_ray_first_target_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
-        self.core_distance_dirty_indices: set[int] = set()
+        self.core_distance_dirty_indices: list[int] = []
+        self.core_distance_dirty_mark_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_gunner_ray_first_target_touched_indices: list[int] = []
         self.enemy_spin_gunner_ray_first_target_touched_indices: list[int] = []
         self.core_distance_enqueued_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.core_distance_seed_enqueued_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.own_core_source_indices: tuple[int, ...] = ()
         self.enemy_core_source_indices: tuple[int, ...] = ()
         self.own_core_source_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -585,6 +589,17 @@ class Map:
             return
         values[idx] = 1
         touched_indices.append(idx)
+
+    def u_mark_core_distance_dirty_index(self, idx: int) -> None:
+        if self.core_distance_dirty_mark_by_index[idx]:
+            return
+        self.core_distance_dirty_mark_by_index[idx] = 1
+        self.core_distance_dirty_indices.append(idx)
+
+    def u_clear_core_distance_dirty_indices(self) -> None:
+        for idx in self.core_distance_dirty_indices:
+            self.core_distance_dirty_mark_by_index[idx] = 0
+        self.core_distance_dirty_indices.clear()
 
     def _reset_supply_chain_union_find_arrays(
         self,
@@ -2168,7 +2183,7 @@ class Map:
         self.map_json_loaded_print_pending = False
         self.map_update_time_ns = 0
         self.u_reset_own_core_distance_initialization()
-        self.core_distance_dirty_indices.clear()
+        self.u_clear_core_distance_dirty_indices()
         self.enemy_core_center_pos = enemy_core_pos
         self.enemy_core_source_indices = self.u_set_core_source_indices(
             self.enemy_team,
@@ -2277,7 +2292,7 @@ class Map:
         self.own_core_dist_init_heap.clear()
         self.u_reset_own_core_distance_incremental_update()
         self.u_reset_own_core_distance_manhattan_initialization()
-        self.core_distance_dirty_indices.clear()
+        self.u_clear_core_distance_dirty_indices()
         return True
 
     def u_is_enemy_bot_on_ally_tile(self, target_tile: Tile) -> bool:
@@ -3420,9 +3435,22 @@ class Map:
         self.core_distance_enqueued_by_index[idx] = 1
         queue.append(idx)
 
+    def u_enqueue_core_distance_seed_index(
+        self,
+        idx: int,
+        seed_queue: list[int],
+    ) -> None:
+        if self.core_distance_seed_enqueued_by_index[idx]:
+            return
+        self.core_distance_seed_enqueued_by_index[idx] = 1
+        seed_queue.append(idx)
+
     def u_reset_own_core_distance_incremental_update(self) -> None:
         self.core_distance_enqueued_by_index[:] = b"\x00" * len(
             self.core_distance_enqueued_by_index
+        )
+        self.core_distance_seed_enqueued_by_index[:] = b"\x00" * len(
+            self.core_distance_seed_enqueued_by_index
         )
         self.own_core_dist_incremental_queue.clear()
         self.own_core_dist_incremental_queue_head = 0
@@ -3476,14 +3504,14 @@ class Map:
 
             idx = dirty_queue[dirty_queue_head]
             dirty_queue_head += 1
-            seed_queue.append(idx)
+            self.u_enqueue_core_distance_seed_index(idx, seed_queue)
             neighbor_base = idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[neighbor_idx]:
                     continue
-                seed_queue.append(neighbor_idx)
+                self.u_enqueue_core_distance_seed_index(neighbor_idx, seed_queue)
 
         dirty_queue.clear()
         self.own_core_dist_incremental_dirty_queue_head = 0
@@ -3498,6 +3526,8 @@ class Map:
             self.u_enqueue_core_distance_index(seed_queue[seed_queue_head], queue)
             seed_queue_head += 1
 
+        for idx in seed_queue:
+            self.core_distance_seed_enqueued_by_index[idx] = 0
         seed_queue.clear()
         self.own_core_dist_incremental_seed_queue_head = 0
 
@@ -5112,14 +5142,14 @@ class Map:
 
         if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
             self.u_apply_parsed_own_core_dist_to_tiles(self.tiles_in_vision)
-            self.core_distance_dirty_indices.clear()
+            self.u_clear_core_distance_dirty_indices()
             self.u_reset_own_core_distance_incremental_update()
             self.u_reset_own_core_distance_manhattan_initialization()
             sw.lap("Own core field")
             sw.log()
             return
 
-        dirty_indices = tuple(self.core_distance_dirty_indices)
+        dirty_indices = self.core_distance_dirty_indices
         has_pending_own_core_dist_incremental_update = bool(
             self.own_core_dist_incremental_queue
             or self.own_core_dist_incremental_dirty_queue
@@ -5150,6 +5180,6 @@ class Map:
 
         sw.lap("Own core field")
 
-        self.core_distance_dirty_indices.clear()
+        self.u_clear_core_distance_dirty_indices()
 
         sw.log()

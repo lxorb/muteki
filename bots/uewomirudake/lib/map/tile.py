@@ -244,7 +244,7 @@ class Tile:
         self.map.core_distance_passable_by_index[self.index] = (
             1 if core_distance_passable else 0
         )
-        self.map.core_distance_dirty_indices.add(self.index)
+        self.map.u_mark_core_distance_dirty_index(self.index)
 
     def _is_intrinsically_passable(self) -> bool:
         return self.map.intrinsic_passable_by_index[self.index]
