@@ -37,7 +37,8 @@ from lib.map.constants import (
     RESOURCE_TARGET_TYPES,
     SUPPLY_LINK_TYPES,
     WEAPON_TARGET_TYPES,
-    MARKER_SYMMETRY_LIST
+    MARKER_SYMMETRY_LIST,
+    DECLARED_STUCK_STARTING_AT
 )
 from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel, SymmetryMode
@@ -231,7 +232,10 @@ class Map:
         self.enemy_team: Team | None = None
         self.current_round = -1
         self.current_pos = Position(0, 0)
-        self.current_round_since = 0
+        self.current_pos_since = 0
+        self.last_two_pos = [Position(0, 0), Position(0, 0)]
+        self.been_here_combo = 0
+        self.is_stuck = True
         self.titanium = 0
         self.axionite = 0
         self.compute_dist_to_self = False
@@ -494,10 +498,18 @@ class Map:
         self.current_round = self.ct.get_current_round()
         new_pos = self.ct.get_position()
         if new_pos == self.current_pos:
-            self.current_round_since += 1
+            self.current_pos_since += 1
         else:
-            self.current_round_since = 0
+            self.current_pos_since = 0
         self.current_pos = new_pos
+        self.is_stuck = False
+        if self.current_pos in self.last_two_pos:
+            self.been_here_combo += 1
+            if self.been_here_combo >= DECLARED_STUCK_STARTING_AT:
+                self.is_stuck = True
+        else:
+            self.been_here_combo = 0
+        self.last_two_pos = [self.last_two_pos[1], self.current_pos]
         self.titanium, self.axionite = self.ct.get_global_resources()
 
         self.has_enemy_bot_in_vision = False

@@ -4229,7 +4229,7 @@ class BuilderStrategyMethodsMixin:
         )
 
     def _been_waiting_for_way_too_long(self):
-        return self.map.current_round_since > ATTACK_PATIENCE
+        return self.map.current_pos_since > ATTACK_PATIENCE
     
     def _can_get_launcher_hugs(self):
         # RETURNS TRUE IF POSSIBLE - EVEN IF NOT BUILT !!!! (titanium threshold)
@@ -5333,14 +5333,26 @@ class BuilderStrategyMethodsMixin:
             )
             if target_pos is None:
                 return False
+            
+            # hacky solution sorry lol
             move_target_pos = self.get_move_target(target_pos)
-            self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
+
+            if self.map.is_stuck:
+                self.map.current_path = [target_pos]
+                yeeted = self.lets_yeet_the_stuck()
+                self.map.current_path = []
+                if yeeted:
+                    return True
+                
+            else:
+                self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
 
             # if self.lets_choke_them():
             #     return True
 
             if self.lets_get_yeeted():
                 return True
+            if ENABLE_PRINTING: print("NAH im not getting yeeted")
 
             return bool(
                 self.u_move_to(
@@ -5371,13 +5383,22 @@ class BuilderStrategyMethodsMixin:
             return False
 
         move_target_pos = self.get_move_target(target_pos)
-        self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
+        
 
         # if self.lets_choke_them():
         #    return True
 
-        if self.lets_get_yeeted():
-            return True
+        if self.map.is_stuck:
+            self.map.current_path = [target_pos]
+            yeeted = self.lets_yeet_the_stuck()
+            self.map.current_path = []
+            if yeeted:
+                return True
+                
+        else:
+            self.map.u_calculate_shortest_path_astar(current_pos, move_target_pos)
+
+        if ENABLE_PRINTING: print("NAH im not getting yeeted")
 
         return bool(
             self.u_move_to(
@@ -5407,9 +5428,66 @@ class BuilderStrategyMethodsMixin:
                     return True
         return False
     
+    # as close to current_path[0] as possible
+    def lets_yeet_the_stuck(self):
+        print("YEET THE STUCK?")
+        current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        if current_tile.in_own_launcher_pickup_zone != 0:
+            print("REASON Z")
+            return False
+        best_pos = None
+        best_target_pos = None
+        target_pos = self.map.current_path[0]
+        best_distance = 100000000
+        checked_tiles = set()
+        potential_marker_launcher_positions = 0
+        for pos in self.map.u_iter_adjacent_all_positions(self.map.current_pos):
+            relevant_tile = self.map.u_get_pos_tile(pos)
+            if not self.could_place_marker_or_launcher_here(relevant_tile):
+                continue
+            potential_marker_launcher_positions += 1
+            for landing_tile in self.map.u_get_launcher_target_positions(pos):
+                if not landing_tile.is_walkable:
+                    continue
+                if landing_tile in checked_tiles:
+                    continue
+                distance = target_pos.distance_squared(landing_tile.position)
+                if distance is not None and distance < best_distance:
+                    best_position = distance
+                    best_target_pos = landing_tile.position
+                    best_pos = pos
+                checked_tiles.add(landing_tile)
+        if potential_marker_launcher_positions < 2:
+            print("NOUU insufficient potential_marker_launcher_positions")
+            return False
+        if not best_target_pos or not best_pos:
+            print("something went wrong??? error code: smth")
+            return False
+        
+        if self.ct.can_build_launcher(best_pos):
+            self.ct.build_launcher(best_pos)
+            launcher_tile = self.map.u_get_pos_tile(best_pos)
+            launcher_tile.building.id = -1
+            launcher_tile.building.entity_type = EntityType.LAUNCHER
+            self.awaiting_yeet_since = 0
+            self.awaiting_yeet_pos = self.map.current_pos
+            self.yeet_target_for_own_launcher = best_target_pos
+            return True
+
+        if ENABLE_PRINTING: print("REASON E")
+        return False
+
+
+
+    # pre: path computed
     def lets_get_yeeted(self):
         sw = Stopwatch("lets_get_yeeted")
         sw.start()
+
+        current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        if current_tile.in_own_launcher_pickup_zone != 0:
+            print("REASON Z")
+            return False
 
         if self.ct.get_global_resources()[0] < LAUNCHER_BUILD_MIN_TITANIUM:
             if ENABLE_PRINTING: print("REASON A")

@@ -1382,6 +1382,9 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         target_tile = self.map.u_get_pos_tile(pos)
 
+        self.map.u_calculate_shortest_path_astar(current_pos, pos)
+        self.lets_get_yeeted()
+
         if current_pos == pos:
             if target_tile.building.id is None:
                 return False
