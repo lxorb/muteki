@@ -233,7 +233,7 @@ class Map:
         self.current_round = -1
         self.current_pos = Position(0, 0)
         self.current_pos_since = 0
-        self.last_two_pos = [Position(0, 0), Position(0, 0)]
+        self.last_three_pos = [Position(-1, -1), Position(-1, -1), Position(-1, -1)]
         self.been_here_combo = 0
         self.is_stuck = True
         self.titanium = 0
@@ -503,13 +503,13 @@ class Map:
             self.current_pos_since = 0
         self.current_pos = new_pos
         self.is_stuck = False
-        if self.current_pos in self.last_two_pos:
+        if self.current_pos in self.last_three_pos:
             self.been_here_combo += 1
             if self.been_here_combo >= DECLARED_STUCK_STARTING_AT:
                 self.is_stuck = True
         else:
             self.been_here_combo = 0
-        self.last_two_pos = [self.last_two_pos[1], self.current_pos]
+        self.last_three_pos = [self.last_three_pos[1], self.last_three_pos[2], self.current_pos]
         self.titanium, self.axionite = self.ct.get_global_resources()
 
         self.has_enemy_bot_in_vision = False
