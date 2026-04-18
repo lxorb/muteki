@@ -4321,6 +4321,9 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
+        if not any(self.map.enemy_turret_target_by_index):
+            return False
+
         # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
         for target_idx in patrol_target_indices:
             if self.u_move_to(
