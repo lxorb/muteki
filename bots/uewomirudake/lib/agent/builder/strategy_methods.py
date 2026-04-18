@@ -4133,10 +4133,22 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
+    def _should_hold_attack_for_enemy_bots(
+        self,
+        target_tile,
+        wait_if_enemy_builder_bots_in_range: bool,
+    ) -> bool:
+        return (
+            wait_if_enemy_builder_bots_in_range
+            and self.map.has_enemy_bot_in_vision
+            and self.map.current_pos == target_tile.position
+            and not self._is_visible_building_damaged(target_tile)
+        )
+
     def s_attack_enemy_harvester_supply_link(
         self,
         move_towards: bool = True,
-        require_no_enemy_bbs_in_range: bool = True,
+        wait_if_enemy_builder_bots_in_range: bool = True,
     ):
         """
         Attack the closest enemy supply link next to a visible enemy harvester.
@@ -4145,9 +4157,6 @@ class BuilderStrategyMethodsMixin:
         conveyor or bridge tiles that the builder can stand on, and then either
         attacks from the current tile or moves toward the best target.
         """
-        if require_no_enemy_bbs_in_range and self.map.has_enemy_bot_in_vision:
-            return False
-
         current_pos = self.map.current_pos
         own_team = self.map.own_team
 
@@ -4180,6 +4189,9 @@ class BuilderStrategyMethodsMixin:
 
         if target_tile is None:
             return False
+
+        if self._should_hold_attack_for_enemy_bots(target_tile, wait_if_enemy_builder_bots_in_range):
+            return True
 
         return bool(
             self.u_attack_passable(
@@ -4234,12 +4246,7 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        if (
-            wait_if_enemy_builder_bots_in_range
-            and self.map.has_enemy_bot_in_vision
-            and current_pos == target_tile.position
-            and not self._is_visible_building_damaged(target_tile)
-        ):
+        if self._should_hold_attack_for_enemy_bots(target_tile, wait_if_enemy_builder_bots_in_range):
             return True
 
         return bool(
@@ -4300,11 +4307,7 @@ class BuilderStrategyMethodsMixin:
             and current_tile.building.entity_type in SUPPLY_LINK_TYPES
             and sentinel_targets_enemy_core(current_tile)
         ):
-            if (
-                wait_if_enemy_builder_bots_in_range
-                and self.map.has_enemy_bot_in_vision
-                and not self._is_visible_building_damaged(current_tile)
-            ):
+            if self._should_hold_attack_for_enemy_bots(current_tile, wait_if_enemy_builder_bots_in_range):
                 return True
             return bool(
                 self.u_attack_passable(
@@ -4349,12 +4352,7 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
-        if (
-            wait_if_enemy_builder_bots_in_range
-            and self.map.has_enemy_bot_in_vision
-            and current_pos == target_tile.position
-            and not self._is_visible_building_damaged(target_tile)
-        ):
+        if self._should_hold_attack_for_enemy_bots(target_tile, wait_if_enemy_builder_bots_in_range):
             return True
 
         return bool(
