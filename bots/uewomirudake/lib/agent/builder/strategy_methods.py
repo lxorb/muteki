@@ -27,7 +27,8 @@ from lib.agent.constants import (
     LAUNCHER_WAIT_MIN_DISTANCE,
     MIN_LAUNCHER_CHOKING_DIST_FROM_CORE,
     COOLDOWN_TO_LAUNCHER_CHOKING,
-    LAUNCHER_CHOKING_MIN_TITANIUM 
+    LAUNCHER_CHOKING_MIN_TITANIUM,
+    LAUNCHER_ANNOYING_MIN_TITANIUM,
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
 from lib.map.types import SupplyChainLabel
@@ -5290,6 +5291,8 @@ class BuilderStrategyMethodsMixin:
         )
     
     def lets_choke_them(self):
+        if ENABLE_PRINTING:
+            print("LET'S MAKE EM CHOKE?")
         if self.choking_launcher_cooldown != 0:
             return False
         if self.ct.get_global_resources()[0] < LAUNCHER_CHOKING_MIN_TITANIUM:
@@ -5302,6 +5305,7 @@ class BuilderStrategyMethodsMixin:
                 if self.ct.can_build_launcher(neighbor_tile.position) and self.map.own_core_center_pos.distance_squared(neighbor_tile.position) >= MIN_LAUNCHER_CHOKING_DIST_FROM_CORE:
                     self.ct.build_launcher(neighbor_tile.position)
                     self.choking_launcher_cooldown = COOLDOWN_TO_LAUNCHER_CHOKING
+                    if ENABLE_PRINTING: print("SUCCESS !!")
                     return True
         return False
     
@@ -5384,6 +5388,10 @@ class BuilderStrategyMethodsMixin:
         return False
     
     def annoy_enemy_with_launcher(self):
+        if not self.map.enemy_core_center_pos or self.map.enemy_core_center_pos.distance_squared(self.map.current_pos) > 10: #magic number
+            return False
+        if self.ct.get_global_resources()[0] < LAUNCHER_ANNOYING_MIN_TITANIUM:
+            return False
         for neighbor_idx in self.map.u_iter_neighbor_indices(self.map.u_to_index(self.map.current_pos)):
             neighbor_tile = self.map.tiles_by_index[neighbor_idx]
             if neighbor_tile.in_own_launcher_pickup_zone != 0:
@@ -5391,7 +5399,9 @@ class BuilderStrategyMethodsMixin:
             if self.could_place_marker_or_launcher_here(neighbor_tile):
                 if self.ct.can_build_launcher(neighbor_tile.position):
                     self.ct.build_launcher(neighbor_tile.position)
+                    if ENABLE_PRINTING: print("IS THIS WHATS HAPPENING?")
                     return True
+        return False
 
     def s_patrol_enemy_core(self):
         enemy_core_center_pos = self.map.enemy_core_center_pos

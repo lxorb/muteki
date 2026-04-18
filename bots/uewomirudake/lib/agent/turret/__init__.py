@@ -140,7 +140,7 @@ class TurretAgent(Agent):
     
     def yeet_enemy_away(self, bot_tile):
         yeet_from_pos = self.map.own_core_center_pos
-        if self.map.enemy_core_center_pos and self.map.enemy_core_center_pos.distance_squared(self.map.current_pos) < 15: # MAGIC NUMBER SORRY
+        if self.map.enemy_core_center_pos and self.map.enemy_core_center_pos.distance_squared(self.map.current_pos) < 15 and self.map.own_core_center_pos.distance_squared(self.map.current_pos) > 15: # MAGIC NUMBER SORRY
             yeet_from_pos = self.map.enemy_core_center_pos
         if not yeet_from_pos:
             return False
