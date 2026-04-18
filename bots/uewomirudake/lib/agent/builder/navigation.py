@@ -538,10 +538,16 @@ class BuilderNavigationMixin:
                     current_pos,
                     next_tile.position,
                 )
-                if next_direction is not None and self.ct.can_move(next_direction):
-                    self.u_move_with_target(next_direction, pos)
-                    return True
-                return False
+                return self.u_try_progress_move_step(
+                    next_tile,
+                    next_direction,
+                    pos,
+                    build_new_roads=build_new_roads,
+                    allow_conveyor_building=allow_conveyor_building,
+                    respect_titanium_reserve_for_road_build=(
+                        respect_titanium_reserve_for_road_build
+                    ),
+                )
         if self.map.is_caged and not target_is_vision_reachable:
             return self.u_try_greedy_manhattan_move_toward(
                 pos,
