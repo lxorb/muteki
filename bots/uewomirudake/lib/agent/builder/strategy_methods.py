@@ -30,7 +30,8 @@ from lib.agent.constants import (
     COOLDOWN_TO_LAUNCHER_CHOKING,
     LAUNCHER_CHOKING_MIN_TITANIUM,
     LAUNCHER_ANNOYING_MIN_TITANIUM,
-    ATTACK_PATIENCE,
+    PATIENCE_TO_ATTACK,
+    PATIENCE_TO_GIVE_UP,
     LAUNCHER_HUG_MIN_TITANIUM,
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
@@ -4141,11 +4142,15 @@ class BuilderStrategyMethodsMixin:
         wait_if_enemy_builder_bots_in_range: bool,
     ) -> bool:
         return (
+            self.current_pos_since >= PATIENCE_TO_ATTACK
+            or
+            (
             wait_if_enemy_builder_bots_in_range
             and self.map.has_enemy_bot_in_vision
             and self.map.current_pos == target_tile.position
             and not self._is_visible_building_damaged(target_tile)
             and not self._is_launcher_hugged()
+            )
         )
     
     def _is_launcher_hugged(self):
@@ -4229,7 +4234,7 @@ class BuilderStrategyMethodsMixin:
         )
 
     def _been_waiting_for_way_too_long(self):
-        return self.map.current_pos_since > ATTACK_PATIENCE
+        return self.map.current_pos_since > PATIENCE_TO_MOVE
     
     def _can_get_launcher_hugs(self):
         # RETURNS TRUE IF POSSIBLE - EVEN IF NOT BUILT !!!! (titanium threshold)

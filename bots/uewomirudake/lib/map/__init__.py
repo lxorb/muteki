@@ -283,6 +283,8 @@ class Map:
         self.path_heap_buffer: list[tuple[int, int, int, int, int, int]] = []
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
+        self.visible_own_builder_bot_count = 0
+        self.visible_enemy_builder_bot_count = 0
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.all_own_supply_link_target_indices_in_vision: set[int] = set()
         self.own_supply_link_target_indices_in_vision: set[int] = set()
@@ -511,6 +513,7 @@ class Map:
             self.been_here_combo = 0
         self.last_three_pos = [self.last_three_pos[1], self.last_three_pos[2], self.current_pos]
         self.titanium, self.axionite = self.ct.get_global_resources()
+        
 
         self.has_enemy_bot_in_vision = False
         self.tiles_in_vision: list[Tile] = []
@@ -530,6 +533,8 @@ class Map:
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
         self.visible_builder_bot_ids_by_index = {}
+        self.visible_own_builder_bot_count = 0
+        self.visible_enemy_builder_bot_count = 0
         self.visible_building_ids_by_index = {}
         self.all_own_supply_link_target_indices_in_vision = set()
         self.own_supply_link_target_indices_in_vision = set()

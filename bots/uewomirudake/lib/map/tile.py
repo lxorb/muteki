@@ -373,6 +373,10 @@ class Tile:
         if self.map.is_launcher and self in self.map.launcher_action_radius:
             self.map.launcher_action_radius_bots.append(self)
         self.update_target_zones_bot()
+        if self.bot.team == self.map.own_team:
+            self.map.visible_own_builder_bot_count += 1
+        else:
+            self.map.visible_enemy_builder_bot_count = 0
     
     def handle_marker(self, marker_id):
         self.has_marker = True
