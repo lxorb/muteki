@@ -20,6 +20,7 @@ from cambc import (
     Team,
 )
 
+from lib.agent.constants import CONVEYOR_ENTITY_TYPES
 from lib.agent.time import ALLOCATED_MAP_AND_BOT_TIME_MUS, RoundStopwatch
 
 from lib.map.constants import (
@@ -52,6 +53,61 @@ PARSED_TILE_TYPE_CORE = 5
 
 MAP_UPDATE_MIN_REMAINING_MUS = 100
 PRELOADED_MAP_INDEX_STRIDE = 50
+STALE_BUILDER_BOT_PASSABILITY_THRESHOLD = 10
+
+MAP_ENVIRONMENT_OTHER = 0
+MAP_ENVIRONMENT_WALL = 1
+MAP_ENVIRONMENT_TITANIUM = 2
+MAP_ENVIRONMENT_AXIONITE = 3
+
+
+class _TouchedIndexMembership:
+    __slots__ = ("marked_by_index", "touched_indices")
+
+    def __init__(self, size: int):
+        self.marked_by_index = bytearray(size)
+        self.touched_indices: list[int] = []
+
+    def add(self, idx: int) -> None:
+        if self.marked_by_index[idx]:
+            return
+        self.marked_by_index[idx] = 1
+        self.touched_indices.append(idx)
+
+    def clear(self) -> None:
+        for idx in self.touched_indices:
+            self.marked_by_index[idx] = 0
+        self.touched_indices.clear()
+
+    def __contains__(self, idx: int) -> bool:
+        return bool(self.marked_by_index[idx])
+
+
+class _TouchedIndexSourceMap:
+    __slots__ = ("source_indices_by_target_index", "touched_target_indices")
+
+    def __init__(self, size: int):
+        self.source_indices_by_target_index: list[list[int] | None] = [None] * size
+        self.touched_target_indices: list[int] = []
+
+    def add(self, target_idx: int, source_idx: int) -> None:
+        source_indices = self.source_indices_by_target_index[target_idx]
+        if source_indices is None:
+            self.source_indices_by_target_index[target_idx] = [source_idx]
+            self.touched_target_indices.append(target_idx)
+            return
+        source_indices.append(source_idx)
+
+    def clear(self) -> None:
+        for idx in self.touched_target_indices:
+            self.source_indices_by_target_index[idx] = None
+        self.touched_target_indices.clear()
+
+    def get(self, target_idx: int, default=None):
+        source_indices = self.source_indices_by_target_index[target_idx]
+        if source_indices is None:
+            return default
+        return source_indices
 
 
 def _iter_existing_parent_roots(path: Path) -> Iterable[Path]:
@@ -241,10 +297,21 @@ class Map:
         }
         self.index_x_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.index_y_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
+        self.last_seen_turn_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.environment_code_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.vision_reachable_turn_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
+        self.vision_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
+        self.vision_max_dist_to_self_this_turn = 0
+        self.found_vision_reachable_titanium_this_turn = False
+        self.found_vision_reachable_axionite_this_turn = False
+        self.is_caged = False
+        self.stale_builder_bot_passability_threshold = (
+            STALE_BUILDER_BOT_PASSABILITY_THRESHOLD
+        )
         self.own_core_dist_by_index = (
             array("H", [CORE_DIST_INF]) * self.INITIAL_MAP_SIZE
         )
@@ -254,6 +321,9 @@ class Map:
         self.core_distance_passable_by_index = bytearray([1]) * self.INITIAL_MAP_SIZE
         self.intrinsic_passable_by_index = bytearray([1]) * self.INITIAL_MAP_SIZE
         self.bot_present_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.builder_bot_stationary_turns_by_index = (
+            array("H", [0]) * self.INITIAL_MAP_SIZE
+        )
         self.enemy_turret_target_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_gunner_ray_first_target_by_index = bytearray(
             self.INITIAL_MAP_SIZE
@@ -261,10 +331,14 @@ class Map:
         self.enemy_spin_gunner_ray_first_target_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
-        self.core_distance_dirty_indices: set[int] = set()
+        self.core_distance_dirty_indices: list[int] = []
+        self.core_distance_dirty_mark_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_gunner_ray_first_target_touched_indices: list[int] = []
         self.enemy_spin_gunner_ray_first_target_touched_indices: list[int] = []
         self.core_distance_enqueued_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.core_distance_seed_enqueued_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.own_core_source_indices: tuple[int, ...] = ()
         self.enemy_core_source_indices: tuple[int, ...] = ()
         self.own_core_source_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -272,7 +346,14 @@ class Map:
         self.own_core_dist_initialized = False
         self.own_core_dist_init_started = False
         self.own_core_dist_exact_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.own_core_dist_init_heap: list[tuple[int, int]] = []
+        self.own_core_dist_init_buckets: tuple[list[int], list[int], list[int]] = (
+            [],
+            [],
+            [],
+        )
+        self.own_core_dist_init_bucket_heads = [0, 0, 0]
+        self.own_core_dist_init_current_dist = 0
+        self.own_core_dist_init_pending_count = 0
         self.own_core_dist_incremental_queue: list[int] = []
         self.own_core_dist_incremental_queue_head = 0
         self.own_core_dist_incremental_dirty_queue: list[int] = []
@@ -285,18 +366,26 @@ class Map:
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
         self.path_heap_buffer: list[tuple[int, int, int, int, int, int, int]] = []
-        self.visible_builder_bot_ids_by_index: dict[int, int] = {}
-        self.visible_building_ids_by_index: dict[int, int] = {}
+        self.visible_builder_bot_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.visible_builder_bot_ids_touched_indices: list[int] = []
+        self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.visible_building_ids_touched_indices: list[int] = []
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.all_own_supply_link_target_indices_in_vision: set[int] = set()
-        self.own_supply_link_target_indices_in_vision: set[int] = set()
-        self.enemy_supply_link_target_indices_in_vision: set[int] = set()
-        self.own_supply_link_source_indices_by_target_index_in_vision: dict[
-            int, set[int]
-        ] = {}
-        self.enemy_supply_link_source_indices_by_target_index_in_vision: dict[
-            int, set[int]
-        ] = {}
+        self.all_own_supply_link_target_indices_in_vision = _TouchedIndexMembership(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_supply_link_target_indices_in_vision = _TouchedIndexMembership(
+            self.INITIAL_MAP_SIZE
+        )
+        self.enemy_supply_link_target_indices_in_vision = _TouchedIndexMembership(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_supply_link_source_indices_by_target_index_in_vision = (
+            _TouchedIndexSourceMap(self.INITIAL_MAP_SIZE)
+        )
+        self.enemy_supply_link_source_indices_by_target_index_in_vision = (
+            _TouchedIndexSourceMap(self.INITIAL_MAP_SIZE)
+        )
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_supply_chain_parent_by_index = array(
@@ -423,7 +512,6 @@ class Map:
         self.known_accessible_axionite_indices: list[int] = []
         self.is_map_known: bool = False
         self.known_map_path: str | None = None
-        self.enemy_core_seen_in_vision: bool = False
         self.map_inference_time_ns: int = 0
         self.parsed_map_tile_type_by_index: list[int] | None = None
         self.parsed_map_own_core_dist_by_index: list[int] | None = None
@@ -440,6 +528,17 @@ class Map:
         self.frontier_expand_newly_seen_indices: list[int] = []
         self.frontier_expand_pending_indices: list[int] = []
         self.frontier_expand_pending_head = 0
+        self.vision_bfs_passable_touched_indices: list[int] = []
+        self.vision_bfs_passable_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.stale_builder_passability_touched_indices: list[int] = []
+        self.stale_builder_passability_tracked_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
+        self.own_titanium_harvester_adjacent_candidate_mark_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_titanium_harvester_adjacent_candidate_touched_indices: list[int] = []
         self.known_own_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
 
@@ -458,6 +557,24 @@ class Map:
         self._reset_marked_bytearray_indices(
             self.enemy_spin_gunner_ray_first_target_touched_indices,
             self.enemy_spin_gunner_ray_first_target_by_index,
+        )
+        self._reset_marked_bytearray_indices(
+            self.vision_bfs_passable_touched_indices,
+            self.vision_bfs_passable_by_index,
+        )
+        self._reset_marked_bytearray_indices(
+            self.own_titanium_harvester_adjacent_candidate_touched_indices,
+            self.own_titanium_harvester_adjacent_candidate_mark_by_index,
+        )
+        self._reset_marked_array_indices(
+            self.visible_builder_bot_ids_touched_indices,
+            self.visible_builder_bot_ids_by_index,
+            -1,
+        )
+        self._reset_marked_array_indices(
+            self.visible_building_ids_touched_indices,
+            self.visible_building_ids_by_index,
+            -1,
         )
         self._reset_supply_chain_union_find_arrays(
             self.own_supply_chain_touched_indices,
@@ -499,15 +616,22 @@ class Map:
         self.current_pos = next_pos
         self.titanium, self.axionite = self.ct.get_global_resources()
 
+        if self.stale_builder_passability_touched_indices:
+            for idx in self.stale_builder_passability_touched_indices:
+                self.stale_builder_passability_tracked_by_index[idx] = 0
+                tile = self.tiles_by_index[idx]
+                tile.u_refresh_intrinsic_passability()
+                tile.is_passable = tile._is_intrinsically_passable() and (
+                    tile.bot.id is None or tile.position == self.current_pos
+                )
+            self.stale_builder_passability_touched_indices.clear()
+
         self.has_enemy_bot_in_vision = False
         self.closest_enemy_builder_bot_in_vision_pos = None
         self.tiles_in_vision: list[Tile] = []
         self.newly_seen_tiles_in_vision: list[Tile] = []
-        self.titanium_tiles_in_vision: list[Tile] = []
-        self.axionite_tiles_in_vision: list[Tile] = []
         self.own_harvesters_in_vision: list[Tile] = []
         self.enemy_harvesters_in_vision: list[Tile] = []
-        self.own_supply_targets_in_vision: list[Tile] = []
         self.enemy_supply_targets_in_vision: list[Tile] = []
         self.own_supply_links_in_vision: list[Tile] = []
         self.enemy_supply_links_in_vision: list[Tile] = []
@@ -517,13 +641,12 @@ class Map:
         self.own_buildings_needing_heal: list[Tile] = []
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
-        self.visible_builder_bot_ids_by_index = {}
-        self.visible_building_ids_by_index = {}
-        self.all_own_supply_link_target_indices_in_vision = set()
-        self.own_supply_link_target_indices_in_vision = set()
-        self.enemy_supply_link_target_indices_in_vision = set()
-        self.own_supply_link_source_indices_by_target_index_in_vision = {}
-        self.enemy_supply_link_source_indices_by_target_index_in_vision = {}
+        self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
+        self.all_own_supply_link_target_indices_in_vision.clear()
+        self.own_supply_link_target_indices_in_vision.clear()
+        self.enemy_supply_link_target_indices_in_vision.clear()
+        self.own_supply_link_source_indices_by_target_index_in_vision.clear()
+        self.enemy_supply_link_source_indices_by_target_index_in_vision.clear()
         self.frontier_expand_newly_seen_indices = []
 
     def _reset_marked_bytearray_indices(
@@ -545,6 +668,27 @@ class Map:
             return
         values[idx] = 1
         touched_indices.append(idx)
+
+    def _reset_marked_array_indices(
+        self,
+        touched_indices: list[int],
+        values,
+        reset_value: int,
+    ) -> None:
+        for idx in touched_indices:
+            values[idx] = reset_value
+        touched_indices.clear()
+
+    def u_mark_core_distance_dirty_index(self, idx: int) -> None:
+        if self.core_distance_dirty_mark_by_index[idx]:
+            return
+        self.core_distance_dirty_mark_by_index[idx] = 1
+        self.core_distance_dirty_indices.append(idx)
+
+    def u_clear_core_distance_dirty_indices(self) -> None:
+        for idx in self.core_distance_dirty_indices:
+            self.core_distance_dirty_mark_by_index[idx] = 0
+        self.core_distance_dirty_indices.clear()
 
     def _reset_supply_chain_union_find_arrays(
         self,
@@ -1111,6 +1255,78 @@ class Map:
 
         self._build_attackable_target_offset_cache()
 
+    def u_prune_enemy_core_center_pos_candidates(self) -> None:
+        if self.enemy_core_center_pos is not None:
+            return
+        if not self.enemy_core_center_pos_candidates:
+            return
+
+        current_round = self.current_round
+        parsed_map_tile_type_by_index = self.parsed_map_tile_type_by_index
+        pruned_enemy_core_center_pos_candidates = []
+        inferred_enemy_core_center_pos = None
+
+        for mode, center_pos in self.enemy_core_center_pos_candidates:
+            footprint_overlaps_current_vision = False
+            footprint_contains_enemy_core = False
+            candidate_is_impossible = False
+
+            for candidate_tile in self.u_get_core_footprint_positions(center_pos):
+                if (
+                    parsed_map_tile_type_by_index is not None
+                    and parsed_map_tile_type_by_index[candidate_tile.index]
+                    == PARSED_TILE_TYPE_WALL
+                ) or candidate_tile.environment == Environment.WALL:
+                    candidate_is_impossible = True
+                    break
+
+                if candidate_tile.last_seen_turn != current_round:
+                    continue
+                footprint_overlaps_current_vision = True
+                if (
+                    candidate_tile.building.entity_type == EntityType.CORE
+                    and candidate_tile.building.team == self.enemy_team
+                ):
+                    footprint_contains_enemy_core = True
+                    inferred_enemy_core_center_pos = center_pos
+                    break
+
+            if candidate_is_impossible:
+                continue
+            if not footprint_overlaps_current_vision or footprint_contains_enemy_core:
+                pruned_enemy_core_center_pos_candidates.append((mode, center_pos))
+
+        if inferred_enemy_core_center_pos is not None:
+            self.enemy_core_center_pos_candidates = [
+                (mode, pos)
+                for mode, pos in pruned_enemy_core_center_pos_candidates
+                if pos == inferred_enemy_core_center_pos
+            ]
+            self.enemy_core_center_pos = inferred_enemy_core_center_pos
+            self.enemy_core_source_indices = self.u_set_core_source_indices(
+                self.enemy_team,
+                self.enemy_core_center_pos,
+            )
+            return
+
+        if len(pruned_enemy_core_center_pos_candidates) == len(
+            self.enemy_core_center_pos_candidates
+        ):
+            return
+
+        self.enemy_core_center_pos_candidates = (
+            pruned_enemy_core_center_pos_candidates
+        )
+        remaining_positions = {
+            pos for _, pos in self.enemy_core_center_pos_candidates
+        }
+        if len(remaining_positions) == 1:
+            self.enemy_core_center_pos = next(iter(remaining_positions))
+            self.enemy_core_source_indices = self.u_set_core_source_indices(
+                self.enemy_team,
+                self.enemy_core_center_pos,
+            )
+
     def _build_attackable_target_offset_cache(self) -> None:
         max_width = self.INITIAL_WIDTH
         max_height = self.INITIAL_HEIGHT
@@ -1256,7 +1472,10 @@ class Map:
                 continue
             pos = self.ct.get_position(unit_id)
             if self.u_is_in_bounds(pos):
-                self.visible_builder_bot_ids_by_index[self.u_to_index(pos)] = unit_id
+                idx = self.u_to_index(pos)
+                if self.visible_builder_bot_ids_by_index[idx] < 0:
+                    self.visible_builder_bot_ids_touched_indices.append(idx)
+                self.visible_builder_bot_ids_by_index[idx] = unit_id
 
         for building_id in self.ct.get_nearby_buildings():
             if (
@@ -1267,18 +1486,130 @@ class Map:
                 continue
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
-                self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
+                idx = self.u_to_index(pos)
+                if self.visible_building_ids_by_index[idx] < 0:
+                    self.visible_building_ids_touched_indices.append(idx)
+                self.visible_building_ids_by_index[idx] = building_id
         self.stopwatch.lap("Reset + nearby queries")
 
         processed_tiles_in_vision = []
+        known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
+        known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
+        closest_enemy_builder_key = None
+        own_team = self.own_team
+        current_pos = self.current_pos
+        conveyor_targets_harvester_by_index = self.conveyor_targets_harvester_by_index
+        own_buildings_in_vision = self.own_buildings_in_vision
+        enemy_buildings_in_vision = self.enemy_buildings_in_vision
+        own_buildings_healable_in_action_range = (
+            self.own_buildings_healable_in_action_range
+        )
+        own_buildings_needing_heal = self.own_buildings_needing_heal
+        own_supply_links_in_vision = self.own_supply_links_in_vision
+        enemy_supply_links_in_vision = self.enemy_supply_links_in_vision
+        own_harvesters_in_vision = self.own_harvesters_in_vision
+        enemy_harvesters_in_vision = self.enemy_harvesters_in_vision
         for tile in self.tiles_in_vision:
             tile.update_attributes()
             processed_tiles_in_vision.append(tile)
+            building = tile.building
+            conveyor_targets_harvester_by_index[tile.index] = 0
+
+            if building.entity_type in {
+                EntityType.CONVEYOR,
+                EntityType.ARMOURED_CONVEYOR,
+            }:
+                for target_tile in building.targets:
+                    if target_tile.building.entity_type == EntityType.HARVESTER:
+                        conveyor_targets_harvester_by_index[tile.index] = 1
+                        break
+
+            if tile.bot.id is not None and tile.bot.team != own_team:
+                self.has_enemy_bot_in_vision = True
+                if tile.bot.entity_type == EntityType.BUILDER_BOT:
+                    key = (
+                        current_pos.distance_squared(tile.position),
+                        tile.position.x,
+                        tile.position.y,
+                    )
+                    if (
+                        closest_enemy_builder_key is None
+                        or key < closest_enemy_builder_key
+                    ):
+                        closest_enemy_builder_key = key
+                        self.closest_enemy_builder_bot_in_vision_pos = tile.position
+
+            if building.id is not None:
+                if building.team == own_team:
+                    own_buildings_in_vision.append(tile)
+                else:
+                    enemy_buildings_in_vision.append(tile)
+
+                if building.team == own_team:
+                    building_damaged = building.hp < self.ct.get_max_hp(building.id)
+                    if (
+                        building.entity_type
+                        in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR}
+                        and building.hp > 16
+                    ):
+                        building_damaged = False
+                    own_bot_damaged = (
+                        tile.bot.id is not None
+                        and tile.bot.team == own_team
+                        and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
+                    )
+                    if building_damaged or own_bot_damaged:
+                        if self.ct.can_heal(tile.position):
+                            own_buildings_healable_in_action_range.append(tile)
+                        else:
+                            own_buildings_needing_heal.append(tile)
+
+                if building.entity_type in SUPPLY_LINK_TYPES:
+                    if building.team == own_team:
+                        own_supply_links_in_vision.append(tile)
+                    else:
+                        enemy_supply_links_in_vision.append(tile)
+
+                if building.entity_type == EntityType.HARVESTER:
+                    if building.team == own_team:
+                        own_harvesters_in_vision.append(tile)
+                    else:
+                        enemy_harvesters_in_vision.append(tile)
+
+            if tile.environment == Environment.ORE_TITANIUM:
+                if building.id is None or (
+                    building.team == own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    known_accessible_titanium_indices.add(tile.index)
+                else:
+                    known_accessible_titanium_indices.discard(tile.index)
+            else:
+                known_accessible_titanium_indices.discard(tile.index)
+
+            if tile.environment == Environment.ORE_AXIONITE:
+                if building.id is None or (
+                    building.team == own_team
+                    and building.entity_type != EntityType.HARVESTER
+                ):
+                    known_accessible_axionite_indices.add(tile.index)
+                else:
+                    known_accessible_axionite_indices.discard(tile.index)
+            else:
+                known_accessible_axionite_indices.discard(tile.index)
 
             if self.round_stopwatch.check_overtime_interval():
                 break
 
         self.tiles_in_vision = processed_tiles_in_vision
+        self.known_accessible_titanium_indices = self.u_order_known_resource_indices(
+            known_accessible_titanium_indices,
+            self.parsed_titanium_indices,
+        )
+        self.known_accessible_axionite_indices = self.u_order_known_resource_indices(
+            known_accessible_axionite_indices,
+            self.parsed_axionite_indices,
+        )
 
         self.stopwatch.lap("Tile attributes")
 
@@ -1348,117 +1679,66 @@ class Map:
         self.u_update_symmetry_from_visible_tiles()
         self.stopwatch.lap("Visible caches: symmetry")
 
-        known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
-        known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
-        closest_enemy_builder_key = None
-
-        for tile in self.tiles_in_vision:
-            building = tile.building
-            self.conveyor_targets_harvester_by_index[tile.index] = 0
-
-            if building.entity_type in {
-                EntityType.CONVEYOR,
-                EntityType.ARMOURED_CONVEYOR,
-            }:
-                for target_tile in building.targets:
-                    if target_tile.building.entity_type == EntityType.HARVESTER:
-                        self.conveyor_targets_harvester_by_index[tile.index] = 1
-                        break
-
-            if tile.bot.id is not None and tile.bot.team != self.own_team:
-                self.has_enemy_bot_in_vision = True
-                if tile.bot.entity_type == EntityType.BUILDER_BOT:
-                    key = (
-                        self.current_pos.distance_squared(tile.position),
-                        tile.position.x,
-                        tile.position.y,
-                    )
-                    if closest_enemy_builder_key is None or key < closest_enemy_builder_key:
-                        closest_enemy_builder_key = key
-                        self.closest_enemy_builder_bot_in_vision_pos = tile.position
-
-            if building.id is not None:
-                if building.team == self.own_team:
-                    self.own_buildings_in_vision.append(tile)
-                else:
-                    self.enemy_buildings_in_vision.append(tile)
-                    if building.entity_type == EntityType.CORE:
-                        self.enemy_core_seen_in_vision = True
-
-                if building.entity_type == EntityType.CORE:
-                    self.u_update_visible_core_center(tile)
-
-                if building.team == self.own_team:
-                    building_damaged = building.hp < self.ct.get_max_hp(building.id)
-                    if (
-                        building.entity_type
-                        in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR}
-                        and building.hp > 16
-                    ):
-                        building_damaged = False
-                    own_bot_damaged = (
-                        tile.bot.id is not None
-                        and tile.bot.team == self.own_team
-                        and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
-                    )
-                    if building_damaged or own_bot_damaged:
-                        if self.ct.can_heal(tile.position):
-                            self.own_buildings_healable_in_action_range.append(tile)
-                        else:
-                            self.own_buildings_needing_heal.append(tile)
-
-                if building.entity_type in SUPPLY_LINK_TYPES:
-                    if building.team == self.own_team:
-                        self.own_supply_links_in_vision.append(tile)
-                    else:
-                        self.enemy_supply_links_in_vision.append(tile)
-
-                if building.entity_type == EntityType.HARVESTER:
-                    if building.team == self.own_team:
-                        self.own_harvesters_in_vision.append(tile)
-                    else:
-                        self.enemy_harvesters_in_vision.append(tile)
-
-            if tile.environment == Environment.ORE_TITANIUM:
-                self.titanium_tiles_in_vision.append(tile)
-                if building.id is None or (
-                    building.team == self.own_team
-                    and building.entity_type != EntityType.HARVESTER
-                ):
-                    known_accessible_titanium_indices.add(tile.index)
-                else:
-                    known_accessible_titanium_indices.discard(tile.index)
-            else:
-                known_accessible_titanium_indices.discard(tile.index)
-
-            if tile.environment == Environment.ORE_AXIONITE:
-                self.axionite_tiles_in_vision.append(tile)
-                if building.id is None or (
-                    building.team == self.own_team
-                    and building.entity_type != EntityType.HARVESTER
-                ):
-                    known_accessible_axionite_indices.add(tile.index)
-                else:
-                    known_accessible_axionite_indices.discard(tile.index)
-            else:
-                known_accessible_axionite_indices.discard(tile.index)
-
-            if self.round_stopwatch.check_overtime_interval():
-                break
-
         self.stopwatch.lap("Visible caches: classify")
-
-        self.known_accessible_titanium_indices = self.u_order_known_resource_indices(
-            known_accessible_titanium_indices,
-            self.parsed_titanium_indices,
-        )
-        self.known_accessible_axionite_indices = self.u_order_known_resource_indices(
-            known_accessible_axionite_indices,
-            self.parsed_axionite_indices,
-        )
+        for tile in self.own_buildings_in_vision:
+            if tile.building.entity_type == EntityType.CORE:
+                self.u_update_visible_core_center(tile)
+        for tile in self.enemy_buildings_in_vision:
+            if tile.building.entity_type == EntityType.CORE:
+                self.u_update_visible_core_center(tile)
+        self.u_update_own_titanium_harvester_adjacent_candidate_cache()
         self.stopwatch.lap("Visible caches: accessible ore")
         self.u_update_frontier_expand_cache()
         self.stopwatch.lap("Visible caches: frontier")
+
+    def u_update_own_titanium_harvester_adjacent_candidate_cache(self) -> None:
+        current_round = self.current_round
+        own_team = self.own_team
+        candidate_indices = self.own_titanium_harvester_adjacent_candidate_indices
+        candidate_mark_by_index = (
+            self.own_titanium_harvester_adjacent_candidate_mark_by_index
+        )
+        candidate_touched_indices = (
+            self.own_titanium_harvester_adjacent_candidate_touched_indices
+        )
+        conveyor_targets_harvester_by_index = self.conveyor_targets_harvester_by_index
+        tiles_by_index = self.tiles_by_index
+
+        for harvester_tile in self.own_harvesters_in_vision:
+            if harvester_tile.environment != Environment.ORE_TITANIUM:
+                continue
+
+            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(harvester_tile.index):
+                if candidate_mark_by_index[adjacent_idx]:
+                    continue
+
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.last_seen_turn != current_round:
+                    continue
+
+                adjacent_building = adjacent_tile.building
+                is_candidate_tile = (
+                    adjacent_building.id is None
+                    or (
+                        adjacent_building.team == own_team
+                        and adjacent_building.entity_type == EntityType.ROAD
+                    )
+                    or (
+                        adjacent_building.team == own_team
+                        and adjacent_building.entity_type in CONVEYOR_ENTITY_TYPES
+                        and conveyor_targets_harvester_by_index[adjacent_idx]
+                    )
+                    or (
+                        adjacent_building.team == own_team
+                        and adjacent_building.entity_type == EntityType.BARRIER
+                    )
+                )
+                if not is_candidate_tile:
+                    continue
+
+                candidate_mark_by_index[adjacent_idx] = 1
+                candidate_touched_indices.append(adjacent_idx)
+                candidate_indices.append(adjacent_idx)
 
     def u_update_frontier_expand_cache(self) -> None:
         pending_indices = self.frontier_expand_pending_indices
@@ -1494,54 +1774,7 @@ class Map:
         if self.symmetry_mode is not None:
             return
 
-        current_round = self.current_round
-        if self.enemy_core_center_pos is None and self.enemy_core_center_pos_candidates:
-            pruned_enemy_core_center_pos_candidates = []
-            inferred_enemy_core_center_pos = None
-            for mode, center_pos in self.enemy_core_center_pos_candidates:
-                footprint_overlaps_current_vision = False
-                footprint_contains_enemy_core = False
-                for candidate_tile in self.u_get_core_footprint_positions(center_pos):
-                    if candidate_tile.last_seen_turn != current_round:
-                        continue
-                    footprint_overlaps_current_vision = True
-                    if (
-                        candidate_tile.building.entity_type == EntityType.CORE
-                        and candidate_tile.building.team == self.enemy_team
-                    ):
-                        footprint_contains_enemy_core = True
-                        inferred_enemy_core_center_pos = center_pos
-                        break
-
-                if not footprint_overlaps_current_vision or footprint_contains_enemy_core:
-                    pruned_enemy_core_center_pos_candidates.append((mode, center_pos))
-
-            if inferred_enemy_core_center_pos is not None:
-                self.enemy_core_center_pos_candidates = [
-                    (mode, pos)
-                    for mode, pos in pruned_enemy_core_center_pos_candidates
-                    if pos == inferred_enemy_core_center_pos
-                ]
-                self.enemy_core_center_pos = inferred_enemy_core_center_pos
-                self.enemy_core_source_indices = self.u_set_core_source_indices(
-                    self.enemy_team,
-                    self.enemy_core_center_pos,
-                )
-            elif len(pruned_enemy_core_center_pos_candidates) != len(
-                self.enemy_core_center_pos_candidates
-            ):
-                self.enemy_core_center_pos_candidates = (
-                    pruned_enemy_core_center_pos_candidates
-                )
-                remaining_positions = {
-                    pos for _, pos in self.enemy_core_center_pos_candidates
-                }
-                if len(remaining_positions) == 1:
-                    self.enemy_core_center_pos = next(iter(remaining_positions))
-                    self.enemy_core_source_indices = self.u_set_core_source_indices(
-                        self.enemy_team,
-                        self.enemy_core_center_pos,
-                    )
+        self.u_prune_enemy_core_center_pos_candidates()
 
         newly_seen_tiles = self.newly_seen_tiles_in_vision
         if not newly_seen_tiles:
@@ -1741,13 +1974,7 @@ class Map:
             for mode, symmetric_location in self.enemy_core_center_pos_candidates
             if mode in self.symmetry_mode_candidates
         ]
-        remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
-        if len(remaining_positions) == 1:
-            self.enemy_core_center_pos = next(iter(remaining_positions))
-            self.enemy_core_source_indices = self.u_set_core_source_indices(
-                self.enemy_team,
-                self.enemy_core_center_pos,
-            )
+        self.u_prune_enemy_core_center_pos_candidates()
 
     def u_get_pos_tile(self, pos: Position) -> Tile:
         return self.tiles_by_index[self.u_to_index(pos)]
@@ -1954,13 +2181,7 @@ class Map:
                 for mode, pos in all_enemy_core_center_pos_candidates
                 if mode in self.symmetry_mode_candidates
             ]
-        remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
-        if len(remaining_positions) == 1:
-            self.enemy_core_center_pos = next(iter(remaining_positions))
-            self.enemy_core_source_indices = self.u_set_core_source_indices(
-                self.enemy_team,
-                self.enemy_core_center_pos,
-            )
+        self.u_prune_enemy_core_center_pos_candidates()
         return True
 
     def u_get_parsed_map_data_path(self, map_path: str) -> Path:
@@ -2038,16 +2259,12 @@ class Map:
                 self.own_core_center_pos = center_pos
                 self.u_set_core_source_indices(self.own_team, center_pos)
                 self.u_reset_own_core_distance_initialization()
-            else:
-                self.u_sync_core_footprint_tiles_for_team(self.own_team)
             return
 
         if tile.building.team == self.enemy_team:
             if self.enemy_core_center_pos != center_pos:
                 self.enemy_core_center_pos = center_pos
                 self.u_set_core_source_indices(self.enemy_team, center_pos)
-            else:
-                self.u_sync_core_footprint_tiles_for_team(self.enemy_team)
 
     def u_infer_map(self) -> None:
         if (
@@ -2115,7 +2332,7 @@ class Map:
         self.map_json_loaded_print_pending = False
         self.map_update_time_ns = 0
         self.u_reset_own_core_distance_initialization()
-        self.core_distance_dirty_indices.clear()
+        self.u_clear_core_distance_dirty_indices()
         self.enemy_core_center_pos = enemy_core_pos
         self.enemy_core_source_indices = self.u_set_core_source_indices(
             self.enemy_team,
@@ -2147,6 +2364,15 @@ class Map:
         }:
             return Environment.EMPTY
         return None
+
+    def u_get_environment_code(self, environment: Environment | None) -> int:
+        if environment == Environment.WALL:
+            return MAP_ENVIRONMENT_WALL
+        if environment == Environment.ORE_TITANIUM:
+            return MAP_ENVIRONMENT_TITANIUM
+        if environment == Environment.ORE_AXIONITE:
+            return MAP_ENVIRONMENT_AXIONITE
+        return MAP_ENVIRONMENT_OTHER
 
     def u_get_parsed_own_core_dist_by_index(self, idx: int) -> int:
         if self.parsed_map_own_core_dist_by_index is None:
@@ -2188,6 +2414,9 @@ class Map:
                 )
                 if parsed_environment is not None:
                     tile.environment = parsed_environment
+                    self.environment_code_by_index[idx] = self.u_get_environment_code(
+                        parsed_environment
+                    )
                 tile.u_refresh_core_distance_passability()
                 tile.u_refresh_intrinsic_passability()
                 tile.own_core_dist = parsed_dist
@@ -2209,10 +2438,10 @@ class Map:
         self.map_update_time_ns += time.perf_counter_ns() - start_time_ns
         self.own_core_dist_initialized = True
         self.own_core_dist_init_started = False
-        self.own_core_dist_init_heap.clear()
+        self.u_reset_own_core_distance_init_buckets()
         self.u_reset_own_core_distance_incremental_update()
         self.u_reset_own_core_distance_manhattan_initialization()
-        self.core_distance_dirty_indices.clear()
+        self.u_clear_core_distance_dirty_indices()
         return True
 
     def u_is_enemy_bot_on_ally_tile(self, target_tile: Tile) -> bool:
@@ -2745,7 +2974,6 @@ class Map:
         enemy_team = self.enemy_team
         supply_chain_sink_types = (EntityType.HARVESTER, EntityType.FOUNDRY)
 
-        own_supply_targets_in_vision = self.own_supply_targets_in_vision
         enemy_supply_targets_in_vision = self.enemy_supply_targets_in_vision
         own_missing_supply_links = self.own_missing_supply_links
         enemy_missing_supply_links = self.enemy_missing_supply_links
@@ -2759,7 +2987,6 @@ class Map:
             self.enemy_supply_link_source_indices_by_target_index_in_vision
         )
 
-        own_supply_targets_in_vision.clear()
         enemy_supply_targets_in_vision.clear()
         own_missing_supply_links.clear()
         enemy_missing_supply_links.clear()
@@ -2785,13 +3012,7 @@ class Map:
                     continue
                 target_idx = target_tile.index
                 all_own_target_indices.add(target_idx)
-                source_indices = own_supply_link_sources_by_target_index.get(target_idx)
-                if source_indices is None:
-                    own_supply_link_sources_by_target_index[target_idx] = {
-                        supply_link_idx
-                    }
-                else:
-                    source_indices.add(supply_link_idx)
+                own_supply_link_sources_by_target_index.add(target_idx, supply_link_idx)
                 if include_for_own:
                     own_target_indices.add(target_idx)
             if check_overtime_interval():
@@ -2804,13 +3025,10 @@ class Map:
                     continue
                 target_idx = target_tile.index
                 enemy_target_indices.add(target_idx)
-                source_indices = enemy_supply_link_sources_by_target_index.get(target_idx)
-                if source_indices is None:
-                    enemy_supply_link_sources_by_target_index[target_idx] = {
-                        supply_link_idx
-                    }
-                else:
-                    source_indices.add(supply_link_idx)
+                enemy_supply_link_sources_by_target_index.add(
+                    target_idx,
+                    supply_link_idx,
+                )
             if check_overtime_interval():
                 break
 
@@ -2825,7 +3043,6 @@ class Map:
             self.enemy_supply_links_in_vision,
         )
 
-        own_supply_targets_append = own_supply_targets_in_vision.append
         enemy_supply_targets_append = enemy_supply_targets_in_vision.append
         own_missing_append = own_missing_supply_links.append
         enemy_missing_append = enemy_missing_supply_links.append
@@ -2833,8 +3050,6 @@ class Map:
         enemy_core_source_by_index = self.enemy_core_source_by_index
 
         for tile in self.tiles_in_vision:
-            if tile.in_own_resource_range > 0:
-                own_supply_targets_append(tile)
             if tile.in_enemy_resource_range > 0:
                 enemy_supply_targets_append(tile)
 
@@ -3355,9 +3570,32 @@ class Map:
         self.core_distance_enqueued_by_index[idx] = 1
         queue.append(idx)
 
+    def u_enqueue_core_distance_seed_index(
+        self,
+        idx: int,
+        seed_queue: list[int],
+    ) -> None:
+        if self.core_distance_seed_enqueued_by_index[idx]:
+            return
+        self.core_distance_seed_enqueued_by_index[idx] = 1
+        seed_queue.append(idx)
+
+    def u_reset_own_core_distance_init_buckets(self) -> None:
+        for bucket in self.own_core_dist_init_buckets:
+            bucket.clear()
+        bucket_heads = self.own_core_dist_init_bucket_heads
+        bucket_heads[0] = 0
+        bucket_heads[1] = 0
+        bucket_heads[2] = 0
+        self.own_core_dist_init_current_dist = 0
+        self.own_core_dist_init_pending_count = 0
+
     def u_reset_own_core_distance_incremental_update(self) -> None:
         self.core_distance_enqueued_by_index[:] = b"\x00" * len(
             self.core_distance_enqueued_by_index
+        )
+        self.core_distance_seed_enqueued_by_index[:] = b"\x00" * len(
+            self.core_distance_seed_enqueued_by_index
         )
         self.own_core_dist_incremental_queue.clear()
         self.own_core_dist_incremental_queue_head = 0
@@ -3411,14 +3649,14 @@ class Map:
 
             idx = dirty_queue[dirty_queue_head]
             dirty_queue_head += 1
-            seed_queue.append(idx)
+            self.u_enqueue_core_distance_seed_index(idx, seed_queue)
             neighbor_base = idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[neighbor_idx]:
                     continue
-                seed_queue.append(neighbor_idx)
+                self.u_enqueue_core_distance_seed_index(neighbor_idx, seed_queue)
 
         dirty_queue.clear()
         self.own_core_dist_incremental_dirty_queue_head = 0
@@ -3433,6 +3671,8 @@ class Map:
             self.u_enqueue_core_distance_index(seed_queue[seed_queue_head], queue)
             seed_queue_head += 1
 
+        for idx in seed_queue:
+            self.core_distance_seed_enqueued_by_index[idx] = 0
         seed_queue.clear()
         self.own_core_dist_incremental_seed_queue_head = 0
 
@@ -3496,7 +3736,7 @@ class Map:
         self.own_core_dist_exact_by_index[:] = b"\x00" * len(
             self.own_core_dist_exact_by_index
         )
-        self.own_core_dist_init_heap.clear()
+        self.u_reset_own_core_distance_init_buckets()
 
     def u_start_own_core_distance_initialization(self) -> bool:
         if not self.own_core_source_indices:
@@ -3505,13 +3745,16 @@ class Map:
         self.u_reset_own_core_distance_initialization()
         self.own_core_dist_init_started = True
         distance_by_index = self.own_core_dist_by_index
-        frontier = self.own_core_dist_init_heap
+        bucket_zero = self.own_core_dist_init_buckets[0]
+        pending_count = 0
         for source_idx in self.own_core_source_indices:
             if distance_by_index[source_idx] == 0:
                 continue
             distance_by_index[source_idx] = 0
-            heappush(frontier, (0, source_idx))
-        return bool(frontier)
+            bucket_zero.append(source_idx)
+            pending_count += 1
+        self.own_core_dist_init_pending_count = pending_count
+        return pending_count > 0
 
     def u_continue_own_core_distance_initialization(
         self,
@@ -3529,7 +3772,10 @@ class Map:
 
         distance_by_index = self.own_core_dist_by_index
         exact_by_index = self.own_core_dist_exact_by_index
-        frontier = self.own_core_dist_init_heap
+        buckets = self.own_core_dist_init_buckets
+        bucket_heads = self.own_core_dist_init_bucket_heads
+        current_dist = self.own_core_dist_init_current_dist
+        pending_count = self.own_core_dist_init_pending_count
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
@@ -3538,8 +3784,26 @@ class Map:
         core_distance_passable_by_index = self.core_distance_passable_by_index
         finalized_nodes = 0
 
-        while frontier and finalized_nodes < max_finalized_nodes:
-            current_dist, current_idx = heappop(frontier)
+        while pending_count and finalized_nodes < max_finalized_nodes:
+            bucket_idx = current_dist % 3
+            bucket = buckets[bucket_idx]
+            bucket_head = bucket_heads[bucket_idx]
+            while bucket_head >= len(bucket):
+                bucket.clear()
+                bucket_heads[bucket_idx] = 0
+                current_dist += 1
+                if not pending_count:
+                    break
+                bucket_idx = current_dist % 3
+                bucket = buckets[bucket_idx]
+                bucket_head = bucket_heads[bucket_idx]
+
+            if not pending_count:
+                break
+
+            current_idx = bucket[bucket_head]
+            bucket_heads[bucket_idx] = bucket_head + 1
+            pending_count -= 1
             if (
                 exact_by_index[current_idx]
                 or current_dist != distance_by_index[current_idx]
@@ -3567,12 +3831,16 @@ class Map:
                     continue
 
                 distance_by_index[neighbor_idx] = next_dist
-                heappush(frontier, (next_dist, neighbor_idx))
+                buckets[next_dist % 3].append(neighbor_idx)
+                pending_count += 1
 
             if self.round_stopwatch.check_overtime_interval():
                 break
 
-        if not frontier:
+        self.own_core_dist_init_current_dist = current_dist
+        self.own_core_dist_init_pending_count = pending_count
+
+        if not pending_count:
             self.own_core_dist_initialized = True
 
         return self.own_core_dist_initialized
@@ -3683,7 +3951,7 @@ class Map:
                 self.own_core_dist_exact_by_index
             )
             self.own_core_dist_init_started = False
-            self.own_core_dist_init_heap.clear()
+            self.u_reset_own_core_distance_init_buckets()
             self.u_reset_own_core_distance_incremental_update()
             self.own_core_dist_manhattan_init_started = True
             self.own_core_dist_manhattan_init_next_x = 0
@@ -3713,62 +3981,143 @@ class Map:
         self.u_reset_own_core_distance_manhattan_initialization()
         return True
 
+    def u_is_vision_reachable_by_index(self, idx: int) -> bool:
+        return self.vision_reachable_turn_by_index[idx] == self.current_round
+
+    def u_get_next_step_towards_vision_reachable_by_index(
+        self,
+        target_idx: int,
+    ) -> Tile | None:
+        if not self.u_is_vision_reachable_by_index(target_idx):
+            return None
+        next_step_idx = self.vision_first_step_by_index[target_idx]
+        if next_step_idx < 0:
+            return None
+        return self.tiles_by_index[next_step_idx]
+
+    def u_get_next_step_towards_vision_reachable(
+        self,
+        target_pos: Position,
+    ) -> Tile | None:
+        if not self.u_is_in_bounds(target_pos):
+            return None
+        return self.u_get_next_step_towards_vision_reachable_by_index(
+            self.u_to_index(target_pos)
+        )
+
     def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
+        if self.u_is_vision_reachable_by_index(idx):
+            return self.dist_to_self_by_index[idx]
+
         current_idx = self.u_to_index(self.current_pos)
         dx = abs(self.index_x_by_index[idx] - self.index_x_by_index[current_idx])
         dy = abs(self.index_y_by_index[idx] - self.index_y_by_index[current_idx])
-        return dx if dx >= dy else dy
+        estimated_dist = dx if dx >= dy else dy
+        if self.tiles_by_index[idx].last_seen_turn == self.current_round:
+            return self.vision_max_dist_to_self_this_turn + estimated_dist + 1
+        return estimated_dist
 
     def u_get_estimated_dist_to_self(self, pos: Position) -> int:
         return self.u_get_estimated_dist_to_self_by_index(self.u_to_index(pos))
 
-    def u_refresh_dist_to_self(self) -> None:
+    def u_refresh_vision_reachable_dist_to_self(self) -> None:
         source_idx = self.u_to_index(self.current_pos)
-        if (
-            self.last_dist_to_self_source_idx == source_idx
-            and self.dist_to_self_epoch != 0
-        ):
-            return
-
-        self.dist_to_self_epoch += 1
-        dist_to_self_epoch = self.dist_to_self_epoch
+        current_round = self.current_round
         self.last_dist_to_self_source_idx = source_idx
+        self.vision_max_dist_to_self_this_turn = 0
+        self.found_vision_reachable_titanium_this_turn = False
+        self.found_vision_reachable_axionite_this_turn = False
+        self.is_caged = True
         queue = self.distance_queue_buffer_by_index
         queue.clear()
-        queue.append(source_idx)
+        queue_append = queue.append
         queue_head = 0
-        self.dist_to_self_epoch_by_index[source_idx] = dist_to_self_epoch
+        source_neighbor_base = source_idx * self.MAX_NEIGHBOR_COUNT
+        source_neighbor_count = self.neighbor_count_by_index[source_idx]
+        source_dist = 1
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        vision_first_step_by_index = self.vision_first_step_by_index
+        vision_reachable_turn_by_index[source_idx] = current_round
         self.dist_to_self_by_index[source_idx] = 0
+        vision_first_step_by_index[source_idx] = -1
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
         active_mask_by_index = self.active_mask_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        last_seen_turn_by_index = self.last_seen_turn_by_index
+        environment_code_by_index = self.environment_code_by_index
+        vision_bfs_passable_by_index = self.vision_bfs_passable_by_index
+        bot_present_by_index = self.bot_present_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
-        dist_to_self_epoch_by_index = self.dist_to_self_epoch_by_index
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        overtime_check_countdown = 32
+
+        source_environment_code = environment_code_by_index[source_idx]
+        if source_environment_code == MAP_ENVIRONMENT_TITANIUM:
+            self.found_vision_reachable_titanium_this_turn = True
+        elif source_environment_code == MAP_ENVIRONMENT_AXIONITE:
+            self.found_vision_reachable_axionite_this_turn = True
+
+        for offset in range(source_neighbor_count):
+            neighbor_idx = neighbor_indices_by_index[source_neighbor_base + offset]
+            if not active_mask_by_index[neighbor_idx]:
+                continue
+            if last_seen_turn_by_index[neighbor_idx] != current_round:
+                self.is_caged = False
+                continue
+            if (
+                not vision_bfs_passable_by_index[neighbor_idx]
+                or bot_present_by_index[neighbor_idx]
+            ):
+                continue
+
+            vision_reachable_turn_by_index[neighbor_idx] = current_round
+            dist_to_self_by_index[neighbor_idx] = source_dist
+            vision_first_step_by_index[neighbor_idx] = neighbor_idx
+            queue_append(neighbor_idx)
 
         while queue_head < len(queue):
             current_idx = queue[queue_head]
             queue_head += 1
             current_dist = dist_to_self_by_index[current_idx]
+            if current_dist > self.vision_max_dist_to_self_this_turn:
+                self.vision_max_dist_to_self_this_turn = current_dist
+            current_environment_code = environment_code_by_index[current_idx]
+            if current_environment_code == MAP_ENVIRONMENT_TITANIUM:
+                self.found_vision_reachable_titanium_this_turn = True
+            elif current_environment_code == MAP_ENVIRONMENT_AXIONITE:
+                self.found_vision_reachable_axionite_this_turn = True
+            current_first_step_idx = vision_first_step_by_index[current_idx]
+            next_dist = current_dist + 1
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
             for offset in range(neighbor_count):
                 neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[neighbor_idx]:
+                    continue
+                if last_seen_turn_by_index[neighbor_idx] != current_round:
+                    self.is_caged = False
+                    continue
                 if (
-                    not active_mask_by_index[neighbor_idx]
-                    or not intrinsic_passable_by_index[neighbor_idx]
-                    or dist_to_self_epoch_by_index[neighbor_idx] == dist_to_self_epoch
+                    not vision_bfs_passable_by_index[neighbor_idx]
+                    or vision_reachable_turn_by_index[neighbor_idx] == current_round
                 ):
                     continue
 
-                dist_to_self_epoch_by_index[neighbor_idx] = dist_to_self_epoch
-                dist_to_self_by_index[neighbor_idx] = current_dist + 1
-                queue.append(neighbor_idx)
+                vision_reachable_turn_by_index[neighbor_idx] = current_round
+                dist_to_self_by_index[neighbor_idx] = next_dist
+                vision_first_step_by_index[neighbor_idx] = current_first_step_idx
+                queue_append(neighbor_idx)
 
-            if self.round_stopwatch.check_overtime_interval():
-                break
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    break
+                overtime_check_countdown = 32
+
+    def u_refresh_dist_to_self(self) -> None:
+        self.u_refresh_vision_reachable_dist_to_self()
 
     def u_calculate_shortest_path(
         self,
@@ -3995,6 +4344,14 @@ class Map:
         if source_idx == target_idx:
             return self.tiles_by_index[source_idx]
 
+        bridge_next_tile = self._u_get_next_step_towards_vision_bridge_astar(
+            source_idx,
+            target_idx,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+        )
+        if bridge_next_tile is not None:
+            return bridge_next_tile
+
         reached_idx = self._u_run_astar_search(
             source_idx,
             target_idx,
@@ -4009,6 +4366,220 @@ class Map:
             return None
         return self.tiles_by_index[next_step_idx]
 
+    def _u_get_next_step_towards_vision_bridge_astar(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool = True,
+    ) -> Tile | None:
+        current_round = self.current_round
+        if (
+            source_idx != self.last_dist_to_self_source_idx
+            or self.vision_reachable_turn_by_index[source_idx] != current_round
+            or self.vision_reachable_turn_by_index[target_idx] == current_round
+        ):
+            return None
+
+        active_mask_by_index = self.active_mask_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        if (
+            not active_mask_by_index[source_idx]
+            or not active_mask_by_index[target_idx]
+            or not intrinsic_passable_by_index[target_idx]
+        ):
+            return None
+
+        tiles_by_index = self.tiles_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        neighbor_count_by_index = self.neighbor_count_by_index
+        max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
+        vision_first_step_by_index = self.vision_first_step_by_index
+        seen_epoch_by_index = self.path_seen_epoch_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        path_cost_by_index = self.path_cost_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+        u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
+        heappush_local = heappush
+        heappop_local = heappop
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+
+        self.path_epoch += 1
+        path_epoch = self.path_epoch
+        frontier = self.path_heap_buffer
+        frontier.clear()
+
+        source_x = index_x_by_index[source_idx]
+        source_y = index_y_by_index[source_idx]
+        target_x = index_x_by_index[target_idx]
+        target_y = index_y_by_index[target_idx]
+        dx = target_x - source_x
+        if dx < 0:
+            dx = -dx
+        dy = target_y - source_y
+        if dy < 0:
+            dy = -dy
+        seen_epoch_by_index[target_idx] = path_epoch
+        predecessor_by_index[target_idx] = target_idx
+        path_cost_by_index[target_idx] = 0
+        heappush_local(
+            frontier,
+            (
+                dx if dx >= dy else dy,
+                0,
+                0,
+                u_get_own_core_dist_by_index(target_idx),
+                target_x,
+                target_y,
+                target_idx,
+            ),
+        )
+
+        best_bridge_idx = -1
+        best_bridge_score: tuple[int, int, int, int, int] | None = None
+        overtime_check_countdown = 16
+
+        while frontier:
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    break
+                overtime_check_countdown = 16
+
+            (
+                current_lower_bound,
+                current_cost,
+                _,
+                current_own_core_dist,
+                current_x,
+                current_y,
+                current_idx,
+            ) = heappop_local(frontier)
+            if (
+                seen_epoch_by_index[current_idx] != path_epoch
+                or path_cost_by_index[current_idx] != current_cost
+            ):
+                continue
+            if (
+                best_bridge_score is not None
+                and current_lower_bound > best_bridge_score[0]
+            ):
+                break
+
+            if vision_reachable_turn_by_index[current_idx] == current_round:
+                bridge_next_step_idx = (
+                    predecessor_by_index[current_idx]
+                    if current_idx == source_idx
+                    else vision_first_step_by_index[current_idx]
+                )
+                if (
+                    bridge_next_step_idx >= 0
+                    and bridge_next_step_idx != source_idx
+                    and not bot_present_by_index[bridge_next_step_idx]
+                ):
+                    candidate_score = (
+                        current_cost + dist_to_self_by_index[current_idx],
+                        current_cost,
+                        current_own_core_dist,
+                        current_x,
+                        current_y,
+                    )
+                    if (
+                        best_bridge_score is None
+                        or candidate_score < best_bridge_score
+                    ):
+                        best_bridge_score = candidate_score
+                        best_bridge_idx = current_idx
+                continue
+
+            neighbor_base = current_idx * max_neighbor_count
+            neighbor_count = neighbor_count_by_index[current_idx]
+            next_cost = current_cost + 1
+
+            for offset in range(neighbor_count):
+                adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[adjacent_idx]:
+                    continue
+                if (
+                    avoid_enemy_turrets
+                    and adjacent_idx != target_idx
+                    and enemy_turret_target_by_index[adjacent_idx]
+                ):
+                    continue
+                if (
+                    adjacent_idx != target_idx
+                    and not intrinsic_passable_by_index[adjacent_idx]
+                ):
+                    continue
+
+                if seen_epoch_by_index[adjacent_idx] == path_epoch:
+                    previous_cost = path_cost_by_index[adjacent_idx]
+                    if next_cost > previous_cost:
+                        continue
+                    if next_cost == previous_cost:
+                        if adjacent_idx != source_idx:
+                            continue
+                        existing_first_step_idx = predecessor_by_index[source_idx]
+                        if (
+                            existing_first_step_idx >= 0
+                            and existing_first_step_idx != source_idx
+                            and not bot_present_by_index[existing_first_step_idx]
+                        ):
+                            continue
+                        if bot_present_by_index[current_idx]:
+                            continue
+
+                adjacent_x = index_x_by_index[adjacent_idx]
+                adjacent_y = index_y_by_index[adjacent_idx]
+                predecessor_by_index[adjacent_idx] = current_idx
+                seen_epoch_by_index[adjacent_idx] = path_epoch
+                path_cost_by_index[adjacent_idx] = next_cost
+
+                heuristic_dx = adjacent_x - source_x
+                if heuristic_dx < 0:
+                    heuristic_dx = -heuristic_dx
+                heuristic_dy = adjacent_y - source_y
+                if heuristic_dy < 0:
+                    heuristic_dy = -heuristic_dy
+                heuristic = (
+                    heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
+                )
+                lower_bound = next_cost + heuristic
+                if (
+                    best_bridge_score is not None
+                    and lower_bound > best_bridge_score[0]
+                ):
+                    continue
+
+                heappush_local(
+                    frontier,
+                    (
+                        lower_bound,
+                        next_cost,
+                        0,
+                        u_get_own_core_dist_by_index(adjacent_idx),
+                        adjacent_x,
+                        adjacent_y,
+                        adjacent_idx,
+                    ),
+                )
+
+        if best_bridge_idx < 0:
+            return None
+
+        next_step_idx = (
+            predecessor_by_index[best_bridge_idx]
+            if best_bridge_idx == source_idx
+            else vision_first_step_by_index[best_bridge_idx]
+        )
+        if next_step_idx < 0:
+            return None
+        return tiles_by_index[next_step_idx]
+
     def u_get_next_step_to_builder_action_range_astar(
         self,
         source_pos: Position,
@@ -4021,18 +4592,314 @@ class Map:
 
         source_idx = self.u_to_index(source_pos)
         target_idx = self.u_to_index(target_pos)
-        reached_idx = self._u_run_astar_search(
+        direct_next_tile = self._u_get_next_step_to_builder_action_range_vision_reachable(
             source_idx,
             target_idx,
             avoid_enemy_turrets=avoid_enemy_turrets,
             avoid_other_builder_bots=avoid_other_builder_bots,
-            stop_in_builder_action_range=True,
         )
-        if reached_idx is None:
+        if direct_next_tile is not None:
+            return direct_next_tile
+
+        return self._u_get_next_step_to_builder_action_range_vision_join_astar(
+            source_idx,
+            target_idx,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            avoid_other_builder_bots=avoid_other_builder_bots,
+        )
+
+    def _u_get_next_step_to_builder_action_range_vision_reachable(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> Tile | None:
+        current_round = self.current_round
+        if (
+            source_idx != self.last_dist_to_self_source_idx
+            or self.vision_reachable_turn_by_index[source_idx] != current_round
+        ):
             return None
 
-        next_step_idx = self.path_first_step_by_index[reached_idx]
-        if next_step_idx == -1:
+        active_mask_by_index = self.active_mask_by_index
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
+        vision_first_step_by_index = self.vision_first_step_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+        u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
+
+        best_goal_idx = -1
+        best_score: tuple[int, int, int, int] | None = None
+
+        for goal_idx in self.u_iter_builder_action_target_indices(target_idx):
+            if (
+                not active_mask_by_index[goal_idx]
+                or vision_reachable_turn_by_index[goal_idx] != current_round
+            ):
+                continue
+            if not intrinsic_passable_by_index[goal_idx]:
+                continue
+            if avoid_enemy_turrets and enemy_turret_target_by_index[goal_idx]:
+                continue
+            if (
+                avoid_other_builder_bots
+                and goal_idx != source_idx
+                and bot_present_by_index[goal_idx]
+            ):
+                continue
+            next_step_idx = vision_first_step_by_index[goal_idx]
+            if next_step_idx < 0:
+                continue
+            if (
+                avoid_other_builder_bots
+                and next_step_idx != source_idx
+                and bot_present_by_index[next_step_idx]
+            ):
+                continue
+
+            candidate_score = (
+                dist_to_self_by_index[goal_idx],
+                u_get_own_core_dist_by_index(goal_idx),
+                index_x_by_index[goal_idx],
+                index_y_by_index[goal_idx],
+            )
+            if best_score is None or candidate_score < best_score:
+                best_score = candidate_score
+                best_goal_idx = goal_idx
+
+        if best_goal_idx < 0:
+            return None
+
+        next_step_idx = vision_first_step_by_index[best_goal_idx]
+        return self.tiles_by_index[next_step_idx]
+
+    def _u_get_next_step_to_builder_action_range_vision_join_astar(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> Tile | None:
+        current_round = self.current_round
+        if (
+            source_idx != self.last_dist_to_self_source_idx
+            or self.vision_reachable_turn_by_index[source_idx] != current_round
+        ):
+            return None
+
+        active_mask_by_index = self.active_mask_by_index
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
+        vision_first_step_by_index = self.vision_first_step_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+        u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
+        seen_epoch_by_index = self.path_seen_epoch_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        path_cost_by_index = self.path_cost_by_index
+        heappush_local = heappush
+        heappop_local = heappop
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+
+        if not active_mask_by_index[source_idx]:
+            return None
+
+        self.path_epoch += 1
+        path_epoch = self.path_epoch
+        frontier = self.path_heap_buffer
+        frontier.clear()
+
+        source_x = index_x_by_index[source_idx]
+        source_y = index_y_by_index[source_idx]
+        seeded_goal = False
+
+        for goal_idx in self.u_iter_builder_action_target_indices(target_idx):
+            if not active_mask_by_index[goal_idx]:
+                continue
+            if not intrinsic_passable_by_index[goal_idx]:
+                continue
+            if avoid_enemy_turrets and enemy_turret_target_by_index[goal_idx]:
+                continue
+            if (
+                avoid_other_builder_bots
+                and goal_idx != source_idx
+                and bot_present_by_index[goal_idx]
+            ):
+                continue
+
+            goal_x = index_x_by_index[goal_idx]
+            goal_y = index_y_by_index[goal_idx]
+            heuristic_dx = goal_x - source_x
+            if heuristic_dx < 0:
+                heuristic_dx = -heuristic_dx
+            heuristic_dy = goal_y - source_y
+            if heuristic_dy < 0:
+                heuristic_dy = -heuristic_dy
+            seen_epoch_by_index[goal_idx] = path_epoch
+            predecessor_by_index[goal_idx] = goal_idx
+            path_cost_by_index[goal_idx] = 0
+            heappush_local(
+                frontier,
+                (
+                    (
+                        heuristic_dx
+                        if heuristic_dx >= heuristic_dy
+                        else heuristic_dy
+                    ),
+                    0,
+                    0,
+                    u_get_own_core_dist_by_index(goal_idx),
+                    goal_x,
+                    goal_y,
+                    goal_idx,
+                ),
+            )
+            seeded_goal = True
+
+        if not seeded_goal:
+            return None
+
+        best_join_idx = -1
+        best_join_score: tuple[int, int, int, int, int] | None = None
+        overtime_check_countdown = 16
+
+        while frontier:
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    break
+                overtime_check_countdown = 16
+
+            (
+                current_lower_bound,
+                current_cost,
+                _,
+                current_own_core_dist,
+                current_x,
+                current_y,
+                current_idx,
+            ) = heappop_local(frontier)
+            if (
+                seen_epoch_by_index[current_idx] != path_epoch
+                or path_cost_by_index[current_idx] != current_cost
+            ):
+                continue
+            if (
+                best_join_score is not None
+                and current_lower_bound > best_join_score[0]
+            ):
+                break
+
+            if vision_reachable_turn_by_index[current_idx] == current_round:
+                join_next_step_idx = (
+                    predecessor_by_index[current_idx]
+                    if current_idx == source_idx
+                    else vision_first_step_by_index[current_idx]
+                )
+                if (
+                    join_next_step_idx >= 0
+                    and join_next_step_idx != source_idx
+                    and not bot_present_by_index[join_next_step_idx]
+                ):
+                    candidate_score = (
+                        current_cost + dist_to_self_by_index[current_idx],
+                        current_cost,
+                        current_own_core_dist,
+                        current_x,
+                        current_y,
+                    )
+                    if (
+                        best_join_score is None
+                        or candidate_score < best_join_score
+                    ):
+                        best_join_score = candidate_score
+                        best_join_idx = current_idx
+                continue
+
+            neighbor_base = current_idx * self.MAX_NEIGHBOR_COUNT
+            neighbor_count = self.neighbor_count_by_index[current_idx]
+            next_cost = current_cost + 1
+
+            for offset in range(neighbor_count):
+                adjacent_idx = self.neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[adjacent_idx]:
+                    continue
+                if (
+                    avoid_enemy_turrets
+                    and enemy_turret_target_by_index[adjacent_idx]
+                ):
+                    continue
+                if not intrinsic_passable_by_index[adjacent_idx]:
+                    continue
+
+                if seen_epoch_by_index[adjacent_idx] == path_epoch:
+                    previous_cost = path_cost_by_index[adjacent_idx]
+                    if next_cost > previous_cost:
+                        continue
+                    if next_cost == previous_cost:
+                        if adjacent_idx != source_idx:
+                            continue
+                        existing_first_step_idx = predecessor_by_index[source_idx]
+                        if (
+                            existing_first_step_idx >= 0
+                            and existing_first_step_idx != source_idx
+                            and not bot_present_by_index[existing_first_step_idx]
+                        ):
+                            continue
+                        if bot_present_by_index[current_idx]:
+                            continue
+
+                adjacent_x = index_x_by_index[adjacent_idx]
+                adjacent_y = index_y_by_index[adjacent_idx]
+                predecessor_by_index[adjacent_idx] = current_idx
+                seen_epoch_by_index[adjacent_idx] = path_epoch
+                path_cost_by_index[adjacent_idx] = next_cost
+
+                heuristic_dx = adjacent_x - source_x
+                if heuristic_dx < 0:
+                    heuristic_dx = -heuristic_dx
+                heuristic_dy = adjacent_y - source_y
+                if heuristic_dy < 0:
+                    heuristic_dy = -heuristic_dy
+                lower_bound = next_cost + (
+                    heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
+                )
+                if (
+                    best_join_score is not None
+                    and lower_bound > best_join_score[0]
+                ):
+                    continue
+
+                heappush_local(
+                    frontier,
+                    (
+                        lower_bound,
+                        next_cost,
+                        0,
+                        u_get_own_core_dist_by_index(adjacent_idx),
+                        adjacent_x,
+                        adjacent_y,
+                        adjacent_idx,
+                    ),
+                )
+
+        if best_join_idx < 0:
+            return None
+
+        next_step_idx = (
+            predecessor_by_index[best_join_idx]
+            if best_join_idx == source_idx
+            else vision_first_step_by_index[best_join_idx]
+        )
+        if next_step_idx < 0 or next_step_idx == source_idx:
             return None
         return self.tiles_by_index[next_step_idx]
 
@@ -4295,6 +5162,7 @@ class Map:
         source_pos: Position,
         avoid_enemy_turrets: bool = True,
         avoid_other_builder_bots: bool = True,
+        frontier_tiebreak_multipliers: tuple[int, int] = (1, 1),
     ) -> list[Tile]:
         if not self.u_is_in_bounds(source_pos):
             return []
@@ -4305,127 +5173,163 @@ class Map:
 
         source_tile = self.u_get_pos_tile(source_pos)
         source_idx = source_tile.index
+        current_round = self.current_round
+        if (
+            source_idx != self.last_dist_to_self_source_idx
+            or self.vision_reachable_turn_by_index[source_idx] != current_round
+        ):
+            return []
+
         tiles_by_index = self.tiles_by_index
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
         active_mask_by_index = self.active_mask_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
         enemy_turret_target_by_index = self.enemy_turret_target_by_index
         bot_present_by_index = self.bot_present_by_index
-        seen_epoch_by_index = self.path_seen_epoch_by_index
-        predecessor_by_index = self.path_predecessor_by_index
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
+        frontier_x_multiplier, frontier_y_multiplier = frontier_tiebreak_multipliers
+        u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
 
-        self.path_epoch += 1
-        path_epoch = self.path_epoch
-        seen_epoch_by_index[source_idx] = path_epoch
-        predecessor_by_index[source_idx] = source_idx
-        queue = self.path_queue_buffer_by_index
-        queue.clear()
-        queue.append(source_idx)
-        queue_head = 0
+        best_frontier_idx = -1
+        best_entry_idx = -1
+        best_score: tuple[int, int, int, int, int] | None = None
 
-        while queue_head < len(queue):
-            layer_end = len(queue)
-            best_target_idx: int | None = None
-            best_target_score: tuple[int, int, int] | None = None
-
-            while queue_head < layer_end:
-                if self.round_stopwatch.check_overtime_interval():
-                    return []
-
-                current_idx = queue[queue_head]
-                queue_head += 1
-                neighbor_base = current_idx * max_neighbor_count
-                neighbor_count = neighbor_count_by_index[current_idx]
-
-                for offset in range(neighbor_count):
-                    adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
-                    if (
-                        not active_mask_by_index[adjacent_idx]
-                        or seen_epoch_by_index[adjacent_idx] == path_epoch
-                    ):
-                        continue
-
-                    is_frontier = (
-                        adjacent_idx in frontier_indices
-                        and tiles_by_index[adjacent_idx].last_seen_turn == -1
-                    )
-
-                    if (
-                        avoid_enemy_turrets
-                        and enemy_turret_target_by_index[adjacent_idx]
-                    ):
-                        continue
-                    if (
-                        avoid_other_builder_bots
-                        and adjacent_idx != source_idx
-                        and bot_present_by_index[adjacent_idx]
-                    ):
-                        continue
-                    if (
-                        not is_frontier
-                        and not intrinsic_passable_by_index[adjacent_idx]
-                    ):
-                        continue
-
-                    predecessor_by_index[adjacent_idx] = current_idx
-                    seen_epoch_by_index[adjacent_idx] = path_epoch
-
-                    if is_frontier:
-                        candidate_score = (
-                            self.u_get_own_core_dist_by_index(adjacent_idx),
-                            index_x_by_index[adjacent_idx],
-                            index_y_by_index[adjacent_idx],
-                        )
-                        if (
-                            best_target_score is None
-                            or candidate_score < best_target_score
-                        ):
-                            best_target_score = candidate_score
-                            best_target_idx = adjacent_idx
-                        continue
-
-                    queue.append(adjacent_idx)
-
-            if best_target_idx is None:
+        for frontier_idx in frontier_indices:
+            if not active_mask_by_index[frontier_idx]:
+                continue
+            frontier_tile = tiles_by_index[frontier_idx]
+            if frontier_tile.last_seen_turn != -1:
+                continue
+            if (
+                avoid_enemy_turrets
+                and enemy_turret_target_by_index[frontier_idx]
+            ):
+                continue
+            if (
+                avoid_other_builder_bots
+                and frontier_idx != source_idx
+                and bot_present_by_index[frontier_idx]
+            ):
                 continue
 
-            path = [tiles_by_index[best_target_idx]]
-            walk_idx = best_target_idx
-            while walk_idx != source_idx:
-                if self.round_stopwatch.check_overtime_interval():
-                    return []
+            frontier_entry_idx = -1
+            frontier_entry_score: tuple[int, int, int] | None = None
+            neighbor_base = frontier_idx * max_neighbor_count
+            neighbor_count = neighbor_count_by_index[frontier_idx]
 
-                previous_idx = predecessor_by_index[walk_idx]
-                if previous_idx == -1:
-                    return []
-                path.append(tiles_by_index[previous_idx])
-                walk_idx = previous_idx
+            for offset in range(neighbor_count):
+                entry_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if (
+                    not active_mask_by_index[entry_idx]
+                    or vision_reachable_turn_by_index[entry_idx] != current_round
+                ):
+                    continue
 
-            path.reverse()
-            return path
+                entry_score = (
+                    dist_to_self_by_index[entry_idx],
+                    index_x_by_index[entry_idx],
+                    index_y_by_index[entry_idx],
+                )
+                if (
+                    frontier_entry_score is None
+                    or entry_score < frontier_entry_score
+                ):
+                    frontier_entry_score = entry_score
+                    frontier_entry_idx = entry_idx
 
-        return []
+            if frontier_entry_idx < 0 or frontier_entry_score is None:
+                continue
+
+            candidate_score = (
+                frontier_x_multiplier * index_x_by_index[frontier_idx],
+                frontier_y_multiplier * index_y_by_index[frontier_idx],
+                frontier_entry_score[1],
+                frontier_entry_score[2],
+                u_get_own_core_dist_by_index(frontier_idx),
+            )
+            if best_score is None or candidate_score < best_score:
+                best_score = candidate_score
+                best_frontier_idx = frontier_idx
+                best_entry_idx = frontier_entry_idx
+
+            if self.round_stopwatch.check_overtime_interval():
+                return []
+
+        if best_frontier_idx < 0:
+            return []
+
+        frontier_tile = tiles_by_index[best_frontier_idx]
+        if best_entry_idx == source_idx:
+            return [source_tile, frontier_tile]
+
+        path = [frontier_tile]
+        current_idx = best_entry_idx
+        current_dist = dist_to_self_by_index[current_idx]
+
+        while True:
+            path.append(tiles_by_index[current_idx])
+            if current_idx == source_idx:
+                break
+            if current_dist == 0:
+                return []
+
+            predecessor_idx = -1
+            predecessor_score: tuple[int, int] | None = None
+            neighbor_base = current_idx * max_neighbor_count
+            neighbor_count = neighbor_count_by_index[current_idx]
+
+            for offset in range(neighbor_count):
+                adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if (
+                    not active_mask_by_index[adjacent_idx]
+                    or vision_reachable_turn_by_index[adjacent_idx] != current_round
+                    or dist_to_self_by_index[adjacent_idx] != current_dist - 1
+                ):
+                    continue
+
+                candidate_predecessor_score = (
+                    index_x_by_index[adjacent_idx],
+                    index_y_by_index[adjacent_idx],
+                )
+                if (
+                    predecessor_score is None
+                    or candidate_predecessor_score < predecessor_score
+                ):
+                    predecessor_score = candidate_predecessor_score
+                    predecessor_idx = adjacent_idx
+
+            if predecessor_idx < 0:
+                return []
+
+            current_idx = predecessor_idx
+            current_dist -= 1
+
+            if self.round_stopwatch.check_overtime_interval():
+                return []
+
+        path.reverse()
+        return path
 
     def u_update_distances(self) -> None:
         sw = Stopwatch("Map distances")
         sw.start()
+        self.u_refresh_vision_reachable_dist_to_self()
+        sw.lap("Self distance field")
 
         if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
             self.u_apply_parsed_own_core_dist_to_tiles(self.tiles_in_vision)
-            self.core_distance_dirty_indices.clear()
+            self.u_clear_core_distance_dirty_indices()
             self.u_reset_own_core_distance_incremental_update()
             self.u_reset_own_core_distance_manhattan_initialization()
             sw.lap("Own core field")
             sw.log()
             return
 
-        sw.lap("Self distance field")
-
-        dirty_indices = tuple(self.core_distance_dirty_indices)
+        dirty_indices = self.core_distance_dirty_indices
         has_pending_own_core_dist_incremental_update = bool(
             self.own_core_dist_incremental_queue
             or self.own_core_dist_incremental_dirty_queue
@@ -4456,6 +5360,6 @@ class Map:
 
         sw.lap("Own core field")
 
-        self.core_distance_dirty_indices.clear()
+        self.u_clear_core_distance_dirty_indices()
 
         sw.log()

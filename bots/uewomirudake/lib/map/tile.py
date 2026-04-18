@@ -122,14 +122,9 @@ class Tile:
 
     @property
     def dist_to_self(self) -> int:
-        if (
-            not self.map.compute_dist_to_self
-            or self.map.dist_to_self_epoch == 0
-            or self.map.dist_to_self_epoch_by_index[self.index]
-            != self.map.dist_to_self_epoch
-        ):
-            return self.map.u_get_estimated_dist_to_self_by_index(self.index)
-        return self.map.dist_to_self_by_index[self.index]
+        if self.map.vision_reachable_turn_by_index[self.index] == self.map.current_round:
+            return self.map.dist_to_self_by_index[self.index]
+        return self.map.u_get_estimated_dist_to_self_by_index(self.index)
 
     @dist_to_self.setter
     def dist_to_self(self, value: int) -> None:
@@ -213,6 +208,14 @@ class Tile:
     def u_calc_intrinsic_passability(self) -> bool:
         if self.is_core_of(self.map.enemy_team):
             return False
+        if (
+            self.last_seen_turn == self.map.current_round
+            and self.bot.id is not None
+            and self.bot.entity_type == EntityType.BUILDER_BOT
+            and self.map.builder_bot_stationary_turns_by_index[self.index]
+            >= self.map.stale_builder_bot_passability_threshold
+        ):
+            return False
         if self.is_core_of(self.map.own_team):
             return True
         building_type = self.building.entity_type
@@ -241,7 +244,7 @@ class Tile:
         self.map.core_distance_passable_by_index[self.index] = (
             1 if core_distance_passable else 0
         )
-        self.map.core_distance_dirty_indices.add(self.index)
+        self.map.u_mark_core_distance_dirty_index(self.index)
 
     def _is_intrinsically_passable(self) -> bool:
         return self.map.intrinsic_passable_by_index[self.index]
@@ -316,18 +319,30 @@ class Tile:
     def update_attributes(self) -> None:
         ct = self.map.ct
         current_round = self.map.current_round
-        if self.last_seen_turn == -1:
+        previous_last_seen_turn = self.last_seen_turn
+        previous_bot_id = self.bot.id
+        previous_bot_entity_type = self.bot.entity_type
+        environment_changed = False
+        if self.last_seen_turn == -1 and self.map.symmetry_mode is None:
             self.map.newly_seen_tiles_in_vision.append(self)
         if self.environment is None:
             self.environment = ct.get_tile_env(self.position)
-        self.u_refresh_core_distance_passability()
+            environment_changed = True
+            self.map.environment_code_by_index[self.index] = (
+                self.map.u_get_environment_code(self.environment)
+            )
         if self.last_seen_turn == -1:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)
         self.last_seen_turn = current_round
+        self.map.last_seen_turn_by_index[self.index] = current_round
 
-        bot_id = self.map.visible_builder_bot_ids_by_index.get(self.index)
-        building_id = self.map.visible_building_ids_by_index.get(self.index)
+        bot_id = self.map.visible_builder_bot_ids_by_index[self.index]
+        if bot_id < 0:
+            bot_id = None
+        building_id = self.map.visible_building_ids_by_index[self.index]
+        if building_id < 0:
+            building_id = None
 
         if bot_id != self.bot.id:
             if bot_id is None:
@@ -339,8 +354,29 @@ class Tile:
             if bot_id is not None:
                 self.update_bot(id_changed=False)
         self.map.bot_present_by_index[self.index] = 0 if bot_id is None else 1
+        stationary_turns_by_index = self.map.builder_bot_stationary_turns_by_index
+        if bot_id is None or self.bot.entity_type != EntityType.BUILDER_BOT:
+            stationary_turns_by_index[self.index] = 0
+        elif (
+            previous_last_seen_turn == current_round - 1
+            and previous_bot_id == bot_id
+            and previous_bot_entity_type == EntityType.BUILDER_BOT
+        ):
+            stationary_turns_by_index[self.index] += 1
+        else:
+            stationary_turns_by_index[self.index] = 1
+        intrinsic_passability_may_have_changed = False
+        if (
+            stationary_turns_by_index[self.index]
+            >= self.map.stale_builder_bot_passability_threshold
+            and not self.map.stale_builder_passability_tracked_by_index[self.index]
+        ):
+            self.map.stale_builder_passability_tracked_by_index[self.index] = 1
+            self.map.stale_builder_passability_touched_indices.append(self.index)
+            intrinsic_passability_may_have_changed = True
 
-        if building_id != self.building.id:
+        building_changed = building_id != self.building.id
+        if building_changed:
             if building_id is None:
                 self.clear_building()
             else:
@@ -352,8 +388,17 @@ class Tile:
             if building_id is not None:
                 self.update_building(id_changed=False)
 
-        self.u_refresh_core_distance_passability()
-        self.u_refresh_intrinsic_passability()
+        if environment_changed or building_changed:
+            self.u_refresh_core_distance_passability()
+            self.u_refresh_intrinsic_passability()
+        elif intrinsic_passability_may_have_changed:
+            self.u_refresh_intrinsic_passability()
+        if self._is_intrinsically_passable():
+            self.map._u_mark_bytearray_index(
+                self.map.vision_bfs_passable_touched_indices,
+                self.map.vision_bfs_passable_by_index,
+                self.index,
+            )
         self.is_passable = self._is_intrinsically_passable() and (
             self.bot.id is None or self.position == self.map.current_pos
         )

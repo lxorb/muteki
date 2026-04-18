@@ -14,6 +14,7 @@ from lib.agent.constants import (
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     FOUNDRY_CAN_REPLACE_BRIDGE,
     HARASSMENT_STRATEGY_ID,
+    HARASSMENT_ENEMY_CORE_MOVER,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
     PREFER_SENTINEL_OVER_GUNNER_MIN_TITANIUM,
@@ -51,9 +52,25 @@ _HIJACK_BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
     if 0 < dx * dx + dy * dy <= GameConstants.BRIDGE_TARGET_RADIUS_SQ
     and abs(dx) + abs(dy) != 1
 )
+_SCAVENGER_FRONTIER_TIEBREAK_MULTIPLIERS: dict[
+    tuple[int, int], tuple[int, int]
+] = {
+    (-1, -1): (1, 1),
+    (1, 1): (-1, -1),
+    (-1, 1): (1, -1),
+    (1, -1): (-1, 1),
+}
 
 
 class BuilderStrategyMethodsMixin:
+    def u_get_frontier_expand_tiebreak_multipliers(self) -> tuple[int, int]:
+        if self.strategy != SCAVENGER_STRATEGY_ID:
+            return (1, 1)
+        return _SCAVENGER_FRONTIER_TIEBREAK_MULTIPLIERS.get(
+            self.spawn_relative_tile,
+            (1, 1),
+        )
+
     def s_return_to_core_center(self):
         own_core_center_pos = self.map.own_core_center_pos
         if own_core_center_pos is None:
@@ -919,96 +936,45 @@ class BuilderStrategyMethodsMixin:
                 bool,
             ]
         ] = []
-        candidate_seen_indices: set[int] = set()
+        for adjacent_idx in self.map.own_titanium_harvester_adjacent_candidate_indices:
+            adjacent_tile = tiles_by_index[adjacent_idx]
+            if adjacent_tile.position == current_pos or adjacent_tile.bot.id is not None:
+                continue
+            if current_pos.distance_squared(adjacent_tile.position) > candidate_radius_sq:
+                continue
 
-        def is_own_harvester_feeder_tile(tile) -> bool:
-            return (
-                tile.building.team == own_team
-                and tile.building.entity_type in CONVEYOR_ENTITY_TYPES
-                and any(
-                    target_tile.building.team == own_team
-                    and target_tile.building.entity_type == EntityType.HARVESTER
-                    for target_tile in tile.building.targets
+            affordable_turret_plan = self._u_get_harvester_adjacent_turret_substitution(
+                adjacent_tile.position,
+                True,
+            )
+            fallback_turret_plan = affordable_turret_plan or (
+                self._u_get_harvester_adjacent_turret_substitution(
+                    adjacent_tile.position,
+                    True,
+                    require_affordable=False,
                 )
             )
-
-        for harvester_tile in tiles_by_index:
-            if harvester_tile.last_seen_turn < 0:
-                continue
-            if (
-                harvester_tile.building.team != own_team
-                or harvester_tile.building.entity_type != EntityType.HARVESTER
-                or harvester_tile.environment != Environment.ORE_TITANIUM
-            ):
+            if fallback_turret_plan is None:
                 continue
 
-            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
-                harvester_tile.index
-            ):
-                if adjacent_idx in candidate_seen_indices:
-                    continue
-
-                adjacent_tile = tiles_by_index[adjacent_idx]
-                if adjacent_tile.last_seen_turn < 0:
-                    continue
-                if adjacent_tile.position == current_pos or adjacent_tile.bot.id is not None:
-                    continue
-                if current_pos.distance_squared(adjacent_tile.position) > candidate_radius_sq:
-                    continue
-
-                is_candidate_tile = (
-                    adjacent_tile.building.id is None
-                    or (
-                        adjacent_tile.building.team == own_team
-                        and adjacent_tile.building.entity_type == EntityType.ROAD
-                    )
-                    or is_own_harvester_feeder_tile(adjacent_tile)
-                    or (
-                        adjacent_tile.building.team == own_team
-                        and adjacent_tile.building.entity_type == EntityType.BARRIER
-                    )
-                )
-                if not is_candidate_tile:
-                    continue
-
-                affordable_turret_plan = (
-                    self._u_get_harvester_adjacent_turret_substitution(
-                        adjacent_tile.position,
-                        True,
-                    )
-                )
-                fallback_turret_plan = affordable_turret_plan or (
-                    self._u_get_harvester_adjacent_turret_substitution(
-                        adjacent_tile.position,
-                        True,
-                        require_affordable=False,
-                    )
-                )
-                if fallback_turret_plan is None:
-                    continue
-
-                build_entity_type, turret_direction = fallback_turret_plan
-                candidate_seen_indices.add(adjacent_idx)
-                candidate_entries.append(
+            build_entity_type, turret_direction = fallback_turret_plan
+            candidate_entries.append(
+                (
                     (
-                        (
-                            0
-                            if current_pos.distance_squared(adjacent_tile.position)
-                            <= BUILDER_ACTION_RADIUS_SQ
-                            else 1,
-                            adjacent_tile.dist_to_self,
-                            adjacent_tile.own_core_dist,
-                            adjacent_tile.index,
-                        ),
-                        adjacent_tile.position,
-                        build_entity_type,
-                        turret_direction,
-                        affordable_turret_plan is not None,
-                    )
+                        0
+                        if current_pos.distance_squared(adjacent_tile.position)
+                        <= BUILDER_ACTION_RADIUS_SQ
+                        else 1,
+                        adjacent_tile.dist_to_self,
+                        adjacent_tile.own_core_dist,
+                        adjacent_tile.index,
+                    ),
+                    adjacent_tile.position,
+                    build_entity_type,
+                    turret_direction,
+                    affordable_turret_plan is not None,
                 )
-
-                if self.round_stopwatch.check_overtime():
-                    break
+            )
 
             if self.round_stopwatch.check_overtime():
                 break
@@ -1890,10 +1856,11 @@ class BuilderStrategyMethodsMixin:
 
         Uses cached missing-link positions plus any builder-local pending gap
         target, keeps tiles that can host a new supplier, filters to the
-        relevant supply chain(s), prioritizes gaps closer to the builder and then
-        the core, and relies on the transport supplier planner to choose
-        whether the tile should become a conveyor or a bridge plus its optimal
-        target for the inferred resource.
+        relevant supply chain(s), prioritizes visible gaps that were reached by
+        the current turn's in-vision BFS, then the cached pending gap, and only
+        then other visible gaps, and relies on the transport supplier planner
+        to choose whether the tile should become a conveyor or a bridge plus
+        its optimal target for the inferred resource.
         """
         if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
             return False
@@ -1929,6 +1896,16 @@ class BuilderStrategyMethodsMixin:
         def clear_pending_target() -> None:
             self.pending_missing_supply_link_index = None
             self.pending_missing_supply_link_resource = None
+            self.pending_missing_supply_link_label = None
+
+        def remember_pending_target(
+            target_idx: int,
+            resource: Environment,
+            supply_chain_label: SupplyChainLabel,
+        ) -> None:
+            self.pending_missing_supply_link_index = target_idx
+            self.pending_missing_supply_link_resource = resource
+            self.pending_missing_supply_link_label = supply_chain_label
 
         def u_get_candidate_resources(
             target_tile,
@@ -2000,53 +1977,70 @@ class BuilderStrategyMethodsMixin:
                 return SupplyChainLabel.NONE
             return tiles_by_index[source_idx].own_supply_chain_label
 
-        candidate_entries: list[tuple[tuple[int, int], int, int, int]] = []
-        candidate_seen_indices: set[int] = set()
+        candidate_entries_by_index: dict[
+            int,
+            tuple[tuple[int, int, int], int, int, int],
+        ] = {}
         pending_target_idx: int | None = None
-        pending_candidate_entry: tuple[tuple[int, int], int, int, int] | None = None
-        pending_preferred_entry: tuple[tuple[int, int], int, int, int] | None = None
-        pending_estimated_dist_to_self: int | None = None
-        lowest_candidate_estimated_dist_to_self: int | None = None
+        pending_candidate_entry: tuple[tuple[int, int, int], int, int, int] | None = (
+            None
+        )
         pending_resource = self.pending_missing_supply_link_resource
+        pending_cached_label = self.pending_missing_supply_link_label
         if pending_resource is not None:
             pending_target_idx = self.pending_missing_supply_link_index
 
+        def remember_candidate(
+            target_idx: int,
+            target_label: SupplyChainLabel,
+            encounter_order: int,
+            priority_group: int,
+        ) -> None:
+            candidate_entry = (
+                (
+                    priority_group,
+                    self.map.u_get_estimated_dist_to_self_by_index(target_idx),
+                    get_own_core_dist(target_idx),
+                ),
+                encounter_order,
+                target_idx,
+                int(target_label),
+            )
+            existing_entry = candidate_entries_by_index.get(target_idx)
+            if (
+                existing_entry is None
+                or (candidate_entry[0], candidate_entry[1])
+                < (existing_entry[0], existing_entry[1])
+            ):
+                candidate_entries_by_index[target_idx] = candidate_entry
+
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
-            if (
-                pending_target_tile.last_seen_turn == current_round
-                and not can_use_tile(pending_target_tile)
-            ):
+            if not can_use_tile(pending_target_tile):
                 clear_pending_target()
                 pending_target_idx = None
 
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if can_use_tile(pending_target_tile):
-                pending_label = u_get_continuable_supply_chain_label_for_target(
+                pending_label = SupplyChainLabel.NONE
+                visible_pending_label = u_get_continuable_supply_chain_label_for_target(
                     pending_target_idx
                 )
+                if visible_pending_label != SupplyChainLabel.NONE:
+                    pending_label = visible_pending_label
+                    self.pending_missing_supply_link_label = visible_pending_label
+                elif pending_cached_label is not None:
+                    pending_label = pending_cached_label
                 if pending_label != SupplyChainLabel.NONE:
-                    candidate_seen_indices.add(pending_target_idx)
-                    pending_estimated_dist_to_self = (
-                        self.map.u_get_estimated_dist_to_self_by_index(
-                            pending_target_idx
-                        )
-                    )
-                    lowest_candidate_estimated_dist_to_self = (
-                        pending_estimated_dist_to_self
-                    )
                     pending_candidate_entry = (
                         (
-                            pending_estimated_dist_to_self,
+                            1,
+                            self.map.u_get_estimated_dist_to_self_by_index(
+                                pending_target_idx
+                            ),
                             get_own_core_dist(pending_target_idx),
                         ),
-                        -1,
-                        pending_target_idx,
-                        int(pending_label),
-                    )
-                    pending_preferred_entry = (
-                        (-1, -1),
                         -1,
                         pending_target_idx,
                         int(pending_label),
@@ -2066,30 +2060,14 @@ class BuilderStrategyMethodsMixin:
                 continue
 
             target_idx = target_tile.index
-            if target_idx in candidate_seen_indices:
-                continue
-            candidate_seen_indices.add(target_idx)
-            estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
-                target_idx
-            )
-            if (
-                lowest_candidate_estimated_dist_to_self is None
-                or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
-            ):
-                lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
-            candidate_entries.append(
-                (
-                    (
-                        estimated_dist_to_self,
-                        get_own_core_dist(target_idx),
-                    ),
-                    encounter_order,
-                    target_idx,
-                    int(target_label),
-                )
+            remember_candidate(
+                target_idx,
+                target_label,
+                encounter_order,
+                0 if self.map.u_is_vision_reachable_by_index(target_idx) else 2,
             )
 
-        splitter_encounter_order = len(candidate_entries)
+        splitter_encounter_order = len(candidate_entries_by_index)
         for splitter_tile in self.map.own_supply_links_in_vision:
             if self.round_stopwatch.check_overtime():
                 break
@@ -2121,42 +2099,24 @@ class BuilderStrategyMethodsMixin:
                     continue
 
                 target_idx = target_tile.index
-                if target_idx in candidate_seen_indices:
-                    continue
-                candidate_seen_indices.add(target_idx)
-                estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
-                    target_idx
-                )
-                if (
-                    lowest_candidate_estimated_dist_to_self is None
-                    or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
-                ):
-                    lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
-                candidate_entries.append(
-                    (
-                        (
-                            estimated_dist_to_self,
-                            get_own_core_dist(target_idx),
-                        ),
-                        splitter_encounter_order,
-                        target_idx,
-                        int(splitter_label),
-                    )
+                remember_candidate(
+                    target_idx,
+                    splitter_label,
+                    splitter_encounter_order,
+                    0 if self.map.u_is_vision_reachable_by_index(target_idx) else 2,
                 )
                 splitter_encounter_order += 1
 
         if pending_candidate_entry is not None:
-            if (
-                lowest_candidate_estimated_dist_to_self is None
-                or pending_estimated_dist_to_self is None
-                or pending_estimated_dist_to_self
-                - lowest_candidate_estimated_dist_to_self
-                < 2
+            pending_target_idx = pending_candidate_entry[2]
+            existing_entry = candidate_entries_by_index.get(pending_target_idx)
+            if existing_entry is None or (
+                (pending_candidate_entry[0], pending_candidate_entry[1])
+                < (existing_entry[0], existing_entry[1])
             ):
-                candidate_entries.append(pending_preferred_entry)
-            else:
-                candidate_entries.append(pending_candidate_entry)
+                candidate_entries_by_index[pending_target_idx] = pending_candidate_entry
 
+        candidate_entries = list(candidate_entries_by_index.values())
         if not candidate_entries:
             return False
 
@@ -2190,8 +2150,11 @@ class BuilderStrategyMethodsMixin:
                         facing_direction=supplier_target,
                         respect_titanium_reserve=True,
                     ):
-                        self.pending_missing_supply_link_index = target_idx
-                        self.pending_missing_supply_link_resource = resource
+                        remember_pending_target(
+                            target_idx,
+                            resource,
+                            supply_chain_label,
+                        )
                         return True
                 elif supplier_type == EntityType.BRIDGE:
                     if self.u_build_at(
@@ -2203,8 +2166,11 @@ class BuilderStrategyMethodsMixin:
                         target_pos=supplier_target,
                         respect_titanium_reserve=True,
                     ):
-                        self.pending_missing_supply_link_index = target_idx
-                        self.pending_missing_supply_link_resource = resource
+                        remember_pending_target(
+                            target_idx,
+                            resource,
+                            supply_chain_label,
+                        )
                         return True
 
             if self.round_stopwatch.check_overtime():
@@ -2262,8 +2228,14 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         if resource == Environment.ORE_TITANIUM:
             ore_indices = self.map.known_accessible_titanium_indices
+            restrict_to_vision_reachable = (
+                self.map.found_vision_reachable_titanium_this_turn
+            )
         elif resource == Environment.ORE_AXIONITE:
             ore_indices = self.map.known_accessible_axionite_indices
+            restrict_to_vision_reachable = (
+                self.map.found_vision_reachable_axionite_this_turn
+            )
         else:
             return False
         current_tile = self.map.u_get_pos_tile(current_pos)
@@ -2729,8 +2701,14 @@ class BuilderStrategyMethodsMixin:
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if (
+                (
+                    not restrict_to_vision_reachable
+                    or self.map.u_is_vision_reachable_by_index(pending_target_idx)
+                )
+                and (
                 pending_target_tile.last_seen_turn == self.map.current_round
                 and is_valid_harvester_target(pending_target_tile)
+                )
             ):
                 return finish_with_harvester_target(
                     try_progress_harvester_target(
@@ -2747,6 +2725,11 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime_interval():
                 return False
             if tile.environment != resource:
+                continue
+            if (
+                restrict_to_vision_reachable
+                and not self.map.u_is_vision_reachable_by_index(tile.index)
+            ):
                 continue
             if get_harvester_best_supply_idx(tile.index) is None:
                 continue
@@ -2995,8 +2978,12 @@ class BuilderStrategyMethodsMixin:
         """
         Move toward the nearest reachable unseen frontier tile.
 
-        Uses a single BFS from the builder to find the closest frontier layer,
-        preferring lower own-core distance and stable coordinates among ties.
+        Reuses the current-turn in-vision BFS to rank reachable frontier
+        candidates, preferring the scavenger-biased frontier coordinates,
+        then the entry-tile coordinates, with own-core distance only as the
+        final tie-breaker. Scavengers bias the coordinate tie-break by their
+        spawn quadrant so the diagonal scavengers spread toward different
+        corners more consistently.
         If the builder is already standing in enemy turret range, retry once
         without turret avoidance so it does not freeze in place.
         """
@@ -3004,11 +2991,15 @@ class BuilderStrategyMethodsMixin:
             return False
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        frontier_tiebreak_multipliers = (
+            self.u_get_frontier_expand_tiebreak_multipliers()
+        )
 
         def move_along_frontier_path(avoid_enemy_turrets: bool) -> bool:
             shortest_path = self.map.u_calculate_shortest_path_to_frontier(
                 self.map.current_pos,
                 avoid_enemy_turrets=avoid_enemy_turrets,
+                frontier_tiebreak_multipliers=frontier_tiebreak_multipliers,
             )
             if len(shortest_path) < 2:
                 return False
@@ -4321,6 +4312,9 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
+        if not any(self.map.enemy_turret_target_by_index):
+            return False
+
         # Second pass: if we still haven't found a valid move, allow the bot to travel near enemy turrets
         for target_idx in patrol_target_indices:
             if self.u_move_to(
@@ -5439,6 +5433,28 @@ class BuilderStrategyMethodsMixin:
         """
         enemy_core_center_pos = self.map.enemy_core_center_pos
         current_pos = self.map.current_pos
+        move_mode = HARASSMENT_ENEMY_CORE_MOVER
+
+        def move_toward_enemy_core_target(target_pos: Position) -> bool:
+            if move_mode == "astar_no_proxy":
+                move_target_pos = target_pos
+                move_method = self.u_move_to_astar
+            elif move_mode == "d_star_lite_no_proxy":
+                move_target_pos = target_pos
+                move_method = self.u_move_to_d_star_lite
+            elif move_mode == "lpa_star_no_proxy":
+                move_target_pos = target_pos
+                move_method = self.u_move_to_lpa_star
+            else:
+                move_target_pos = get_move_target(target_pos)
+                move_method = self.u_move_to
+            return bool(
+                move_method(
+                    move_target_pos,
+                    allow_conveyor_building=False,
+                    respect_titanium_reserve_for_road_build=True,
+                )
+            )
 
         def iter_bresenham_positions(source_pos: Position, target_pos: Position):
             x0, y0 = source_pos.x, source_pos.y
@@ -5516,14 +5532,7 @@ class BuilderStrategyMethodsMixin:
             )
             if target_pos is None:
                 return False
-            move_target_pos = get_move_target(target_pos)
-            return bool(
-                self.u_move_to(
-                    move_target_pos,
-                    allow_conveyor_building=False,
-                    respect_titanium_reserve_for_road_build=True,
-                )
-            )
+            return move_toward_enemy_core_target(target_pos)
 
         if (
             not self.map.enemy_core_center_pos_candidates
@@ -5545,14 +5554,7 @@ class BuilderStrategyMethodsMixin:
         if target_pos is None:
             return False
 
-        move_target_pos = get_move_target(target_pos)
-        return bool(
-            self.u_move_to(
-                move_target_pos,
-                allow_conveyor_building=False,
-                respect_titanium_reserve_for_road_build=True,
-            )
-        )
+        return move_toward_enemy_core_target(target_pos)
 
     def s_patrol_enemy_core(self):
         enemy_core_center_pos = self.map.enemy_core_center_pos
