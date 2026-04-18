@@ -5302,6 +5302,7 @@ class BuilderStrategyMethodsMixin:
             if neighbor_tile.in_own_launcher_pickup_zone != 0:
                 continue
             if self.is_launcher_choke_point(neighbor_tile):
+                if ENABLE_PRINTING: print("launcher can go here! see diff!", self.map.own_core_center_pos.distance_squared(neighbor_tile.position), self.map.own_core_center_pos.distance_squared(neighbor_tile.position) >= MIN_LAUNCHER_CHOKING_DIST_FROM_CORE, self.map.own_core_center_pos, neighbor_tile.position)
                 if self.ct.can_build_launcher(neighbor_tile.position) and self.map.own_core_center_pos.distance_squared(neighbor_tile.position) >= MIN_LAUNCHER_CHOKING_DIST_FROM_CORE:
                     self.ct.build_launcher(neighbor_tile.position)
                     self.choking_launcher_cooldown = COOLDOWN_TO_LAUNCHER_CHOKING
@@ -5606,29 +5607,41 @@ class BuilderStrategyMethodsMixin:
     
     def is_launcher_choke_point(self, tile):
         """
-        Sample the 8 tiles at Chebyshev distance 2 (N, NE, E, SE, S, SW, W, NW).
-        Count passable runs cyclically; 2+ runs = the launcher's 3x3 footprint
-        would split local connectivity.
+        BFS from current_pos through bot's vision tiles.
+        Blocked = tile + its 8 neighbors (the 3x3 launcher zone) + non-passable tiles.
+        If any passable vision tile is unreachable, it's a chokepoint.
         """
-        cx, cy = tile.position.x, tile.position.y
-        w, h = self.map.width, self.map.height
-        passable = self.map.intrinsic_passable_by_index
-        u_to_index_xy = self.map.u_to_index_xy
+        blocked_for_enemy = set(self.map.u_iter_neighbor_indices(tile.index))
+        blocked_for_enemy.add(tile.index)
 
-        def p(x, y):
-            if x < 0 or y < 0 or x >= w or y >= h:
-                return False
-            return bool(passable[u_to_index_xy(x, y)])
+        vision_set = set()
+        walkable_for_all = []
+        for t in self.map.tiles_in_vision:
+            idx = t.index
+            vision_set.add(idx)
+            if idx in blocked_for_enemy:
+                continue
+            if not t.is_passable and not t.is_core_of(self.map.enemy_team):
+                blocked_for_enemy.add(idx)
+                continue
+            if t.is_walkable and not t.is_core_of(self.map.own_team):
+                walkable_for_all.append(idx)
 
-        ring = [
-            p(cx,     cy - 2),  # N
-            p(cx + 2, cy - 2),  # NE
-            p(cx + 2, cy),      # E
-            p(cx + 2, cy + 2),  # SE
-            p(cx,     cy + 2),  # S
-            p(cx - 2, cy + 2),  # SW
-            p(cx - 2, cy),      # W
-            p(cx - 2, cy - 2),  # NW
-        ]
-        transitions = sum(1 for i in range(8) if ring[i] and not ring[i - 1])
-        return transitions >= 2
+        if len(walkable_for_all) < 2:
+            return False
+
+        seen = {walkable_for_all[0]}
+        stack = [walkable_for_all[0]]
+        while stack:
+            idx = stack.pop()
+            for nidx in self.map.u_iter_neighbor_indices(idx):
+                if nidx in seen or nidx in blocked_for_enemy or nidx not in vision_set:
+                    continue
+                seen.add(nidx)
+                stack.append(nidx)
+
+        for idx in walkable_for_all:
+            if idx not in seen:
+                if ENABLE_PRINTING: print("blocking from: ", self.map.tiles_by_index[walkable_for_all[0]].position, "to", self.map.tiles_by_index[idx].position)
+                return True
+        return False
