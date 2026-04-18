@@ -317,8 +317,10 @@ class Map:
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
         self.path_heap_buffer: list[tuple[int, int, int, int, int, int, int]] = []
-        self.visible_builder_bot_ids_by_index: dict[int, int] = {}
-        self.visible_building_ids_by_index: dict[int, int] = {}
+        self.visible_builder_bot_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.visible_builder_bot_ids_touched_indices: list[int] = []
+        self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.visible_building_ids_touched_indices: list[int] = []
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.all_own_supply_link_target_indices_in_vision: set[int] = set()
         self.own_supply_link_target_indices_in_vision: set[int] = set()
@@ -509,6 +511,16 @@ class Map:
             self.own_titanium_harvester_adjacent_candidate_touched_indices,
             self.own_titanium_harvester_adjacent_candidate_mark_by_index,
         )
+        self._reset_marked_array_indices(
+            self.visible_builder_bot_ids_touched_indices,
+            self.visible_builder_bot_ids_by_index,
+            -1,
+        )
+        self._reset_marked_array_indices(
+            self.visible_building_ids_touched_indices,
+            self.visible_building_ids_by_index,
+            -1,
+        )
         self._reset_supply_chain_union_find_arrays(
             self.own_supply_chain_touched_indices,
             self.own_supply_chain_parent_by_index,
@@ -575,8 +587,6 @@ class Map:
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
         self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
-        self.visible_builder_bot_ids_by_index = {}
-        self.visible_building_ids_by_index = {}
         self.all_own_supply_link_target_indices_in_vision = set()
         self.own_supply_link_target_indices_in_vision = set()
         self.enemy_supply_link_target_indices_in_vision = set()
@@ -603,6 +613,16 @@ class Map:
             return
         values[idx] = 1
         touched_indices.append(idx)
+
+    def _reset_marked_array_indices(
+        self,
+        touched_indices: list[int],
+        values,
+        reset_value: int,
+    ) -> None:
+        for idx in touched_indices:
+            values[idx] = reset_value
+        touched_indices.clear()
 
     def u_mark_core_distance_dirty_index(self, idx: int) -> None:
         if self.core_distance_dirty_mark_by_index[idx]:
@@ -1397,7 +1417,10 @@ class Map:
                 continue
             pos = self.ct.get_position(unit_id)
             if self.u_is_in_bounds(pos):
-                self.visible_builder_bot_ids_by_index[self.u_to_index(pos)] = unit_id
+                idx = self.u_to_index(pos)
+                if self.visible_builder_bot_ids_by_index[idx] < 0:
+                    self.visible_builder_bot_ids_touched_indices.append(idx)
+                self.visible_builder_bot_ids_by_index[idx] = unit_id
 
         for building_id in self.ct.get_nearby_buildings():
             if (
@@ -1408,7 +1431,10 @@ class Map:
                 continue
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
-                self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
+                idx = self.u_to_index(pos)
+                if self.visible_building_ids_by_index[idx] < 0:
+                    self.visible_building_ids_touched_indices.append(idx)
+                self.visible_building_ids_by_index[idx] = building_id
         self.stopwatch.lap("Reset + nearby queries")
 
         processed_tiles_in_vision = []

@@ -337,8 +337,12 @@ class Tile:
             self.environment
         )
 
-        bot_id = self.map.visible_builder_bot_ids_by_index.get(self.index)
-        building_id = self.map.visible_building_ids_by_index.get(self.index)
+        bot_id = self.map.visible_builder_bot_ids_by_index[self.index]
+        if bot_id < 0:
+            bot_id = None
+        building_id = self.map.visible_building_ids_by_index[self.index]
+        if building_id < 0:
+            building_id = None
 
         if bot_id != self.bot.id:
             if bot_id is None:
