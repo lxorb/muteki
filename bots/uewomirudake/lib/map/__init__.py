@@ -355,6 +355,10 @@ class Map:
         self.path_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.path_cost_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.path_epoch = 0
+        self._astar_cache_round: int = -1
+        self._astar_cache_epoch: int = -1
+        self._astar_cache_key: tuple | None = None
+        self._astar_cache_result: int | None = None
         self.current_path: list[Tile] = []
         self.tiles_by_index: list[Tile] = [
             Tile(Position(x, y), self)
@@ -3761,6 +3765,20 @@ class Map:
         avoid_other_builder_bots: bool = True,
         stop_in_builder_action_range: bool = False,
     ) -> int | None:
+        cache_key = (
+            source_idx,
+            target_idx,
+            avoid_enemy_turrets,
+            avoid_other_builder_bots,
+            stop_in_builder_action_range,
+        )
+        if (
+            self._astar_cache_round == self.current_round
+            and self._astar_cache_epoch == self.path_epoch
+            and self._astar_cache_key == cache_key
+        ):
+            return self._astar_cache_result
+
         tiles_by_index = self.tiles_by_index
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
@@ -3782,7 +3800,7 @@ class Map:
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
 
         if not stop_in_builder_action_range and not intrinsic_passable_by_index[target_idx]:
-            return None
+            return self._u_remember_astar_result(cache_key, None)
 
         self.path_epoch += 1
         path_epoch = self.path_epoch
@@ -3884,10 +3902,10 @@ class Map:
                     goal_dy = -goal_dy
                 if goal_dx * goal_dx + goal_dy * goal_dy <= 2:
                     self._store_current_path(current_idx, source_idx)
-                    return current_idx
+                    return self._u_remember_astar_result(cache_key, current_idx)
             elif current_idx == target_idx:
                 self._store_current_path(current_idx, source_idx)
-                return current_idx
+                return self._u_remember_astar_result(cache_key, current_idx)
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
@@ -3984,7 +4002,14 @@ class Map:
                 )
 
         self.current_path = []
-        return None
+        return self._u_remember_astar_result(cache_key, None)
+
+    def _u_remember_astar_result(self, cache_key: tuple, result: int | None) -> int | None:
+        self._astar_cache_round = self.current_round
+        self._astar_cache_epoch = self.path_epoch
+        self._astar_cache_key = cache_key
+        self._astar_cache_result = result
+        return result
 
     def _store_current_path(self, reached_idx: int, source_idx: int):
         tiles_by_index = self.tiles_by_index
