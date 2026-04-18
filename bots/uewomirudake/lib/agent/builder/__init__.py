@@ -64,6 +64,7 @@ class BuilderAgent(
         self.awaiting_yeet_since = -1
         self.awaiting_yeet_pos = None
         self.yeet_target_for_own_launcher = None
+        self.yeet_target = False
 
 
     def u_infer_strategy_by_spawning_tile(self):
@@ -102,7 +103,10 @@ class BuilderAgent(
             self.map.map_json_loaded_print_pending = False
         print(f"Builder strategy: {self.u_get_strategy_name()}")
 
+        print("AWAITING YEET SINCE", self.awaiting_yeet_since)
         if self.awaiting_yeet_since != -1:
+            print(self.awaiting_yeet_pos)
+            print(self.ct.get_position())
             if self.awaiting_yeet_pos == self.ct.get_position():
                 if self.awaiting_yeet_since < 2:
                     self.awaiting_yeet_since += 1

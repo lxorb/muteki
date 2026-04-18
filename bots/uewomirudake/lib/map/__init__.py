@@ -446,7 +446,7 @@ class Map:
 
         self.seen_markers_for_debugging = []
         self.seen_ids_for_debugging = []
-        self.id_to_target_pos_round_round = {}
+        self.id_to_target_pos_round = {}
 
         self.stopwatch = Stopwatch("Map")
 
@@ -4178,7 +4178,6 @@ class Map:
         target_index = (num >> 19) & 0b111111111111# 12 bits
 
         symmetry_mode = MARKER_SYMMETRY_LIST[symmetry_type]
-        target_x = target_index % self.INDEX_STRIDE
-        target_y = target_index // self.INDEX_STRIDE
+        x, y = self.u_index_to_xy(target_index)
 
-        return symmetry_mode, own_id, current_round, target_x, target_y
+        return symmetry_mode, own_id, current_round, x, y

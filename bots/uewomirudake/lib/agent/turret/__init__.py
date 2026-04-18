@@ -47,9 +47,9 @@ class TurretAgent(Agent):
 
         candidate_bots = sorted(self.map.launcher_action_radius_bots, key=lambda tile: tile.bot.team != self.map.enemy_team)
 
-        print("bot -> target:", [f"{bot_id}, {value[0]}" for bot_id, value in self.map.id_to_target_pos_round_round.items()])
+        print("bot -> target:", [f"{bot_id}, {value[0]}" for bot_id, value in self.map.id_to_target_pos_round.items()])
         print("candidate bots:", [f"id: {bot.bot.id}" for bot in candidate_bots])
-        print("seen markers:", self.map.seen_markers_for_debugging)
+        # print("seen markers:", self.map.seen_markers_for_debugging)
         print("seen marker ids: ", self.map.seen_ids_for_debugging)
 
         if not self.map.own_core_center_pos:
@@ -61,12 +61,15 @@ class TurretAgent(Agent):
 
 
         for bot_tile in candidate_bots:
+            print("trying to send", bot_tile.bot.id, "somewhere")
             if bot_tile.bot.team == self.map.enemy_team:
                 if self.launcher_handle_enemy(bot_tile): 
                     return True
             elif bot_tile.bot.team == self.map.own_team:
+                print("debug print AAA")
                 if self.launcher_handle_own(bot_tile):
                     return True
+                print("not sent :(")
         
         return False
 
@@ -81,11 +84,15 @@ class TurretAgent(Agent):
             return False
 
         written_position = self.map.id_to_target_pos_round[bot_tile.bot.id & 0b111111][0]
-        written_idx = written_position.y * self.map.INDEX_STRIDE + written_position.x
+        written_idx = self.map.u_to_index(written_position)
 
         if self.map.tiles_by_index[written_idx] not in self.map.launcher_visible_tiles:
+            print("target position:", written_position)
+            print([tile.position for tile in self.map.launcher_visible_tiles])
+            print("ZZZZZZZZZZZZZZZ")
             return False
 
+        print("debug print: been here 1")
         reachable_safe = [tile for tile in self.map.launcher_own_reachable if tile in self.map.launcher_safe_zone_tiles]
         
         target_tile = self.map.tiles_by_index[written_idx]

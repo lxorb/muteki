@@ -5289,13 +5289,17 @@ class BuilderStrategyMethodsMixin:
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
 
-        path_index_by_tile_index = {
-            tile.index: i for i, tile in enumerate(self.map.current_path)
-        }
+        path_index_by_tile_index = {        }
+        for i, tile in enumerate(self.map.current_path):
+            path_index_by_tile_index[tile] = i
+            for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
+                path_index_by_tile_index[neighbor_idx] = i
 
         best_pos = None
+        best_target = None
         potential_marker_launcher_positions = 0
         best_improvement = LAUNCHER_BUILD_MIN_IMPROVEMENT - 1
+        # same as in choose_target_position_by_launcher_tile, just with imporvement quantification
         for pos in self.map.u_iter_adjacent_all_positions(self.map.current_pos):
             relevant_tile = self.map.u_get_pos_tile(pos)
             if not self.could_place_marker_or_launcher_here(relevant_tile):
@@ -5308,6 +5312,7 @@ class BuilderStrategyMethodsMixin:
                 if path_idx is not None and path_idx > best_improvement:
                     best_improvement = path_idx
                     best_pos = pos
+                    best_target = landing_tile
 
         if best_pos is None:
             print("REASON C")
@@ -5323,8 +5328,9 @@ class BuilderStrategyMethodsMixin:
             launcher_tile.building.id = -1
             launcher_tile.building.entity_type = EntityType.LAUNCHER
             self.awaiting_yeet_since = 0
-            self.awaiting_yeet_position = self.map.current_pos
-            self.yeet_target_for_own_launcher = best_pos
+            self.awaiting_yeet_pos = self.map.current_pos
+            self.yeet_target_for_own_launcher = best_target.position
+            print("ARE U SURE IT IS WALKABLE?", best_target.is_walkable)
             return True
 
         print("REASON E")
@@ -5417,7 +5423,6 @@ class BuilderStrategyMethodsMixin:
         return bool(self.u_move_to(closest_launcher.position))
 
 
-
     def get_marker_target(self):
         if self.strategy != HARASSMENT_STRATEGY_ID:
             return None
@@ -5431,17 +5436,15 @@ class BuilderStrategyMethodsMixin:
             print(tile.position, end= ", ")
 
         # Let's tailor the target to the next launcher we are getting to according to self.map.current_path
-        next_launcher_tile = None
-        for tile in self.map.current_path:
+        for tile in self.map.current_path[:4]:
             if tile.in_own_launcher_pickup_zone:
-                next_launcher_tile = self.launcher_targeting_tile(tile)
-                break
+                for launcher_tile in self.launchers_targeting_tile(tile):
+                    target_candidate = self.choose_target_position_by_launcher_tile(launcher_tile)
+                    if target_candidate:
+                        return target_candidate
         
-        if next_launcher_tile is None:
-            print("OK SO NO LAUNCHER!!!")
-            return None
-
-        return self.choose_target_position_by_launcher_tile(next_launcher_tile)
+        print("OK SO NO GOOD LAUNCHER!!!")
+        return None
 
     def choose_target_position_by_launcher_tile(self, next_launcher_tile):
         launcher_potential_targets = self.map.u_get_launcher_target_positions(next_launcher_tile.position)
@@ -5457,14 +5460,16 @@ class BuilderStrategyMethodsMixin:
                     return neighbor_tile.position
         return None
 
-    def launcher_targeting_tile(self, tile):
+    def launchers_targeting_tile(self, tile):
         neighbor_indices = self.map.u_iter_neighbor_indices(tile.index)
+        toBeReturned = []
         for idx in neighbor_indices:
             neighbor = self.map.tiles_by_index[idx]
             if neighbor.building and neighbor.building.entity_type == EntityType.LAUNCHER and neighbor.building.team == self.map.own_team:
-                return neighbor
-        print("ERROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOR: no launcher found!! wtf ? (strategy_methods.py, launcher_targeting_tile)")
-        return None
+                toBeReturned.append(neighbor)
+        if not toBeReturned:
+            print("ERROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOR: no launcher found!! wtf ? (strategy_methods.py, launcher_targeting_tile)")
+        return toBeReturned
 
     def place_marker_desperately(self):
         if self.place_marker():
@@ -5497,7 +5502,7 @@ class BuilderStrategyMethodsMixin:
 
         print("LET ME MOVE TO", target_position, "PLLSSSS")
         
-        written_index = written_position.y * self.map.INDEX_STRIDE + written_position.x
+        written_index = written_position.x * self.map.INDEX_STRIDE + written_position.y
         print("putting on the marker that I want to move to ", target_position, ":D")
         # 12 bits
 
