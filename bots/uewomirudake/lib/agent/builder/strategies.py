@@ -51,7 +51,7 @@ SCAVENGER_STRATEGY = [
         True,
         False,
     ),
-    (BuilderStrategyMethodsMixin.s_frontier_expand, 100),
+    (BuilderStrategyMethodsMixin.s_frontier_expand, 0),
     (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 
@@ -160,7 +160,6 @@ INITIAL_BB_ORDER: list[str] = [
 ]
 FUTHER_BB_ROTATION: list[str] = [
     HARASSMENT_STRATEGY_ID,
-    SCAVENGER_STRATEGY_ID,
 ]
 FURTHER_BB_MIN_TURN: int = 50
 FURTHER_BB_MIN_TITANIUM: int = 200
