@@ -4031,6 +4031,8 @@ class BuilderStrategyMethodsMixin:
                 continue
             if only_out_of_reach and tile.own_core_dist <= MAX_CORE_ORE_DIRECT_DIST:
                 continue
+            if tile.index in self.failed_attack_targets:
+                continue
             if target_dist is None or tile.dist_to_self < target_dist:
                 target_dist = tile.dist_to_self
                 target_tile = tile
@@ -4199,6 +4201,8 @@ class BuilderStrategyMethodsMixin:
                 continue
             if not tile.is_passable:
                 continue
+            if tile.index in self.failed_attack_targets:
+                continue
             if target_dist is None or tile.dist_to_self < target_dist:
                 target_dist = tile.dist_to_self
                 target_tile = tile
@@ -4214,7 +4218,8 @@ class BuilderStrategyMethodsMixin:
                     return True
                 else:
                     if ENABLE_PRINTING: print("no hugs? :(")
-                    return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
+                    self.failed_attack_targets.add(target_tile.index)
+                    return False
             return True
 
         return bool(
@@ -4312,6 +4317,8 @@ class BuilderStrategyMethodsMixin:
                 continue
             if tile.in_enemy_attack_range:
                 continue
+            if tile.index in self.failed_attack_targets:
+                continue
             if target_dist is None or tile.dist_to_self < target_dist:
                 target_dist = tile.dist_to_self
                 target_tile = tile
@@ -4324,7 +4331,8 @@ class BuilderStrategyMethodsMixin:
                 if self._can_get_launcher_hugs():
                     return True
                 else:
-                    return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
+                    self.failed_attack_targets.add(target_tile.index)
+                    return False
             return True
 
         return bool(
@@ -4390,7 +4398,8 @@ class BuilderStrategyMethodsMixin:
                     if self._can_get_launcher_hugs():
                         return True
                     else:
-                        return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
+                        self.failed_attack_targets.add(current_tile.index)
+                        return False
                 return True
             return bool(
                 self.u_attack_passable(
@@ -4440,7 +4449,8 @@ class BuilderStrategyMethodsMixin:
                 if self._can_get_launcher_hugs():
                     return True
                 else:
-                    return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
+                    self.failed_attack_targets.add(target_tile.index)
+                    return False
             return True
 
         return bool(

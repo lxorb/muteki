@@ -67,6 +67,7 @@ class BuilderAgent(
         self.yeet_target_for_own_launcher = None
         self.yeet_target = False
         self.choking_launcher_cooldown = 0
+        self.failed_attack_targets: set[int] = set()
 
 
     def u_infer_strategy_by_spawning_tile(self):
