@@ -4031,8 +4031,6 @@ class BuilderStrategyMethodsMixin:
                 continue
             if only_out_of_reach and tile.own_core_dist <= MAX_CORE_ORE_DIRECT_DIST:
                 continue
-            if tile.index in self.failed_attack_targets:
-                continue
             if target_dist is None or tile.dist_to_self < target_dist:
                 target_dist = tile.dist_to_self
                 target_tile = tile
@@ -4431,6 +4429,8 @@ class BuilderStrategyMethodsMixin:
             ):
                 continue
 
+            if tile.index in self.failed_attack_targets:
+                continue
             key = (
                 tile.dist_to_self,
                 current_round - last_titanium_turn,
