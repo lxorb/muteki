@@ -5320,17 +5320,42 @@ class BuilderStrategyMethodsMixin:
         """
         own_team = self.map.own_team
         current_pos = self.map.current_pos
-        all_own_supply_link_target_indices_in_vision = (
-            self.map.all_own_supply_link_target_indices_in_vision
-        )
-        enemy_supply_link_target_indices_in_vision = (
-            self.map.enemy_supply_link_target_indices_in_vision
-        )
+        current_round = self.map.current_round
+        tiles_by_index = self.map.tiles_by_index
         if candidate_radius is None:
             candidate_radius = math.sqrt(self.ct.get_vision_radius_sq())
         if candidate_radius < 0:
             candidate_radius = 0
         candidate_radius_sq = candidate_radius * candidate_radius
+
+        def is_targeted_by_titanium_supply_chain(tile_idx: int) -> bool:
+            for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                tile_idx,
+                (),
+            ):
+                if self.map.u_supply_chain_has_titanium(source_idx, own_team):
+                    return True
+
+            for source_idx in self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                tile_idx,
+                (),
+            ):
+                if self.map.u_supply_chain_has_titanium(source_idx, self.map.enemy_team):
+                    return True
+
+            return False
+
+        def has_adjacent_own_titanium_harvester(tile) -> bool:
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile.index):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.last_seen_turn == current_round
+                    and adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    and adjacent_tile.environment == Environment.ORE_TITANIUM
+                ):
+                    return True
+            return False
 
         def can_consider_heal_candidate(tile) -> bool:
             if tile.building.team != own_team:
@@ -5338,8 +5363,8 @@ class BuilderStrategyMethodsMixin:
             if tile.building.entity_type != EntityType.GUNNER:
                 return True
             return (
-                tile.index in all_own_supply_link_target_indices_in_vision
-                or tile.index in enemy_supply_link_target_indices_in_vision
+                is_targeted_by_titanium_supply_chain(tile.index)
+                or has_adjacent_own_titanium_harvester(tile)
             )
 
         candidate_tiles = [
