@@ -4208,9 +4208,12 @@ class BuilderStrategyMethodsMixin:
 
         if self._should_hold_attack_for_enemy_bots(target_tile, wait_if_enemy_builder_bots_in_range):
             if self._been_waiting_for_way_too_long():
+                if ENABLE_PRINTING: print("AAA IM IMPATIENT")
                 if self._can_get_launcher_hugs():
+                    if ENABLE_PRINTING: print("i could get some hugs :0")
                     return True
                 else:
+                    if ENABLE_PRINTING: print("no hugs? :(")
                     return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
             return True
 
@@ -4241,22 +4244,32 @@ class BuilderStrategyMethodsMixin:
         left_right = could_be_launcher(pos.x - 1, pos.y) and could_be_launcher(pos.x + 1, pos.y)
         top_bottom = could_be_launcher(pos.x, pos.y - 1) and could_be_launcher(pos.x, pos.y + 1)
 
+        if not left_right and not top_bottom:
+            if ENABLE_PRINTING: print("launcher on left possible? ", could_be_launcher(pos.x - 1, pos.y))
+            if ENABLE_PRINTING: print("launcher on right possible? ", could_be_launcher(pos.x + 1, pos.y))
+            if ENABLE_PRINTING: print("launcher on top possible? ", could_be_launcher(pos.x, pos.y - 1))
+            if ENABLE_PRINTING: print("launcher on bottom possible? ", could_be_launcher(pos.x, pos.y + 1))
+
         if left_right:
             left_pos = Position(pos.x - 1, pos.y)
             right_pos = Position(pos.x + 1, pos.y)
             if self.ct.can_build_launcher(left_pos):
+                if ENABLE_PRINTING: print("building on left failed")
                 self.ct.build_launcher(left_pos)
                 return True
             if self.ct.can_build_launcher(right_pos):
+                if ENABLE_PRINTING: print("building on right failed")
                 self.ct.build_launcher(right_pos)
                 return True
         if top_bottom:
             top_pos = Position(pos.x, pos.y - 1)
             bottom_pos = Position(pos.x, pos.y + 1)
             if self.ct.can_build_launcher(top_pos):
+                if ENABLE_PRINTING: print("building on top failed")
                 self.ct.build_launcher(top_pos)
                 return True
             if self.ct.can_build_launcher(bottom_pos):
+                if ENABLE_PRINTING: print("building on bottom failed")
                 self.ct.build_launcher(bottom_pos)
                 return True
         return False
