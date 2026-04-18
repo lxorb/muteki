@@ -20,6 +20,7 @@ from cambc import (
     Team,
 )
 
+from lib.agent.constants import CONVEYOR_ENTITY_TYPES
 from lib.agent.time import ALLOCATED_MAP_AND_BOT_TIME_MUS, RoundStopwatch
 
 from lib.map.constants import (

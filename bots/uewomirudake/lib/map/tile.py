@@ -322,10 +322,12 @@ class Tile:
         previous_last_seen_turn = self.last_seen_turn
         previous_bot_id = self.bot.id
         previous_bot_entity_type = self.bot.entity_type
+        environment_changed = False
         if self.last_seen_turn == -1 and self.map.symmetry_mode is None:
             self.map.newly_seen_tiles_in_vision.append(self)
         if self.environment is None:
             self.environment = ct.get_tile_env(self.position)
+            environment_changed = True
         if self.last_seen_turn == -1:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)
@@ -359,6 +361,7 @@ class Tile:
             stationary_turns_by_index[self.index] += 1
         else:
             stationary_turns_by_index[self.index] = 1
+        intrinsic_passability_may_have_changed = False
         if (
             stationary_turns_by_index[self.index]
             >= self.map.stale_builder_bot_passability_threshold
@@ -366,8 +369,10 @@ class Tile:
         ):
             self.map.stale_builder_passability_tracked_by_index[self.index] = 1
             self.map.stale_builder_passability_touched_indices.append(self.index)
+            intrinsic_passability_may_have_changed = True
 
-        if building_id != self.building.id:
+        building_changed = building_id != self.building.id
+        if building_changed:
             if building_id is None:
                 self.clear_building()
             else:
@@ -379,8 +384,11 @@ class Tile:
             if building_id is not None:
                 self.update_building(id_changed=False)
 
-        self.u_refresh_core_distance_passability()
-        self.u_refresh_intrinsic_passability()
+        if environment_changed or building_changed:
+            self.u_refresh_core_distance_passability()
+            self.u_refresh_intrinsic_passability()
+        elif intrinsic_passability_may_have_changed:
+            self.u_refresh_intrinsic_passability()
         if self._is_intrinsically_passable():
             self.map._u_mark_bytearray_index(
                 self.map.vision_bfs_passable_touched_indices,
