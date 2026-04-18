@@ -3899,19 +3899,26 @@ class Map:
     def u_is_vision_reachable_by_index(self, idx: int) -> bool:
         return self.vision_reachable_turn_by_index[idx] == self.current_round
 
-    def u_get_next_step_towards_vision_reachable(
+    def u_get_next_step_towards_vision_reachable_by_index(
         self,
-        target_pos: Position,
+        target_idx: int,
     ) -> Tile | None:
-        if not self.u_is_in_bounds(target_pos):
-            return None
-        target_idx = self.u_to_index(target_pos)
         if not self.u_is_vision_reachable_by_index(target_idx):
             return None
         next_step_idx = self.vision_first_step_by_index[target_idx]
         if next_step_idx < 0:
             return None
         return self.tiles_by_index[next_step_idx]
+
+    def u_get_next_step_towards_vision_reachable(
+        self,
+        target_pos: Position,
+    ) -> Tile | None:
+        if not self.u_is_in_bounds(target_pos):
+            return None
+        return self.u_get_next_step_towards_vision_reachable_by_index(
+            self.u_to_index(target_pos)
+        )
 
     def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
         if self.u_is_vision_reachable_by_index(idx):

@@ -40,6 +40,11 @@ _CARDINAL_DIRECTIONS = tuple(
     for direction in Direction
     if direction != Direction.CENTRE and sum(abs(delta) for delta in direction.delta()) == 1
 )
+_DIRECTION_BY_DELTA = {
+    direction.delta(): direction
+    for direction in Direction
+    if direction != Direction.CENTRE
+}
 _ADJACENT_DIRECTION_CANDIDATES_BY_DIRECTION = {
     direction: (
         direction,
@@ -425,13 +430,19 @@ class BuilderNavigationMixin:
         if not can_build_road:
             return False
 
+        if not allow_conveyor_building:
+            self.ct.build_road(next_tile.position)
+            if next_direction is not None and self.ct.can_move(next_direction):
+                self.u_move_with_target(next_direction, target_pos)
+            return True
+
         adjacent_resource_tiles = []
         for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(next_tile.position):
             adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
             if adjacent_tile.environment == Environment.ORE_TITANIUM:
                 adjacent_resource_tiles.append(adjacent_tile)
 
-        if allow_conveyor_building and adjacent_resource_tiles:
+        if adjacent_resource_tiles:
             resource_candidates: list[Environment] = []
             for adjacent_tile in adjacent_resource_tiles:
                 if (
@@ -529,10 +540,27 @@ class BuilderNavigationMixin:
             return False
         if not self.map.u_is_in_bounds(pos):
             return False
+        delta_x = pos.x - current_pos.x
+        delta_y = pos.y - current_pos.y
+        if -1 <= delta_x <= 1 and -1 <= delta_y <= 1:
+            target_idx = self.map.u_to_index(pos)
+            next_direction = _DIRECTION_BY_DELTA.get((delta_x, delta_y))
+            return self.u_try_progress_move_step(
+                self.map.tiles_by_index[target_idx],
+                next_direction,
+                pos,
+                build_new_roads=build_new_roads,
+                allow_conveyor_building=allow_conveyor_building,
+                respect_titanium_reserve_for_road_build=(
+                    respect_titanium_reserve_for_road_build
+                ),
+            )
         target_idx = self.map.u_to_index(pos)
         target_is_vision_reachable = self.map.u_is_vision_reachable_by_index(target_idx)
         if not reach_builder_action_range and target_is_vision_reachable:
-            next_tile = self.map.u_get_next_step_towards_vision_reachable(pos)
+            next_tile = self.map.u_get_next_step_towards_vision_reachable_by_index(
+                target_idx
+            )
             if next_tile is not None:
                 next_direction = self.map.u_get_direction_between(
                     current_pos,
