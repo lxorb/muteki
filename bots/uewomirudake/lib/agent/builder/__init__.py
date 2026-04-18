@@ -3,6 +3,7 @@ from cambc import Controller, EntityType, Environment, Position
 from lib.agent import Agent
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
 from lib.map import Map
+from lib.map.types import SupplyChainLabel
 
 from .execution import BuilderExecutionMixin
 from .navigation import BuilderNavigationMixin
@@ -24,6 +25,7 @@ class BuilderAgent(
     last_turn_completed: bool
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
+    pending_missing_supply_link_label: SupplyChainLabel | None
     pending_harvester_target_index: int | None
     pending_harvester_target_resource: Environment | None
     enemy_core_patrol_index: int
@@ -46,6 +48,7 @@ class BuilderAgent(
         self.supply_patrol_index = 0
         self.pending_missing_supply_link_index = None
         self.pending_missing_supply_link_resource = None
+        self.pending_missing_supply_link_label = None
         self.pending_harvester_target_index = None
         self.pending_harvester_target_resource = None
         self.enemy_core_patrol_index = 0

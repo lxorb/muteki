@@ -1907,10 +1907,11 @@ class BuilderStrategyMethodsMixin:
 
         Uses cached missing-link positions plus any builder-local pending gap
         target, keeps tiles that can host a new supplier, filters to the
-        relevant supply chain(s), prioritizes gaps closer to the builder and then
-        the core, and relies on the transport supplier planner to choose
-        whether the tile should become a conveyor or a bridge plus its optimal
-        target for the inferred resource.
+        relevant supply chain(s), prioritizes visible gaps that were reached by
+        the current turn's in-vision BFS, then the cached pending gap, and only
+        then other visible gaps, and relies on the transport supplier planner
+        to choose whether the tile should become a conveyor or a bridge plus
+        its optimal target for the inferred resource.
         """
         if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
             return False
@@ -1946,6 +1947,16 @@ class BuilderStrategyMethodsMixin:
         def clear_pending_target() -> None:
             self.pending_missing_supply_link_index = None
             self.pending_missing_supply_link_resource = None
+            self.pending_missing_supply_link_label = None
+
+        def remember_pending_target(
+            target_idx: int,
+            resource: Environment,
+            supply_chain_label: SupplyChainLabel,
+        ) -> None:
+            self.pending_missing_supply_link_index = target_idx
+            self.pending_missing_supply_link_resource = resource
+            self.pending_missing_supply_link_label = supply_chain_label
 
         def u_get_candidate_resources(
             target_tile,
@@ -2017,53 +2028,70 @@ class BuilderStrategyMethodsMixin:
                 return SupplyChainLabel.NONE
             return tiles_by_index[source_idx].own_supply_chain_label
 
-        candidate_entries: list[tuple[tuple[int, int], int, int, int]] = []
-        candidate_seen_indices: set[int] = set()
+        candidate_entries_by_index: dict[
+            int,
+            tuple[tuple[int, int, int], int, int, int],
+        ] = {}
         pending_target_idx: int | None = None
-        pending_candidate_entry: tuple[tuple[int, int], int, int, int] | None = None
-        pending_preferred_entry: tuple[tuple[int, int], int, int, int] | None = None
-        pending_estimated_dist_to_self: int | None = None
-        lowest_candidate_estimated_dist_to_self: int | None = None
+        pending_candidate_entry: tuple[tuple[int, int, int], int, int, int] | None = (
+            None
+        )
         pending_resource = self.pending_missing_supply_link_resource
+        pending_cached_label = self.pending_missing_supply_link_label
         if pending_resource is not None:
             pending_target_idx = self.pending_missing_supply_link_index
 
+        def remember_candidate(
+            target_idx: int,
+            target_label: SupplyChainLabel,
+            encounter_order: int,
+            priority_group: int,
+        ) -> None:
+            candidate_entry = (
+                (
+                    priority_group,
+                    self.map.u_get_estimated_dist_to_self_by_index(target_idx),
+                    get_own_core_dist(target_idx),
+                ),
+                encounter_order,
+                target_idx,
+                int(target_label),
+            )
+            existing_entry = candidate_entries_by_index.get(target_idx)
+            if (
+                existing_entry is None
+                or (candidate_entry[0], candidate_entry[1])
+                < (existing_entry[0], existing_entry[1])
+            ):
+                candidate_entries_by_index[target_idx] = candidate_entry
+
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
-            if (
-                pending_target_tile.last_seen_turn == current_round
-                and not can_use_tile(pending_target_tile)
-            ):
+            if not can_use_tile(pending_target_tile):
                 clear_pending_target()
                 pending_target_idx = None
 
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if can_use_tile(pending_target_tile):
-                pending_label = u_get_continuable_supply_chain_label_for_target(
+                pending_label = SupplyChainLabel.NONE
+                visible_pending_label = u_get_continuable_supply_chain_label_for_target(
                     pending_target_idx
                 )
+                if visible_pending_label != SupplyChainLabel.NONE:
+                    pending_label = visible_pending_label
+                    self.pending_missing_supply_link_label = visible_pending_label
+                elif pending_cached_label is not None:
+                    pending_label = pending_cached_label
                 if pending_label != SupplyChainLabel.NONE:
-                    candidate_seen_indices.add(pending_target_idx)
-                    pending_estimated_dist_to_self = (
-                        self.map.u_get_estimated_dist_to_self_by_index(
-                            pending_target_idx
-                        )
-                    )
-                    lowest_candidate_estimated_dist_to_self = (
-                        pending_estimated_dist_to_self
-                    )
                     pending_candidate_entry = (
                         (
-                            pending_estimated_dist_to_self,
+                            1,
+                            self.map.u_get_estimated_dist_to_self_by_index(
+                                pending_target_idx
+                            ),
                             get_own_core_dist(pending_target_idx),
                         ),
-                        -1,
-                        pending_target_idx,
-                        int(pending_label),
-                    )
-                    pending_preferred_entry = (
-                        (-1, -1),
                         -1,
                         pending_target_idx,
                         int(pending_label),
@@ -2083,30 +2111,14 @@ class BuilderStrategyMethodsMixin:
                 continue
 
             target_idx = target_tile.index
-            if target_idx in candidate_seen_indices:
-                continue
-            candidate_seen_indices.add(target_idx)
-            estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
-                target_idx
-            )
-            if (
-                lowest_candidate_estimated_dist_to_self is None
-                or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
-            ):
-                lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
-            candidate_entries.append(
-                (
-                    (
-                        estimated_dist_to_self,
-                        get_own_core_dist(target_idx),
-                    ),
-                    encounter_order,
-                    target_idx,
-                    int(target_label),
-                )
+            remember_candidate(
+                target_idx,
+                target_label,
+                encounter_order,
+                0 if self.map.u_is_vision_reachable_by_index(target_idx) else 2,
             )
 
-        splitter_encounter_order = len(candidate_entries)
+        splitter_encounter_order = len(candidate_entries_by_index)
         for splitter_tile in self.map.own_supply_links_in_vision:
             if self.round_stopwatch.check_overtime():
                 break
@@ -2138,42 +2150,24 @@ class BuilderStrategyMethodsMixin:
                     continue
 
                 target_idx = target_tile.index
-                if target_idx in candidate_seen_indices:
-                    continue
-                candidate_seen_indices.add(target_idx)
-                estimated_dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(
-                    target_idx
-                )
-                if (
-                    lowest_candidate_estimated_dist_to_self is None
-                    or estimated_dist_to_self < lowest_candidate_estimated_dist_to_self
-                ):
-                    lowest_candidate_estimated_dist_to_self = estimated_dist_to_self
-                candidate_entries.append(
-                    (
-                        (
-                            estimated_dist_to_self,
-                            get_own_core_dist(target_idx),
-                        ),
-                        splitter_encounter_order,
-                        target_idx,
-                        int(splitter_label),
-                    )
+                remember_candidate(
+                    target_idx,
+                    splitter_label,
+                    splitter_encounter_order,
+                    0 if self.map.u_is_vision_reachable_by_index(target_idx) else 2,
                 )
                 splitter_encounter_order += 1
 
         if pending_candidate_entry is not None:
-            if (
-                lowest_candidate_estimated_dist_to_self is None
-                or pending_estimated_dist_to_self is None
-                or pending_estimated_dist_to_self
-                - lowest_candidate_estimated_dist_to_self
-                < 2
+            pending_target_idx = pending_candidate_entry[2]
+            existing_entry = candidate_entries_by_index.get(pending_target_idx)
+            if existing_entry is None or (
+                (pending_candidate_entry[0], pending_candidate_entry[1])
+                < (existing_entry[0], existing_entry[1])
             ):
-                candidate_entries.append(pending_preferred_entry)
-            else:
-                candidate_entries.append(pending_candidate_entry)
+                candidate_entries_by_index[pending_target_idx] = pending_candidate_entry
 
+        candidate_entries = list(candidate_entries_by_index.values())
         if not candidate_entries:
             return False
 
@@ -2207,8 +2201,11 @@ class BuilderStrategyMethodsMixin:
                         facing_direction=supplier_target,
                         respect_titanium_reserve=True,
                     ):
-                        self.pending_missing_supply_link_index = target_idx
-                        self.pending_missing_supply_link_resource = resource
+                        remember_pending_target(
+                            target_idx,
+                            resource,
+                            supply_chain_label,
+                        )
                         return True
                 elif supplier_type == EntityType.BRIDGE:
                     if self.u_build_at(
@@ -2220,8 +2217,11 @@ class BuilderStrategyMethodsMixin:
                         target_pos=supplier_target,
                         respect_titanium_reserve=True,
                     ):
-                        self.pending_missing_supply_link_index = target_idx
-                        self.pending_missing_supply_link_resource = resource
+                        remember_pending_target(
+                            target_idx,
+                            resource,
+                            supply_chain_label,
+                        )
                         return True
 
             if self.round_stopwatch.check_overtime():
