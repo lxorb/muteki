@@ -5245,11 +5245,9 @@ class Map:
                 continue
 
             candidate_score = (
+                u_get_own_core_dist_by_index(frontier_idx),
                 frontier_x_multiplier * index_x_by_index[frontier_idx],
                 frontier_y_multiplier * index_y_by_index[frontier_idx],
-                frontier_entry_score[1],
-                frontier_entry_score[2],
-                u_get_own_core_dist_by_index(frontier_idx),
             )
             if best_score is None or candidate_score < best_score:
                 best_score = candidate_score
