@@ -22,6 +22,7 @@ BRIDGE_PREFERRED_DIST: int = 6
 FOUNDRY_CAN_REPLACE_BRIDGE: bool = False
 DISABLE_HARASSMENT: bool = False
 ENABLE_PRINTING: bool = False
+HARASSMENT_ENEMY_CORE_MOVER: str = "astar_proxy"
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 HARD_AVOID_EXISTING_SUPPLY_CHAIN: bool = True
 MAX_CORE_ORE_DIRECT_DIST: int = 20
@@ -180,6 +181,11 @@ try:
             exclude,
             "ENABLE_PRINTING",
             ENABLE_PRINTING,
+        )
+        HARASSMENT_ENEMY_CORE_MOVER = getattr(
+            exclude,
+            "HARASSMENT_ENEMY_CORE_MOVER",
+            HARASSMENT_ENEMY_CORE_MOVER,
         )
 except Exception:
     pass

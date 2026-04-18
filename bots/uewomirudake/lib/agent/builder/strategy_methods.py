@@ -14,6 +14,7 @@ from lib.agent.constants import (
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     FOUNDRY_CAN_REPLACE_BRIDGE,
     HARASSMENT_STRATEGY_ID,
+    HARASSMENT_ENEMY_CORE_MOVER,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
     PREFER_SENTINEL_OVER_GUNNER_MIN_TITANIUM,
@@ -51,9 +52,25 @@ _HIJACK_BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
     if 0 < dx * dx + dy * dy <= GameConstants.BRIDGE_TARGET_RADIUS_SQ
     and abs(dx) + abs(dy) != 1
 )
+_SCAVENGER_FRONTIER_TIEBREAK_MULTIPLIERS: dict[
+    tuple[int, int], tuple[int, int]
+] = {
+    (-1, -1): (1, 1),
+    (1, 1): (-1, -1),
+    (-1, 1): (1, -1),
+    (1, -1): (-1, 1),
+}
 
 
 class BuilderStrategyMethodsMixin:
+    def u_get_frontier_expand_tiebreak_multipliers(self) -> tuple[int, int]:
+        if self.strategy != SCAVENGER_STRATEGY_ID:
+            return (1, 1)
+        return _SCAVENGER_FRONTIER_TIEBREAK_MULTIPLIERS.get(
+            self.spawn_relative_tile,
+            (1, 1),
+        )
+
     def s_return_to_core_center(self):
         own_core_center_pos = self.map.own_core_center_pos
         if own_core_center_pos is None:
@@ -2997,6 +3014,8 @@ class BuilderStrategyMethodsMixin:
 
         Uses a single BFS from the builder to find the closest frontier layer,
         preferring lower own-core distance and stable coordinates among ties.
+        Scavengers bias the coordinate tie-break by their spawn quadrant so the
+        diagonal scavengers spread toward different corners more consistently.
         If the builder is already standing in enemy turret range, retry once
         without turret avoidance so it does not freeze in place.
         """
@@ -3004,11 +3023,15 @@ class BuilderStrategyMethodsMixin:
             return False
 
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        frontier_tiebreak_multipliers = (
+            self.u_get_frontier_expand_tiebreak_multipliers()
+        )
 
         def move_along_frontier_path(avoid_enemy_turrets: bool) -> bool:
             shortest_path = self.map.u_calculate_shortest_path_to_frontier(
                 self.map.current_pos,
                 avoid_enemy_turrets=avoid_enemy_turrets,
+                frontier_tiebreak_multipliers=frontier_tiebreak_multipliers,
             )
             if len(shortest_path) < 2:
                 return False
@@ -5442,6 +5465,28 @@ class BuilderStrategyMethodsMixin:
         """
         enemy_core_center_pos = self.map.enemy_core_center_pos
         current_pos = self.map.current_pos
+        move_mode = HARASSMENT_ENEMY_CORE_MOVER
+
+        def move_toward_enemy_core_target(target_pos: Position) -> bool:
+            if move_mode == "astar_no_proxy":
+                move_target_pos = target_pos
+                move_method = self.u_move_to_astar
+            elif move_mode == "d_star_lite_no_proxy":
+                move_target_pos = target_pos
+                move_method = self.u_move_to_d_star_lite
+            elif move_mode == "lpa_star_no_proxy":
+                move_target_pos = target_pos
+                move_method = self.u_move_to_lpa_star
+            else:
+                move_target_pos = get_move_target(target_pos)
+                move_method = self.u_move_to
+            return bool(
+                move_method(
+                    move_target_pos,
+                    allow_conveyor_building=False,
+                    respect_titanium_reserve_for_road_build=True,
+                )
+            )
 
         def iter_bresenham_positions(source_pos: Position, target_pos: Position):
             x0, y0 = source_pos.x, source_pos.y
@@ -5519,14 +5564,7 @@ class BuilderStrategyMethodsMixin:
             )
             if target_pos is None:
                 return False
-            move_target_pos = get_move_target(target_pos)
-            return bool(
-                self.u_move_to(
-                    move_target_pos,
-                    allow_conveyor_building=False,
-                    respect_titanium_reserve_for_road_build=True,
-                )
-            )
+            return move_toward_enemy_core_target(target_pos)
 
         if (
             not self.map.enemy_core_center_pos_candidates
@@ -5548,14 +5586,7 @@ class BuilderStrategyMethodsMixin:
         if target_pos is None:
             return False
 
-        move_target_pos = get_move_target(target_pos)
-        return bool(
-            self.u_move_to(
-                move_target_pos,
-                allow_conveyor_building=False,
-                respect_titanium_reserve_for_road_build=True,
-            )
-        )
+        return move_toward_enemy_core_target(target_pos)
 
     def s_patrol_enemy_core(self):
         enemy_core_center_pos = self.map.enemy_core_center_pos

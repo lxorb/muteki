@@ -4295,6 +4295,7 @@ class Map:
         source_pos: Position,
         avoid_enemy_turrets: bool = True,
         avoid_other_builder_bots: bool = True,
+        frontier_tiebreak_multipliers: tuple[int, int] = (1, 1),
     ) -> list[Tile]:
         if not self.u_is_in_bounds(source_pos):
             return []
@@ -4317,6 +4318,7 @@ class Map:
         predecessor_by_index = self.path_predecessor_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
+        frontier_x_multiplier, frontier_y_multiplier = frontier_tiebreak_multipliers
 
         self.path_epoch += 1
         path_epoch = self.path_epoch
@@ -4377,8 +4379,8 @@ class Map:
                     if is_frontier:
                         candidate_score = (
                             self.u_get_own_core_dist_by_index(adjacent_idx),
-                            index_x_by_index[adjacent_idx],
-                            index_y_by_index[adjacent_idx],
+                            frontier_x_multiplier * index_x_by_index[adjacent_idx],
+                            frontier_y_multiplier * index_y_by_index[adjacent_idx],
                         )
                         if (
                             best_target_score is None

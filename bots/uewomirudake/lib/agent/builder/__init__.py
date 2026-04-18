@@ -33,6 +33,9 @@ class BuilderAgent(
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
     step_off_core_attempted: bool
+    spawn_relative_tile: tuple[int, int] | None
+    _d_star_lite_states_by_builder_id: dict[int, object]
+    _lpa_star_states_by_builder_id: dict[int, object]
 
     def __init__(self, strategy: str = ""):
         Agent.__init__(self)
@@ -52,6 +55,9 @@ class BuilderAgent(
         self.enemy_core_proxy_target_pos = None
         self.enemy_core_proxy_base_target_pos = None
         self.step_off_core_attempted = False
+        self.spawn_relative_tile = None
+        self._d_star_lite_states_by_builder_id = {}
+        self._lpa_star_states_by_builder_id = {}
 
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos
@@ -66,6 +72,7 @@ class BuilderAgent(
             current_pos.x - core_center_pos.x,
             current_pos.y - core_center_pos.y,
         )
+        self.spawn_relative_tile = relative_tile
         self.strategy = BUILDER_STRATEGY_BY_TILE.get(relative_tile, "")
 
     def u_get_strategy_name(self) -> str:

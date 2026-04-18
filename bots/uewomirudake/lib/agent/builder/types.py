@@ -34,6 +34,7 @@ class BuilderCommonSelf(Protocol):
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
     step_off_core_attempted: bool
+    spawn_relative_tile: tuple[int, int] | None
 
     def u_filter_tiles(
         self,
@@ -169,6 +170,26 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
     ) -> bool: ...
 
     def u_move_to(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = False,
+        allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
+    ) -> bool: ...
+
+    def u_move_to_d_star_lite(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = False,
+        allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
+    ) -> bool: ...
+
+    def u_move_to_lpa_star(
         self,
         pos: Position,
         avoid_enemy_turrets: bool = True,
