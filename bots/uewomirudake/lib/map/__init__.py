@@ -61,6 +61,55 @@ MAP_ENVIRONMENT_TITANIUM = 2
 MAP_ENVIRONMENT_AXIONITE = 3
 
 
+class _TouchedIndexMembership:
+    __slots__ = ("marked_by_index", "touched_indices")
+
+    def __init__(self, size: int):
+        self.marked_by_index = bytearray(size)
+        self.touched_indices: list[int] = []
+
+    def add(self, idx: int) -> None:
+        if self.marked_by_index[idx]:
+            return
+        self.marked_by_index[idx] = 1
+        self.touched_indices.append(idx)
+
+    def clear(self) -> None:
+        for idx in self.touched_indices:
+            self.marked_by_index[idx] = 0
+        self.touched_indices.clear()
+
+    def __contains__(self, idx: int) -> bool:
+        return bool(self.marked_by_index[idx])
+
+
+class _TouchedIndexSourceMap:
+    __slots__ = ("source_indices_by_target_index", "touched_target_indices")
+
+    def __init__(self, size: int):
+        self.source_indices_by_target_index: list[list[int] | None] = [None] * size
+        self.touched_target_indices: list[int] = []
+
+    def add(self, target_idx: int, source_idx: int) -> None:
+        source_indices = self.source_indices_by_target_index[target_idx]
+        if source_indices is None:
+            self.source_indices_by_target_index[target_idx] = [source_idx]
+            self.touched_target_indices.append(target_idx)
+            return
+        source_indices.append(source_idx)
+
+    def clear(self) -> None:
+        for idx in self.touched_target_indices:
+            self.source_indices_by_target_index[idx] = None
+        self.touched_target_indices.clear()
+
+    def get(self, target_idx: int, default=None):
+        source_indices = self.source_indices_by_target_index[target_idx]
+        if source_indices is None:
+            return default
+        return source_indices
+
+
 def _iter_existing_parent_roots(path: Path) -> Iterable[Path]:
     try:
         resolved_path = path.resolve()
@@ -322,15 +371,21 @@ class Map:
         self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
         self.visible_building_ids_touched_indices: list[int] = []
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.all_own_supply_link_target_indices_in_vision: set[int] = set()
-        self.own_supply_link_target_indices_in_vision: set[int] = set()
-        self.enemy_supply_link_target_indices_in_vision: set[int] = set()
-        self.own_supply_link_source_indices_by_target_index_in_vision: dict[
-            int, set[int]
-        ] = {}
-        self.enemy_supply_link_source_indices_by_target_index_in_vision: dict[
-            int, set[int]
-        ] = {}
+        self.all_own_supply_link_target_indices_in_vision = _TouchedIndexMembership(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_supply_link_target_indices_in_vision = _TouchedIndexMembership(
+            self.INITIAL_MAP_SIZE
+        )
+        self.enemy_supply_link_target_indices_in_vision = _TouchedIndexMembership(
+            self.INITIAL_MAP_SIZE
+        )
+        self.own_supply_link_source_indices_by_target_index_in_vision = (
+            _TouchedIndexSourceMap(self.INITIAL_MAP_SIZE)
+        )
+        self.enemy_supply_link_source_indices_by_target_index_in_vision = (
+            _TouchedIndexSourceMap(self.INITIAL_MAP_SIZE)
+        )
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_supply_chain_parent_by_index = array(
@@ -587,11 +642,11 @@ class Map:
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
         self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
-        self.all_own_supply_link_target_indices_in_vision = set()
-        self.own_supply_link_target_indices_in_vision = set()
-        self.enemy_supply_link_target_indices_in_vision = set()
-        self.own_supply_link_source_indices_by_target_index_in_vision = {}
-        self.enemy_supply_link_source_indices_by_target_index_in_vision = {}
+        self.all_own_supply_link_target_indices_in_vision.clear()
+        self.own_supply_link_target_indices_in_vision.clear()
+        self.enemy_supply_link_target_indices_in_vision.clear()
+        self.own_supply_link_source_indices_by_target_index_in_vision.clear()
+        self.enemy_supply_link_source_indices_by_target_index_in_vision.clear()
         self.frontier_expand_newly_seen_indices = []
 
     def _reset_marked_bytearray_indices(
@@ -2957,13 +3012,7 @@ class Map:
                     continue
                 target_idx = target_tile.index
                 all_own_target_indices.add(target_idx)
-                source_indices = own_supply_link_sources_by_target_index.get(target_idx)
-                if source_indices is None:
-                    own_supply_link_sources_by_target_index[target_idx] = {
-                        supply_link_idx
-                    }
-                else:
-                    source_indices.add(supply_link_idx)
+                own_supply_link_sources_by_target_index.add(target_idx, supply_link_idx)
                 if include_for_own:
                     own_target_indices.add(target_idx)
             if check_overtime_interval():
@@ -2976,13 +3025,10 @@ class Map:
                     continue
                 target_idx = target_tile.index
                 enemy_target_indices.add(target_idx)
-                source_indices = enemy_supply_link_sources_by_target_index.get(target_idx)
-                if source_indices is None:
-                    enemy_supply_link_sources_by_target_index[target_idx] = {
-                        supply_link_idx
-                    }
-                else:
-                    source_indices.add(supply_link_idx)
+                enemy_supply_link_sources_by_target_index.add(
+                    target_idx,
+                    supply_link_idx,
+                )
             if check_overtime_interval():
                 break
 
