@@ -139,11 +139,14 @@ class TurretAgent(Agent):
         return True
     
     def yeet_enemy_away(self, bot_tile):
-        if not self.map.own_core_center_pos:
+        yeet_from_pos = self.map.own_core_center_pos
+        if self.map.enemy_core_center_pos and self.map.enemy_core_center_pos.distance_squared(self.map.current_pos) < 15: # MAGIC NUMBER SORRY
+            yeet_from_pos = self.map.enemy_core_center_pos
+        if not yeet_from_pos:
             return False
-        sorted_reachable_tiles = sorted(self.map.launcher_enemy_reachable, key = lambda tile: -tile.position.distance_squared(self.map.own_core_center_pos))
+        sorted_reachable_tiles = sorted(self.map.launcher_enemy_reachable, key = lambda tile: -tile.position.distance_squared(yeet_from_pos))
         candidate_tile = sorted_reachable_tiles[0]
-        dist_diff = candidate_tile.position.distance_squared(self.map.own_core_center_pos) - bot_tile.position.distance_squared(self.map.own_core_center_pos)
+        dist_diff = candidate_tile.position.distance_squared(yeet_from_pos) - bot_tile.position.distance_squared(yeet_from_pos)
         if dist_diff >= LAUNCHER_YEET_AWAY_MIN_DISTANCE:
             if not self.ct.can_launch(bot_tile.position, candidate_tile.position):
                 if ENABLE_PRINTING: print("ERROR: Why can't I launch???")

@@ -5354,11 +5354,24 @@ class BuilderStrategyMethodsMixin:
         if tile.building.entity_type in CONVEYOR_ENTITY_TYPES and tile.conveyor_targets_harvester:
             return True
         return False
+    
+    def annoy_enemy_with_launcher(self):
+        for neighbor_idx in self.map.u_iter_neighbor_indices(self.map.u_to_index(self.map.current_pos)):
+            neighbor_tile = self.map.tiles_by_index[neighbor_idx]
+            if neighbor_tile.in_own_launcher_pickup_zone != 0:
+                continue
+            if self.could_place_marker_or_launcher_here(neighbor_tile):
+                if self.ct.can_build_launcher(neighbor_tile.position):
+                    self.ct.build_launcher(neighbor_tile.position)
+                    return True
 
     def s_patrol_enemy_core(self):
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is None:
             return False
+        
+        if self.annoy_enemy_with_launcher():
+            return True
 
         waypoint_indices: list[int] = []
         active_mask_by_index = self.map.active_mask_by_index
