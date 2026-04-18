@@ -56,10 +56,10 @@ replay_*.json
 
 # discord webhook secret
 /tools/unrated_runner/config/discord_webhook.txt
-# queued match ids (may not be current anymore)
-/tools/unrated_runner/data/queued.json
-# requested teams (auto generated)
-/tools/unrated_runner/data/requested_teams.json
+# data (auto-generated)
+/tools/unrated_runner/data/
+# graphs (can generate at any time)
+/tools/unrated_runner/graphs
 # partial results (only useful in the case of conflicts)
 /tools/unrated_runner/results/
 # output logs (can generate at any time)

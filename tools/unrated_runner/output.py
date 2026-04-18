@@ -8,7 +8,7 @@ RENDER_IMAGES = True
 HALF_LIFE_MINUTES = 60
 DECAY_LAMBDA = math.log(2) / (HALF_LIFE_MINUTES / 1440)  # in days^-1
 CUTOFF_HOURS: float | None = (
-    6  # ignore games older than this; set to 0 or None to disable
+    12  # ignore games older than this; set to 0 or None to disable
 )
 
 # Map win-rate color cutoffs: (threshold, background_color)

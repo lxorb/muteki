@@ -33,6 +33,8 @@ RESULTS_SESSION_FILE = RESULTS_PARTIAL_DIR / "results_{}.json".format(
 )
 RESULTS_ALL_FILE = RESULTS_DIR / "results.json"
 OUTPUT_SCRIPT = SCRIPT_DIR / "output.py"
+GRAPH_SCRIPT = SCRIPT_DIR / "graph.py"
+GRAPHS_DIR = SCRIPT_DIR / "graphs"
 
 REQUEST_DELAY = 120
 RANDOM_MAP_SELECTION = True
@@ -165,23 +167,29 @@ def check_match(match_id: str) -> list[dict] | None:
     return games
 
 
-def read_discord_interval_minutes() -> int | None:
-    """Return a positive integer from discord_interval.txt, or None if unset/invalid."""
-    if not DISCORD_INTERVAL_FILE.exists():
+def _read_line(path: Path, line_idx: int) -> str | None:
+    """Return the stripped Nth line of a file, or None if missing/out-of-range/empty."""
+    if not path.exists():
         return None
-    text = DISCORD_INTERVAL_FILE.read_text().strip()
-    if not text.isdigit():
+    lines = path.read_text().splitlines()
+    if line_idx >= len(lines):
+        return None
+    text = lines[line_idx].strip()
+    return text or None
+
+
+def read_discord_interval_minutes(line_idx: int = 0) -> int | None:
+    """Return a positive integer from the Nth line of discord_interval.txt, or None."""
+    text = _read_line(DISCORD_INTERVAL_FILE, line_idx)
+    if text is None or not text.isdigit():
         return None
     n = int(text)
     return n if n > 0 else None
 
 
-def read_discord_webhook_url() -> str | None:
-    """Return the webhook URL from discord_webhook.txt, or None if unset."""
-    if not DISCORD_WEBHOOK_FILE.exists():
-        return None
-    url = DISCORD_WEBHOOK_FILE.read_text().strip()
-    return url or None
+def read_discord_webhook_url(line_idx: int = 0) -> str | None:
+    """Return the webhook URL from the Nth line of discord_webhook.txt, or None."""
+    return _read_line(DISCORD_WEBHOOK_FILE, line_idx)
 
 
 def send_discord_jpg(jpg_path: Path, webhook_url: str) -> bool:
@@ -232,6 +240,35 @@ def run_output_and_post() -> None:
         print(f"  Sent {latest.name} to Discord.")
 
 
+def run_graph_and_post() -> None:
+    webhook_url = read_discord_webhook_url(line_idx=1)
+    if webhook_url is None:
+        print(
+            "  No graph Discord webhook URL (2nd line of config/discord_webhook.txt); skipping."
+        )
+        return
+    before = time.time()
+    result = subprocess.run(
+        [sys.executable, str(GRAPH_SCRIPT)], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"  graph.py failed: {result.stderr.strip() or result.stdout.strip()}")
+        return
+    if not GRAPHS_DIR.exists():
+        print("  No graphs directory.")
+        return
+    new_jpgs = sorted(
+        (p for p in GRAPHS_DIR.glob("graph_*.jpg") if p.stat().st_mtime >= before),
+        key=lambda p: p.stat().st_mtime,
+    )
+    if not new_jpgs:
+        print("  No new graph jpgs to send.")
+        return
+    for jpg in new_jpgs:
+        if send_discord_jpg(jpg, webhook_url):
+            print(f"  Sent {jpg.name} to Discord (graphs).")
+
+
 def record_games(results: dict, team_id: str, match_id: str, games: list[dict]) -> None:
     team = results.setdefault(team_id, {})
     for game in games:
@@ -265,6 +302,7 @@ def main():
     )
 
     last_discord_post = -1
+    last_graph_post = -1
 
     try:
         while True:
@@ -314,6 +352,15 @@ def main():
                 print("Running output.py and posting to Discord...")
                 run_output_and_post()
                 last_discord_post = time.time()
+
+            graph_interval_minutes = read_discord_interval_minutes(line_idx=1)
+            if (
+                graph_interval_minutes is not None
+                and time.time() - last_graph_post >= graph_interval_minutes * 60
+            ):
+                print("Running graph.py and posting to Discord...")
+                run_graph_and_post()
+                last_graph_post = time.time()
 
             time.sleep(REQUEST_DELAY)
     except KeyboardInterrupt:

@@ -17,6 +17,7 @@ python tools/unrated_runner/request_top.py
 python tools/unrated_runner/main.py
 python tools/unrated_runner/output.py
 python tools/unrated_runner/compare.py
+python tools/unrated_runner/graph.py
 ```
 
 ## Scripts
@@ -37,11 +38,17 @@ Reads `data/ladder.json` and writes the top `TOP_N` teams by rating to `config/r
 
 Continuously queues unrated matches against configured opponents and records results. Runs in a loop every REQUEST_DELAY seconds until you press **Ctrl+C**. Our own team is automatically excluded from the opponent list.
 
-If `config/discord_interval.txt` contains a positive integer, `main.py` also runs `output.py` and posts the generated JPG to the Discord webhook URL in `config/discord_webhook.txt` every N minutes. If either file is empty/missing or the interval is not a positive integer, this behaviour is disabled.
+If the first line of `config/discord_interval.txt` is a positive integer, `main.py` also runs `output.py` and posts the generated JPG to the Discord webhook URL on the first line of `config/discord_webhook.txt` every N minutes. If either file is empty/missing or the interval is not a positive integer, this behaviour is disabled.
+
+If the second line of `config/discord_interval.txt` is a positive integer, `main.py` additionally runs `graph.py` every N minutes and posts each generated per-team JPG to the Discord webhook URL on the second line of `config/discord_webhook.txt`. This lets you route output and graphs to separate channels. Same empty/missing/invalid rules apply.
 
 ### output.py
 
 Reads `results/results.json` (the cumulative results file) and generates a markdown summary at `outputs/output_<timestamp>.md` with a map-vs-team grid showing the last game result (✅/❌) for each combination, with cumulative win percentages next to each map and team. Only teams listed in `config/output_teams.txt` are included as columns. Also renders a JPG image of the grid where win/loss cell colors fade over time via exponential decay (configurable via `DECAY_LAMBDA` in the script).
+
+### graph.py
+
+Reads `results/results.json` and generates one JPG per team listed in `config/graph_teams.txt`, saved to `graphs/graph_<timestamp>_<team>.jpg`. Each plot shows a rolling-window win rate (%) over time, with each team drawn in a deterministic color derived from its team id.
 
 ### compare.py
 
@@ -86,6 +93,14 @@ Cells show the change in win percentage points (e.g. `+20%`, `-15%`). `N/A` is s
 | `CYAN` | `"#00B8D4"` | Base color for improvement (blended toward white for smaller deltas). |
 | `PINK` | `"#E91E63"` | Base color for regression (blended toward white for smaller deltas). |
 
+### graph.py
+
+| Constant | Default | Description |
+| --- | --- | --- |
+| `CUTOFF_HOURS` | `None` | Games finished more than this many hours ago are excluded. Set to `0` or `None` to disable. |
+| `WINDOW_HOURS` | `24.0` | Rolling window width: each plotted point is the win rate over games finished in the preceding N hours. |
+| `SKIP_FIRST_N` | `64` | Hides the first N plotted points to avoid noisy edges from small windows. |
+
 ### request_top.py
 
 | Constant | Default | Description |
@@ -111,13 +126,27 @@ Blue Dragon
 
 One team name per line. Controls which teams appear as columns in `output.py` and `compare.py`. Teams not listed here are excluded from the output even if results exist for them. If the file is empty or missing, all teams are shown.
 
+### config/graph_teams.txt
+
+One team name per line. Controls which teams `graph.py` generates JPGs for (one JPG per listed team). Teams not listed are skipped.
+
 ### config/discord_interval.txt
 
-A single line containing a positive integer — the number of minutes between automatic `output.py` runs that post the generated JPG to the Discord webhook. If the file is empty or does not parse as a positive integer, the feature is disabled and `main.py` behaves normally. Re-read each loop iteration, so edits take effect live.
+Two optional lines, each a positive integer number of minutes:
+
+1. Interval between automatic `output.py` runs that post the generated JPG to the output webhook.
+2. Interval between automatic `graph.py` runs that post each generated per-team JPG to the graph webhook.
+
+Either line can be blank, missing, or non-numeric to disable the corresponding feature. Re-read each loop iteration, so edits take effect live.
 
 ### config/discord_webhook.txt
 
-The Discord webhook URL to post generated JPGs to. Gitignored (treat as a secret). Required when `config/discord_interval.txt` is set; if missing or empty, `main.py` skips the Discord post.
+Two optional lines, each a Discord webhook URL. Gitignored (treat as a secret).
+
+1. Webhook for `output.py` JPG posts (paired with line 1 of `discord_interval.txt`).
+2. Webhook for `graph.py` JPG posts (paired with line 2 of `discord_interval.txt`).
+
+If the required line is missing or empty, the corresponding post is skipped.
 
 ## Workflow
 
@@ -146,12 +175,14 @@ unrated_runner/
   main.py              # match runner
   output.py            # report generator
   compare.py           # result comparison tool
+  graph.py             # per-team win-rate over time plots
   docs.md              # this file
   config/
     request_teams.txt    # teams to queue against
     output_teams.txt     # teams to show in output/compare
-    discord_interval.txt # positive int minutes → auto-run output.py + post JPG to Discord
-    discord_webhook.txt  # Discord webhook URL (gitignored)
+    graph_teams.txt      # teams to generate graph jpgs for
+    discord_interval.txt # lines: [output interval min, graph interval min]
+    discord_webhook.txt  # lines: [output webhook url, graph webhook url] (gitignored)
   data/
     ladder.json        # raw ladder data from platform API
     team_list.json     # all active teams {id: name}
@@ -167,4 +198,6 @@ unrated_runner/
   compares/
     compare_*.md       # generated comparison reports
     compare_*.jpg      # generated comparison grid images
+  graphs/
+    graph_*.jpg        # generated per-team win-rate plots
 ```
