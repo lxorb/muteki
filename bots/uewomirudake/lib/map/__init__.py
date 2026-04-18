@@ -245,9 +245,6 @@ class Map:
         self.vision_reachable_turn_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.vision_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
-        self.vision_first_step_requires_new_road_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
@@ -3802,13 +3799,9 @@ class Map:
         queue_head = 0
         vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
         vision_first_step_by_index = self.vision_first_step_by_index
-        vision_first_step_requires_new_road_by_index = (
-            self.vision_first_step_requires_new_road_by_index
-        )
         vision_reachable_turn_by_index[source_idx] = current_round
         self.dist_to_self_by_index[source_idx] = 0
         vision_first_step_by_index[source_idx] = -1
-        vision_first_step_requires_new_road_by_index[source_idx] = 0
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
@@ -3832,9 +3825,6 @@ class Map:
             elif current_environment == Environment.ORE_AXIONITE:
                 self.found_vision_reachable_axionite_this_turn = True
             current_first_step_idx = vision_first_step_by_index[current_idx]
-            current_first_step_requires_new_road = (
-                vision_first_step_requires_new_road_by_index[current_idx]
-            )
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
@@ -3847,6 +3837,7 @@ class Map:
                     continue
                 if (
                     not intrinsic_passable_by_index[neighbor_idx]
+                    or vision_reachable_turn_by_index[neighbor_idx] == current_round
                     or (
                         current_idx == source_idx
                         and bot_present_by_index[neighbor_idx]
@@ -3854,37 +3845,14 @@ class Map:
                 ):
                     continue
 
-                neighbor_first_step_idx = (
+                vision_reachable_turn_by_index[neighbor_idx] = current_round
+                dist_to_self_by_index[neighbor_idx] = current_dist + 1
+                vision_first_step_by_index[neighbor_idx] = (
                     neighbor_idx
                     if current_first_step_idx == -1
                     else current_first_step_idx
                 )
-                neighbor_first_step_requires_new_road = (
-                    int(tiles_by_index[neighbor_idx].building.id is None)
-                    if current_first_step_idx == -1
-                    else current_first_step_requires_new_road
-                )
-                neighbor_dist = current_dist + 1
-
-                if vision_reachable_turn_by_index[neighbor_idx] != current_round:
-                    vision_reachable_turn_by_index[neighbor_idx] = current_round
-                    dist_to_self_by_index[neighbor_idx] = neighbor_dist
-                    vision_first_step_by_index[neighbor_idx] = neighbor_first_step_idx
-                    vision_first_step_requires_new_road_by_index[neighbor_idx] = (
-                        neighbor_first_step_requires_new_road
-                    )
-                    queue.append(neighbor_idx)
-                    continue
-
-                if (
-                    dist_to_self_by_index[neighbor_idx] == neighbor_dist
-                    and neighbor_first_step_requires_new_road
-                    < vision_first_step_requires_new_road_by_index[neighbor_idx]
-                ):
-                    vision_first_step_by_index[neighbor_idx] = neighbor_first_step_idx
-                    vision_first_step_requires_new_road_by_index[neighbor_idx] = (
-                        neighbor_first_step_requires_new_road
-                    )
+                queue.append(neighbor_idx)
 
             overtime_check_countdown -= 1
             if overtime_check_countdown == 0:
@@ -4965,9 +4933,6 @@ class Map:
         bot_present_by_index = self.bot_present_by_index
         vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
-        vision_first_step_requires_new_road_by_index = (
-            self.vision_first_step_requires_new_road_by_index
-        )
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
         frontier_x_multiplier, frontier_y_multiplier = frontier_tiebreak_multipliers
@@ -5057,7 +5022,7 @@ class Map:
                 return []
 
             predecessor_idx = -1
-            predecessor_score: tuple[int, int, int] | None = None
+            predecessor_score: tuple[int, int] | None = None
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
 
@@ -5071,7 +5036,6 @@ class Map:
                     continue
 
                 candidate_predecessor_score = (
-                    vision_first_step_requires_new_road_by_index[adjacent_idx],
                     index_x_by_index[adjacent_idx],
                     index_y_by_index[adjacent_idx],
                 )
