@@ -328,14 +328,14 @@ class Tile:
         if self.environment is None:
             self.environment = ct.get_tile_env(self.position)
             environment_changed = True
+            self.map.environment_code_by_index[self.index] = (
+                self.map.u_get_environment_code(self.environment)
+            )
         if self.last_seen_turn == -1:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)
         self.last_seen_turn = current_round
         self.map.last_seen_turn_by_index[self.index] = current_round
-        self.map.environment_code_by_index[self.index] = self.map.u_get_environment_code(
-            self.environment
-        )
 
         bot_id = self.map.visible_builder_bot_ids_by_index[self.index]
         if bot_id < 0:
