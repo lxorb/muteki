@@ -231,6 +231,7 @@ class Map:
         self.enemy_team: Team | None = None
         self.current_round = -1
         self.current_pos = Position(0, 0)
+        self.current_round_since = 0
         self.titanium = 0
         self.axionite = 0
         self.compute_dist_to_self = False
@@ -491,7 +492,12 @@ class Map:
         )
 
         self.current_round = self.ct.get_current_round()
-        self.current_pos = self.ct.get_position()
+        new_pos = self.ct.get_position()
+        if new_pos == self.current_pos:
+            self.current_round_since += 1
+        else:
+            self.current_round_since = 0
+        self.current_pos = new_pos
         self.titanium, self.axionite = self.ct.get_global_resources()
 
         self.has_enemy_bot_in_vision = False

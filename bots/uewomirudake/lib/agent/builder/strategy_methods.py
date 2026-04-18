@@ -30,6 +30,8 @@ from lib.agent.constants import (
     COOLDOWN_TO_LAUNCHER_CHOKING,
     LAUNCHER_CHOKING_MIN_TITANIUM,
     LAUNCHER_ANNOYING_MIN_TITANIUM,
+    ATTACK_PATIENCE,
+    LAUNCHER_HUG_MIN_TITANIUM,
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES, MARKER_SYMMETRY_LIST
 from lib.map.types import SupplyChainLabel
@@ -4143,7 +4145,21 @@ class BuilderStrategyMethodsMixin:
             and self.map.has_enemy_bot_in_vision
             and self.map.current_pos == target_tile.position
             and not self._is_visible_building_damaged(target_tile)
+            and not self._is_launcher_hugged()
         )
+    
+    def _is_launcher_hugged(self):
+        pos = self.map.current_pos
+        def is_launcher(x, y):
+            if not self.map.u_is_in_bounds(Position(x, y)):
+                return False
+            t = self.map.u_get_pos_tile(Position(x, y))
+            return t.building.entity_type == EntityType.LAUNCHER and t.building.team == self.map.own_team
+
+        left_right = is_launcher(pos.x - 1, pos.y) and is_launcher(pos.x + 1, pos.y)
+        top_bottom = is_launcher(pos.x, pos.y - 1) and is_launcher(pos.x, pos.y + 1)
+        return left_right or top_bottom
+
 
     def s_attack_enemy_harvester_supply_link(
         self,
@@ -4191,6 +4207,11 @@ class BuilderStrategyMethodsMixin:
             return False
 
         if self._should_hold_attack_for_enemy_bots(target_tile, wait_if_enemy_builder_bots_in_range):
+            if self._been_waiting_for_way_too_long():
+                if self._can_get_launcher_hugs():
+                    return True
+                else:
+                    return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
             return True
 
         return bool(
@@ -4200,6 +4221,45 @@ class BuilderStrategyMethodsMixin:
                 destroy_condition=lambda _: True,
             )
         )
+
+    def _been_waiting_for_way_too_long(self):
+        return self.map.current_round_since > ATTACK_PATIENCE
+    
+    def _can_get_launcher_hugs(self):
+        # RETURNS TRUE IF POSSIBLE - EVEN IF NOT BUILT !!!! (titanium threshold)
+        
+        if self.ct.get_global_resources()[0] > LAUNCHER_HUG_MIN_TITANIUM:
+            return True
+
+        pos = self.map.current_pos
+        def could_be_launcher(x, y):
+            if not self.map.u_is_in_bounds(Position(x, y)):
+                return False
+            t = self.map.u_get_pos_tile(Position(x, y))
+            return (t.building.entity_type == EntityType.LAUNCHER and t.building.team == self.map.own_team) or self.could_place_marker_or_launcher_here(t)
+
+        left_right = could_be_launcher(pos.x - 1, pos.y) and could_be_launcher(pos.x + 1, pos.y)
+        top_bottom = could_be_launcher(pos.x, pos.y - 1) and could_be_launcher(pos.x, pos.y + 1)
+
+        if left_right:
+            left_pos = Position(pos.x - 1, pos.y)
+            right_pos = Position(pos.x + 1, pos.y)
+            if self.ct.can_build_launcher(left_pos):
+                self.ct.build_launcher(left_pos)
+                return True
+            if self.ct.can_build_launcher(right_pos):
+                self.ct.build_launcher(right_pos)
+                return True
+        if top_bottom:
+            top_pos = Position(pos.x, pos.y - 1)
+            bottom_pos = Position(pos.x, pos.y + 1)
+            if self.ct.can_build_launcher(top_pos):
+                self.ct.build_launcher(top_pos)
+                return True
+            if self.ct.can_build_launcher(bottom_pos):
+                self.ct.build_launcher(bottom_pos)
+                return True
+        return False
 
     def s_attack_enemy_core_supply_link(
         self,
@@ -4247,6 +4307,11 @@ class BuilderStrategyMethodsMixin:
             return False
 
         if self._should_hold_attack_for_enemy_bots(target_tile, wait_if_enemy_builder_bots_in_range):
+            if self._been_waiting_for_way_too_long():
+                if self._can_get_launcher_hugs():
+                    return True
+                else:
+                    return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
             return True
 
         return bool(
@@ -4308,6 +4373,11 @@ class BuilderStrategyMethodsMixin:
             and sentinel_targets_enemy_core(current_tile)
         ):
             if self._should_hold_attack_for_enemy_bots(current_tile, wait_if_enemy_builder_bots_in_range):
+                if self._been_waiting_for_way_too_long():
+                    if self._can_get_launcher_hugs():
+                        return True
+                    else:
+                        return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
                 return True
             return bool(
                 self.u_attack_passable(
@@ -4353,6 +4423,11 @@ class BuilderStrategyMethodsMixin:
             return False
 
         if self._should_hold_attack_for_enemy_bots(target_tile, wait_if_enemy_builder_bots_in_range):
+            if self._been_waiting_for_way_too_long():
+                if self._can_get_launcher_hugs():
+                    return True
+                else:
+                    return False #TODO IDK IF THIS IS CORRECT - we want to move somewhere else pls
             return True
 
         return bool(
