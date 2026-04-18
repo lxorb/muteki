@@ -17,7 +17,6 @@ from lib.agent.constants import (
     HARASSMENT_ENEMY_CORE_MOVER,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
     MAX_CORE_ORE_DIRECT_DIST,
-    PREFER_SENTINEL_OVER_GUNNER_MIN_TITANIUM,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
     SCAVENGER_STRATEGY_ID,
@@ -4646,9 +4645,9 @@ class BuilderStrategyMethodsMixin:
         last three turns. If the builder is already standing on the chosen build
         tile, it first steps off that tile so the turret can be built from the
         new position on the following turn. Prefer a sentinel over a gunner only
-        when the sentinel can target the enemy core while the gunner cannot, or
-        once the scaled titanium preference threshold is reached. Candidate
-        target tiles are limited to the configured radius around the builder.
+        when the sentinel can target the enemy core while the gunner cannot.
+        Candidate target tiles are limited to the configured radius around the
+        builder.
         """
         current_pos = self.map.current_pos
         current_round = self.map.current_round
@@ -4661,10 +4660,6 @@ class BuilderStrategyMethodsMixin:
         if candidate_radius < 0:
             candidate_radius = 0
         candidate_radius_sq = candidate_radius * candidate_radius
-        scale_ratio = max(0.0001, self.ct.get_scale_percent() / 100.0)
-        prefer_sentinel_over_gunner_min_titanium = int(
-            math.ceil(PREFER_SENTINEL_OVER_GUNNER_MIN_TITANIUM * scale_ratio)
-        )
         sentinel_titanium_cost, sentinel_axionite_cost = self.ct.get_sentinel_cost()
 
         enemy_core_tiles: list = []
@@ -4871,8 +4866,6 @@ class BuilderStrategyMethodsMixin:
                             build_direction,
                         )
                     )
-                    or self.map.titanium
-                    >= prefer_sentinel_over_gunner_min_titanium
                 ):
                     build_entity_type = EntityType.SENTINEL
                     build_direction = sentinel_direction
