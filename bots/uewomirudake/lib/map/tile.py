@@ -322,11 +322,10 @@ class Tile:
         previous_last_seen_turn = self.last_seen_turn
         previous_bot_id = self.bot.id
         previous_bot_entity_type = self.bot.entity_type
-        if self.last_seen_turn == -1:
+        if self.last_seen_turn == -1 and self.map.symmetry_mode is None:
             self.map.newly_seen_tiles_in_vision.append(self)
         if self.environment is None:
             self.environment = ct.get_tile_env(self.position)
-        self.u_refresh_core_distance_passability()
         if self.last_seen_turn == -1:
             # Frontier expansion cache: remember tiles first seen this turn.
             self.map.frontier_expand_newly_seen_indices.append(self.index)

@@ -454,7 +454,6 @@ class Map:
         self.known_accessible_axionite_indices: list[int] = []
         self.is_map_known: bool = False
         self.known_map_path: str | None = None
-        self.enemy_core_seen_in_vision: bool = False
         self.map_inference_time_ns: int = 0
         self.parsed_map_tile_type_by_index: list[int] | None = None
         self.parsed_map_own_core_dist_by_index: list[int] | None = None
@@ -563,11 +562,8 @@ class Map:
         self.closest_enemy_builder_bot_in_vision_pos = None
         self.tiles_in_vision: list[Tile] = []
         self.newly_seen_tiles_in_vision: list[Tile] = []
-        self.titanium_tiles_in_vision: list[Tile] = []
-        self.axionite_tiles_in_vision: list[Tile] = []
         self.own_harvesters_in_vision: list[Tile] = []
         self.enemy_harvesters_in_vision: list[Tile] = []
-        self.own_supply_targets_in_vision: list[Tile] = []
         self.enemy_supply_targets_in_vision: list[Tile] = []
         self.own_supply_links_in_vision: list[Tile] = []
         self.enemy_supply_links_in_vision: list[Tile] = []
@@ -1526,8 +1522,6 @@ class Map:
                     self.own_buildings_in_vision.append(tile)
                 else:
                     self.enemy_buildings_in_vision.append(tile)
-                    if building.entity_type == EntityType.CORE:
-                        self.enemy_core_seen_in_vision = True
 
                 if building.entity_type == EntityType.CORE:
                     self.u_update_visible_core_center(tile)
@@ -1564,7 +1558,6 @@ class Map:
                         self.enemy_harvesters_in_vision.append(tile)
 
             if tile.environment == Environment.ORE_TITANIUM:
-                self.titanium_tiles_in_vision.append(tile)
                 if building.id is None or (
                     building.team == self.own_team
                     and building.entity_type != EntityType.HARVESTER
@@ -1576,7 +1569,6 @@ class Map:
                 known_accessible_titanium_indices.discard(tile.index)
 
             if tile.environment == Environment.ORE_AXIONITE:
-                self.axionite_tiles_in_vision.append(tile)
                 if building.id is None or (
                     building.team == self.own_team
                     and building.entity_type != EntityType.HARVESTER
@@ -2173,16 +2165,12 @@ class Map:
                 self.own_core_center_pos = center_pos
                 self.u_set_core_source_indices(self.own_team, center_pos)
                 self.u_reset_own_core_distance_initialization()
-            else:
-                self.u_sync_core_footprint_tiles_for_team(self.own_team)
             return
 
         if tile.building.team == self.enemy_team:
             if self.enemy_core_center_pos != center_pos:
                 self.enemy_core_center_pos = center_pos
                 self.u_set_core_source_indices(self.enemy_team, center_pos)
-            else:
-                self.u_sync_core_footprint_tiles_for_team(self.enemy_team)
 
     def u_infer_map(self) -> None:
         if (
@@ -2892,7 +2880,6 @@ class Map:
         enemy_team = self.enemy_team
         supply_chain_sink_types = (EntityType.HARVESTER, EntityType.FOUNDRY)
 
-        own_supply_targets_in_vision = self.own_supply_targets_in_vision
         enemy_supply_targets_in_vision = self.enemy_supply_targets_in_vision
         own_missing_supply_links = self.own_missing_supply_links
         enemy_missing_supply_links = self.enemy_missing_supply_links
@@ -2906,7 +2893,6 @@ class Map:
             self.enemy_supply_link_source_indices_by_target_index_in_vision
         )
 
-        own_supply_targets_in_vision.clear()
         enemy_supply_targets_in_vision.clear()
         own_missing_supply_links.clear()
         enemy_missing_supply_links.clear()
@@ -2972,7 +2958,6 @@ class Map:
             self.enemy_supply_links_in_vision,
         )
 
-        own_supply_targets_append = own_supply_targets_in_vision.append
         enemy_supply_targets_append = enemy_supply_targets_in_vision.append
         own_missing_append = own_missing_supply_links.append
         enemy_missing_append = enemy_missing_supply_links.append
@@ -2980,8 +2965,6 @@ class Map:
         enemy_core_source_by_index = self.enemy_core_source_by_index
 
         for tile in self.tiles_in_vision:
-            if tile.in_own_resource_range > 0:
-                own_supply_targets_append(tile)
             if tile.in_enemy_resource_range > 0:
                 enemy_supply_targets_append(tile)
 
