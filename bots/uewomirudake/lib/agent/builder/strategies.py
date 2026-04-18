@@ -29,7 +29,7 @@ SCAVENGER_STRATEGY = [
         False,
         False,
     ),
-    (BuilderStrategyMethodsMixin.s_convert_to_defender,),
+    # (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (BuilderStrategyMethodsMixin.s_swap_with_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
@@ -161,6 +161,8 @@ INITIAL_BB_ORDER: list[str] = [
 ]
 FUTHER_BB_ROTATION: list[str] = [
     HARASSMENT_STRATEGY_ID,
+    HARASSMENT_STRATEGY_ID,
+    DEFENDER_STRATEGY_ID
 ]
 FURTHER_BB_MIN_TURN: int = 50
 FURTHER_BB_MIN_TITANIUM: int = 200

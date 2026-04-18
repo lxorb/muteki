@@ -14,6 +14,7 @@ from lib.agent.constants import (
     BUILDER_ACTION_RADIUS_SQ,
     CONVEYOR_ENTITY_TYPES,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
+    ENABLE_SENTINEL_INTEGRATE_OWN_TURRET,
     DIRECTIONAL_BUILDING_TYPES,
     ENEMY_TURRET_TYPES,
     HARASSMENT_STRATEGY_ID,
@@ -1227,7 +1228,7 @@ class BuilderNavigationMixin:
             ):
                 return (EntityType.GUNNER, gunner_direction)
 
-        if (
+        if ENABLE_SENTINEL_INTEGRATE_OWN_TURRET and (
             not require_affordable
             or self.u_can_afford_sentinel(respect_titanium_reserve)
         ):
