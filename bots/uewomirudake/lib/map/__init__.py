@@ -1283,6 +1283,9 @@ class Map:
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
                 self.visible_building_ids_by_index[self.u_to_index(pos)] = building_id
+                if self.ct.get_entity_type(building_id) == EntityType.CORE:
+                    for neighbor_pos in self.u_iter_adjacent_all_positions(pos):
+                        self.visible_building_ids_by_index[self.u_to_index(neighbor_pos)] = building_id
         self.stopwatch.lap("Reset + nearby queries")
 
         processed_tiles_in_vision = []
@@ -1318,6 +1321,7 @@ class Map:
         self.u_update_distances()
 
         self.stopwatch.lap("Distances")
+
 
         self.stopwatch.log()
 
@@ -1403,7 +1407,7 @@ class Map:
                     self.u_update_visible_core_center(tile)
 
                 if building.team == self.own_team:
-                    building_damaged = building.hp < self.ct.get_max_hp(building.id)
+                    building_damaged = building.hp and building.hp < self.ct.get_max_hp(building.id)
                     if (
                         building.entity_type
                         in {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR}

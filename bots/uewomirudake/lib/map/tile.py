@@ -471,7 +471,8 @@ class Tile:
                         )
                         self.update_target_zones_building()
 
-        self.building.hp = ct.get_hp(self.building.id)
+        if ct.get_hp(self.building.id):
+            self.building.hp = ct.get_hp(self.building.id)
         if self.building.entity_type in STORED_RESOURCE_TRACKED_ENTITY_TYPES:
             stored_resource = ct.get_stored_resource(self.building.id)
             if stored_resource is not None:

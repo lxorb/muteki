@@ -86,6 +86,8 @@ class BuilderExecutionMixin:
         return False
 
     def after_strategy(self):
+        if self.getting_yeeted_from_here != None:
+            return # marker already palced
         if self.awaiting_yeet_since != -1:
             self.place_marker_desperately()
         else:

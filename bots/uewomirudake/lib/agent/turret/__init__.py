@@ -103,7 +103,11 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         target_tile = self.map.tiles_by_index[written_idx]
 
         if not reachable_safe or target_tile not in reachable_safe:
-            if ENABLE_PRINTING: print("sorry, can't take you to", target_tile.position)
+            if ENABLE_PRINTING: print("sorry, can't take you to", target_tile.position, "these are the safe tiles: ", [t.position for t in self.map.launcher_safe_zone_tiles])
+            print("in safe zone tiles?", target_tile in self.map.launcher_safe_zone_tiles)
+            print("reachable?", target_tile in self.map.launcher_own_reachable)
+            print("ok so", target_tile.position, "is not reachable...")
+            print(target_tile.building.entity_type)
             return False
 
         if not self.ct.can_launch(bot_tile.position, target_tile.position):

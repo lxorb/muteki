@@ -5699,6 +5699,20 @@ class BuilderStrategyMethodsMixin:
             if ENABLE_PRINTING: print("REASON D")
             return False
         
+        if self.good_yeeter_already_exists(best_target.position):
+
+            direction = self.map.u_get_direction_between(self.map.current_pos, self.getting_yeeted_from_here)
+            if direction is None or self.ct.can_move(direction):
+                if direction is not None:
+                    self.ct.move(direction)
+                self.awaiting_yeet_since = 0
+                self.awaiting_yeet_pos = self.getting_yeeted_from_here
+                self.yeet_target_for_own_launcher = best_target.position
+                self.place_marker_desperately()
+                if ENABLE_PRINTING: print("GETTING YEETED without building own yeeter!")
+                #raise ValueError("I am", self.ct.get_id(), "round:", self.ct.get_current_round(), "I was thinking about building yeeter here:", best_pos, "to get to", best_target.position, "but I can just move to", self.getting_yeeted_from_here, "instead!")
+                return True
+        
         if self.ct.can_build_launcher(best_pos):
             self.ct.build_launcher(best_pos)
             launcher_tile = self.map.u_get_pos_tile(best_pos)
@@ -5717,6 +5731,38 @@ class BuilderStrategyMethodsMixin:
         if ENABLE_PRINTING: sw.log()
         return False
 
+    def good_yeeter_already_exists(self, target_position):
+        # check if there is any launcher we can get into the action radius of with only one turn
+        # meaning: any launcher with "move-distance (vertical/horizontal/diagonal)" 2
+        # and for all such launcher: check if target_position is reachable from it
+        # and if it is: store the tile we need to move to to get thrown as self.getting_yeeted_from_here
+        # make it as efficient as possible
+        current_pos = self.map.current_pos
+        cx, cy = current_pos.x, current_pos.y
+        target_idx = self.map.u_to_index(target_position)
+        for dx in range(-2, 3):
+            lx = cx + dx
+            if lx < 0 or lx >= self.map.width:
+                continue
+            for dy in range(-2, 3):
+                if dx == 0 and dy == 0:
+                    continue
+                ly = cy + dy
+                if ly < 0 or ly >= self.map.height:
+                    continue
+                launcher_tile = self.map.tiles_by_index[lx * self.map.INDEX_STRIDE + ly]
+                if (launcher_tile.building.id is None
+                        or launcher_tile.building.entity_type != EntityType.LAUNCHER
+                        or launcher_tile.building.team != self.map.own_team):
+                    continue
+                if not any(t.index == target_idx for t in self.map.u_get_launcher_target_positions(launcher_tile.position)):
+                    continue
+                for pickup_tile in self.map.u_get_launcher_pickup_positions(launcher_tile.position):
+                    px, py = pickup_tile.position.x, pickup_tile.position.y
+                    if max(abs(px - cx), abs(py - cy)) <= 1 and pickup_tile.is_walkable:
+                        self.getting_yeeted_from_here = pickup_tile.position
+                        return True
+        return False
 
     def could_place_marker_or_launcher_here(self, tile):
         if tile.in_own_resource_range != 0:
@@ -5876,7 +5922,7 @@ class BuilderStrategyMethodsMixin:
             return True
         for pos in self.map.u_iter_adjacent_all_positions(self.map.current_pos):
             relevant_tile = self.map.u_get_pos_tile(pos)
-            if self.could_place_marker_or_launcher_here(relevant_tile):
+            if self.getting_yeeted_from_here != pos and self.could_place_marker_or_launcher_here(relevant_tile):
                 if self.ct.can_destroy(pos):
                     self.ct.destroy(pos)
                 if self.ct.can_place_marker(pos):
@@ -5906,8 +5952,9 @@ class BuilderStrategyMethodsMixin:
 
         if ENABLE_PRINTING: print("LET ME MOVE TO", target_position, "PLLSSSS")
         
-        if not written_position:
-            raise ValueError(f"own_core_center_pos is None! strategy={self.strategy}, round={self.ct.get_current_round()}, pos={self.map.current_pos}, self.map.last_three_pos")
+        # if not written_position:
+        #    current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        #    raise ValueError("round", self.ct.get_current_round(), "I am", self.ct.get_id(), "and I have no idea where the center is", self.map.u_calc_core_center_positions(), current_tile.building.entity_type)
         written_index = written_position.x * self.map.INDEX_STRIDE + written_position.y
         if ENABLE_PRINTING: print("putting on the marker that I want to move to ", target_position, ":D")
         # 12 bits
@@ -5919,6 +5966,7 @@ class BuilderStrategyMethodsMixin:
         result |= written_index << 19
 
         return result
+
 
 
     def place_marker(self):
