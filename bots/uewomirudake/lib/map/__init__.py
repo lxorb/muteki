@@ -44,6 +44,13 @@ from lib.map.types import SupplyChainLabel
 # from lib.debug import Stopwatch
 from lib.debug.output import dprint
 
+# Weight multiplier applied to the Chebyshev heuristic in the bridge-join A*.
+# Values > 1 make the search greedy toward the goal (weighted / epsilon A*).
+# Paths returned can be up to BRIDGE_HEURISTIC_WEIGHT times optimal, which is
+# acceptable because the caller uses only the bridge index and a length
+# threshold — not the exact path length.
+BRIDGE_HEURISTIC_WEIGHT = 2
+
 PARSED_TILE_TYPE_INACTIVE = 0
 PARSED_TILE_TYPE_EMPTY = 1
 PARSED_TILE_TYPE_WALL = 2
@@ -4829,7 +4836,7 @@ class Map:
                 hdy = seed_y - target_y
                 if hdy < 0:
                     hdy = -hdy
-                heuristic = hdx if hdx >= hdy else hdy
+                heuristic = (hdx if hdx >= hdy else hdy) * BRIDGE_HEURISTIC_WEIGHT
                 lower_bound = source_dist + heuristic
 
                 seen_epoch_by_index[seed_idx] = path_epoch
@@ -4950,7 +4957,7 @@ class Map:
                     heuristic_dy = -heuristic_dy
                 heuristic = (
                     heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
-                )
+                ) * BRIDGE_HEURISTIC_WEIGHT
                 lower_bound = next_cost + heuristic
 
                 heappush_local(
