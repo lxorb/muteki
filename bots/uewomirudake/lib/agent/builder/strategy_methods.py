@@ -5710,8 +5710,9 @@ class BuilderStrategyMethodsMixin:
                 self.yeet_target_for_own_launcher = best_target.position
                 self.place_marker_desperately()
                 if ENABLE_PRINTING: print("GETTING YEETED without building own yeeter!")
-                #raise ValueError("I am", self.ct.get_id(), "round:", self.ct.get_current_round(), "I was thinking about building yeeter here:", best_pos, "to get to", best_target.position, "but I can just move to", self.getting_yeeted_from_here, "instead!")
+                # raise ValueError("I am", self.ct.get_id(), "round:", self.ct.get_current_round(), "I was thinking about building yeeter here:", best_pos, "to get to", best_target.position, "but I can just move to", self.getting_yeeted_from_here, "instead!")
                 return True
+    
         
         if self.ct.can_build_launcher(best_pos):
             self.ct.build_launcher(best_pos)
