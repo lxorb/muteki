@@ -47,6 +47,7 @@ class BuilderAgent(
         self.last_turn_completed = True
 
         self.supply_patrol_index = 0
+        self.enemy_supply_patrol_index = 0
         self.pending_missing_supply_link_index = None
         self.pending_missing_supply_link_resource = None
         self.pending_missing_supply_link_label = None

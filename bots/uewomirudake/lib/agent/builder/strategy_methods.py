@@ -4709,6 +4709,99 @@ class BuilderStrategyMethodsMixin:
 
         return False
 
+    def s_patrol_enemy_supply_chains(self):
+        """
+        Patrol known enemy supply links.
+
+        Mirrors allied supply patrol, but uses enemy supply-link knowledge.
+        Returns `False` immediately when there is no known enemy supply-link
+        target to patrol.
+        """
+        enemy_team = self.map.enemy_team
+        current_pos = self.map.current_pos
+        current_idx = self.map.u_to_index(current_pos)
+        tiles_by_index = self.map.tiles_by_index
+        known_enemy_supply_link_indices = self.map.known_enemy_supply_link_indices
+        get_own_core_dist = self.map.u_get_own_core_dist_by_index
+
+        if not known_enemy_supply_link_indices:
+            return False
+
+        def stamp_local_patrol_coverage() -> None:
+            current_tile = tiles_by_index[current_idx]
+            if (
+                current_tile.building.team == enemy_team
+                and current_tile.building.entity_type in SUPPLY_LINK_TYPES
+            ):
+                current_tile.last_patrolled_index = self.enemy_supply_patrol_index
+
+            for adjacent_idx in self.map.u_iter_neighbor_indices(current_idx):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.building.team == enemy_team
+                    and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
+                ):
+                    adjacent_tile.last_patrolled_index = (
+                        self.enemy_supply_patrol_index
+                    )
+
+        def get_unpatrolled_target_indices() -> list[int]:
+            enemy_supply_patrol_index = self.enemy_supply_patrol_index
+            candidate_entries: list[tuple[int, int, int, int]] = []
+
+            for idx in known_enemy_supply_link_indices:
+                if self.round_stopwatch.check_overtime():
+                    break
+                target_tile = tiles_by_index[idx]
+                last_patrolled_index = target_tile.last_patrolled_index
+                if last_patrolled_index >= enemy_supply_patrol_index:
+                    continue
+                dist_to_self = self.map.u_get_estimated_dist_to_self_by_index(idx)
+
+                candidate_entries.append(
+                    (
+                        dist_to_self,
+                        last_patrolled_index,
+                        get_own_core_dist(idx),
+                        idx,
+                    )
+                )
+
+            candidate_entries.sort()
+            return [idx for _, _, _, idx in candidate_entries]
+
+        stamp_local_patrol_coverage()
+
+        patrol_target_indices = get_unpatrolled_target_indices()
+        if not patrol_target_indices:
+            self.enemy_supply_patrol_index += 1
+            stamp_local_patrol_coverage()
+            patrol_target_indices = get_unpatrolled_target_indices()
+            if not patrol_target_indices:
+                return False
+
+        for target_idx in patrol_target_indices:
+            if self.u_move_to(tiles_by_index[target_idx].position):
+                return True
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not any(self.map.enemy_turret_target_by_index):
+            return False
+
+        for target_idx in patrol_target_indices:
+            if self.u_move_to(
+                tiles_by_index[target_idx].position,
+                avoid_enemy_turrets=False,
+            ):
+                return True
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return False
+
     def s_attack_enemy_harvester_supply_link(
         self,
         move_towards: bool = True,

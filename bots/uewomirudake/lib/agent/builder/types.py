@@ -23,6 +23,7 @@ class BuilderCommonSelf(Protocol):
     strategy: list[StrategyEntry]
     last_strategy_index: int
     last_turn_completed: bool
+    enemy_supply_patrol_index: int
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
     pending_missing_supply_link_label: SupplyChainLabel | None
@@ -417,6 +418,8 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         move_towards: bool = True,
         wait_if_enemy_builder_bots_in_range: bool = True,
     ) -> BuilderActionResult: ...
+
+    def s_patrol_enemy_supply_chains(self) -> BuilderActionResult: ...
 
     def s_move_toward_enemy_core(self) -> BuilderActionResult: ...
 

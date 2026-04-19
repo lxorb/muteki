@@ -576,6 +576,7 @@ class Map:
         )
         self.own_titanium_harvester_adjacent_candidate_touched_indices: list[int] = []
         self.known_own_supply_link_indices: set[int] = set()
+        self.known_enemy_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
 
         self.stopwatch = Stopwatch("Map")
@@ -3562,27 +3563,41 @@ class Map:
             and tile.position != self.current_pos
         )
 
-    def u_update_supply_patrol_indices(self) -> None:
-        """
-        Refresh persistent knowledge of allied supply-link tiles.
-
-        Known allied suppliers remain cached after they leave vision. When a
-        previously known tile becomes visible again and is no longer an allied
-        supplier, it is removed from the cache and its patrol marker is reset.
-        """
-        visible_supply_indices = {
-            tile.index for tile in self.own_supply_links_in_vision
-        }
-        known_supply_indices = self.known_own_supply_link_indices
+    def _u_update_known_supply_link_indices_for_tiles(
+        self,
+        visible_supply_tiles: list[Tile],
+        known_supply_indices: set[int],
+    ) -> None:
+        visible_supply_indices = {tile.index for tile in visible_supply_tiles}
         known_supply_indices.update(visible_supply_indices)
 
         for tile in self.tiles_in_vision:
             if tile.index in visible_supply_indices:
                 continue
+            if tile.index not in known_supply_indices:
+                continue
             known_supply_indices.discard(tile.index)
             tile.last_patrolled_index = -1
             if self.round_stopwatch.check_overtime_interval():
                 break
+
+    def u_update_supply_patrol_indices(self) -> None:
+        """
+        Refresh persistent knowledge of allied and enemy supply-link tiles.
+
+        Known suppliers remain cached after they leave vision. When a
+        previously known tile becomes visible again and is no longer a
+        supplier for that side, it is removed from the cache and its patrol
+        marker is reset.
+        """
+        self._u_update_known_supply_link_indices_for_tiles(
+            self.own_supply_links_in_vision,
+            self.known_own_supply_link_indices,
+        )
+        self._u_update_known_supply_link_indices_for_tiles(
+            self.enemy_supply_links_in_vision,
+            self.known_enemy_supply_link_indices,
+        )
 
     def u_enqueue_core_distance_index(
         self,
