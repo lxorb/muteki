@@ -363,6 +363,7 @@ class Map:
         self.vision_action_first_step_by_index = (
             array("h", [-1]) * self.INITIAL_MAP_SIZE
         )
+        self.own_action_reachable_launcher_indices: list[int] = []
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
@@ -4250,6 +4251,14 @@ class Map:
             self.u_to_index(target_pos)
         )
 
+    def u_get_vision_action_distance_by_index(self, idx: int) -> int | None:
+        if not self.u_is_vision_action_reachable_by_index(idx):
+            return None
+        goal_idx = self.vision_action_goal_idx_by_index[idx]
+        if goal_idx < 0:
+            return None
+        return self.dist_to_self_by_index[goal_idx]
+
     def u_get_estimated_dist_to_self_by_index(self, idx: int) -> int:
         if self.u_is_vision_reachable_by_index(idx):
             return self.dist_to_self_by_index[idx]
@@ -4273,6 +4282,7 @@ class Map:
         self.found_vision_reachable_titanium_this_turn = False
         self.found_vision_reachable_axionite_this_turn = False
         self.is_caged = True
+        self.own_action_reachable_launcher_indices.clear()
         queue = self.distance_queue_buffer_by_index
         queue.clear()
         queue_append = queue.append
@@ -4301,6 +4311,11 @@ class Map:
         environment_code_by_index = self.environment_code_by_index
         vision_bfs_passable_by_index = self.vision_bfs_passable_by_index
         bot_present_by_index = self.bot_present_by_index
+        own_action_reachable_launcher_indices = (
+            self.own_action_reachable_launcher_indices
+        )
+        tiles_by_index = self.tiles_by_index
+        own_team = self.own_team
         dist_to_self_by_index = self.dist_to_self_by_index
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
         overtime_check_countdown = 32
@@ -4310,6 +4325,13 @@ class Map:
             self.found_vision_reachable_titanium_this_turn = True
         elif source_environment_code == MAP_ENVIRONMENT_AXIONITE:
             self.found_vision_reachable_axionite_this_turn = True
+        source_tile = tiles_by_index[source_idx]
+        if (
+            source_tile.building.id is not None
+            and source_tile.building.team == own_team
+            and source_tile.building.entity_type == EntityType.LAUNCHER
+        ):
+            own_action_reachable_launcher_indices.append(source_idx)
 
         for offset in range(source_neighbor_count):
             neighbor_idx = neighbor_indices_by_index[source_neighbor_base + offset]
@@ -4322,6 +4344,13 @@ class Map:
                 vision_action_reachable_turn_by_index[neighbor_idx] = current_round
                 vision_action_goal_idx_by_index[neighbor_idx] = source_idx
                 vision_action_first_step_by_index[neighbor_idx] = -1
+                neighbor_tile = tiles_by_index[neighbor_idx]
+                if (
+                    neighbor_tile.building.id is not None
+                    and neighbor_tile.building.team == own_team
+                    and neighbor_tile.building.entity_type == EntityType.LAUNCHER
+                ):
+                    own_action_reachable_launcher_indices.append(neighbor_idx)
             if (
                 not vision_bfs_passable_by_index[neighbor_idx]
                 or bot_present_by_index[neighbor_idx]
@@ -4362,6 +4391,13 @@ class Map:
                     vision_action_first_step_by_index[neighbor_idx] = (
                         current_first_step_idx
                     )
+                    neighbor_tile = tiles_by_index[neighbor_idx]
+                    if (
+                        neighbor_tile.building.id is not None
+                        and neighbor_tile.building.team == own_team
+                        and neighbor_tile.building.entity_type == EntityType.LAUNCHER
+                    ):
+                        own_action_reachable_launcher_indices.append(neighbor_idx)
                 if (
                     not vision_bfs_passable_by_index[neighbor_idx]
                     or vision_reachable_turn_by_index[neighbor_idx] == current_round

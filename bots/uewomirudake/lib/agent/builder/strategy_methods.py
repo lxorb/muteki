@@ -5988,6 +5988,83 @@ class BuilderStrategyMethodsMixin:
             and tile.conveyor_targets_harvester
         )
 
+    def u_is_valid_yeet_landing_tile(self, tile) -> bool:
+        if tile.building.id is None:
+            return False
+        if not tile.is_passable or tile.bot.id is not None:
+            return False
+        if tile.in_enemy_attack_range or tile.in_enemy_launcher_pickup_zone:
+            return False
+        if (
+            self.map.u_is_vision_reachable_by_index(tile.index)
+            and tile.dist_to_self <= 2
+        ):
+            return False
+        return True
+
+    def good_yeeter_already_exists(self, target_position: Position) -> bool:
+        target_idx = self.map.u_to_index(target_position)
+        target_tile = self.map.tiles_by_index[target_idx]
+        if not self.u_is_valid_yeet_landing_tile(target_tile):
+            return False
+
+        current_pos = self.map.current_pos
+        tiles_by_index = self.map.tiles_by_index
+        best_entry = None
+
+        for launcher_idx in self.map.own_action_reachable_launcher_indices:
+            launcher_tile = tiles_by_index[launcher_idx]
+            if not any(
+                landing_idx == target_idx
+                for landing_idx in self.map.u_get_attackable_target_indices(
+                    launcher_idx,
+                    EntityType.LAUNCHER,
+                    Direction.NORTH,
+                )
+            ):
+                continue
+
+            action_dist = self.map.u_get_vision_action_distance_by_index(launcher_idx)
+            if action_dist is None:
+                continue
+            if action_dist == 0:
+                self.u_set_marker_target(target_position)
+                return True
+
+            next_step = self.map.u_get_next_step_towards_vision_action_reachable_by_index(
+                launcher_idx
+            )
+            if next_step is None:
+                continue
+
+            next_direction = self.map.u_get_direction_between(
+                current_pos,
+                next_step.position,
+            )
+            if next_direction is None or not self.ct.can_move(next_direction):
+                continue
+            if action_dist <= 1:
+                self.u_set_marker_target(target_position)
+                self.ct.move(next_direction)
+                return True
+
+            key = (
+                action_dist,
+                launcher_tile.position.x,
+                launcher_tile.position.y,
+                next_step.position.x,
+                next_step.position.y,
+            )
+            if best_entry is None or key < best_entry[0]:
+                best_entry = (key, next_direction)
+
+        if best_entry is None:
+            return False
+
+        self.u_set_marker_target(target_position)
+        self.ct.move(best_entry[1])
+        return True
+
     def lets_get_yeeted(self) -> bool:
         current_pos = self.map.current_pos
         current_path = self.map.current_path
@@ -6004,90 +6081,6 @@ class BuilderStrategyMethodsMixin:
                 path_index_by_tile_index.setdefault(neighbor_idx, path_idx)
 
         tiles_by_index = self.map.tiles_by_index
-        best_existing_entry = None
-
-        for launcher_tile in self.map.own_buildings_in_vision:
-            if (
-                launcher_tile.building.entity_type != EntityType.LAUNCHER
-                or launcher_tile.building.team != self.map.own_team
-            ):
-                continue
-
-            best_pickup_tile = None
-            for pickup_tile in self.map.u_get_launcher_pickup_positions(
-                launcher_tile.position
-            ):
-                pickup_pos = pickup_tile.position
-                if max(
-                    abs(pickup_pos.x - current_pos.x),
-                    abs(pickup_pos.y - current_pos.y),
-                ) > 1:
-                    continue
-                if not pickup_tile.is_passable and pickup_pos != current_pos:
-                    continue
-                best_pickup_tile = pickup_tile
-                if pickup_pos == current_pos:
-                    break
-
-            if best_pickup_tile is None:
-                continue
-
-            for landing_idx in self.map.u_get_attackable_target_indices(
-                launcher_tile.index,
-                EntityType.LAUNCHER,
-                Direction.NORTH,
-            ):
-                landing_tile = tiles_by_index[landing_idx]
-                if (
-                    launcher_tile.position.distance_squared(landing_tile.position) <= 2
-                ):
-                    continue
-                if (
-                    not landing_tile.is_passable
-                    or landing_tile.bot.id is not None
-                    or landing_tile.in_enemy_attack_range
-                    or landing_tile.in_enemy_launcher_pickup_zone
-                ):
-                    continue
-
-                path_idx = path_index_by_tile_index.get(landing_idx)
-                if path_idx is None:
-                    continue
-
-                key = (
-                    -path_idx,
-                    0 if best_pickup_tile.position == current_pos else 1,
-                    best_pickup_tile.position.distance_squared(current_pos),
-                    landing_tile.position.x,
-                    landing_tile.position.y,
-                    launcher_tile.position.x,
-                    launcher_tile.position.y,
-                )
-                if best_existing_entry is None or key < best_existing_entry[0]:
-                    best_existing_entry = (
-                        key,
-                        best_pickup_tile,
-                        landing_tile,
-                    )
-
-        if best_existing_entry is not None:
-            _, pickup_tile, landing_tile = best_existing_entry
-            self.u_set_marker_target(landing_tile.position)
-            if pickup_tile.position == current_pos:
-                return True
-            return bool(
-                self.u_move_to(
-                    pickup_tile.position,
-                    allow_conveyor_building=False,
-                    respect_titanium_reserve_for_road_build=True,
-                )
-            )
-
-        current_tile = self.map.u_get_pos_tile(current_pos)
-        if current_tile.in_own_launcher_pickup_zone != 0:
-            return False
-        if self.map.titanium < LAUNCHER_BUILD_MIN_TITANIUM:
-            return False
 
         best_pos = None
         best_target_tile = None
@@ -6110,12 +6103,7 @@ class BuilderStrategyMethodsMixin:
                 landing_tile = tiles_by_index[landing_idx]
                 if launcher_pos.distance_squared(landing_tile.position) <= 2:
                     continue
-                if (
-                    not landing_tile.is_passable
-                    or landing_tile.bot.id is not None
-                    or landing_tile.in_enemy_attack_range
-                    or landing_tile.in_enemy_launcher_pickup_zone
-                ):
+                if not self.u_is_valid_yeet_landing_tile(landing_tile):
                     continue
 
                 path_idx = path_index_by_tile_index.get(landing_idx)
@@ -6124,6 +6112,17 @@ class BuilderStrategyMethodsMixin:
                     best_pos = launcher_pos
                     best_target_tile = landing_tile
 
+        if (
+            best_target_tile is not None
+            and self.good_yeeter_already_exists(best_target_tile.position)
+        ):
+            return True
+
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if current_tile.in_own_launcher_pickup_zone != 0:
+            return False
+        if self.map.titanium < LAUNCHER_BUILD_MIN_TITANIUM:
+            return False
         if (
             best_pos is None
             or best_target_tile is None

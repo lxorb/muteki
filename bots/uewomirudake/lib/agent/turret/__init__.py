@@ -101,6 +101,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         launcher_pos = self.map.current_pos
         return self.u_filter_tiles(
             [self.map.u_get_pos_tile(pos) for pos in self.ct.get_attackable_tiles()],
+            lambda tile: tile.building.id is not None,
             lambda tile: tile.is_passable,
             lambda tile: tile.bot.id is None,
             lambda tile: launcher_pos.distance_squared(tile.position) > 2,
