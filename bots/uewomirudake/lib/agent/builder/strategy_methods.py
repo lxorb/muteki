@@ -5802,11 +5802,9 @@ class BuilderStrategyMethodsMixin:
         Only tiles within `candidate_radius` Euclidean distance of the builder
         are considered; by default this is the builder's full vision radius.
         Priorities are: critically damaged core first (at or below one third of
-        max HP), then tiles with a damaged own builder bot standing on them,
-        then by building type in this order: bridge,
-        conveyor, road, foundry, harvester, armoured conveyor, splitter,
-        sentinel, gunner, launcher, breach, barrier, noncritical core. Ties
-        are broken by distance to self and then distance to own core.
+        max HP), then by building type in this order: gunner, sentinel,
+        breach, bridge, conveyor, armoured conveyor, road, foundry,
+        harvester, splitter, launcher, barrier, noncritical core.
         """
         own_team = self.map.own_team
         current_pos = self.map.current_pos
@@ -5874,27 +5872,20 @@ class BuilderStrategyMethodsMixin:
             return False
 
         building_type_rank = {
-            EntityType.BRIDGE: 2,
-            EntityType.CONVEYOR: 3,
-            EntityType.ROAD: 4,
-            EntityType.FOUNDRY: 5,
-            EntityType.HARVESTER: 6,
-            EntityType.ARMOURED_CONVEYOR: 3,
-            EntityType.SPLITTER: 8,
-            EntityType.SENTINEL: 9,
-            EntityType.GUNNER: 10,
+            EntityType.GUNNER: 2,
+            EntityType.SENTINEL: 3,
+            EntityType.BREACH: 4,
+            EntityType.BRIDGE: 5,
+            EntityType.CONVEYOR: 6,
+            EntityType.ARMOURED_CONVEYOR: 6,
+            EntityType.ROAD: 7,
+            EntityType.FOUNDRY: 8,
+            EntityType.HARVESTER: 9,
+            EntityType.SPLITTER: 10,
             EntityType.LAUNCHER: 11,
-            EntityType.BREACH: 12,
-            EntityType.BARRIER: 13,
-            EntityType.CORE: 14,
+            EntityType.BARRIER: 12,
+            EntityType.CORE: 13,
         }
-
-        def has_damaged_own_builder(tile) -> bool:
-            return bool(
-                tile.bot.id is not None
-                and tile.bot.team == own_team
-                and tile.bot.hp < self.ct.get_max_hp(tile.bot.id)
-            )
 
         def is_critical_core(tile) -> bool:
             if (
@@ -5908,14 +5899,8 @@ class BuilderStrategyMethodsMixin:
         target_tile = min(
             dict.fromkeys(candidate_tiles),
             key=lambda tile: (
-                (
-                    0
-                    if is_critical_core(tile)
-                    else 1 if has_damaged_own_builder(tile) else 2
-                ),
+                0 if is_critical_core(tile) else 1,
                 building_type_rank.get(tile.building.entity_type, 99),
-                tile.dist_to_self,
-                tile.own_core_dist,
             ),
         )
         return bool(
