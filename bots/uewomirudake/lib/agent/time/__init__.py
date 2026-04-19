@@ -68,6 +68,9 @@ class RoundStopwatch:
         caller = inspect.currentframe().f_back.f_code.co_name
         tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
+        if not SUBMISSION_ENV:
+            return False
+
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
             if self.map_done
@@ -81,6 +84,9 @@ class RoundStopwatch:
         active_cpu_time = self.time_provider.get_active_time()
         caller = inspect.currentframe().f_back.f_code.co_name
         tprint(f"[{caller}] {active_cpu_time:.2f} mus")
+
+        if not SUBMISSION_ENV:
+            return False
 
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS

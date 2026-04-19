@@ -107,7 +107,7 @@ class BuilderAgent(
                 f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
             )
             self.map.map_json_loaded_print_pending = False
-        dprint(f"Builder strategy: {self.u_get_strategy_name()}")
+        print(f"Builder strategy: {self.u_get_strategy_name()}")
 
         handled = self.u_execute_strategy()
         finished_loading_map = self.map.u_update_map()

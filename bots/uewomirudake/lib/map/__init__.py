@@ -4777,6 +4777,7 @@ class Map:
         seen_epoch_by_index = self.path_seen_epoch_by_index
         predecessor_by_index = self.path_predecessor_by_index
         path_cost_by_index = self.path_cost_by_index
+        path_first_step_by_index = self.path_first_step_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
         u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
@@ -4791,35 +4792,70 @@ class Map:
         frontier.clear()
         self.round_stopwatch.log_time("bridge_join epoch + frontier reset")
 
-        source_x = index_x_by_index[source_idx]
-        source_y = index_y_by_index[source_idx]
         target_x = index_x_by_index[target_idx]
         target_y = index_y_by_index[target_idx]
-        dx = target_x - source_x
-        if dx < 0:
-            dx = -dx
-        dy = target_y - source_y
-        if dy < 0:
-            dy = -dy
-        seen_epoch_by_index[target_idx] = path_epoch
-        predecessor_by_index[target_idx] = target_idx
-        path_cost_by_index[target_idx] = 0
-        heappush_local(
-            frontier,
-            (
-                dx if dx >= dy else dy,
-                0,
-                0,
-                u_get_own_core_dist_by_index(target_idx),
-                target_x,
-                target_y,
-                target_idx,
-            ),
-        )
-        self.round_stopwatch.log_time("bridge_join heap seed")
 
-        best_bridge_idx = -1
-        best_bridge_score: tuple[int, int, int, int, int] | None = None
+        # Seed the heap with every seen-side horizon tile (a vision-reachable
+        # tile adjacent to an unseen tile), using its precomputed source-side
+        # distance as the A* starting cost. Every horizon seed owns paths it
+        # grows, tracked in path_first_step_by_index, so when target is popped
+        # we can read the bridge directly off it.
+        seeded_count = 0
+        for unseen_idx in self.frontier_expand_cached_unseen_indices:
+            base = unseen_idx * max_neighbor_count
+            count = neighbor_count_by_index[unseen_idx]
+            for offset in range(count):
+                seed_idx = neighbor_indices_by_index[base + offset]
+                if vision_reachable_turn_by_index[seed_idx] != current_round:
+                    continue
+                if seed_idx == source_idx:
+                    continue
+                if seen_epoch_by_index[seed_idx] == path_epoch:
+                    continue
+                first_step_idx = vision_first_step_by_index[seed_idx]
+                if (
+                    first_step_idx < 0
+                    or first_step_idx == source_idx
+                    or bot_present_by_index[first_step_idx]
+                ):
+                    continue
+
+                source_dist = dist_to_self_by_index[seed_idx]
+                seed_x = index_x_by_index[seed_idx]
+                seed_y = index_y_by_index[seed_idx]
+                hdx = seed_x - target_x
+                if hdx < 0:
+                    hdx = -hdx
+                hdy = seed_y - target_y
+                if hdy < 0:
+                    hdy = -hdy
+                heuristic = hdx if hdx >= hdy else hdy
+                lower_bound = source_dist + heuristic
+
+                seen_epoch_by_index[seed_idx] = path_epoch
+                predecessor_by_index[seed_idx] = seed_idx
+                path_cost_by_index[seed_idx] = source_dist
+                path_first_step_by_index[seed_idx] = seed_idx
+
+                heappush_local(
+                    frontier,
+                    (
+                        lower_bound,
+                        source_dist,
+                        0,
+                        u_get_own_core_dist_by_index(seed_idx),
+                        seed_x,
+                        seed_y,
+                        seed_idx,
+                    ),
+                )
+                seeded_count += 1
+
+        self.round_stopwatch.log_time(f"bridge_join seeded={seeded_count}")
+
+        if seeded_count == 0:
+            return None
+
         overtime_check_countdown = 16
         pops = 0
 
@@ -4831,12 +4867,12 @@ class Map:
                 overtime_check_countdown = 16
 
             (
-                current_lower_bound,
+                _,
                 current_cost,
                 _,
-                current_own_core_dist,
-                current_x,
-                current_y,
+                _,
+                _,
+                _,
                 current_idx,
             ) = heappop_local(frontier)
             if (
@@ -4845,42 +4881,41 @@ class Map:
             ):
                 continue
             pops += 1
-            if (
-                best_bridge_score is not None
-                and current_lower_bound > best_bridge_score[0]
-            ):
-                break
 
-            if vision_reachable_turn_by_index[current_idx] == current_round:
-                bridge_next_step_idx = (
-                    predecessor_by_index[current_idx]
-                    if current_idx == source_idx
-                    else vision_first_step_by_index[current_idx]
+            if current_idx == target_idx:
+                bridge_idx = path_first_step_by_index[current_idx]
+                self.round_stopwatch.log_time(
+                    f"bridge_join astar done pops={pops} "
+                    f"bridge_idx={bridge_idx} total={current_cost}"
                 )
-                if (
-                    bridge_next_step_idx >= 0
-                    and bridge_next_step_idx != source_idx
-                    and not bot_present_by_index[bridge_next_step_idx]
-                ):
-                    candidate_score = (
-                        current_cost + dist_to_self_by_index[current_idx],
-                        current_cost,
-                        current_own_core_dist,
-                        current_x,
-                        current_y,
-                    )
-                    if best_bridge_score is None or candidate_score < best_bridge_score:
-                        best_bridge_score = candidate_score
-                        best_bridge_idx = current_idx
-                continue
+                # Flip the predecessor chain so callers walking from bridge_idx
+                # via predecessor_by_index land on target (the search built the
+                # chain in the opposite direction).
+                chain = []
+                node = target_idx
+                while node != bridge_idx:
+                    chain.append(node)
+                    next_node = predecessor_by_index[node]
+                    if next_node == node or next_node < 0:
+                        break
+                    node = next_node
+                chain.append(bridge_idx)
+                for i in range(len(chain) - 1, 0, -1):
+                    predecessor_by_index[chain[i]] = chain[i - 1]
+                return (bridge_idx, current_cost)
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
             next_cost = current_cost + 1
+            current_bridge_seed = path_first_step_by_index[current_idx]
 
             for offset in range(neighbor_count):
                 adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[adjacent_idx]:
+                    continue
+                # Don't re-enter the known vision graph — those tiles are
+                # already handled by the seeded costs.
+                if vision_reachable_turn_by_index[adjacent_idx] == current_round:
                     continue
                 if (
                     avoid_enemy_turrets
@@ -4894,41 +4929,29 @@ class Map:
                 ):
                     continue
 
-                if seen_epoch_by_index[adjacent_idx] == path_epoch:
-                    previous_cost = path_cost_by_index[adjacent_idx]
-                    if next_cost > previous_cost:
-                        continue
-                    if next_cost == previous_cost:
-                        if adjacent_idx != source_idx:
-                            continue
-                        existing_first_step_idx = predecessor_by_index[source_idx]
-                        if (
-                            existing_first_step_idx >= 0
-                            and existing_first_step_idx != source_idx
-                            and not bot_present_by_index[existing_first_step_idx]
-                        ):
-                            continue
-                        if bot_present_by_index[current_idx]:
-                            continue
+                if (
+                    seen_epoch_by_index[adjacent_idx] == path_epoch
+                    and next_cost >= path_cost_by_index[adjacent_idx]
+                ):
+                    continue
 
                 adjacent_x = index_x_by_index[adjacent_idx]
                 adjacent_y = index_y_by_index[adjacent_idx]
                 predecessor_by_index[adjacent_idx] = current_idx
                 seen_epoch_by_index[adjacent_idx] = path_epoch
                 path_cost_by_index[adjacent_idx] = next_cost
+                path_first_step_by_index[adjacent_idx] = current_bridge_seed
 
-                heuristic_dx = adjacent_x - source_x
+                heuristic_dx = adjacent_x - target_x
                 if heuristic_dx < 0:
                     heuristic_dx = -heuristic_dx
-                heuristic_dy = adjacent_y - source_y
+                heuristic_dy = adjacent_y - target_y
                 if heuristic_dy < 0:
                     heuristic_dy = -heuristic_dy
                 heuristic = (
                     heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
                 )
                 lower_bound = next_cost + heuristic
-                if best_bridge_score is not None and lower_bound > best_bridge_score[0]:
-                    continue
 
                 heappush_local(
                     frontier,
@@ -4944,11 +4967,9 @@ class Map:
                 )
 
         self.round_stopwatch.log_time(
-            f"bridge_join astar done pops={pops} " f"best_idx={best_bridge_idx}"
+            f"bridge_join astar done pops={pops} no_target"
         )
-        if best_bridge_idx < 0 or best_bridge_score is None:
-            return None
-        return (best_bridge_idx, best_bridge_score[0])
+        return None
 
     def u_calculate_shortest_path_via_vision_join(
         self,
