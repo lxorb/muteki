@@ -1,0 +1,54 @@
+{
+    "a2b913f3-6c6c-49e8-ac1c-1c7c69e3b5ab": {
+        "corridors": {
+            "wins": 0,
+            "losses": 1,
+            "dffb3c64-653e-4e2b-acc2-2b6d6874689d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 356,
+                "time": 1776300335
+            }
+        },
+        "default_large1": {
+            "wins": 0,
+            "losses": 1,
+            "dffb3c64-653e-4e2b-acc2-2b6d6874689d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776300335
+            }
+        },
+        "battlebot": {
+            "wins": 0,
+            "losses": 1,
+            "dffb3c64-653e-4e2b-acc2-2b6d6874689d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776300335
+            }
+        },
+        "shrub": {
+            "wins": 1,
+            "losses": 0,
+            "dffb3c64-653e-4e2b-acc2-2b6d6874689d": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776300335
+            }
+        },
+        "window_shopping": {
+            "wins": 0,
+            "losses": 1,
+            "dffb3c64-653e-4e2b-acc2-2b6d6874689d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776300335
+            }
+        }
+    }
+}

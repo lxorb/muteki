@@ -1,0 +1,6028 @@
+{
+    "64bb714f-4d8d-441f-b1e2-c9a047903430": {
+        "dna": {
+            "wins": 2,
+            "losses": 0,
+            "c2c55bf9-edf3-4c9f-b9bc-eb1e0a9f319b": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "49fd44aa-1183-471f-9bf6-1cf81d7cf056": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614027
+            }
+        },
+        "donut": {
+            "wins": 2,
+            "losses": 0,
+            "c2c55bf9-edf3-4c9f-b9bc-eb1e0a9f319b": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "fe925a92-2aaf-4816-89fa-fd0875e2d8ce": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 922,
+                "time": 1776620329
+            }
+        },
+        "landscape": {
+            "wins": 2,
+            "losses": 0,
+            "c2c55bf9-edf3-4c9f-b9bc-eb1e0a9f319b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "fe925a92-2aaf-4816-89fa-fd0875e2d8ce": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620329
+            }
+        },
+        "pls_buy_cucats_merch": {
+            "wins": 1,
+            "losses": 0,
+            "c2c55bf9-edf3-4c9f-b9bc-eb1e0a9f319b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602086
+            }
+        },
+        "starry_night": {
+            "wins": 2,
+            "losses": 0,
+            "c2c55bf9-edf3-4c9f-b9bc-eb1e0a9f319b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "5bf05200-8023-45d4-9fb1-d290b13e36df": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617896
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 2,
+            "6b3c3784-c2f3-4b2d-89df-4e4759a443ab": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607335
+            },
+            "b7488de1-8af4-4f0f-9d80-4118c76a4923": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611307
+            }
+        },
+        "galaxy": {
+            "wins": 2,
+            "losses": 0,
+            "6b3c3784-c2f3-4b2d-89df-4e4759a443ab": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 250,
+                "time": 1776607335
+            },
+            "b7488de1-8af4-4f0f-9d80-4118c76a4923": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 408,
+                "time": 1776611307
+            }
+        },
+        "coffee": {
+            "wins": 0,
+            "losses": 1,
+            "6b3c3784-c2f3-4b2d-89df-4e4759a443ab": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776607335
+            }
+        },
+        "default_small2": {
+            "wins": 2,
+            "losses": 0,
+            "6b3c3784-c2f3-4b2d-89df-4e4759a443ab": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607335
+            },
+            "5bf05200-8023-45d4-9fb1-d290b13e36df": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617896
+            }
+        },
+        "wall": {
+            "wins": 2,
+            "losses": 0,
+            "6b3c3784-c2f3-4b2d-89df-4e4759a443ab": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607335
+            },
+            "5bf05200-8023-45d4-9fb1-d290b13e36df": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617896
+            }
+        },
+        "first_sound": {
+            "wins": 2,
+            "losses": 0,
+            "35738d0d-bd8d-4c5f-ba88-62c5e81d3679": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609128
+            },
+            "5bf05200-8023-45d4-9fb1-d290b13e36df": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617896
+            }
+        },
+        "shrub": {
+            "wins": 1,
+            "losses": 0,
+            "35738d0d-bd8d-4c5f-ba88-62c5e81d3679": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609128
+            }
+        },
+        "castle_keep": {
+            "wins": 1,
+            "losses": 0,
+            "35738d0d-bd8d-4c5f-ba88-62c5e81d3679": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609128
+            }
+        },
+        "strings": {
+            "wins": 0,
+            "losses": 1,
+            "35738d0d-bd8d-4c5f-ba88-62c5e81d3679": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609128
+            }
+        },
+        "gaussian": {
+            "wins": 1,
+            "losses": 0,
+            "35738d0d-bd8d-4c5f-ba88-62c5e81d3679": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609128
+            }
+        },
+        "spikes": {
+            "wins": 1,
+            "losses": 0,
+            "4d29aef8-dc15-4689-a40d-a60608612330": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610165
+            }
+        },
+        "chemistry_class": {
+            "wins": 1,
+            "losses": 0,
+            "4d29aef8-dc15-4689-a40d-a60608612330": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610165
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 0,
+            "4d29aef8-dc15-4689-a40d-a60608612330": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1515,
+                "time": 1776610165
+            }
+        },
+        "socket": {
+            "wins": 1,
+            "losses": 0,
+            "4d29aef8-dc15-4689-a40d-a60608612330": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610165
+            }
+        },
+        "vase": {
+            "wins": 1,
+            "losses": 0,
+            "4d29aef8-dc15-4689-a40d-a60608612330": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610165
+            }
+        },
+        "cold": {
+            "wins": 1,
+            "losses": 0,
+            "b7488de1-8af4-4f0f-9d80-4118c76a4923": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611307
+            }
+        },
+        "flowers": {
+            "wins": 1,
+            "losses": 0,
+            "b7488de1-8af4-4f0f-9d80-4118c76a4923": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611307
+            }
+        },
+        "wasteland": {
+            "wins": 1,
+            "losses": 0,
+            "b7488de1-8af4-4f0f-9d80-4118c76a4923": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611307
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 0,
+            "d9ae84c6-1d2a-4bcc-85eb-8edaabcd3d29": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612725
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 1,
+            "losses": 0,
+            "d9ae84c6-1d2a-4bcc-85eb-8edaabcd3d29": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612725
+            }
+        },
+        "thread_of_connection": {
+            "wins": 0,
+            "losses": 1,
+            "d9ae84c6-1d2a-4bcc-85eb-8edaabcd3d29": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612725
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 1,
+            "losses": 0,
+            "d9ae84c6-1d2a-4bcc-85eb-8edaabcd3d29": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612725
+            }
+        },
+        "pixel_forest": {
+            "wins": 0,
+            "losses": 1,
+            "d9ae84c6-1d2a-4bcc-85eb-8edaabcd3d29": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612725
+            }
+        },
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "49fd44aa-1183-471f-9bf6-1cf81d7cf056": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614027
+            }
+        },
+        "window_shopping": {
+            "wins": 1,
+            "losses": 0,
+            "49fd44aa-1183-471f-9bf6-1cf81d7cf056": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614027
+            }
+        },
+        "hooks": {
+            "wins": 1,
+            "losses": 0,
+            "49fd44aa-1183-471f-9bf6-1cf81d7cf056": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614027
+            }
+        },
+        "bar_chart": {
+            "wins": 1,
+            "losses": 0,
+            "49fd44aa-1183-471f-9bf6-1cf81d7cf056": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614027
+            }
+        },
+        "minimaze": {
+            "wins": 1,
+            "losses": 0,
+            "34817214-6b77-415e-beb1-522490d5445d": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776615097
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 1,
+            "losses": 0,
+            "34817214-6b77-415e-beb1-522490d5445d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615097
+            }
+        },
+        "arena": {
+            "wins": 1,
+            "losses": 0,
+            "34817214-6b77-415e-beb1-522490d5445d": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 147,
+                "time": 1776615097
+            }
+        },
+        "the_great_divide": {
+            "wins": 1,
+            "losses": 0,
+            "34817214-6b77-415e-beb1-522490d5445d": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776615097
+            }
+        },
+        "default_large1": {
+            "wins": 1,
+            "losses": 0,
+            "34817214-6b77-415e-beb1-522490d5445d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615097
+            }
+        },
+        "shish_kebab": {
+            "wins": 0,
+            "losses": 1,
+            "93acf7c7-cbe5-451b-abf5-5c53c4b8dd5e": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616423
+            }
+        },
+        "rush_bait": {
+            "wins": 0,
+            "losses": 1,
+            "93acf7c7-cbe5-451b-abf5-5c53c4b8dd5e": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616423
+            }
+        },
+        "perch_point": {
+            "wins": 1,
+            "losses": 0,
+            "93acf7c7-cbe5-451b-abf5-5c53c4b8dd5e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616423
+            }
+        },
+        "clash_arena": {
+            "wins": 0,
+            "losses": 1,
+            "93acf7c7-cbe5-451b-abf5-5c53c4b8dd5e": {
+                "win": false,
+                "condition": "Harvesters",
+                "turns": 2000,
+                "time": 1776616423
+            }
+        },
+        "corridors": {
+            "wins": 1,
+            "losses": 0,
+            "93acf7c7-cbe5-451b-abf5-5c53c4b8dd5e": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776616423
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 1,
+            "losses": 0,
+            "5bf05200-8023-45d4-9fb1-d290b13e36df": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617896
+            }
+        },
+        "butterfly": {
+            "wins": 0,
+            "losses": 1,
+            "69b19901-9f0f-4625-9dea-f5c3d969f6b8": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619193
+            }
+        },
+        "mandelbrot": {
+            "wins": 1,
+            "losses": 0,
+            "69b19901-9f0f-4625-9dea-f5c3d969f6b8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619193
+            }
+        },
+        "hourglass": {
+            "wins": 1,
+            "losses": 0,
+            "69b19901-9f0f-4625-9dea-f5c3d969f6b8": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1549,
+                "time": 1776619193
+            }
+        },
+        "tea": {
+            "wins": 1,
+            "losses": 0,
+            "69b19901-9f0f-4625-9dea-f5c3d969f6b8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619193
+            }
+        },
+        "craters": {
+            "wins": 0,
+            "losses": 1,
+            "69b19901-9f0f-4625-9dea-f5c3d969f6b8": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 442,
+                "time": 1776619193
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 1,
+            "fe925a92-2aaf-4816-89fa-fd0875e2d8ce": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620329
+            }
+        },
+        "face": {
+            "wins": 1,
+            "losses": 0,
+            "fe925a92-2aaf-4816-89fa-fd0875e2d8ce": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 516,
+                "time": 1776620329
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "fe925a92-2aaf-4816-89fa-fd0875e2d8ce": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620329
+            }
+        }
+    },
+    "55d69169-9544-491a-a450-0d54d07e0c27": {
+        "hooks": {
+            "wins": 1,
+            "losses": 0,
+            "110a2186-1a30-43dc-925e-f8770ecc6d93": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1099,
+                "time": 1776602086
+            }
+        },
+        "face": {
+            "wins": 2,
+            "losses": 0,
+            "110a2186-1a30-43dc-925e-f8770ecc6d93": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 318,
+                "time": 1776602086
+            },
+            "841a7312-e8ab-4ef1-88bc-2197adcf43fa": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 182,
+                "time": 1776614433
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 0,
+            "losses": 2,
+            "110a2186-1a30-43dc-925e-f8770ecc6d93": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "8d0ee90f-27c1-42f1-98d2-bad78177c251": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 263,
+                "time": 1776610548
+            }
+        },
+        "socket": {
+            "wins": 2,
+            "losses": 0,
+            "110a2186-1a30-43dc-925e-f8770ecc6d93": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "841a7312-e8ab-4ef1-88bc-2197adcf43fa": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614433
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 1,
+            "110a2186-1a30-43dc-925e-f8770ecc6d93": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "517396eb-bc07-46d9-bd04-17e2b5699299": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 939,
+                "time": 1776611711
+            }
+        },
+        "coffee": {
+            "wins": 2,
+            "losses": 0,
+            "65fadeb4-269c-4aee-8895-edca6aad6d34": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 115,
+                "time": 1776602834
+            },
+            "8b178959-0756-415c-88b4-769818672306": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 132,
+                "time": 1776615769
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 1,
+            "65fadeb4-269c-4aee-8895-edca6aad6d34": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602834
+            },
+            "841a7312-e8ab-4ef1-88bc-2197adcf43fa": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614433
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 0,
+            "losses": 2,
+            "65fadeb4-269c-4aee-8895-edca6aad6d34": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 279,
+                "time": 1776602834
+            },
+            "294b6b55-8617-4f3d-90c8-a4c1de1e4f9b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1181,
+                "time": 1776609133
+            }
+        },
+        "clash_arena": {
+            "wins": 2,
+            "losses": 0,
+            "65fadeb4-269c-4aee-8895-edca6aad6d34": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602834
+            },
+            "cca0ed74-d634-42e0-bc71-cde4c583ec60": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 411,
+                "time": 1776617078
+            }
+        },
+        "shrub": {
+            "wins": 1,
+            "losses": 1,
+            "65fadeb4-269c-4aee-8895-edca6aad6d34": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 260,
+                "time": 1776602834
+            },
+            "c8184601-c089-463f-8c61-31bb2d246219": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 319,
+                "time": 1776613106
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 2,
+            "9050a563-7b0c-4f11-992e-dbbd7b002065": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776606708
+            },
+            "517396eb-bc07-46d9-bd04-17e2b5699299": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611711
+            }
+        },
+        "strings": {
+            "wins": 1,
+            "losses": 1,
+            "9050a563-7b0c-4f11-992e-dbbd7b002065": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 313,
+                "time": 1776606708
+            },
+            "8b178959-0756-415c-88b4-769818672306": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 470,
+                "time": 1776615769
+            }
+        },
+        "hourglass": {
+            "wins": 1,
+            "losses": 1,
+            "9050a563-7b0c-4f11-992e-dbbd7b002065": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606708
+            },
+            "4af65c41-08ef-4e2c-8222-ea241bf7d33f": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1150,
+                "time": 1776618546
+            }
+        },
+        "perch_point": {
+            "wins": 2,
+            "losses": 0,
+            "9050a563-7b0c-4f11-992e-dbbd7b002065": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 577,
+                "time": 1776606708
+            },
+            "8b178959-0756-415c-88b4-769818672306": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 295,
+                "time": 1776615769
+            }
+        },
+        "butterfly": {
+            "wins": 1,
+            "losses": 0,
+            "9050a563-7b0c-4f11-992e-dbbd7b002065": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 382,
+                "time": 1776606708
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 2,
+            "4e00feea-8ec3-42a0-b6ce-46c8c333b240": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608109
+            },
+            "c8184601-c089-463f-8c61-31bb2d246219": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613106
+            }
+        },
+        "default_small1": {
+            "wins": 1,
+            "losses": 1,
+            "4e00feea-8ec3-42a0-b6ce-46c8c333b240": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608109
+            },
+            "4af65c41-08ef-4e2c-8222-ea241bf7d33f": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618546
+            }
+        },
+        "default_large2": {
+            "wins": 2,
+            "losses": 0,
+            "4e00feea-8ec3-42a0-b6ce-46c8c333b240": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608109
+            },
+            "8d0ee90f-27c1-42f1-98d2-bad78177c251": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610548
+            }
+        },
+        "default_large1": {
+            "wins": 0,
+            "losses": 1,
+            "4e00feea-8ec3-42a0-b6ce-46c8c333b240": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608109
+            }
+        },
+        "tea": {
+            "wins": 0,
+            "losses": 2,
+            "4e00feea-8ec3-42a0-b6ce-46c8c333b240": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 229,
+                "time": 1776608109
+            },
+            "cca0ed74-d634-42e0-bc71-cde4c583ec60": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617078
+            }
+        },
+        "the_great_divide": {
+            "wins": 1,
+            "losses": 0,
+            "294b6b55-8617-4f3d-90c8-a4c1de1e4f9b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 197,
+                "time": 1776609133
+            }
+        },
+        "corridors": {
+            "wins": 1,
+            "losses": 1,
+            "294b6b55-8617-4f3d-90c8-a4c1de1e4f9b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 426,
+                "time": 1776609133
+            },
+            "8d0ee90f-27c1-42f1-98d2-bad78177c251": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 349,
+                "time": 1776610548
+            }
+        },
+        "gaussian": {
+            "wins": 2,
+            "losses": 0,
+            "294b6b55-8617-4f3d-90c8-a4c1de1e4f9b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 132,
+                "time": 1776609133
+            },
+            "aaa11986-39e8-4cc7-9d3b-5d7431eb02db": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 122,
+                "time": 1776621113
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 0,
+            "294b6b55-8617-4f3d-90c8-a4c1de1e4f9b": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609133
+            }
+        },
+        "bear_of_doom": {
+            "wins": 1,
+            "losses": 0,
+            "8d0ee90f-27c1-42f1-98d2-bad78177c251": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610548
+            }
+        },
+        "window_shopping": {
+            "wins": 0,
+            "losses": 1,
+            "8d0ee90f-27c1-42f1-98d2-bad78177c251": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 717,
+                "time": 1776610548
+            }
+        },
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "517396eb-bc07-46d9-bd04-17e2b5699299": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 276,
+                "time": 1776611711
+            }
+        },
+        "wall": {
+            "wins": 1,
+            "losses": 0,
+            "517396eb-bc07-46d9-bd04-17e2b5699299": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611711
+            }
+        },
+        "pixel_forest": {
+            "wins": 0,
+            "losses": 1,
+            "517396eb-bc07-46d9-bd04-17e2b5699299": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 584,
+                "time": 1776611711
+            }
+        },
+        "craters": {
+            "wins": 1,
+            "losses": 0,
+            "c8184601-c089-463f-8c61-31bb2d246219": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 245,
+                "time": 1776613106
+            }
+        },
+        "climbing_wall": {
+            "wins": 0,
+            "losses": 1,
+            "c8184601-c089-463f-8c61-31bb2d246219": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 449,
+                "time": 1776613106
+            }
+        },
+        "vase": {
+            "wins": 1,
+            "losses": 0,
+            "c8184601-c089-463f-8c61-31bb2d246219": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613106
+            }
+        },
+        "tiles": {
+            "wins": 0,
+            "losses": 1,
+            "841a7312-e8ab-4ef1-88bc-2197adcf43fa": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614433
+            }
+        },
+        "flappy_bird": {
+            "wins": 0,
+            "losses": 1,
+            "841a7312-e8ab-4ef1-88bc-2197adcf43fa": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1098,
+                "time": 1776614433
+            }
+        },
+        "tree_of_life": {
+            "wins": 0,
+            "losses": 1,
+            "8b178959-0756-415c-88b4-769818672306": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776615769
+            }
+        },
+        "pls_buy_cucats_merch": {
+            "wins": 1,
+            "losses": 0,
+            "8b178959-0756-415c-88b4-769818672306": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615769
+            }
+        },
+        "git_branches": {
+            "wins": 0,
+            "losses": 1,
+            "cca0ed74-d634-42e0-bc71-cde4c583ec60": {
+                "win": false,
+                "condition": "Harvesters",
+                "turns": 2000,
+                "time": 1776617078
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 1,
+            "losses": 0,
+            "cca0ed74-d634-42e0-bc71-cde4c583ec60": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617078
+            }
+        },
+        "hopscotch": {
+            "wins": 0,
+            "losses": 1,
+            "cca0ed74-d634-42e0-bc71-cde4c583ec60": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1774,
+                "time": 1776617078
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 1,
+            "4af65c41-08ef-4e2c-8222-ea241bf7d33f": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618546
+            }
+        },
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "4af65c41-08ef-4e2c-8222-ea241bf7d33f": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618546
+            }
+        },
+        "the_powerful_egg": {
+            "wins": 1,
+            "losses": 0,
+            "4af65c41-08ef-4e2c-8222-ea241bf7d33f": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 720,
+                "time": 1776618546
+            }
+        },
+        "shish_kebab": {
+            "wins": 1,
+            "losses": 0,
+            "7f7416b6-0623-4a21-9945-ad7376430fa8": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619699
+            }
+        },
+        "landscape": {
+            "wins": 1,
+            "losses": 0,
+            "7f7416b6-0623-4a21-9945-ad7376430fa8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619699
+            }
+        },
+        "arena": {
+            "wins": 1,
+            "losses": 0,
+            "7f7416b6-0623-4a21-9945-ad7376430fa8": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 278,
+                "time": 1776619699
+            }
+        },
+        "rush_bait": {
+            "wins": 1,
+            "losses": 0,
+            "7f7416b6-0623-4a21-9945-ad7376430fa8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619699
+            }
+        },
+        "galaxy": {
+            "wins": 1,
+            "losses": 0,
+            "7f7416b6-0623-4a21-9945-ad7376430fa8": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 113,
+                "time": 1776619699
+            }
+        },
+        "we_love_tetris": {
+            "wins": 0,
+            "losses": 1,
+            "aaa11986-39e8-4cc7-9d3b-5d7431eb02db": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621113
+            }
+        },
+        "spikes": {
+            "wins": 1,
+            "losses": 0,
+            "aaa11986-39e8-4cc7-9d3b-5d7431eb02db": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621113
+            }
+        },
+        "starry_night": {
+            "wins": 1,
+            "losses": 0,
+            "aaa11986-39e8-4cc7-9d3b-5d7431eb02db": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621113
+            }
+        },
+        "bar_chart": {
+            "wins": 1,
+            "losses": 0,
+            "aaa11986-39e8-4cc7-9d3b-5d7431eb02db": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621113
+            }
+        }
+    },
+    "b4a784e9-1e15-4d0d-89d0-b673c53e686b": {
+        "castle_keep": {
+            "wins": 0,
+            "losses": 1,
+            "15d12e9f-b9e2-4b67-8ff6-db80b72d9312": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 287,
+                "time": 1776602086
+            }
+        },
+        "corridors": {
+            "wins": 0,
+            "losses": 1,
+            "15d12e9f-b9e2-4b67-8ff6-db80b72d9312": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 271,
+                "time": 1776602086
+            }
+        },
+        "mandelbrot": {
+            "wins": 1,
+            "losses": 1,
+            "15d12e9f-b9e2-4b67-8ff6-db80b72d9312": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "e0538ad2-46f3-4636-a6eb-02e9cb54ede8": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 358,
+                "time": 1776614449
+            }
+        },
+        "face": {
+            "wins": 0,
+            "losses": 1,
+            "15d12e9f-b9e2-4b67-8ff6-db80b72d9312": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776602086
+            }
+        },
+        "tea": {
+            "wins": 0,
+            "losses": 2,
+            "15d12e9f-b9e2-4b67-8ff6-db80b72d9312": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776602086
+            },
+            "0342459f-ace0-46ad-a9b1-5e36ce36ad68": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 532,
+                "time": 1776613362
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 1,
+            "8a720273-f3bf-440b-a75f-2b03e888f89d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776605562
+            },
+            "b948c859-6de4-46fc-a0a0-9d3a08bb30d1": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617638
+            }
+        },
+        "dna": {
+            "wins": 1,
+            "losses": 1,
+            "8a720273-f3bf-440b-a75f-2b03e888f89d": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1771,
+                "time": 1776605562
+            },
+            "e0538ad2-46f3-4636-a6eb-02e9cb54ede8": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 871,
+                "time": 1776614449
+            }
+        },
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "8a720273-f3bf-440b-a75f-2b03e888f89d": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 424,
+                "time": 1776605562
+            }
+        },
+        "gaussian": {
+            "wins": 0,
+            "losses": 2,
+            "8a720273-f3bf-440b-a75f-2b03e888f89d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 309,
+                "time": 1776605562
+            },
+            "b0fc813d-b370-4cd9-87c4-2275ba907385": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618671
+            }
+        },
+        "binary_tree": {
+            "wins": 0,
+            "losses": 1,
+            "8a720273-f3bf-440b-a75f-2b03e888f89d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 933,
+                "time": 1776605562
+            }
+        },
+        "perch_point": {
+            "wins": 1,
+            "losses": 1,
+            "13d77db6-420a-4938-b5e4-18a8ea272bf8": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 652,
+                "time": 1776606835
+            },
+            "65b92542-3189-45fc-9042-54a7f4bc0aa9": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610801
+            }
+        },
+        "window_shopping": {
+            "wins": 0,
+            "losses": 2,
+            "13d77db6-420a-4938-b5e4-18a8ea272bf8": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776606835
+            },
+            "dd2f3921-206e-4291-96c8-6b10b911bd6d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 254,
+                "time": 1776609636
+            }
+        },
+        "tree_of_life": {
+            "wins": 0,
+            "losses": 2,
+            "13d77db6-420a-4938-b5e4-18a8ea272bf8": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1547,
+                "time": 1776606835
+            },
+            "a08a1f6f-5792-492f-8b15-a32c3c3d995d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612596
+            }
+        },
+        "strings": {
+            "wins": 1,
+            "losses": 1,
+            "13d77db6-420a-4938-b5e4-18a8ea272bf8": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 491,
+                "time": 1776606835
+            },
+            "0342459f-ace0-46ad-a9b1-5e36ce36ad68": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 893,
+                "time": 1776613362
+            }
+        },
+        "building_blocks": {
+            "wins": 0,
+            "losses": 2,
+            "13d77db6-420a-4938-b5e4-18a8ea272bf8": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606835
+            },
+            "a08a1f6f-5792-492f-8b15-a32c3c3d995d": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612596
+            }
+        },
+        "socket": {
+            "wins": 1,
+            "losses": 0,
+            "f748879e-7ccd-4ae8-90a9-c02f645c8db3": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608363
+            }
+        },
+        "bar_chart": {
+            "wins": 0,
+            "losses": 2,
+            "f748879e-7ccd-4ae8-90a9-c02f645c8db3": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608363
+            },
+            "2d1ff548-60aa-4977-b8c4-cb8b5a7d8347": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619950
+            }
+        },
+        "cold": {
+            "wins": 0,
+            "losses": 2,
+            "f748879e-7ccd-4ae8-90a9-c02f645c8db3": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 296,
+                "time": 1776608363
+            },
+            "dd2f3921-206e-4291-96c8-6b10b911bd6d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1023,
+                "time": 1776609636
+            }
+        },
+        "climbing_wall": {
+            "wins": 1,
+            "losses": 1,
+            "f748879e-7ccd-4ae8-90a9-c02f645c8db3": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608363
+            },
+            "e0538ad2-46f3-4636-a6eb-02e9cb54ede8": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 703,
+                "time": 1776614449
+            }
+        },
+        "hopscotch": {
+            "wins": 1,
+            "losses": 1,
+            "f748879e-7ccd-4ae8-90a9-c02f645c8db3": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 403,
+                "time": 1776608363
+            },
+            "65b92542-3189-45fc-9042-54a7f4bc0aa9": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610801
+            }
+        },
+        "flowers": {
+            "wins": 0,
+            "losses": 2,
+            "dd2f3921-206e-4291-96c8-6b10b911bd6d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 474,
+                "time": 1776609636
+            },
+            "05326f67-b814-4e09-80e4-5703395d4f9b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 250,
+                "time": 1776615641
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 1,
+            "losses": 0,
+            "dd2f3921-206e-4291-96c8-6b10b911bd6d": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609636
+            }
+        },
+        "bear_of_doom": {
+            "wins": 0,
+            "losses": 1,
+            "dd2f3921-206e-4291-96c8-6b10b911bd6d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609636
+            }
+        },
+        "chemistry_class": {
+            "wins": 0,
+            "losses": 1,
+            "65b92542-3189-45fc-9042-54a7f4bc0aa9": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1000,
+                "time": 1776610801
+            }
+        },
+        "shish_kebab": {
+            "wins": 0,
+            "losses": 1,
+            "65b92542-3189-45fc-9042-54a7f4bc0aa9": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 448,
+                "time": 1776610801
+            }
+        },
+        "donut": {
+            "wins": 0,
+            "losses": 1,
+            "65b92542-3189-45fc-9042-54a7f4bc0aa9": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610801
+            }
+        },
+        "default_small1": {
+            "wins": 1,
+            "losses": 0,
+            "a08a1f6f-5792-492f-8b15-a32c3c3d995d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612596
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 1,
+            "a08a1f6f-5792-492f-8b15-a32c3c3d995d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612596
+            }
+        },
+        "chess": {
+            "wins": 0,
+            "losses": 1,
+            "a08a1f6f-5792-492f-8b15-a32c3c3d995d": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612596
+            }
+        },
+        "landscape": {
+            "wins": 0,
+            "losses": 1,
+            "0342459f-ace0-46ad-a9b1-5e36ce36ad68": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613362
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 1,
+            "0342459f-ace0-46ad-a9b1-5e36ce36ad68": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613362
+            }
+        },
+        "rush_bait": {
+            "wins": 0,
+            "losses": 1,
+            "0342459f-ace0-46ad-a9b1-5e36ce36ad68": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613362
+            }
+        },
+        "we_love_tetris": {
+            "wins": 1,
+            "losses": 0,
+            "e0538ad2-46f3-4636-a6eb-02e9cb54ede8": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 361,
+                "time": 1776614449
+            }
+        },
+        "pixel_forest": {
+            "wins": 1,
+            "losses": 0,
+            "e0538ad2-46f3-4636-a6eb-02e9cb54ede8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614449
+            }
+        },
+        "coffee": {
+            "wins": 0,
+            "losses": 1,
+            "05326f67-b814-4e09-80e4-5703395d4f9b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 283,
+                "time": 1776615641
+            }
+        },
+        "the_great_divide": {
+            "wins": 0,
+            "losses": 1,
+            "05326f67-b814-4e09-80e4-5703395d4f9b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 689,
+                "time": 1776615641
+            }
+        },
+        "flappy_bird": {
+            "wins": 0,
+            "losses": 1,
+            "05326f67-b814-4e09-80e4-5703395d4f9b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 478,
+                "time": 1776615641
+            }
+        },
+        "starry_night": {
+            "wins": 1,
+            "losses": 0,
+            "05326f67-b814-4e09-80e4-5703395d4f9b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615641
+            }
+        },
+        "craters": {
+            "wins": 0,
+            "losses": 1,
+            "b948c859-6de4-46fc-a0a0-9d3a08bb30d1": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617638
+            }
+        },
+        "hooks": {
+            "wins": 1,
+            "losses": 0,
+            "b948c859-6de4-46fc-a0a0-9d3a08bb30d1": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1727,
+                "time": 1776617638
+            }
+        },
+        "tiles": {
+            "wins": 1,
+            "losses": 0,
+            "b948c859-6de4-46fc-a0a0-9d3a08bb30d1": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617638
+            }
+        },
+        "galaxy": {
+            "wins": 1,
+            "losses": 0,
+            "b948c859-6de4-46fc-a0a0-9d3a08bb30d1": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1636,
+                "time": 1776617638
+            }
+        },
+        "hourglass": {
+            "wins": 0,
+            "losses": 1,
+            "b0fc813d-b370-4cd9-87c4-2275ba907385": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 402,
+                "time": 1776618671
+            }
+        },
+        "spikes": {
+            "wins": 0,
+            "losses": 1,
+            "b0fc813d-b370-4cd9-87c4-2275ba907385": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618671
+            }
+        },
+        "pls_buy_cucats_merch": {
+            "wins": 0,
+            "losses": 1,
+            "b0fc813d-b370-4cd9-87c4-2275ba907385": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618671
+            }
+        },
+        "default_medium2": {
+            "wins": 0,
+            "losses": 1,
+            "b0fc813d-b370-4cd9-87c4-2275ba907385": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618671
+            }
+        },
+        "battlebot": {
+            "wins": 0,
+            "losses": 1,
+            "2d1ff548-60aa-4977-b8c4-cb8b5a7d8347": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619950
+            }
+        },
+        "shrub": {
+            "wins": 0,
+            "losses": 1,
+            "2d1ff548-60aa-4977-b8c4-cb8b5a7d8347": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 393,
+                "time": 1776619950
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 1,
+            "losses": 0,
+            "2d1ff548-60aa-4977-b8c4-cb8b5a7d8347": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619950
+            }
+        },
+        "arena": {
+            "wins": 1,
+            "losses": 0,
+            "2d1ff548-60aa-4977-b8c4-cb8b5a7d8347": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 475,
+                "time": 1776619950
+            }
+        },
+        "vase": {
+            "wins": 0,
+            "losses": 1,
+            "cc1e1e94-76eb-4a59-9f12-677711ef8008": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 323,
+                "time": 1776621114
+            }
+        },
+        "default_large1": {
+            "wins": 0,
+            "losses": 1,
+            "cc1e1e94-76eb-4a59-9f12-677711ef8008": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1080,
+                "time": 1776621114
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 1,
+            "cc1e1e94-76eb-4a59-9f12-677711ef8008": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 453,
+                "time": 1776621114
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "cc1e1e94-76eb-4a59-9f12-677711ef8008": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621114
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 0,
+            "losses": 1,
+            "cc1e1e94-76eb-4a59-9f12-677711ef8008": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776621114
+            }
+        }
+    },
+    "9360446d-e598-439a-85fb-ada26caba6de": {
+        "cold": {
+            "wins": 1,
+            "losses": 0,
+            "ac397617-56ca-4d42-b11f-a78ca3e2d735": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602087
+            }
+        },
+        "mandelbrot": {
+            "wins": 1,
+            "losses": 0,
+            "ac397617-56ca-4d42-b11f-a78ca3e2d735": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602087
+            }
+        },
+        "shrub": {
+            "wins": 1,
+            "losses": 1,
+            "ac397617-56ca-4d42-b11f-a78ca3e2d735": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 241,
+                "time": 1776602087
+            },
+            "d644aacd-287d-454f-876c-016c6796e03b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 508,
+                "time": 1776616691
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 1,
+            "ac397617-56ca-4d42-b11f-a78ca3e2d735": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 315,
+                "time": 1776602087
+            },
+            "f5d49638-9ec0-486f-ad88-74a10056ec2e": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621368
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 2,
+            "losses": 0,
+            "ac397617-56ca-4d42-b11f-a78ca3e2d735": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602087
+            },
+            "0090686d-3f20-4db4-895a-6872938cc266": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609131
+            }
+        },
+        "donut": {
+            "wins": 1,
+            "losses": 0,
+            "0dc7bd0d-85bd-4a4e-a891-751153a96ba9": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605560
+            }
+        },
+        "hooks": {
+            "wins": 1,
+            "losses": 1,
+            "0dc7bd0d-85bd-4a4e-a891-751153a96ba9": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776605560
+            },
+            "313a0deb-4bc5-436c-8c2f-fffd2b7a3897": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 167,
+                "time": 1776611709
+            }
+        },
+        "flappy_bird": {
+            "wins": 2,
+            "losses": 0,
+            "0dc7bd0d-85bd-4a4e-a891-751153a96ba9": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605560
+            },
+            "b9372a4e-e3de-4728-90fc-848c9d6496cb": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 108,
+                "time": 1776615359
+            }
+        },
+        "tea": {
+            "wins": 0,
+            "losses": 2,
+            "0dc7bd0d-85bd-4a4e-a891-751153a96ba9": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 199,
+                "time": 1776605560
+            },
+            "d644aacd-287d-454f-876c-016c6796e03b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 976,
+                "time": 1776616691
+            }
+        },
+        "butterfly": {
+            "wins": 2,
+            "losses": 0,
+            "0dc7bd0d-85bd-4a4e-a891-751153a96ba9": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605560
+            },
+            "cdf312de-4b36-4096-84e0-3e9082c668a4": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619323
+            }
+        },
+        "rush_bait": {
+            "wins": 1,
+            "losses": 1,
+            "411886e2-5402-4133-986b-dcea2800023e": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606580
+            },
+            "f5d49638-9ec0-486f-ad88-74a10056ec2e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621368
+            }
+        },
+        "first_sound": {
+            "wins": 2,
+            "losses": 0,
+            "411886e2-5402-4133-986b-dcea2800023e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606580
+            },
+            "313a0deb-4bc5-436c-8c2f-fffd2b7a3897": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611709
+            }
+        },
+        "cubes": {
+            "wins": 2,
+            "losses": 0,
+            "411886e2-5402-4133-986b-dcea2800023e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 246,
+                "time": 1776606580
+            },
+            "d644aacd-287d-454f-876c-016c6796e03b": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776616691
+            }
+        },
+        "flowers": {
+            "wins": 1,
+            "losses": 1,
+            "411886e2-5402-4133-986b-dcea2800023e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 417,
+                "time": 1776606580
+            },
+            "7d142e52-9c9f-41f8-8828-a137d5647289": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614302
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 0,
+            "411886e2-5402-4133-986b-dcea2800023e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 113,
+                "time": 1776606580
+            }
+        },
+        "the_great_divide": {
+            "wins": 1,
+            "losses": 0,
+            "68f7e845-3356-4db2-8f2f-c5b2944e3adc": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607856
+            }
+        },
+        "clash_arena": {
+            "wins": 2,
+            "losses": 0,
+            "68f7e845-3356-4db2-8f2f-c5b2944e3adc": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 100,
+                "time": 1776607856
+            },
+            "d644aacd-287d-454f-876c-016c6796e03b": {
+                "win": true,
+                "condition": "Harvesters",
+                "turns": 2000,
+                "time": 1776616691
+            }
+        },
+        "binary_tree": {
+            "wins": 2,
+            "losses": 0,
+            "68f7e845-3356-4db2-8f2f-c5b2944e3adc": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 93,
+                "time": 1776607856
+            },
+            "b9372a4e-e3de-4728-90fc-848c9d6496cb": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 250,
+                "time": 1776615359
+            }
+        },
+        "building_blocks": {
+            "wins": 0,
+            "losses": 1,
+            "68f7e845-3356-4db2-8f2f-c5b2944e3adc": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607856
+            }
+        },
+        "bear_of_doom": {
+            "wins": 1,
+            "losses": 1,
+            "68f7e845-3356-4db2-8f2f-c5b2944e3adc": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1038,
+                "time": 1776607856
+            },
+            "f5d49638-9ec0-486f-ad88-74a10056ec2e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621368
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 1,
+            "losses": 0,
+            "0090686d-3f20-4db4-895a-6872938cc266": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609131
+            }
+        },
+        "vase": {
+            "wins": 1,
+            "losses": 0,
+            "0090686d-3f20-4db4-895a-6872938cc266": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 178,
+                "time": 1776609131
+            }
+        },
+        "git_branches": {
+            "wins": 1,
+            "losses": 0,
+            "0090686d-3f20-4db4-895a-6872938cc266": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 337,
+                "time": 1776609131
+            }
+        },
+        "hopscotch": {
+            "wins": 1,
+            "losses": 0,
+            "0090686d-3f20-4db4-895a-6872938cc266": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609131
+            }
+        },
+        "starry_night": {
+            "wins": 1,
+            "losses": 0,
+            "3e7f0bb9-2768-42c0-b7d1-c3ff5bfd085a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 325,
+                "time": 1776610546
+            }
+        },
+        "socket": {
+            "wins": 1,
+            "losses": 0,
+            "3e7f0bb9-2768-42c0-b7d1-c3ff5bfd085a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 165,
+                "time": 1776610546
+            }
+        },
+        "battlebot": {
+            "wins": 1,
+            "losses": 0,
+            "3e7f0bb9-2768-42c0-b7d1-c3ff5bfd085a": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610546
+            }
+        },
+        "pong": {
+            "wins": 0,
+            "losses": 1,
+            "3e7f0bb9-2768-42c0-b7d1-c3ff5bfd085a": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610546
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 1,
+            "3e7f0bb9-2768-42c0-b7d1-c3ff5bfd085a": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610546
+            }
+        },
+        "craters": {
+            "wins": 1,
+            "losses": 0,
+            "313a0deb-4bc5-436c-8c2f-fffd2b7a3897": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 372,
+                "time": 1776611709
+            }
+        },
+        "dna": {
+            "wins": 1,
+            "losses": 0,
+            "313a0deb-4bc5-436c-8c2f-fffd2b7a3897": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 463,
+                "time": 1776611709
+            }
+        },
+        "bar_chart": {
+            "wins": 1,
+            "losses": 0,
+            "313a0deb-4bc5-436c-8c2f-fffd2b7a3897": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611709
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 1,
+            "losses": 0,
+            "695fde9c-dcdf-4fdf-a7c2-d6d3c75298a9": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 81,
+                "time": 1776612727
+            }
+        },
+        "face": {
+            "wins": 1,
+            "losses": 0,
+            "695fde9c-dcdf-4fdf-a7c2-d6d3c75298a9": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 101,
+                "time": 1776612727
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 1,
+            "695fde9c-dcdf-4fdf-a7c2-d6d3c75298a9": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612727
+            }
+        },
+        "default_large1": {
+            "wins": 1,
+            "losses": 0,
+            "695fde9c-dcdf-4fdf-a7c2-d6d3c75298a9": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 574,
+                "time": 1776612727
+            }
+        },
+        "we_love_tetris": {
+            "wins": 1,
+            "losses": 0,
+            "695fde9c-dcdf-4fdf-a7c2-d6d3c75298a9": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612727
+            }
+        },
+        "perch_point": {
+            "wins": 1,
+            "losses": 0,
+            "7d142e52-9c9f-41f8-8828-a137d5647289": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 186,
+                "time": 1776614302
+            }
+        },
+        "corridors": {
+            "wins": 1,
+            "losses": 0,
+            "7d142e52-9c9f-41f8-8828-a137d5647289": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614302
+            }
+        },
+        "wall": {
+            "wins": 1,
+            "losses": 0,
+            "7d142e52-9c9f-41f8-8828-a137d5647289": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614302
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 1,
+            "losses": 0,
+            "7d142e52-9c9f-41f8-8828-a137d5647289": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614302
+            }
+        },
+        "coffee": {
+            "wins": 1,
+            "losses": 0,
+            "b9372a4e-e3de-4728-90fc-848c9d6496cb": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 163,
+                "time": 1776615359
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "b9372a4e-e3de-4728-90fc-848c9d6496cb": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615359
+            }
+        },
+        "minimaze": {
+            "wins": 0,
+            "losses": 1,
+            "b9372a4e-e3de-4728-90fc-848c9d6496cb": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1363,
+                "time": 1776615359
+            }
+        },
+        "arena": {
+            "wins": 1,
+            "losses": 0,
+            "d644aacd-287d-454f-876c-016c6796e03b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 75,
+                "time": 1776616691
+            }
+        },
+        "thread_of_connection": {
+            "wins": 1,
+            "losses": 0,
+            "904cf676-3510-4f2c-b984-cbe7baf7926e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 167,
+                "time": 1776618166
+            }
+        },
+        "climbing_wall": {
+            "wins": 1,
+            "losses": 0,
+            "904cf676-3510-4f2c-b984-cbe7baf7926e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618166
+            }
+        },
+        "hourglass": {
+            "wins": 1,
+            "losses": 0,
+            "904cf676-3510-4f2c-b984-cbe7baf7926e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 127,
+                "time": 1776618166
+            }
+        },
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "904cf676-3510-4f2c-b984-cbe7baf7926e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 76,
+                "time": 1776618166
+            }
+        },
+        "gaussian": {
+            "wins": 1,
+            "losses": 0,
+            "904cf676-3510-4f2c-b984-cbe7baf7926e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618166
+            }
+        },
+        "landscape": {
+            "wins": 1,
+            "losses": 0,
+            "cdf312de-4b36-4096-84e0-3e9082c668a4": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619323
+            }
+        },
+        "strings": {
+            "wins": 1,
+            "losses": 0,
+            "cdf312de-4b36-4096-84e0-3e9082c668a4": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 149,
+                "time": 1776619323
+            }
+        },
+        "tiles": {
+            "wins": 1,
+            "losses": 0,
+            "cdf312de-4b36-4096-84e0-3e9082c668a4": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 311,
+                "time": 1776619323
+            }
+        },
+        "default_small1": {
+            "wins": 1,
+            "losses": 0,
+            "cdf312de-4b36-4096-84e0-3e9082c668a4": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 243,
+                "time": 1776619323
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 0,
+            "f5d49638-9ec0-486f-ad88-74a10056ec2e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621368
+            }
+        },
+        "castle_keep": {
+            "wins": 1,
+            "losses": 0,
+            "f5d49638-9ec0-486f-ad88-74a10056ec2e": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776621368
+            }
+        }
+    },
+    "31724ff8-4f57-42fc-9271-0d0cb5832b70": {
+        "git_branches": {
+            "wins": 2,
+            "losses": 0,
+            "3c143e4d-eda8-40b0-9615-a7906eb08fcd": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602087
+            },
+            "5d354e7c-60a3-4b4b-812c-c57d5937e50c": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1487,
+                "time": 1776615226
+            }
+        },
+        "cold": {
+            "wins": 0,
+            "losses": 1,
+            "3c143e4d-eda8-40b0-9615-a7906eb08fcd": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 488,
+                "time": 1776602087
+            }
+        },
+        "binary_tree": {
+            "wins": 1,
+            "losses": 0,
+            "3c143e4d-eda8-40b0-9615-a7906eb08fcd": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602087
+            }
+        },
+        "starry_night": {
+            "wins": 1,
+            "losses": 1,
+            "3c143e4d-eda8-40b0-9615-a7906eb08fcd": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776602087
+            },
+            "fdfa0c59-7f83-42dc-8cd9-fa3daadaf1c4": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 579,
+                "time": 1776616162
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 0,
+            "losses": 1,
+            "3c143e4d-eda8-40b0-9615-a7906eb08fcd": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 390,
+                "time": 1776602087
+            }
+        },
+        "wasteland": {
+            "wins": 0,
+            "losses": 2,
+            "7a8f9eb5-98be-4bdb-85eb-5e4425032126": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 166,
+                "time": 1776605564
+            },
+            "fdfa0c59-7f83-42dc-8cd9-fa3daadaf1c4": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 223,
+                "time": 1776616162
+            }
+        },
+        "flappy_bird": {
+            "wins": 0,
+            "losses": 1,
+            "7a8f9eb5-98be-4bdb-85eb-5e4425032126": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776605564
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 0,
+            "7a8f9eb5-98be-4bdb-85eb-5e4425032126": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776605564
+            }
+        },
+        "default_large1": {
+            "wins": 2,
+            "losses": 0,
+            "7a8f9eb5-98be-4bdb-85eb-5e4425032126": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 378,
+                "time": 1776605564
+            },
+            "cad25236-b2ab-45b8-a5c9-d6fb752cee91": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614026
+            }
+        },
+        "clash_arena": {
+            "wins": 0,
+            "losses": 1,
+            "7a8f9eb5-98be-4bdb-85eb-5e4425032126": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605564
+            }
+        },
+        "arena": {
+            "wins": 1,
+            "losses": 0,
+            "fb198809-fe9a-4da0-9fc1-3976cfbca12d": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776607586
+            }
+        },
+        "pong": {
+            "wins": 1,
+            "losses": 0,
+            "fb198809-fe9a-4da0-9fc1-3976cfbca12d": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776607586
+            }
+        },
+        "the_powerful_egg": {
+            "wins": 1,
+            "losses": 0,
+            "fb198809-fe9a-4da0-9fc1-3976cfbca12d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607586
+            }
+        },
+        "pixel_forest": {
+            "wins": 0,
+            "losses": 2,
+            "fb198809-fe9a-4da0-9fc1-3976cfbca12d": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607586
+            },
+            "67a1c52d-5cab-465c-8877-f5794d682c0d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617640
+            }
+        },
+        "hopscotch": {
+            "wins": 1,
+            "losses": 1,
+            "fb198809-fe9a-4da0-9fc1-3976cfbca12d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776607586
+            },
+            "67a1c52d-5cab-465c-8877-f5794d682c0d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617640
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 2,
+            "30ac8c0a-6c34-4ad5-abfe-862104e4b7ec": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608746
+            },
+            "12297f37-731c-40f0-949f-9904920afc75": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620077
+            }
+        },
+        "wall": {
+            "wins": 2,
+            "losses": 0,
+            "30ac8c0a-6c34-4ad5-abfe-862104e4b7ec": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608746
+            },
+            "fdfa0c59-7f83-42dc-8cd9-fa3daadaf1c4": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616162
+            }
+        },
+        "strings": {
+            "wins": 0,
+            "losses": 1,
+            "30ac8c0a-6c34-4ad5-abfe-862104e4b7ec": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608746
+            }
+        },
+        "perch_point": {
+            "wins": 0,
+            "losses": 1,
+            "30ac8c0a-6c34-4ad5-abfe-862104e4b7ec": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608746
+            }
+        },
+        "rush_bait": {
+            "wins": 1,
+            "losses": 0,
+            "30ac8c0a-6c34-4ad5-abfe-862104e4b7ec": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608746
+            }
+        },
+        "first_sound": {
+            "wins": 1,
+            "losses": 0,
+            "bd5479d4-84cc-435f-8545-7de04a392518": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609784
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 0,
+            "losses": 1,
+            "bd5479d4-84cc-435f-8545-7de04a392518": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609784
+            }
+        },
+        "corridors": {
+            "wins": 0,
+            "losses": 2,
+            "bd5479d4-84cc-435f-8545-7de04a392518": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1236,
+                "time": 1776609784
+            },
+            "cad25236-b2ab-45b8-a5c9-d6fb752cee91": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614026
+            }
+        },
+        "donut": {
+            "wins": 1,
+            "losses": 1,
+            "bd5479d4-84cc-435f-8545-7de04a392518": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609784
+            },
+            "12297f37-731c-40f0-949f-9904920afc75": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620077
+            }
+        },
+        "socket": {
+            "wins": 0,
+            "losses": 1,
+            "bd5479d4-84cc-435f-8545-7de04a392518": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 236,
+                "time": 1776609784
+            }
+        },
+        "bear_of_doom": {
+            "wins": 0,
+            "losses": 1,
+            "3c9d9ce4-c7c3-43d2-97e1-a8f248dbe5cd": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 244,
+                "time": 1776611054
+            }
+        },
+        "climbing_wall": {
+            "wins": 1,
+            "losses": 0,
+            "3c9d9ce4-c7c3-43d2-97e1-a8f248dbe5cd": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1222,
+                "time": 1776611054
+            }
+        },
+        "bar_chart": {
+            "wins": 0,
+            "losses": 2,
+            "3c9d9ce4-c7c3-43d2-97e1-a8f248dbe5cd": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611054
+            },
+            "fdfa0c59-7f83-42dc-8cd9-fa3daadaf1c4": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776616162
+            }
+        },
+        "dna": {
+            "wins": 1,
+            "losses": 0,
+            "3c9d9ce4-c7c3-43d2-97e1-a8f248dbe5cd": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611054
+            }
+        },
+        "face": {
+            "wins": 1,
+            "losses": 0,
+            "3c9d9ce4-c7c3-43d2-97e1-a8f248dbe5cd": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1973,
+                "time": 1776611054
+            }
+        },
+        "thread_of_connection": {
+            "wins": 0,
+            "losses": 1,
+            "c7886bd2-6c43-4ea1-801a-a7185cd703fb": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612597
+            }
+        },
+        "flowers": {
+            "wins": 0,
+            "losses": 1,
+            "c7886bd2-6c43-4ea1-801a-a7185cd703fb": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612597
+            }
+        },
+        "we_love_tetris": {
+            "wins": 2,
+            "losses": 0,
+            "c7886bd2-6c43-4ea1-801a-a7185cd703fb": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612597
+            },
+            "12297f37-731c-40f0-949f-9904920afc75": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620077
+            }
+        },
+        "cubes": {
+            "wins": 0,
+            "losses": 2,
+            "c7886bd2-6c43-4ea1-801a-a7185cd703fb": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 169,
+                "time": 1776612597
+            },
+            "5d354e7c-60a3-4b4b-812c-c57d5937e50c": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 552,
+                "time": 1776615226
+            }
+        },
+        "shrub": {
+            "wins": 0,
+            "losses": 1,
+            "c7886bd2-6c43-4ea1-801a-a7185cd703fb": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612597
+            }
+        },
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "cad25236-b2ab-45b8-a5c9-d6fb752cee91": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 136,
+                "time": 1776614026
+            }
+        },
+        "craters": {
+            "wins": 1,
+            "losses": 0,
+            "cad25236-b2ab-45b8-a5c9-d6fb752cee91": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1474,
+                "time": 1776614026
+            }
+        },
+        "tiles": {
+            "wins": 0,
+            "losses": 1,
+            "cad25236-b2ab-45b8-a5c9-d6fb752cee91": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614026
+            }
+        },
+        "butterfly": {
+            "wins": 0,
+            "losses": 1,
+            "5d354e7c-60a3-4b4b-812c-c57d5937e50c": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615226
+            }
+        },
+        "hourglass": {
+            "wins": 0,
+            "losses": 1,
+            "5d354e7c-60a3-4b4b-812c-c57d5937e50c": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615226
+            }
+        },
+        "minimaze": {
+            "wins": 0,
+            "losses": 1,
+            "5d354e7c-60a3-4b4b-812c-c57d5937e50c": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776615226
+            }
+        },
+        "window_shopping": {
+            "wins": 1,
+            "losses": 0,
+            "fdfa0c59-7f83-42dc-8cd9-fa3daadaf1c4": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776616162
+            }
+        },
+        "tea": {
+            "wins": 1,
+            "losses": 0,
+            "67a1c52d-5cab-465c-8877-f5794d682c0d": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 359,
+                "time": 1776617640
+            }
+        },
+        "landscape": {
+            "wins": 0,
+            "losses": 1,
+            "67a1c52d-5cab-465c-8877-f5794d682c0d": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617640
+            }
+        },
+        "separated": {
+            "wins": 1,
+            "losses": 0,
+            "67a1c52d-5cab-465c-8877-f5794d682c0d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617640
+            }
+        },
+        "the_great_divide": {
+            "wins": 0,
+            "losses": 1,
+            "12297f37-731c-40f0-949f-9904920afc75": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 235,
+                "time": 1776620077
+            }
+        },
+        "castle_keep": {
+            "wins": 1,
+            "losses": 0,
+            "12297f37-731c-40f0-949f-9904920afc75": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 313,
+                "time": 1776620077
+            }
+        }
+    },
+    "a2b913f3-6c6c-49e8-ac1c-1c7c69e3b5ab": {
+        "chemistry_class": {
+            "wins": 2,
+            "losses": 0,
+            "cbdcae1e-c2af-4e4b-b76c-2224e8fb2911": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602831
+            },
+            "81d5de74-f438-498d-a899-f3a8d57ff132": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610040
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 3,
+            "cbdcae1e-c2af-4e4b-b76c-2224e8fb2911": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776602831
+            },
+            "783e9f1c-aefa-4005-ac41-15281eb00a4d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617076
+            },
+            "70fbae24-d50c-4719-b1a5-0924d7017ee4": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620834
+            }
+        },
+        "craters": {
+            "wins": 1,
+            "losses": 1,
+            "cbdcae1e-c2af-4e4b-b76c-2224e8fb2911": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776602831
+            },
+            "8b2861f9-5a9f-4ed7-96cb-0e9ecd548a29": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618420
+            }
+        },
+        "pls_buy_cucats_merch": {
+            "wins": 1,
+            "losses": 0,
+            "cbdcae1e-c2af-4e4b-b76c-2224e8fb2911": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776602831
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 0,
+            "cbdcae1e-c2af-4e4b-b76c-2224e8fb2911": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 440,
+                "time": 1776602831
+            }
+        },
+        "thread_of_connection": {
+            "wins": 1,
+            "losses": 0,
+            "4495c04d-3caa-4818-9c01-735baf546c31": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606960
+            }
+        },
+        "bear_of_doom": {
+            "wins": 0,
+            "losses": 1,
+            "4495c04d-3caa-4818-9c01-735baf546c31": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606960
+            }
+        },
+        "window_shopping": {
+            "wins": 0,
+            "losses": 1,
+            "4495c04d-3caa-4818-9c01-735baf546c31": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 386,
+                "time": 1776606960
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 1,
+            "4495c04d-3caa-4818-9c01-735baf546c31": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776606960
+            }
+        },
+        "hourglass": {
+            "wins": 0,
+            "losses": 1,
+            "4495c04d-3caa-4818-9c01-735baf546c31": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776606960
+            }
+        },
+        "wall": {
+            "wins": 0,
+            "losses": 1,
+            "5dea5f0e-6f9f-463e-a0a4-2334932061dd": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608107
+            }
+        },
+        "default_large1": {
+            "wins": 0,
+            "losses": 2,
+            "5dea5f0e-6f9f-463e-a0a4-2334932061dd": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608107
+            },
+            "70fbae24-d50c-4719-b1a5-0924d7017ee4": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 203,
+                "time": 1776620834
+            }
+        },
+        "cold": {
+            "wins": 1,
+            "losses": 0,
+            "5dea5f0e-6f9f-463e-a0a4-2334932061dd": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608107
+            }
+        },
+        "minimaze": {
+            "wins": 0,
+            "losses": 1,
+            "5dea5f0e-6f9f-463e-a0a4-2334932061dd": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608107
+            }
+        },
+        "flowers": {
+            "wins": 0,
+            "losses": 1,
+            "5dea5f0e-6f9f-463e-a0a4-2334932061dd": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608107
+            }
+        },
+        "butterfly": {
+            "wins": 0,
+            "losses": 1,
+            "1724e087-ffbd-41a5-94cc-d280761f1cb5": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 495,
+                "time": 1776609129
+            }
+        },
+        "face": {
+            "wins": 0,
+            "losses": 2,
+            "1724e087-ffbd-41a5-94cc-d280761f1cb5": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609129
+            },
+            "70fbae24-d50c-4719-b1a5-0924d7017ee4": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620834
+            }
+        },
+        "vase": {
+            "wins": 0,
+            "losses": 1,
+            "1724e087-ffbd-41a5-94cc-d280761f1cb5": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609129
+            }
+        },
+        "galaxy": {
+            "wins": 0,
+            "losses": 1,
+            "1724e087-ffbd-41a5-94cc-d280761f1cb5": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609129
+            }
+        },
+        "hopscotch": {
+            "wins": 1,
+            "losses": 0,
+            "1724e087-ffbd-41a5-94cc-d280761f1cb5": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609129
+            }
+        },
+        "gaussian": {
+            "wins": 0,
+            "losses": 1,
+            "81d5de74-f438-498d-a899-f3a8d57ff132": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 370,
+                "time": 1776610040
+            }
+        },
+        "the_powerful_egg": {
+            "wins": 0,
+            "losses": 1,
+            "81d5de74-f438-498d-a899-f3a8d57ff132": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610040
+            }
+        },
+        "coffee": {
+            "wins": 0,
+            "losses": 1,
+            "81d5de74-f438-498d-a899-f3a8d57ff132": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 200,
+                "time": 1776610040
+            }
+        },
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "81d5de74-f438-498d-a899-f3a8d57ff132": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 155,
+                "time": 1776610040
+            }
+        },
+        "hooks": {
+            "wins": 1,
+            "losses": 0,
+            "af108021-4199-4ef6-8c70-a1acc4ef2f37": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611708
+            }
+        },
+        "mandelbrot": {
+            "wins": 0,
+            "losses": 1,
+            "af108021-4199-4ef6-8c70-a1acc4ef2f37": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611708
+            }
+        },
+        "flappy_bird": {
+            "wins": 1,
+            "losses": 0,
+            "af108021-4199-4ef6-8c70-a1acc4ef2f37": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611708
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 1,
+            "losses": 0,
+            "af108021-4199-4ef6-8c70-a1acc4ef2f37": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611708
+            }
+        },
+        "default_small1": {
+            "wins": 0,
+            "losses": 1,
+            "af108021-4199-4ef6-8c70-a1acc4ef2f37": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 490,
+                "time": 1776611708
+            }
+        },
+        "the_great_divide": {
+            "wins": 0,
+            "losses": 1,
+            "666dc9a6-8d2d-42b1-b052-1ec32a595b67": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612978
+            }
+        },
+        "tiles": {
+            "wins": 0,
+            "losses": 1,
+            "666dc9a6-8d2d-42b1-b052-1ec32a595b67": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612978
+            }
+        },
+        "wasteland": {
+            "wins": 1,
+            "losses": 0,
+            "666dc9a6-8d2d-42b1-b052-1ec32a595b67": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612978
+            }
+        },
+        "bar_chart": {
+            "wins": 0,
+            "losses": 1,
+            "666dc9a6-8d2d-42b1-b052-1ec32a595b67": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612978
+            }
+        },
+        "pixel_forest": {
+            "wins": 0,
+            "losses": 1,
+            "666dc9a6-8d2d-42b1-b052-1ec32a595b67": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612978
+            }
+        },
+        "first_sound": {
+            "wins": 1,
+            "losses": 0,
+            "27ff0021-cbee-43e3-b25c-10ab2afe7827": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614430
+            }
+        },
+        "castle_keep": {
+            "wins": 0,
+            "losses": 1,
+            "27ff0021-cbee-43e3-b25c-10ab2afe7827": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1632,
+                "time": 1776614430
+            }
+        },
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "27ff0021-cbee-43e3-b25c-10ab2afe7827": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614430
+            }
+        },
+        "tree_of_life": {
+            "wins": 0,
+            "losses": 1,
+            "27ff0021-cbee-43e3-b25c-10ab2afe7827": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614430
+            }
+        },
+        "climbing_wall": {
+            "wins": 0,
+            "losses": 1,
+            "27ff0021-cbee-43e3-b25c-10ab2afe7827": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614430
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 1,
+            "losses": 0,
+            "e28bde42-fdf9-4e88-8b50-6fb4ba6db102": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615768
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 0,
+            "e28bde42-fdf9-4e88-8b50-6fb4ba6db102": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776615768
+            }
+        },
+        "building_blocks": {
+            "wins": 0,
+            "losses": 1,
+            "e28bde42-fdf9-4e88-8b50-6fb4ba6db102": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776615768
+            }
+        },
+        "starry_night": {
+            "wins": 1,
+            "losses": 0,
+            "e28bde42-fdf9-4e88-8b50-6fb4ba6db102": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615768
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 1,
+            "e28bde42-fdf9-4e88-8b50-6fb4ba6db102": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615768
+            }
+        },
+        "battlebot": {
+            "wins": 0,
+            "losses": 1,
+            "783e9f1c-aefa-4005-ac41-15281eb00a4d": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617076
+            }
+        },
+        "arena": {
+            "wins": 0,
+            "losses": 1,
+            "783e9f1c-aefa-4005-ac41-15281eb00a4d": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617076
+            }
+        },
+        "rush_bait": {
+            "wins": 0,
+            "losses": 1,
+            "783e9f1c-aefa-4005-ac41-15281eb00a4d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617076
+            }
+        },
+        "strings": {
+            "wins": 1,
+            "losses": 0,
+            "783e9f1c-aefa-4005-ac41-15281eb00a4d": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1884,
+                "time": 1776617076
+            }
+        },
+        "clash_arena": {
+            "wins": 1,
+            "losses": 0,
+            "8b2861f9-5a9f-4ed7-96cb-0e9ecd548a29": {
+                "win": true,
+                "condition": "Harvesters",
+                "turns": 2000,
+                "time": 1776618420
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 0,
+            "losses": 1,
+            "8b2861f9-5a9f-4ed7-96cb-0e9ecd548a29": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618420
+            }
+        },
+        "shish_kebab": {
+            "wins": 0,
+            "losses": 1,
+            "8b2861f9-5a9f-4ed7-96cb-0e9ecd548a29": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618420
+            }
+        },
+        "settlement": {
+            "wins": 1,
+            "losses": 0,
+            "8b2861f9-5a9f-4ed7-96cb-0e9ecd548a29": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618420
+            }
+        },
+        "perch_point": {
+            "wins": 0,
+            "losses": 1,
+            "05e8655f-47b0-4ec7-b678-c98ada1edb16": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619573
+            }
+        },
+        "donut": {
+            "wins": 1,
+            "losses": 0,
+            "05e8655f-47b0-4ec7-b678-c98ada1edb16": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619573
+            }
+        },
+        "landscape": {
+            "wins": 1,
+            "losses": 0,
+            "05e8655f-47b0-4ec7-b678-c98ada1edb16": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619573
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "05e8655f-47b0-4ec7-b678-c98ada1edb16": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619573
+            }
+        },
+        "we_love_tetris": {
+            "wins": 0,
+            "losses": 1,
+            "05e8655f-47b0-4ec7-b678-c98ada1edb16": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619573
+            }
+        },
+        "default_large2": {
+            "wins": 0,
+            "losses": 1,
+            "70fbae24-d50c-4719-b1a5-0924d7017ee4": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620834
+            }
+        },
+        "socket": {
+            "wins": 0,
+            "losses": 1,
+            "70fbae24-d50c-4719-b1a5-0924d7017ee4": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620834
+            }
+        }
+    },
+    "bbde9d3c-7048-4e4c-b433-0ca13e387c3b": {
+        "shish_kebab": {
+            "wins": 0,
+            "losses": 1,
+            "4106ca6e-1d30-47d4-9ccb-edb7e048838b": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776605561
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "4106ca6e-1d30-47d4-9ccb-edb7e048838b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 772,
+                "time": 1776605561
+            }
+        },
+        "starry_night": {
+            "wins": 2,
+            "losses": 0,
+            "4106ca6e-1d30-47d4-9ccb-edb7e048838b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 464,
+                "time": 1776605561
+            },
+            "bed44fc7-439f-46d2-8498-9ac5b2554bb6": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 324,
+                "time": 1776614431
+            }
+        },
+        "minimaze": {
+            "wins": 1,
+            "losses": 1,
+            "4106ca6e-1d30-47d4-9ccb-edb7e048838b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605561
+            },
+            "edc83025-50b4-4514-a9b6-58ffbfb69053": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617766
+            }
+        },
+        "window_shopping": {
+            "wins": 0,
+            "losses": 2,
+            "4106ca6e-1d30-47d4-9ccb-edb7e048838b": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776605561
+            },
+            "8a98fe9c-f774-4d73-ab1c-e90c7ecd3950": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610675
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 1,
+            "losses": 1,
+            "ec65e30f-d5ce-43fe-85f3-cb242d1b1627": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 362,
+                "time": 1776606581
+            },
+            "57a7ca6b-2e4e-49eb-82a3-59f5c2dea107": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613640
+            }
+        },
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "ec65e30f-d5ce-43fe-85f3-cb242d1b1627": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 121,
+                "time": 1776606581
+            }
+        },
+        "tea": {
+            "wins": 1,
+            "losses": 0,
+            "ec65e30f-d5ce-43fe-85f3-cb242d1b1627": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606581
+            }
+        },
+        "strings": {
+            "wins": 1,
+            "losses": 0,
+            "ec65e30f-d5ce-43fe-85f3-cb242d1b1627": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1594,
+                "time": 1776606581
+            }
+        },
+        "bar_chart": {
+            "wins": 2,
+            "losses": 0,
+            "ec65e30f-d5ce-43fe-85f3-cb242d1b1627": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776606581
+            },
+            "90c21f37-a82a-4b6c-bf62-f4bcb52d9f57": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612213
+            }
+        },
+        "mandelbrot": {
+            "wins": 1,
+            "losses": 0,
+            "cafd0f4b-8968-4d43-8a36-87787bbc7b55": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608490
+            }
+        },
+        "socket": {
+            "wins": 0,
+            "losses": 2,
+            "cafd0f4b-8968-4d43-8a36-87787bbc7b55": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608490
+            },
+            "bed44fc7-439f-46d2-8498-9ac5b2554bb6": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614431
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 1,
+            "losses": 1,
+            "cafd0f4b-8968-4d43-8a36-87787bbc7b55": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608490
+            },
+            "cda18059-6d51-46b3-8b82-2277ed95c32c": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619823
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 2,
+            "cafd0f4b-8968-4d43-8a36-87787bbc7b55": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608490
+            },
+            "cda18059-6d51-46b3-8b82-2277ed95c32c": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619823
+            }
+        },
+        "battlebot": {
+            "wins": 1,
+            "losses": 0,
+            "cafd0f4b-8968-4d43-8a36-87787bbc7b55": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608490
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 1,
+            "losses": 1,
+            "ce46c492-86ae-4efd-82c0-275e5f022f53": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609383
+            },
+            "ec3cf982-1766-405d-8e1e-6a63d11b60e3": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1658,
+                "time": 1776621112
+            }
+        },
+        "clash_arena": {
+            "wins": 1,
+            "losses": 0,
+            "ce46c492-86ae-4efd-82c0-275e5f022f53": {
+                "win": true,
+                "condition": "Harvesters",
+                "turns": 2000,
+                "time": 1776609383
+            }
+        },
+        "building_blocks": {
+            "wins": 0,
+            "losses": 2,
+            "ce46c492-86ae-4efd-82c0-275e5f022f53": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609383
+            },
+            "cda18059-6d51-46b3-8b82-2277ed95c32c": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619823
+            }
+        },
+        "chemistry_class": {
+            "wins": 1,
+            "losses": 1,
+            "ce46c492-86ae-4efd-82c0-275e5f022f53": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776609383
+            },
+            "ec3cf982-1766-405d-8e1e-6a63d11b60e3": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776621112
+            }
+        },
+        "shrub": {
+            "wins": 0,
+            "losses": 1,
+            "ce46c492-86ae-4efd-82c0-275e5f022f53": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 738,
+                "time": 1776609383
+            }
+        },
+        "wasteland": {
+            "wins": 0,
+            "losses": 1,
+            "8a98fe9c-f774-4d73-ab1c-e90c7ecd3950": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610675
+            }
+        },
+        "binary_tree": {
+            "wins": 0,
+            "losses": 1,
+            "8a98fe9c-f774-4d73-ab1c-e90c7ecd3950": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610675
+            }
+        },
+        "hourglass": {
+            "wins": 1,
+            "losses": 0,
+            "8a98fe9c-f774-4d73-ab1c-e90c7ecd3950": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 345,
+                "time": 1776610675
+            }
+        },
+        "donut": {
+            "wins": 1,
+            "losses": 0,
+            "8a98fe9c-f774-4d73-ab1c-e90c7ecd3950": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 675,
+                "time": 1776610675
+            }
+        },
+        "the_powerful_egg": {
+            "wins": 1,
+            "losses": 0,
+            "90c21f37-a82a-4b6c-bf62-f4bcb52d9f57": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 448,
+                "time": 1776612213
+            }
+        },
+        "spikes": {
+            "wins": 1,
+            "losses": 0,
+            "90c21f37-a82a-4b6c-bf62-f4bcb52d9f57": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612213
+            }
+        },
+        "rush_bait": {
+            "wins": 1,
+            "losses": 0,
+            "90c21f37-a82a-4b6c-bf62-f4bcb52d9f57": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612213
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 1,
+            "90c21f37-a82a-4b6c-bf62-f4bcb52d9f57": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612213
+            }
+        },
+        "hooks": {
+            "wins": 0,
+            "losses": 1,
+            "57a7ca6b-2e4e-49eb-82a3-59f5c2dea107": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613640
+            }
+        },
+        "tiles": {
+            "wins": 0,
+            "losses": 1,
+            "57a7ca6b-2e4e-49eb-82a3-59f5c2dea107": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613640
+            }
+        },
+        "gaussian": {
+            "wins": 0,
+            "losses": 1,
+            "57a7ca6b-2e4e-49eb-82a3-59f5c2dea107": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613640
+            }
+        },
+        "pong": {
+            "wins": 0,
+            "losses": 1,
+            "57a7ca6b-2e4e-49eb-82a3-59f5c2dea107": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613640
+            }
+        },
+        "default_small1": {
+            "wins": 0,
+            "losses": 1,
+            "bed44fc7-439f-46d2-8498-9ac5b2554bb6": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614431
+            }
+        },
+        "perch_point": {
+            "wins": 0,
+            "losses": 1,
+            "bed44fc7-439f-46d2-8498-9ac5b2554bb6": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614431
+            }
+        },
+        "tree_of_life": {
+            "wins": 1,
+            "losses": 0,
+            "bed44fc7-439f-46d2-8498-9ac5b2554bb6": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 289,
+                "time": 1776614431
+            }
+        },
+        "pixel_forest": {
+            "wins": 1,
+            "losses": 0,
+            "24f9289d-73c7-45fe-90b5-271df5142d5b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615894
+            }
+        },
+        "cold": {
+            "wins": 1,
+            "losses": 0,
+            "24f9289d-73c7-45fe-90b5-271df5142d5b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 206,
+                "time": 1776615894
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 0,
+            "24f9289d-73c7-45fe-90b5-271df5142d5b": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776615894
+            }
+        },
+        "we_love_tetris": {
+            "wins": 1,
+            "losses": 0,
+            "24f9289d-73c7-45fe-90b5-271df5142d5b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 156,
+                "time": 1776615894
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 1,
+            "losses": 0,
+            "24f9289d-73c7-45fe-90b5-271df5142d5b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615894
+            }
+        },
+        "pls_buy_cucats_merch": {
+            "wins": 0,
+            "losses": 1,
+            "edc83025-50b4-4514-a9b6-58ffbfb69053": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617766
+            }
+        },
+        "face": {
+            "wins": 0,
+            "losses": 1,
+            "edc83025-50b4-4514-a9b6-58ffbfb69053": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617766
+            }
+        },
+        "butterfly": {
+            "wins": 1,
+            "losses": 0,
+            "edc83025-50b4-4514-a9b6-58ffbfb69053": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617766
+            }
+        },
+        "vase": {
+            "wins": 0,
+            "losses": 1,
+            "edc83025-50b4-4514-a9b6-58ffbfb69053": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617766
+            }
+        },
+        "galaxy": {
+            "wins": 1,
+            "losses": 0,
+            "c53129ad-636d-4b0e-9ecd-e25a489203ba": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1817,
+                "time": 1776618796
+            }
+        },
+        "cubes": {
+            "wins": 0,
+            "losses": 1,
+            "c53129ad-636d-4b0e-9ecd-e25a489203ba": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618796
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 1,
+            "c53129ad-636d-4b0e-9ecd-e25a489203ba": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618796
+            }
+        },
+        "climbing_wall": {
+            "wins": 0,
+            "losses": 1,
+            "c53129ad-636d-4b0e-9ecd-e25a489203ba": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618796
+            }
+        },
+        "castle_keep": {
+            "wins": 1,
+            "losses": 0,
+            "c53129ad-636d-4b0e-9ecd-e25a489203ba": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 226,
+                "time": 1776618796
+            }
+        },
+        "first_sound": {
+            "wins": 1,
+            "losses": 0,
+            "cda18059-6d51-46b3-8b82-2277ed95c32c": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 518,
+                "time": 1776619823
+            }
+        },
+        "landscape": {
+            "wins": 1,
+            "losses": 0,
+            "cda18059-6d51-46b3-8b82-2277ed95c32c": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 206,
+                "time": 1776619823
+            }
+        },
+        "wall": {
+            "wins": 1,
+            "losses": 0,
+            "ec3cf982-1766-405d-8e1e-6a63d11b60e3": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1133,
+                "time": 1776621112
+            }
+        },
+        "settlement": {
+            "wins": 1,
+            "losses": 0,
+            "ec3cf982-1766-405d-8e1e-6a63d11b60e3": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 115,
+                "time": 1776621112
+            }
+        },
+        "flappy_bird": {
+            "wins": 0,
+            "losses": 1,
+            "ec3cf982-1766-405d-8e1e-6a63d11b60e3": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621112
+            }
+        }
+    },
+    "3800991c-52ce-4232-b77e-deb1ba1d30f6": {
+        "hooks": {
+            "wins": 2,
+            "losses": 0,
+            "103ae371-9bd3-41fd-8801-1729dc5b5bd8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605563
+            },
+            "dcef0825-7ae8-4293-85c7-7284b9522167": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 302,
+                "time": 1776618672
+            }
+        },
+        "building_blocks": {
+            "wins": 0,
+            "losses": 2,
+            "103ae371-9bd3-41fd-8801-1729dc5b5bd8": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605563
+            },
+            "087a0011-6436-439e-bd61-5dafc56503e3": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609911
+            }
+        },
+        "first_sound": {
+            "wins": 1,
+            "losses": 1,
+            "103ae371-9bd3-41fd-8801-1729dc5b5bd8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605563
+            },
+            "66611f01-8eed-4476-b02f-210dddc58ec4": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620455
+            }
+        },
+        "socket": {
+            "wins": 2,
+            "losses": 0,
+            "103ae371-9bd3-41fd-8801-1729dc5b5bd8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605563
+            },
+            "be2172ff-6061-4362-be60-d886fdab0a60": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612342
+            }
+        },
+        "bar_chart": {
+            "wins": 1,
+            "losses": 0,
+            "103ae371-9bd3-41fd-8801-1729dc5b5bd8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776605563
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 2,
+            "losses": 0,
+            "f8e562e1-1820-4feb-a84f-1b9267e35ede": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607086
+            },
+            "92b53b11-30ae-437c-9eea-0f0fb6a3c115": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616420
+            }
+        },
+        "default_small2": {
+            "wins": 2,
+            "losses": 0,
+            "f8e562e1-1820-4feb-a84f-1b9267e35ede": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776607086
+            },
+            "6430b9c9-74df-4b1c-bc41-4a13eb737e2b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 103,
+                "time": 1776621240
+            }
+        },
+        "arena": {
+            "wins": 0,
+            "losses": 1,
+            "f8e562e1-1820-4feb-a84f-1b9267e35ede": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 340,
+                "time": 1776607086
+            }
+        },
+        "flowers": {
+            "wins": 2,
+            "losses": 0,
+            "f8e562e1-1820-4feb-a84f-1b9267e35ede": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776607086
+            },
+            "1335ec3f-c8bd-4fb8-ac7e-b41b591e0b44": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776613491
+            }
+        },
+        "flappy_bird": {
+            "wins": 1,
+            "losses": 0,
+            "f8e562e1-1820-4feb-a84f-1b9267e35ede": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 299,
+                "time": 1776607086
+            }
+        },
+        "chemistry_class": {
+            "wins": 2,
+            "losses": 0,
+            "4d1da9a0-4df4-4d94-8390-b56cc775693a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 820,
+                "time": 1776608491
+            },
+            "66611f01-8eed-4476-b02f-210dddc58ec4": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620455
+            }
+        },
+        "tea": {
+            "wins": 1,
+            "losses": 0,
+            "4d1da9a0-4df4-4d94-8390-b56cc775693a": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608491
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 0,
+            "losses": 2,
+            "4d1da9a0-4df4-4d94-8390-b56cc775693a": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608491
+            },
+            "262581bd-cfaf-4dab-9e17-90d74346cff6": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614962
+            }
+        },
+        "git_branches": {
+            "wins": 2,
+            "losses": 0,
+            "4d1da9a0-4df4-4d94-8390-b56cc775693a": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608491
+            },
+            "6430b9c9-74df-4b1c-bc41-4a13eb737e2b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621240
+            }
+        },
+        "shish_kebab": {
+            "wins": 1,
+            "losses": 0,
+            "4d1da9a0-4df4-4d94-8390-b56cc775693a": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608491
+            }
+        },
+        "pong": {
+            "wins": 0,
+            "losses": 2,
+            "087a0011-6436-439e-bd61-5dafc56503e3": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609911
+            },
+            "f8f6b8b9-48e4-45be-b4d9-4ab3836c2a81": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617767
+            }
+        },
+        "binary_tree": {
+            "wins": 0,
+            "losses": 2,
+            "087a0011-6436-439e-bd61-5dafc56503e3": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 934,
+                "time": 1776609911
+            },
+            "dcef0825-7ae8-4293-85c7-7284b9522167": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 222,
+                "time": 1776618672
+            }
+        },
+        "spikes": {
+            "wins": 1,
+            "losses": 0,
+            "087a0011-6436-439e-bd61-5dafc56503e3": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609911
+            }
+        },
+        "battlebot": {
+            "wins": 0,
+            "losses": 1,
+            "087a0011-6436-439e-bd61-5dafc56503e3": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609911
+            }
+        },
+        "wall": {
+            "wins": 0,
+            "losses": 1,
+            "7a23ca93-47db-4c76-b498-8f73b702ddd9": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610928
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "7a23ca93-47db-4c76-b498-8f73b702ddd9": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1281,
+                "time": 1776610928
+            }
+        },
+        "default_large1": {
+            "wins": 0,
+            "losses": 1,
+            "7a23ca93-47db-4c76-b498-8f73b702ddd9": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 532,
+                "time": 1776610928
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 0,
+            "7a23ca93-47db-4c76-b498-8f73b702ddd9": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610928
+            }
+        },
+        "cold": {
+            "wins": 1,
+            "losses": 0,
+            "7a23ca93-47db-4c76-b498-8f73b702ddd9": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776610928
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 1,
+            "be2172ff-6061-4362-be60-d886fdab0a60": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612342
+            }
+        },
+        "craters": {
+            "wins": 0,
+            "losses": 1,
+            "be2172ff-6061-4362-be60-d886fdab0a60": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 126,
+                "time": 1776612342
+            }
+        },
+        "climbing_wall": {
+            "wins": 1,
+            "losses": 0,
+            "be2172ff-6061-4362-be60-d886fdab0a60": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776612342
+            }
+        },
+        "butterfly": {
+            "wins": 0,
+            "losses": 1,
+            "be2172ff-6061-4362-be60-d886fdab0a60": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 962,
+                "time": 1776612342
+            }
+        },
+        "corridors": {
+            "wins": 0,
+            "losses": 1,
+            "1335ec3f-c8bd-4fb8-ac7e-b41b591e0b44": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 374,
+                "time": 1776613491
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 0,
+            "losses": 1,
+            "1335ec3f-c8bd-4fb8-ac7e-b41b591e0b44": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613491
+            }
+        },
+        "wasteland": {
+            "wins": 1,
+            "losses": 0,
+            "1335ec3f-c8bd-4fb8-ac7e-b41b591e0b44": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613491
+            }
+        },
+        "coffee": {
+            "wins": 1,
+            "losses": 0,
+            "1335ec3f-c8bd-4fb8-ac7e-b41b591e0b44": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613491
+            }
+        },
+        "thread_of_connection": {
+            "wins": 1,
+            "losses": 0,
+            "262581bd-cfaf-4dab-9e17-90d74346cff6": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 560,
+                "time": 1776614962
+            }
+        },
+        "starry_night": {
+            "wins": 0,
+            "losses": 1,
+            "262581bd-cfaf-4dab-9e17-90d74346cff6": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1946,
+                "time": 1776614962
+            }
+        },
+        "perch_point": {
+            "wins": 1,
+            "losses": 0,
+            "262581bd-cfaf-4dab-9e17-90d74346cff6": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614962
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 1,
+            "losses": 0,
+            "262581bd-cfaf-4dab-9e17-90d74346cff6": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614962
+            }
+        },
+        "default_small1": {
+            "wins": 0,
+            "losses": 1,
+            "92b53b11-30ae-437c-9eea-0f0fb6a3c115": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616420
+            }
+        },
+        "dna": {
+            "wins": 1,
+            "losses": 0,
+            "92b53b11-30ae-437c-9eea-0f0fb6a3c115": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776616420
+            }
+        },
+        "castle_keep": {
+            "wins": 1,
+            "losses": 0,
+            "92b53b11-30ae-437c-9eea-0f0fb6a3c115": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616420
+            }
+        },
+        "vase": {
+            "wins": 1,
+            "losses": 0,
+            "92b53b11-30ae-437c-9eea-0f0fb6a3c115": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 471,
+                "time": 1776616420
+            }
+        },
+        "clash_arena": {
+            "wins": 1,
+            "losses": 0,
+            "f8f6b8b9-48e4-45be-b4d9-4ab3836c2a81": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617767
+            }
+        },
+        "tree_of_life": {
+            "wins": 1,
+            "losses": 0,
+            "f8f6b8b9-48e4-45be-b4d9-4ab3836c2a81": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617767
+            }
+        },
+        "rush_bait": {
+            "wins": 0,
+            "losses": 1,
+            "f8f6b8b9-48e4-45be-b4d9-4ab3836c2a81": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617767
+            }
+        },
+        "window_shopping": {
+            "wins": 1,
+            "losses": 0,
+            "f8f6b8b9-48e4-45be-b4d9-4ab3836c2a81": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617767
+            }
+        },
+        "shrub": {
+            "wins": 1,
+            "losses": 0,
+            "dcef0825-7ae8-4293-85c7-7284b9522167": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618672
+            }
+        },
+        "tiles": {
+            "wins": 1,
+            "losses": 0,
+            "dcef0825-7ae8-4293-85c7-7284b9522167": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776618672
+            }
+        },
+        "landscape": {
+            "wins": 1,
+            "losses": 0,
+            "dcef0825-7ae8-4293-85c7-7284b9522167": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776618672
+            }
+        },
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "66611f01-8eed-4476-b02f-210dddc58ec4": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620455
+            }
+        },
+        "hourglass": {
+            "wins": 1,
+            "losses": 0,
+            "66611f01-8eed-4476-b02f-210dddc58ec4": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620455
+            }
+        },
+        "mandelbrot": {
+            "wins": 1,
+            "losses": 0,
+            "66611f01-8eed-4476-b02f-210dddc58ec4": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620455
+            }
+        },
+        "bear_of_doom": {
+            "wins": 0,
+            "losses": 1,
+            "6430b9c9-74df-4b1c-bc41-4a13eb737e2b": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776621240
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "6430b9c9-74df-4b1c-bc41-4a13eb737e2b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 179,
+                "time": 1776621240
+            }
+        },
+        "settlement": {
+            "wins": 1,
+            "losses": 0,
+            "6430b9c9-74df-4b1c-bc41-4a13eb737e2b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 115,
+                "time": 1776621240
+            }
+        }
+    },
+    "05a96b0d-3ce5-4be8-921b-570dd973994a": {
+        "shrub": {
+            "wins": 0,
+            "losses": 2,
+            "a1329446-1b62-413f-8660-df84b87d00c6": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 522,
+                "time": 1776606076
+            },
+            "7c896d04-6bae-490c-bf9f-18a79fb59d21": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776616562
+            }
+        },
+        "galaxy": {
+            "wins": 0,
+            "losses": 1,
+            "a1329446-1b62-413f-8660-df84b87d00c6": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 293,
+                "time": 1776606076
+            }
+        },
+        "donut": {
+            "wins": 1,
+            "losses": 0,
+            "a1329446-1b62-413f-8660-df84b87d00c6": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776606076
+            }
+        },
+        "wasteland": {
+            "wins": 0,
+            "losses": 1,
+            "a1329446-1b62-413f-8660-df84b87d00c6": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 276,
+                "time": 1776606076
+            }
+        },
+        "face": {
+            "wins": 1,
+            "losses": 0,
+            "a1329446-1b62-413f-8660-df84b87d00c6": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1339,
+                "time": 1776606076
+            }
+        },
+        "dna": {
+            "wins": 1,
+            "losses": 0,
+            "41b60455-773b-45c5-a7f0-4505388d636e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 429,
+                "time": 1776607212
+            }
+        },
+        "wall": {
+            "wins": 0,
+            "losses": 1,
+            "41b60455-773b-45c5-a7f0-4505388d636e": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 267,
+                "time": 1776607212
+            }
+        },
+        "shish_kebab": {
+            "wins": 1,
+            "losses": 0,
+            "41b60455-773b-45c5-a7f0-4505388d636e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 928,
+                "time": 1776607212
+            }
+        },
+        "default_medium1": {
+            "wins": 0,
+            "losses": 1,
+            "41b60455-773b-45c5-a7f0-4505388d636e": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 529,
+                "time": 1776607212
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "41b60455-773b-45c5-a7f0-4505388d636e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 407,
+                "time": 1776607212
+            }
+        },
+        "thread_of_connection": {
+            "wins": 1,
+            "losses": 0,
+            "e5df4f9e-f42c-4cd5-aab1-4abfe87dcb48": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 361,
+                "time": 1776608749
+            }
+        },
+        "tree_of_life": {
+            "wins": 1,
+            "losses": 0,
+            "e5df4f9e-f42c-4cd5-aab1-4abfe87dcb48": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608749
+            }
+        },
+        "cold": {
+            "wins": 1,
+            "losses": 0,
+            "e5df4f9e-f42c-4cd5-aab1-4abfe87dcb48": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 156,
+                "time": 1776608749
+            }
+        },
+        "craters": {
+            "wins": 0,
+            "losses": 1,
+            "e5df4f9e-f42c-4cd5-aab1-4abfe87dcb48": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 249,
+                "time": 1776608749
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 1,
+            "e5df4f9e-f42c-4cd5-aab1-4abfe87dcb48": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608749
+            }
+        },
+        "binary_tree": {
+            "wins": 1,
+            "losses": 0,
+            "4cc85127-0b80-41a1-bf65-ca464b6d7a91": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 205,
+                "time": 1776610039
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 0,
+            "losses": 2,
+            "4cc85127-0b80-41a1-bf65-ca464b6d7a91": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 100,
+                "time": 1776610039
+            },
+            "a7f3208d-e56c-4c16-99dc-d11160b8c41d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 469,
+                "time": 1776620458
+            }
+        },
+        "bear_of_doom": {
+            "wins": 0,
+            "losses": 1,
+            "4cc85127-0b80-41a1-bf65-ca464b6d7a91": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776610039
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 1,
+            "4cc85127-0b80-41a1-bf65-ca464b6d7a91": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1176,
+                "time": 1776610039
+            }
+        },
+        "vase": {
+            "wins": 1,
+            "losses": 0,
+            "4cc85127-0b80-41a1-bf65-ca464b6d7a91": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 269,
+                "time": 1776610039
+            }
+        },
+        "rush_bait": {
+            "wins": 1,
+            "losses": 0,
+            "d477c954-dba8-4866-a729-dc36f4b0d033": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611433
+            }
+        },
+        "battlebot": {
+            "wins": 1,
+            "losses": 0,
+            "d477c954-dba8-4866-a729-dc36f4b0d033": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611433
+            }
+        },
+        "default_small2": {
+            "wins": 0,
+            "losses": 1,
+            "d477c954-dba8-4866-a729-dc36f4b0d033": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 941,
+                "time": 1776611433
+            }
+        },
+        "tea": {
+            "wins": 0,
+            "losses": 1,
+            "d477c954-dba8-4866-a729-dc36f4b0d033": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 409,
+                "time": 1776611433
+            }
+        },
+        "flappy_bird": {
+            "wins": 0,
+            "losses": 1,
+            "d477c954-dba8-4866-a729-dc36f4b0d033": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611433
+            }
+        },
+        "tiles": {
+            "wins": 1,
+            "losses": 0,
+            "6a051ca7-0841-4e98-9a81-e8761d45d5be": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612599
+            }
+        },
+        "gaussian": {
+            "wins": 1,
+            "losses": 0,
+            "6a051ca7-0841-4e98-9a81-e8761d45d5be": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 148,
+                "time": 1776612599
+            }
+        },
+        "landscape": {
+            "wins": 1,
+            "losses": 0,
+            "6a051ca7-0841-4e98-9a81-e8761d45d5be": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612599
+            }
+        },
+        "socket": {
+            "wins": 1,
+            "losses": 0,
+            "6a051ca7-0841-4e98-9a81-e8761d45d5be": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1556,
+                "time": 1776612599
+            }
+        },
+        "default_small1": {
+            "wins": 1,
+            "losses": 0,
+            "6a051ca7-0841-4e98-9a81-e8761d45d5be": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 401,
+                "time": 1776612599
+            }
+        },
+        "minimaze": {
+            "wins": 1,
+            "losses": 0,
+            "66e307a3-b81d-41aa-ab6c-6a7d0b3f3990": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776614154
+            }
+        },
+        "clash_arena": {
+            "wins": 1,
+            "losses": 0,
+            "66e307a3-b81d-41aa-ab6c-6a7d0b3f3990": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614154
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "66e307a3-b81d-41aa-ab6c-6a7d0b3f3990": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 504,
+                "time": 1776614154
+            }
+        },
+        "building_blocks": {
+            "wins": 0,
+            "losses": 1,
+            "66e307a3-b81d-41aa-ab6c-6a7d0b3f3990": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614154
+            }
+        },
+        "bar_chart": {
+            "wins": 1,
+            "losses": 0,
+            "66e307a3-b81d-41aa-ab6c-6a7d0b3f3990": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776614154
+            }
+        },
+        "castle_keep": {
+            "wins": 1,
+            "losses": 0,
+            "0072b8e1-af27-4b1a-8bb5-305926255b65": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 298,
+                "time": 1776614968
+            }
+        },
+        "butterfly": {
+            "wins": 0,
+            "losses": 1,
+            "0072b8e1-af27-4b1a-8bb5-305926255b65": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 360,
+                "time": 1776614968
+            }
+        },
+        "coffee": {
+            "wins": 1,
+            "losses": 0,
+            "0072b8e1-af27-4b1a-8bb5-305926255b65": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 293,
+                "time": 1776614968
+            }
+        },
+        "arena": {
+            "wins": 0,
+            "losses": 1,
+            "0072b8e1-af27-4b1a-8bb5-305926255b65": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 121,
+                "time": 1776614968
+            }
+        },
+        "corridors": {
+            "wins": 0,
+            "losses": 1,
+            "0072b8e1-af27-4b1a-8bb5-305926255b65": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 185,
+                "time": 1776614968
+            }
+        },
+        "chess": {
+            "wins": 1,
+            "losses": 0,
+            "7c896d04-6bae-490c-bf9f-18a79fb59d21": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 158,
+                "time": 1776616562
+            }
+        },
+        "climbing_wall": {
+            "wins": 0,
+            "losses": 1,
+            "7c896d04-6bae-490c-bf9f-18a79fb59d21": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 947,
+                "time": 1776616562
+            }
+        },
+        "the_powerful_egg": {
+            "wins": 0,
+            "losses": 1,
+            "7c896d04-6bae-490c-bf9f-18a79fb59d21": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 353,
+                "time": 1776616562
+            }
+        },
+        "hooks": {
+            "wins": 1,
+            "losses": 0,
+            "7c896d04-6bae-490c-bf9f-18a79fb59d21": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776616562
+            }
+        },
+        "settlement": {
+            "wins": 0,
+            "losses": 1,
+            "6e54b6fa-ea46-45c2-838c-32ad3c62604b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 223,
+                "time": 1776617643
+            }
+        },
+        "perch_point": {
+            "wins": 1,
+            "losses": 0,
+            "6e54b6fa-ea46-45c2-838c-32ad3c62604b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 602,
+                "time": 1776617643
+            }
+        },
+        "the_great_divide": {
+            "wins": 0,
+            "losses": 1,
+            "6e54b6fa-ea46-45c2-838c-32ad3c62604b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 361,
+                "time": 1776617643
+            }
+        },
+        "spikes": {
+            "wins": 0,
+            "losses": 1,
+            "6e54b6fa-ea46-45c2-838c-32ad3c62604b": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617643
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 1,
+            "losses": 0,
+            "6e54b6fa-ea46-45c2-838c-32ad3c62604b": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 184,
+                "time": 1776617643
+            }
+        },
+        "pixel_forest": {
+            "wins": 0,
+            "losses": 1,
+            "c8705323-a374-48f4-b725-49496bd1f7a0": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 949,
+                "time": 1776619195
+            }
+        },
+        "starry_night": {
+            "wins": 1,
+            "losses": 0,
+            "c8705323-a374-48f4-b725-49496bd1f7a0": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619195
+            }
+        },
+        "chemistry_class": {
+            "wins": 0,
+            "losses": 1,
+            "c8705323-a374-48f4-b725-49496bd1f7a0": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 198,
+                "time": 1776619195
+            }
+        },
+        "we_love_tetris": {
+            "wins": 1,
+            "losses": 0,
+            "c8705323-a374-48f4-b725-49496bd1f7a0": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 136,
+                "time": 1776619195
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 1,
+            "losses": 0,
+            "c8705323-a374-48f4-b725-49496bd1f7a0": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619195
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 1,
+            "a7f3208d-e56c-4c16-99dc-d11160b8c41d": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620458
+            }
+        },
+        "hourglass": {
+            "wins": 1,
+            "losses": 0,
+            "a7f3208d-e56c-4c16-99dc-d11160b8c41d": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 360,
+                "time": 1776620458
+            }
+        },
+        "window_shopping": {
+            "wins": 0,
+            "losses": 1,
+            "a7f3208d-e56c-4c16-99dc-d11160b8c41d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 673,
+                "time": 1776620458
+            }
+        },
+        "default_large1": {
+            "wins": 0,
+            "losses": 1,
+            "a7f3208d-e56c-4c16-99dc-d11160b8c41d": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776620458
+            }
+        }
+    },
+    "db64a383-a20a-4cf9-a57c-082e1dc9dfbf": {
+        "socket": {
+            "wins": 0,
+            "losses": 1,
+            "ffc37b38-37a0-4bac-bf5e-636d51a71614": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776606326
+            }
+        },
+        "donut": {
+            "wins": 1,
+            "losses": 1,
+            "ffc37b38-37a0-4bac-bf5e-636d51a71614": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1601,
+                "time": 1776606326
+            },
+            "001b5bfd-4cda-448f-819c-a84cc480bdbe": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 335,
+                "time": 1776611180
+            }
+        },
+        "we_love_tetris": {
+            "wins": 0,
+            "losses": 1,
+            "ffc37b38-37a0-4bac-bf5e-636d51a71614": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 234,
+                "time": 1776606326
+            }
+        },
+        "default_large1": {
+            "wins": 1,
+            "losses": 0,
+            "ffc37b38-37a0-4bac-bf5e-636d51a71614": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776606326
+            }
+        },
+        "shish_kebab": {
+            "wins": 0,
+            "losses": 2,
+            "ffc37b38-37a0-4bac-bf5e-636d51a71614": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 272,
+                "time": 1776606326
+            },
+            "340d367d-e423-4240-9c05-4d161305d16a": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620456
+            }
+        },
+        "face": {
+            "wins": 1,
+            "losses": 1,
+            "c81cfc49-08e0-4ea3-aa5f-1d264e9c721d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 361,
+                "time": 1776607461
+            },
+            "1ebb9d8e-d679-40a0-a86e-f4a42daa779c": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 524,
+                "time": 1776609913
+            }
+        },
+        "first_sound": {
+            "wins": 2,
+            "losses": 0,
+            "c81cfc49-08e0-4ea3-aa5f-1d264e9c721d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607461
+            },
+            "e5bdc93e-e52e-4859-9b17-8b7617f43f0b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617769
+            }
+        },
+        "mandelbrot": {
+            "wins": 2,
+            "losses": 0,
+            "c81cfc49-08e0-4ea3-aa5f-1d264e9c721d": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776607461
+            },
+            "340d367d-e423-4240-9c05-4d161305d16a": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620456
+            }
+        },
+        "building_blocks": {
+            "wins": 0,
+            "losses": 2,
+            "c81cfc49-08e0-4ea3-aa5f-1d264e9c721d": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 244,
+                "time": 1776607461
+            },
+            "1ebb9d8e-d679-40a0-a86e-f4a42daa779c": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776609913
+            }
+        },
+        "hooks": {
+            "wins": 1,
+            "losses": 1,
+            "c81cfc49-08e0-4ea3-aa5f-1d264e9c721d": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776607461
+            },
+            "e5bdc93e-e52e-4859-9b17-8b7617f43f0b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1800,
+                "time": 1776617769
+            }
+        },
+        "chess": {
+            "wins": 2,
+            "losses": 0,
+            "0584f9f7-ab50-40aa-a179-5ad79313e772": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1245,
+                "time": 1776608748
+            },
+            "5e2185bb-54c1-470d-962d-198612c72971": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 731,
+                "time": 1776615098
+            }
+        },
+        "gaussian": {
+            "wins": 1,
+            "losses": 1,
+            "0584f9f7-ab50-40aa-a179-5ad79313e772": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 531,
+                "time": 1776608748
+            },
+            "1ebb9d8e-d679-40a0-a86e-f4a42daa779c": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 267,
+                "time": 1776609913
+            }
+        },
+        "window_shopping": {
+            "wins": 1,
+            "losses": 1,
+            "0584f9f7-ab50-40aa-a179-5ad79313e772": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608748
+            },
+            "001b5bfd-4cda-448f-819c-a84cc480bdbe": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611180
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 0,
+            "losses": 1,
+            "0584f9f7-ab50-40aa-a179-5ad79313e772": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776608748
+            }
+        },
+        "pls_buy_cucats_merch": {
+            "wins": 0,
+            "losses": 1,
+            "0584f9f7-ab50-40aa-a179-5ad79313e772": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776608748
+            }
+        },
+        "sierpinski_evil": {
+            "wins": 1,
+            "losses": 0,
+            "1ebb9d8e-d679-40a0-a86e-f4a42daa779c": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 922,
+                "time": 1776609913
+            }
+        },
+        "the_powerful_egg": {
+            "wins": 0,
+            "losses": 1,
+            "1ebb9d8e-d679-40a0-a86e-f4a42daa779c": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1389,
+                "time": 1776609913
+            }
+        },
+        "cinnamon_roll": {
+            "wins": 0,
+            "losses": 1,
+            "001b5bfd-4cda-448f-819c-a84cc480bdbe": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 311,
+                "time": 1776611180
+            }
+        },
+        "separated": {
+            "wins": 0,
+            "losses": 1,
+            "001b5bfd-4cda-448f-819c-a84cc480bdbe": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776611180
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 1,
+            "losses": 0,
+            "001b5bfd-4cda-448f-819c-a84cc480bdbe": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776611180
+            }
+        },
+        "coffee": {
+            "wins": 1,
+            "losses": 0,
+            "db38d047-5781-4331-a971-a3be4df23f44": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 402,
+                "time": 1776612471
+            }
+        },
+        "galaxy": {
+            "wins": 1,
+            "losses": 0,
+            "db38d047-5781-4331-a971-a3be4df23f44": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 880,
+                "time": 1776612471
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 0,
+            "db38d047-5781-4331-a971-a3be4df23f44": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612471
+            }
+        },
+        "git_branches": {
+            "wins": 0,
+            "losses": 1,
+            "db38d047-5781-4331-a971-a3be4df23f44": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612471
+            }
+        },
+        "flappy_bird": {
+            "wins": 0,
+            "losses": 1,
+            "db38d047-5781-4331-a971-a3be4df23f44": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776612471
+            }
+        },
+        "climbing_wall": {
+            "wins": 0,
+            "losses": 1,
+            "52ae5a98-a82f-431a-8cff-d2043587205f": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613770
+            }
+        },
+        "arena": {
+            "wins": 1,
+            "losses": 0,
+            "52ae5a98-a82f-431a-8cff-d2043587205f": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 465,
+                "time": 1776613770
+            }
+        },
+        "wall": {
+            "wins": 1,
+            "losses": 0,
+            "52ae5a98-a82f-431a-8cff-d2043587205f": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613770
+            }
+        },
+        "landscape": {
+            "wins": 0,
+            "losses": 1,
+            "52ae5a98-a82f-431a-8cff-d2043587205f": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613770
+            }
+        },
+        "thread_of_connection": {
+            "wins": 0,
+            "losses": 1,
+            "52ae5a98-a82f-431a-8cff-d2043587205f": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776613770
+            }
+        },
+        "the_great_divide": {
+            "wins": 1,
+            "losses": 0,
+            "5e2185bb-54c1-470d-962d-198612c72971": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1209,
+                "time": 1776615098
+            }
+        },
+        "tiles": {
+            "wins": 1,
+            "losses": 0,
+            "5e2185bb-54c1-470d-962d-198612c72971": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615098
+            }
+        },
+        "rush_bait": {
+            "wins": 0,
+            "losses": 1,
+            "5e2185bb-54c1-470d-962d-198612c72971": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776615098
+            }
+        },
+        "dna": {
+            "wins": 1,
+            "losses": 0,
+            "5e2185bb-54c1-470d-962d-198612c72971": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1030,
+                "time": 1776615098
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "50a00112-f880-404d-8b9d-234c6d5928f3": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1600,
+                "time": 1776616559
+            }
+        },
+        "bear_of_doom": {
+            "wins": 0,
+            "losses": 1,
+            "50a00112-f880-404d-8b9d-234c6d5928f3": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 982,
+                "time": 1776616559
+            }
+        },
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "50a00112-f880-404d-8b9d-234c6d5928f3": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 714,
+                "time": 1776616559
+            }
+        },
+        "labyrinth": {
+            "wins": 0,
+            "losses": 1,
+            "50a00112-f880-404d-8b9d-234c6d5928f3": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616559
+            }
+        },
+        "metropolitan_dystopia": {
+            "wins": 0,
+            "losses": 1,
+            "50a00112-f880-404d-8b9d-234c6d5928f3": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776616559
+            }
+        },
+        "minimaze": {
+            "wins": 1,
+            "losses": 0,
+            "e5bdc93e-e52e-4859-9b17-8b7617f43f0b": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776617769
+            }
+        },
+        "cold": {
+            "wins": 1,
+            "losses": 0,
+            "e5bdc93e-e52e-4859-9b17-8b7617f43f0b": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776617769
+            }
+        },
+        "shrub": {
+            "wins": 0,
+            "losses": 1,
+            "e5bdc93e-e52e-4859-9b17-8b7617f43f0b": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 543,
+                "time": 1776617769
+            }
+        },
+        "clash_arena": {
+            "wins": 0,
+            "losses": 1,
+            "c05e672e-4a00-4fb8-a0db-fafd3328d38e": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619320
+            }
+        },
+        "pixel_forest": {
+            "wins": 1,
+            "losses": 0,
+            "c05e672e-4a00-4fb8-a0db-fafd3328d38e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619320
+            }
+        },
+        "pong": {
+            "wins": 1,
+            "losses": 0,
+            "c05e672e-4a00-4fb8-a0db-fafd3328d38e": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619320
+            }
+        },
+        "tree_of_life": {
+            "wins": 0,
+            "losses": 1,
+            "c05e672e-4a00-4fb8-a0db-fafd3328d38e": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776619320
+            }
+        },
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "c05e672e-4a00-4fb8-a0db-fafd3328d38e": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776619320
+            }
+        },
+        "binary_tree": {
+            "wins": 1,
+            "losses": 0,
+            "340d367d-e423-4240-9c05-4d161305d16a": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620456
+            }
+        },
+        "corridors": {
+            "wins": 0,
+            "losses": 1,
+            "340d367d-e423-4240-9c05-4d161305d16a": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620456
+            }
+        },
+        "flowers": {
+            "wins": 0,
+            "losses": 1,
+            "340d367d-e423-4240-9c05-4d161305d16a": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776620456
+            }
+        }
+    }
+}

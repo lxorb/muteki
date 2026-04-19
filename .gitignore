@@ -60,8 +60,6 @@ replay_*.json
 /tools/unrated_runner/data/
 # graphs (can generate at any time)
 /tools/unrated_runner/graphs
-# partial results (only useful in the case of conflicts)
-/tools/unrated_runner/results/
 # output logs (can generate at any time)
 /tools/unrated_runner/outputs/
 # compare logs (can generate at any time)

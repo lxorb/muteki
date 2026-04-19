@@ -1,0 +1,54 @@
+{
+    "b4a784e9-1e15-4d0d-89d0-b673c53e686b": {
+        "default_small1": {
+            "wins": 0,
+            "losses": 1,
+            "aa5a7b0f-4b56-4cb1-9dc6-9405d6e2df13": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776379493
+            }
+        },
+        "craters": {
+            "wins": 1,
+            "losses": 0,
+            "aa5a7b0f-4b56-4cb1-9dc6-9405d6e2df13": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776379493
+            }
+        },
+        "chemistry_class": {
+            "wins": 1,
+            "losses": 0,
+            "aa5a7b0f-4b56-4cb1-9dc6-9405d6e2df13": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776379493
+            }
+        },
+        "bear_of_doom": {
+            "wins": 1,
+            "losses": 0,
+            "aa5a7b0f-4b56-4cb1-9dc6-9405d6e2df13": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776379493
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 1,
+            "losses": 0,
+            "aa5a7b0f-4b56-4cb1-9dc6-9405d6e2df13": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776379493
+            }
+        }
+    }
+}
