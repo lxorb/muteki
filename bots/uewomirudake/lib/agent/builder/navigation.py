@@ -1873,7 +1873,11 @@ class BuilderNavigationMixin:
         source_idx = source_tile.index
         source_core_dist = source_tile.own_core_dist
         tiles_by_index = map.tiles_by_index
-        avoid_enemy_owned_targets = map.enemy_bot_vision_reachable
+        avoid_enemy_owned_targets = getattr(
+            map,
+            "enemy_bot_vision_reachable",
+            map.has_enemy_bot_in_vision,
+        )
         hard_avoid_existing_supply_chain = (
             HARD_AVOID_EXISTING_SUPPLY_CHAIN
             and not prefer_join_existing_supply_chain
@@ -2101,7 +2105,11 @@ class BuilderNavigationMixin:
         tiles_by_index = map.tiles_by_index
         pos_x = pos.x
         pos_y = pos.y
-        avoid_enemy_owned_targets = map.enemy_bot_vision_reachable
+        avoid_enemy_owned_targets = getattr(
+            map,
+            "enemy_bot_vision_reachable",
+            map.has_enemy_bot_in_vision,
+        )
         incoming_supply_sources = (
             map.own_supply_link_source_indices_by_target_index_in_vision.get(
                 source_idx,
