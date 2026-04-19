@@ -5988,14 +5988,8 @@ class BuilderStrategyMethodsMixin:
             and tile.conveyor_targets_harvester
         )
 
-    def u_lets_get_yeeted(self) -> bool:
+    def lets_get_yeeted(self) -> bool:
         current_pos = self.map.current_pos
-        current_tile = self.map.u_get_pos_tile(current_pos)
-        if current_tile.in_own_launcher_pickup_zone != 0:
-            return False
-        if self.map.titanium < LAUNCHER_BUILD_MIN_TITANIUM:
-            return False
-
         current_path = self.map.current_path
         if (
             not current_path
@@ -6009,11 +6003,96 @@ class BuilderStrategyMethodsMixin:
             for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
                 path_index_by_tile_index.setdefault(neighbor_idx, path_idx)
 
+        tiles_by_index = self.map.tiles_by_index
+        best_existing_entry = None
+
+        for launcher_tile in self.map.own_buildings_in_vision:
+            if (
+                launcher_tile.building.entity_type != EntityType.LAUNCHER
+                or launcher_tile.building.team != self.map.own_team
+            ):
+                continue
+
+            best_pickup_tile = None
+            for pickup_tile in self.map.u_get_launcher_pickup_positions(
+                launcher_tile.position
+            ):
+                pickup_pos = pickup_tile.position
+                if max(
+                    abs(pickup_pos.x - current_pos.x),
+                    abs(pickup_pos.y - current_pos.y),
+                ) > 1:
+                    continue
+                if not pickup_tile.is_passable and pickup_pos != current_pos:
+                    continue
+                best_pickup_tile = pickup_tile
+                if pickup_pos == current_pos:
+                    break
+
+            if best_pickup_tile is None:
+                continue
+
+            for landing_idx in self.map.u_get_attackable_target_indices(
+                launcher_tile.index,
+                EntityType.LAUNCHER,
+                Direction.NORTH,
+            ):
+                landing_tile = tiles_by_index[landing_idx]
+                if (
+                    launcher_tile.position.distance_squared(landing_tile.position) <= 2
+                ):
+                    continue
+                if (
+                    not landing_tile.is_passable
+                    or landing_tile.bot.id is not None
+                    or landing_tile.in_enemy_attack_range
+                    or landing_tile.in_enemy_launcher_pickup_zone
+                ):
+                    continue
+
+                path_idx = path_index_by_tile_index.get(landing_idx)
+                if path_idx is None:
+                    continue
+
+                key = (
+                    -path_idx,
+                    0 if best_pickup_tile.position == current_pos else 1,
+                    best_pickup_tile.position.distance_squared(current_pos),
+                    landing_tile.position.x,
+                    landing_tile.position.y,
+                    launcher_tile.position.x,
+                    launcher_tile.position.y,
+                )
+                if best_existing_entry is None or key < best_existing_entry[0]:
+                    best_existing_entry = (
+                        key,
+                        best_pickup_tile,
+                        landing_tile,
+                    )
+
+        if best_existing_entry is not None:
+            _, pickup_tile, landing_tile = best_existing_entry
+            self.u_set_marker_target(landing_tile.position)
+            if pickup_tile.position == current_pos:
+                return True
+            return bool(
+                self.u_move_to(
+                    pickup_tile.position,
+                    allow_conveyor_building=False,
+                    respect_titanium_reserve_for_road_build=True,
+                )
+            )
+
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if current_tile.in_own_launcher_pickup_zone != 0:
+            return False
+        if self.map.titanium < LAUNCHER_BUILD_MIN_TITANIUM:
+            return False
+
         best_pos = None
         best_target_tile = None
         best_improvement = LAUNCHER_BUILD_MIN_IMPROVEMENT - 1
         potential_launcher_positions = 0
-        tiles_by_index = self.map.tiles_by_index
 
         for launcher_pos in self.map.u_iter_adjacent_all_positions(current_pos):
             launcher_tile = self.map.u_get_pos_tile(launcher_pos)
@@ -6031,7 +6110,12 @@ class BuilderStrategyMethodsMixin:
                 landing_tile = tiles_by_index[landing_idx]
                 if launcher_pos.distance_squared(landing_tile.position) <= 2:
                     continue
-                if not landing_tile.is_passable or landing_tile.bot.id is not None:
+                if (
+                    not landing_tile.is_passable
+                    or landing_tile.bot.id is not None
+                    or landing_tile.in_enemy_attack_range
+                    or landing_tile.in_enemy_launcher_pickup_zone
+                ):
                     continue
 
                 path_idx = path_index_by_tile_index.get(landing_idx)
@@ -6073,7 +6157,6 @@ class BuilderStrategyMethodsMixin:
         move_mode = HARASSMENT_ENEMY_CORE_MOVER
 
         def move_toward_enemy_core_target(target_pos: Position) -> bool:
-            self.u_set_marker_target(target_pos)
             if move_mode == "astar_no_proxy":
                 move_target_pos = target_pos
                 move_method = self.u_move_to_astar
@@ -6092,8 +6175,10 @@ class BuilderStrategyMethodsMixin:
                     current_pos,
                     move_target_pos,
                 )
-                if self.u_lets_get_yeeted():
+                if self.lets_get_yeeted():
                     return True
+
+            self.u_set_marker_target(target_pos)
 
             return bool(
                 move_method(
