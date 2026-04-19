@@ -47,22 +47,42 @@ def load_videos_json() -> dict:
     return {}
 
 
+CONDITION_ABBREV = {
+    "Axionite Collected": "ax",
+    "Titanium Collected": "ti",
+    "Core Destroyed": "core",
+}
+
+
+def condition_tag(result: str, condition: str) -> str:
+    abbrev = CONDITION_ABBREV.get(condition, condition.lower().replace(" ", "_"))
+    prefix = "w" if result == "win" else "l"
+    return f"{prefix}_{abbrev}"
+
+
 def update_stats(data: dict) -> None:
     total_games = 0
     total_losses = 0
+    total_wins = 0
     losses_by_condition = {}
+    wins_by_condition = {}
     for key, entry in data.items():
         if key == "_stats":
             continue
         for g in entry.get("games", []):
             total_games += 1
+            cond = g.get("condition", "unknown")
             if g.get("result") == "loss":
                 total_losses += 1
-                cond = g.get("condition", "unknown")
                 losses_by_condition[cond] = losses_by_condition.get(cond, 0) + 1
+            elif g.get("result") == "win":
+                total_wins += 1
+                wins_by_condition[cond] = wins_by_condition.get(cond, 0) + 1
     data["_stats"] = {
         "total_games": total_games,
+        "total_wins": total_wins,
         "total_losses": total_losses,
+        "wins_by_condition": wins_by_condition,
         "losses_by_condition": losses_by_condition,
     }
 
@@ -323,10 +343,14 @@ def process_match(match_id: str) -> None:
     video_dir = os.path.join(SCRIPT_DIR, "videos")
     os.makedirs(video_dir, exist_ok=True)
 
+    game_detail_by_nr = {g["game"]: g for g in game_details}
     for game_nr, last_round in games:
         image_prefix = os.path.join(image_dir, f"{date}__{enemy_team}__{match_id}__{game_nr}")
         image_pattern = f"{image_prefix}__%04d.png"
-        video_name = f"{date}__{enemy_team}__{match_id}__{game_nr}__{last_round}rounds.mp4"
+        gd = game_detail_by_nr.get(game_nr, {})
+        tag = condition_tag(gd.get("result", "loss"), gd.get("condition", "unknown"))
+        map_name = gd.get("map", "unknown")
+        video_name = f"{date}__{enemy_team}__{match_id}__{game_nr}__{last_round}__{map_name}__{tag}.mp4"
         video_path = os.path.join(video_dir, video_name)
 
         print(f"  Creating video:\tgame {game_nr}\t-> {video_path}")
@@ -347,10 +371,13 @@ def process_match(match_id: str) -> None:
     # Mark match as processed
     videos_data = load_videos_json()  # reload in case another process updated it
     losses_by_condition = {}
+    wins_by_condition = {}
     for g in game_details:
+        cond = g["condition"]
         if g["result"] == "loss":
-            cond = g["condition"]
             losses_by_condition[cond] = losses_by_condition.get(cond, 0) + 1
+        elif g["result"] == "win":
+            wins_by_condition[cond] = wins_by_condition.get(cond, 0) + 1
     videos_data[match_id] = {
         "user": getpass.getuser(),
         "date": date,
@@ -358,6 +385,7 @@ def process_match(match_id: str) -> None:
         "score": score,
         "result": result,
         "games": game_details,
+        "wins_by_condition": wins_by_condition,
         "losses_by_condition": losses_by_condition,
     }
     save_videos_json(videos_data)
@@ -382,16 +410,13 @@ if __name__ == "__main__":
             os.remove(f)
         print(f"[{_timestamp()}] {len(old_images)} images removed")
 
-    match_ids = fetch_match_ids(TEAM_ID)
+    # Migrate old entries missing new fields (once at startup)
     videos_data = load_videos_json()
-
-    # Migrate old entries missing new fields
-    REQUIRED_KEYS = {"user", "date", "enemy", "score", "result", "games", "losses_by_condition"}
+    REQUIRED_KEYS = {"user", "date", "enemy", "score", "result", "games", "losses_by_condition", "wins_by_condition"}
     migrated = 0
     for mid, entry in list(videos_data.items()):
         if mid == "_stats":
             continue
-        # Remove deprecated keys
         entry.pop("teams", None)
         missing = REQUIRED_KEYS - set(entry.keys())
         if missing:
@@ -405,11 +430,15 @@ if __name__ == "__main__":
                 entry.setdefault("user", "unknown")
                 entry.setdefault("date", "unknown")
                 lbc = {}
+                wbc = {}
                 for g in entry.get("games", []):
+                    cond = g.get("condition", "unknown")
                     if g.get("result") == "loss":
-                        cond = g.get("condition", "unknown")
                         lbc[cond] = lbc.get(cond, 0) + 1
+                    elif g.get("result") == "win":
+                        wbc[cond] = wbc.get(cond, 0) + 1
                 entry.setdefault("losses_by_condition", lbc)
+                entry.setdefault("wins_by_condition", wbc)
                 migrated += 1
             except Exception as e:
                 print(f"  Failed to backfill {mid}: {e}")
@@ -417,14 +446,28 @@ if __name__ == "__main__":
         save_videos_json(videos_data)
         print(f"[{_timestamp()}] Backfilled {migrated} entries.")
 
-    new_ids = [mid for mid in match_ids if mid not in videos_data]
+    iteration = 0
+    while True:
+        iteration += 1
+        print(f"\n{'='*60}")
+        print(f"[{_timestamp()}] Iteration {iteration}")
+        print(f"{'='*60}")
 
-    print(f"Found {len(match_ids)} matches, {len(new_ids)} new to process.\n")
+        match_ids = fetch_match_ids(TEAM_ID)
+        videos_data = load_videos_json()
+        new_ids = [mid for mid in match_ids if mid not in videos_data]
 
-    for i, match_id in enumerate(new_ids, 1):
-        print(f"=== [{_timestamp()}] Match {i}/{len(new_ids)}: {match_id} ===")
-        try:
-            process_match(match_id)
-        except Exception as e:
-            print(f"  ERROR processing {match_id}: {e}\n")
+        if not new_ids:
+            print(f"[{_timestamp()}] No new matches. Waiting 60s before next check...")
+            time.sleep(60)
+            continue
+
+        print(f"Found {len(match_ids)} matches, {len(new_ids)} new to process.\n")
+
+        for i, match_id in enumerate(new_ids, 1):
+            print(f"=== [{_timestamp()}] Match {i}/{len(new_ids)}: {match_id} ===")
+            try:
+                process_match(match_id)
+            except Exception as e:
+                print(f"  ERROR processing {match_id}: {e}\n")
 

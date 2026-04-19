@@ -211,12 +211,64 @@
     ]
   },
   "_stats": {
-    "total_games": 20,
-    "total_losses": 16,
+    "total_games": 25,
+    "total_losses": 17,
     "losses_by_condition": {
-      "Axionite Collected": 5,
+      "Axionite Collected": 5,_
       "Core Destroyed": 7,
-      "Titanium Collected": 4
+      "Titanium Collected": 5
+    }
+  },
+  "54c57a59-58ce-42e1-92e5-f27d1e2e6493": {
+    "user": "einbocha",
+    "date": "2026-04-18",
+    "enemy": "Master Oogway",
+    "score": "1-4",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "craters",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 627,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "flowers",
+        "winner": "Master Oogway",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "pls_buy_cucats_merch",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 195,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 1399,
+        "result": "win"
+      }
+    ],
+    "losses_by_condition": {
+      "Titanium Collected": 1
     }
   }
 }
