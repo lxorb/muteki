@@ -1,3 +1,6 @@
+SURRENDER_AT_TURN: int = 500  # TODO set to 1e6
+ENABLE_PRINTING: bool = True  # TODO set to False
+
 from cambc import EntityType
 import builtins
 
@@ -21,7 +24,6 @@ BUILD_ACTION_MIN_TITANIUM_BASE: int = 5
 BRIDGE_PREFERRED_DIST: int = 6
 FOUNDRY_CAN_REPLACE_BRIDGE: bool = False
 DISABLE_HARASSMENT: bool = False
-ENABLE_PRINTING: bool = True  # TODO set to False
 HARASSMENT_ENEMY_CORE_MOVER: str = "astar_proxy"
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 HARD_AVOID_EXISTING_SUPPLY_CHAIN: bool = True
@@ -125,8 +127,6 @@ surrendering early in submissions.
 
 import sys
 from pathlib import Path
-
-SURRENDER_AT_TURN: int = 500  # TODO set to 1e6
 
 # True when running in a submission environment (no local exclude.py found).
 # Flipped to False below when exclude.py is discovered (local dev).
