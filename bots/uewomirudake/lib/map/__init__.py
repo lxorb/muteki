@@ -1562,7 +1562,6 @@ class Map:
             if (
                 self.MARKER_ENTITY_TYPE is not None
                 and self.ct.get_entity_type(building_id) == self.MARKER_ENTITY_TYPE
-                and self.ct.get_team(building_id) == self.enemy_team
             ):
                 continue
             pos = self.ct.get_position(building_id)

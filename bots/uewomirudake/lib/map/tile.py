@@ -428,6 +428,9 @@ class Tile:
             self.building.prev_team = self.building.team
             self.building.entity_type = ct.get_entity_type(self.building.id)
             self.building.team = ct.get_team(self.building.id)
+            if self.building.entity_type == self.map.MARKER_ENTITY_TYPE:
+                self.clear_building()
+                return
             tracks_targets = self.u_tracks_building_targets()
 
             if self.building.entity_type in DIRECTIONAL_ENTITY_TYPES:
