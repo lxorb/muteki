@@ -25,6 +25,7 @@ from lib.agent.constants import (
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
 )
+# from lib.debug import Stopwatch
 from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -6223,11 +6224,26 @@ class BuilderStrategyMethodsMixin:
         toward that target until the proxy becomes stale or the underlying
         target changes.
         """
+        # stopwatch = Stopwatch("s_move_toward_enemy_core")
+        # stopwatch.start()
+        self.round_stopwatch.log_time("s_move_toward_enemy_core start")
+
         enemy_core_center_pos = self.map.enemy_core_center_pos
         current_pos = self.map.current_pos
         move_mode = HARASSMENT_ENEMY_CORE_MOVER
 
+        print(
+            f"s_move_toward_enemy_core ctx: "
+            f"current={current_pos} "
+            f"enemy_core_center={enemy_core_center_pos} "
+            f"move_mode={move_mode} "
+            f"allow_launcher_yeeting={allow_launcher_yeeting} "
+            f"cached_proxy_base={self.enemy_core_proxy_base_target_pos} "
+            f"cached_proxy={self.enemy_core_proxy_target_pos}"
+        )
+
         def move_toward_enemy_core_target(target_pos: Position) -> bool:
+            self.round_stopwatch.log_time(f"move_toward start tgt={target_pos}")
             if move_mode == "astar_no_proxy":
                 move_target_pos = target_pos
                 move_method = self.u_move_to_astar
@@ -6240,20 +6256,28 @@ class BuilderStrategyMethodsMixin:
             else:
                 move_target_pos = get_move_target(target_pos)
                 move_method = self.u_move_to
+            self.round_stopwatch.log_time(f"resolve move_target={move_target_pos}")
 
             if allow_launcher_yeeting:
                 if self.lets_get_yeeted(move_target_pos):
+                    self.round_stopwatch.log_time("yeeted")
                     return True
+                self.round_stopwatch.log_time("no yeet")
 
             self.u_set_marker_target(target_pos)
 
             current_path = self.map.current_path
-            if (
+            path_reusable = (
                 current_path
                 and len(current_path) > 1
                 and current_path[0].position == current_pos
                 and current_path[-1].position == move_target_pos
-            ):
+            )
+            print(
+                f"move_toward path: reusable={path_reusable} "
+                f"len={len(current_path) if current_path else 0}"
+            )
+            if path_reusable:
                 next_tile = current_path[1]
                 next_direction = self.map.u_get_direction_between(
                     current_pos,
@@ -6268,15 +6292,19 @@ class BuilderStrategyMethodsMixin:
                         allow_conveyor_building=False,
                         respect_titanium_reserve_for_road_build=True,
                     ):
+                        self.round_stopwatch.log_time("progressed on path")
                         return True
+                self.round_stopwatch.log_time("path reuse failed")
 
-            return bool(
+            result = bool(
                 move_method(
                     move_target_pos,
                     allow_conveyor_building=False,
                     respect_titanium_reserve_for_road_build=True,
                 )
             )
+            self.round_stopwatch.log_time(f"{move_method.__name__[:16]}={result}")
+            return result
 
         def iter_bresenham_positions(source_pos: Position, target_pos: Position):
             x0, y0 = source_pos.x, source_pos.y
@@ -6342,6 +6370,7 @@ class BuilderStrategyMethodsMixin:
                     ):
                         continue
                     candidate_tiles.append(candidate_tile)
+            self.round_stopwatch.log_time(f"ring cands={len(candidate_tiles)}")
 
             target_pos = min(
                 (tile.position for tile in candidate_tiles),
@@ -6352,6 +6381,8 @@ class BuilderStrategyMethodsMixin:
                 ),
                 default=None,
             )
+            self.round_stopwatch.log_time(f"pick ring tgt={target_pos}")
+            print(f"s_move_toward_enemy_core: known core, target={target_pos}")
             if target_pos is None:
                 return False
             return move_toward_enemy_core_target(target_pos)
@@ -6360,7 +6391,12 @@ class BuilderStrategyMethodsMixin:
             not self.map.enemy_core_center_pos_candidates
             and not self.map.u_calc_core_center_positions()
         ):
+            self.round_stopwatch.log_time("no symmetry cands")
+            print("s_move_toward_enemy_core: no symmetry candidates")
             return False
+        self.round_stopwatch.log_time(
+            f"symmetry cands={len(self.map.enemy_core_center_pos_candidates)}"
+        )
 
         target_pos = min(
             {
@@ -6373,6 +6409,8 @@ class BuilderStrategyMethodsMixin:
                 ),
                 default=None,
             )
+        self.round_stopwatch.log_time(f"pick symmetry tgt={target_pos}")
+        print(f"s_move_toward_enemy_core: symmetry target={target_pos}")
         if target_pos is None:
             return False
 

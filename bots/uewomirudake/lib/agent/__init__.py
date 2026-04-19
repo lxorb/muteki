@@ -7,7 +7,7 @@ from lib.agent.time import RoundStopwatch
 from lib.map import Map
 from lib.map.tile import Tile
 
-from lib.debug import Stopwatch
+# from lib.debug import Stopwatch
 
 
 class Agent:
@@ -18,31 +18,34 @@ class Agent:
         self.first_turn_initialized: bool = False
 
         # Debugging
-        self.stopwatch: Stopwatch = Stopwatch("Agent")
+        # self.stopwatch: Stopwatch = Stopwatch("Agent")
 
     def u_run(self, ct: Controller) -> None:
         self.round_stopwatch.start_round(ct)
 
-        self.stopwatch.start()
+        # self.stopwatch.start()
 
         self.ct = ct
         if not self.first_turn_initialized:
             self.map._first_round_init(ct)
             self.first_turn_initialized = True
-            self.stopwatch.lap("first round init")
-            self.stopwatch.log()
+            # self.stopwatch.lap("first round init")
+            # self.stopwatch.log()
         else:
             self.map.ct = ct
 
         self.map.u_update_vision()
-        self.stopwatch.lap("Map vision")
+        # self.stopwatch.lap("Map vision")
+        self.round_stopwatch.log_time("map_vision")
 
         self.round_stopwatch.start_bot()
 
         self.u_handler()
-        self.stopwatch.lap("Handle agent")
+        # self.stopwatch.lap("Handle agent")
 
-        self.stopwatch.log()
+        # self.stopwatch.log()
+
+        self.round_stopwatch.end_round()
 
     def u_get_bound_method(
         self,

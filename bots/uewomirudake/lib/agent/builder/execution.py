@@ -1,5 +1,5 @@
 from lib.agent.builder.strategies import STRATEGIES
-from lib.debug import Stopwatch
+# from lib.debug import Stopwatch
 
 
 class BuilderExecutionMixin:
@@ -18,8 +18,8 @@ class BuilderExecutionMixin:
         whether any strategy method acted.
         """
 
-        stopwatch = Stopwatch("Builder strats")
-        stopwatch.start()
+        # stopwatch = Stopwatch("Builder strats")
+        # stopwatch.start()
 
         strategy_steps = STRATEGIES.get(self.strategy, [])
 
@@ -31,13 +31,13 @@ class BuilderExecutionMixin:
             if start_index >= len(strategy_steps):
                 start_index = 0
 
-        stopwatch.lap("Init logic")
+        # stopwatch.lap("Init logic")
 
         self.last_turn_completed = False
         for idx in range(start_index, len(strategy_steps)):
             if self.round_stopwatch.check_overtime():
-                stopwatch.lap("Overtime")
-                stopwatch.log()
+                # stopwatch.lap("Overtime")
+                # stopwatch.log()
                 self.after_strategy()
                 return False
 
@@ -47,20 +47,20 @@ class BuilderExecutionMixin:
             acted = bool(strategy_method(*strategy_args))
             self.last_strategy_index = idx
 
-            stopwatch.lap(
-                strategy_method.__name__[:16]
-            )  # Truncate name so that we get nice lines in replay viewer
+            # stopwatch.lap(
+            #     strategy_method.__name__[:16]
+            # )  # Truncate name so that we get nice lines in replay viewer
 
             if acted:
                 self.last_turn_completed = True
                 print(f"Executed strategy: {strategy_method.__name__}")
-                stopwatch.log()
+                # stopwatch.log()
                 self.after_strategy()
                 return True
 
         self.last_turn_completed = True
-        stopwatch.lap("Complete turn")
-        stopwatch.log()
+        # stopwatch.lap("Complete turn")
+        # stopwatch.log()
         self.after_strategy()
         return False
 

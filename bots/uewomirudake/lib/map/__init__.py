@@ -41,7 +41,7 @@ from lib.map.constants import (
 from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel
 
-from lib.debug import Stopwatch
+# from lib.debug import Stopwatch
 
 
 PARSED_TILE_TYPE_INACTIVE = 0
@@ -618,7 +618,7 @@ class Map:
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
         self.own_team_bbs_in_vision_count = 0
 
-        self.stopwatch = Stopwatch("Map")
+        # self.stopwatch = Stopwatch("Map")
 
     def _reset_turn_state(self) -> None:
         if self.ct is None:
@@ -1586,7 +1586,7 @@ class Map:
                 "Map must be first-round initialized before updating vision."
             )
 
-        self.stopwatch.start()
+        # self.stopwatch.start()
 
         self._reset_turn_state()
         self.tiles_in_vision = [
@@ -1617,7 +1617,7 @@ class Map:
                 if self.visible_building_ids_by_index[idx] < 0:
                     self.visible_building_ids_touched_indices.append(idx)
                 self.visible_building_ids_by_index[idx] = building_id
-        self.stopwatch.lap("Reset + nearby queries")
+        # self.stopwatch.lap("Reset + nearby queries")
 
         processed_tiles_in_vision = []
         known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
@@ -1754,7 +1754,7 @@ class Map:
             self.parsed_axionite_indices,
         )
 
-        self.stopwatch.lap("Tile attributes")
+        # self.stopwatch.lap("Tile attributes")
 
         self.u_update_visible_map_caches()
 
@@ -1764,22 +1764,22 @@ class Map:
         self.u_infer_map()
         self.u_sync_core_footprint_tiles()
 
-        self.stopwatch.lap("Core positions")
+        # self.stopwatch.lap("Core positions")
 
         self.u_update_supply_information()
         self.u_update_enemy_gunner_first_target_caches()
 
-        self.stopwatch.lap("Supply info")
+        # self.stopwatch.lap("Supply info")
 
         self.u_update_supply_patrol_indices()
 
-        self.stopwatch.lap("Patrol indices")
+        # self.stopwatch.lap("Patrol indices")
 
         self.u_update_distances()
 
-        self.stopwatch.lap("Distances")
+        # self.stopwatch.lap("Distances")
 
-        self.stopwatch.log()
+        # self.stopwatch.log()
 
     def u_encode_marker_value(
         self,
@@ -1933,9 +1933,9 @@ class Map:
 
     def u_update_visible_map_caches(self) -> None:
         self.u_update_symmetry_from_visible_tiles()
-        self.stopwatch.lap("Visible caches: symmetry")
+        # self.stopwatch.lap("Visible caches: symmetry")
 
-        self.stopwatch.lap("Visible caches: classify")
+        # self.stopwatch.lap("Visible caches: classify")
         for tile in self.own_buildings_in_vision:
             if tile.building.entity_type == EntityType.CORE:
                 self.u_update_visible_core_center(tile)
@@ -1943,9 +1943,9 @@ class Map:
             if tile.building.entity_type == EntityType.CORE:
                 self.u_update_visible_core_center(tile)
         self.u_update_own_titanium_harvester_adjacent_candidate_cache()
-        self.stopwatch.lap("Visible caches: accessible ore")
+        # self.stopwatch.lap("Visible caches: accessible ore")
         self.u_update_frontier_expand_cache()
-        self.stopwatch.lap("Visible caches: frontier")
+        # self.stopwatch.lap("Visible caches: frontier")
 
     def u_update_own_titanium_harvester_adjacent_candidate_cache(self) -> None:
         current_round = self.current_round
@@ -5985,18 +5985,18 @@ class Map:
         return path
 
     def u_update_distances(self) -> None:
-        sw = Stopwatch("Map distances")
-        sw.start()
+        # sw = Stopwatch("Map distances")
+        # sw.start()
         self.u_refresh_vision_reachable_dist_to_self()
-        sw.lap("Self distance field")
+        # sw.lap("Self distance field")
 
         if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
             self.u_apply_parsed_own_core_dist_to_tiles(self.tiles_in_vision)
             self.u_clear_core_distance_dirty_indices()
             self.u_reset_own_core_distance_incremental_update()
             self.u_reset_own_core_distance_manhattan_initialization()
-            sw.lap("Own core field")
-            sw.log()
+            # sw.lap("Own core field")
+            # sw.log()
             return
 
         dirty_indices = self.core_distance_dirty_indices
@@ -6028,8 +6028,8 @@ class Map:
                     dirty_indices,
                 )
 
-        sw.lap("Own core field")
+        # sw.lap("Own core field")
 
         self.u_clear_core_distance_dirty_indices()
 
-        sw.log()
+        # sw.log()
