@@ -51,6 +51,12 @@ from lib.debug.output import dprint
 # threshold — not the exact path length.
 BRIDGE_HEURISTIC_WEIGHT = 2
 
+# Weight multiplier for the main _u_run_astar_search A*. Same trade-off as
+# BRIDGE_HEURISTIC_WEIGHT, but since this search produces paths the bot
+# actually walks, keep this closer to 1 if optimality matters. Set to 1 to
+# recover strictly-optimal A*.
+ASTAR_HEURISTIC_WEIGHT = 2
+
 PARSED_TILE_TYPE_INACTIVE = 0
 PARSED_TILE_TYPE_EMPTY = 1
 PARSED_TILE_TYPE_WALL = 2
@@ -616,7 +622,6 @@ class Map:
                 "Map controller must be set before resetting turn state."
             )
 
-        self.current_path = []
         self._reset_marked_bytearray_indices(
             self.enemy_gunner_ray_first_target_touched_indices,
             self.enemy_gunner_ray_first_target_by_index,
@@ -4973,9 +4978,7 @@ class Map:
                     ),
                 )
 
-        self.round_stopwatch.log_time(
-            f"bridge_join astar done pops={pops} no_target"
-        )
+        self.round_stopwatch.log_time(f"bridge_join astar done pops={pops} no_target")
         return None
 
     def u_calculate_shortest_path_via_vision_join(
@@ -5091,12 +5094,16 @@ class Map:
         target_idx: int,
         avoid_enemy_turrets: bool = True,
     ) -> Tile | None:
+        self.round_stopwatch.log_time(
+            f"bridge_step start src={source_idx} tgt={target_idx}"
+        )
         current_round = self.current_round
         if (
             source_idx != self.last_dist_to_self_source_idx
             or self.vision_reachable_turn_by_index[source_idx] != current_round
             or self.vision_reachable_turn_by_index[target_idx] == current_round
         ):
+            self.round_stopwatch.log_time("bridge_step precond fail (vision)")
             return None
 
         active_mask_by_index = self.active_mask_by_index
@@ -5106,6 +5113,7 @@ class Map:
             or not active_mask_by_index[target_idx]
             or not intrinsic_passable_by_index[target_idx]
         ):
+            self.round_stopwatch.log_time("bridge_step precond fail (mask)")
             return None
 
         tiles_by_index = self.tiles_by_index
@@ -5120,62 +5128,102 @@ class Map:
         seen_epoch_by_index = self.path_seen_epoch_by_index
         predecessor_by_index = self.path_predecessor_by_index
         path_cost_by_index = self.path_cost_by_index
+        path_first_step_by_index = self.path_first_step_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
         u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
         heappush_local = heappush
         heappop_local = heappop
-        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        check_overtime = self.round_stopwatch.check_overtime
+        self.round_stopwatch.log_time("bridge_step locals bound")
 
         self.path_epoch += 1
         path_epoch = self.path_epoch
         frontier = self.path_heap_buffer
         frontier.clear()
+        self.round_stopwatch.log_time("bridge_step epoch + frontier reset")
 
-        source_x = index_x_by_index[source_idx]
-        source_y = index_y_by_index[source_idx]
         target_x = index_x_by_index[target_idx]
         target_y = index_y_by_index[target_idx]
-        dx = target_x - source_x
-        if dx < 0:
-            dx = -dx
-        dy = target_y - source_y
-        if dy < 0:
-            dy = -dy
-        seen_epoch_by_index[target_idx] = path_epoch
-        predecessor_by_index[target_idx] = target_idx
-        path_cost_by_index[target_idx] = 0
-        heappush_local(
-            frontier,
-            (
-                dx if dx >= dy else dy,
-                0,
-                0,
-                u_get_own_core_dist_by_index(target_idx),
-                target_x,
-                target_y,
-                target_idx,
-            ),
-        )
 
-        best_bridge_idx = -1
-        best_bridge_score: tuple[int, int, int, int, int] | None = None
+        # Seed the heap with every seen-side horizon tile (a vision-reachable
+        # tile adjacent to an unseen tile). Each seed enters the search with
+        # its precomputed source-side distance, and path_first_step_by_index
+        # records which seed owns each expanded tile so we can read the bridge
+        # off whichever seed reaches target first.
+        seeded_count = 0
+        for unseen_idx in self.frontier_expand_cached_unseen_indices:
+            base = unseen_idx * max_neighbor_count
+            count = neighbor_count_by_index[unseen_idx]
+            for offset in range(count):
+                seed_idx = neighbor_indices_by_index[base + offset]
+                if vision_reachable_turn_by_index[seed_idx] != current_round:
+                    continue
+                if seed_idx == source_idx:
+                    continue
+                if seen_epoch_by_index[seed_idx] == path_epoch:
+                    continue
+                first_step_idx = vision_first_step_by_index[seed_idx]
+                if (
+                    first_step_idx < 0
+                    or first_step_idx == source_idx
+                    or bot_present_by_index[first_step_idx]
+                ):
+                    continue
+
+                source_dist = dist_to_self_by_index[seed_idx]
+                seed_x = index_x_by_index[seed_idx]
+                seed_y = index_y_by_index[seed_idx]
+                hdx = seed_x - target_x
+                if hdx < 0:
+                    hdx = -hdx
+                hdy = seed_y - target_y
+                if hdy < 0:
+                    hdy = -hdy
+                heuristic = (hdx if hdx >= hdy else hdy) * BRIDGE_HEURISTIC_WEIGHT
+                lower_bound = source_dist + heuristic
+
+                seen_epoch_by_index[seed_idx] = path_epoch
+                predecessor_by_index[seed_idx] = seed_idx
+                path_cost_by_index[seed_idx] = source_dist
+                path_first_step_by_index[seed_idx] = seed_idx
+
+                heappush_local(
+                    frontier,
+                    (
+                        lower_bound,
+                        source_dist,
+                        0,
+                        u_get_own_core_dist_by_index(seed_idx),
+                        seed_x,
+                        seed_y,
+                        seed_idx,
+                    ),
+                )
+                seeded_count += 1
+
+        self.round_stopwatch.log_time(f"bridge_step seeded={seeded_count}")
+
+        if seeded_count == 0:
+            return None
+
         overtime_check_countdown = 16
+        pops = 0
 
         while frontier:
             overtime_check_countdown -= 1
             if overtime_check_countdown == 0:
-                if check_overtime_interval():
+                if check_overtime():
                     break
                 overtime_check_countdown = 16
 
             (
-                current_lower_bound,
+                _,
                 current_cost,
                 _,
-                current_own_core_dist,
-                current_x,
-                current_y,
+                _,
+                _,
+                _,
                 current_idx,
             ) = heappop_local(frontier)
             if (
@@ -5183,42 +5231,30 @@ class Map:
                 or path_cost_by_index[current_idx] != current_cost
             ):
                 continue
-            if (
-                best_bridge_score is not None
-                and current_lower_bound > best_bridge_score[0]
-            ):
-                break
+            pops += 1
 
-            if vision_reachable_turn_by_index[current_idx] == current_round:
-                bridge_next_step_idx = (
-                    predecessor_by_index[current_idx]
-                    if current_idx == source_idx
-                    else vision_first_step_by_index[current_idx]
+            if current_idx == target_idx:
+                bridge_idx = path_first_step_by_index[current_idx]
+                next_step_idx = vision_first_step_by_index[bridge_idx]
+                self.round_stopwatch.log_time(
+                    f"bridge_step astar done pops={pops} "
+                    f"bridge_idx={bridge_idx} next={next_step_idx}"
                 )
-                if (
-                    bridge_next_step_idx >= 0
-                    and bridge_next_step_idx != source_idx
-                    and not bot_present_by_index[bridge_next_step_idx]
-                ):
-                    candidate_score = (
-                        current_cost + dist_to_self_by_index[current_idx],
-                        current_cost,
-                        current_own_core_dist,
-                        current_x,
-                        current_y,
-                    )
-                    if best_bridge_score is None or candidate_score < best_bridge_score:
-                        best_bridge_score = candidate_score
-                        best_bridge_idx = current_idx
-                continue
+                if next_step_idx < 0:
+                    return None
+                return tiles_by_index[next_step_idx]
 
             neighbor_base = current_idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[current_idx]
             next_cost = current_cost + 1
+            current_bridge_seed = path_first_step_by_index[current_idx]
 
             for offset in range(neighbor_count):
                 adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[adjacent_idx]:
+                    continue
+                # Don't re-enter the known vision graph.
+                if vision_reachable_turn_by_index[adjacent_idx] == current_round:
                     continue
                 if (
                     avoid_enemy_turrets
@@ -5232,41 +5268,29 @@ class Map:
                 ):
                     continue
 
-                if seen_epoch_by_index[adjacent_idx] == path_epoch:
-                    previous_cost = path_cost_by_index[adjacent_idx]
-                    if next_cost > previous_cost:
-                        continue
-                    if next_cost == previous_cost:
-                        if adjacent_idx != source_idx:
-                            continue
-                        existing_first_step_idx = predecessor_by_index[source_idx]
-                        if (
-                            existing_first_step_idx >= 0
-                            and existing_first_step_idx != source_idx
-                            and not bot_present_by_index[existing_first_step_idx]
-                        ):
-                            continue
-                        if bot_present_by_index[current_idx]:
-                            continue
+                if (
+                    seen_epoch_by_index[adjacent_idx] == path_epoch
+                    and next_cost >= path_cost_by_index[adjacent_idx]
+                ):
+                    continue
 
                 adjacent_x = index_x_by_index[adjacent_idx]
                 adjacent_y = index_y_by_index[adjacent_idx]
                 predecessor_by_index[adjacent_idx] = current_idx
                 seen_epoch_by_index[adjacent_idx] = path_epoch
                 path_cost_by_index[adjacent_idx] = next_cost
+                path_first_step_by_index[adjacent_idx] = current_bridge_seed
 
-                heuristic_dx = adjacent_x - source_x
+                heuristic_dx = adjacent_x - target_x
                 if heuristic_dx < 0:
                     heuristic_dx = -heuristic_dx
-                heuristic_dy = adjacent_y - source_y
+                heuristic_dy = adjacent_y - target_y
                 if heuristic_dy < 0:
                     heuristic_dy = -heuristic_dy
                 heuristic = (
                     heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
-                )
+                ) * BRIDGE_HEURISTIC_WEIGHT
                 lower_bound = next_cost + heuristic
-                if best_bridge_score is not None and lower_bound > best_bridge_score[0]:
-                    continue
 
                 heappush_local(
                     frontier,
@@ -5281,17 +5305,8 @@ class Map:
                     ),
                 )
 
-        if best_bridge_idx < 0:
-            return None
-
-        next_step_idx = (
-            predecessor_by_index[best_bridge_idx]
-            if best_bridge_idx == source_idx
-            else vision_first_step_by_index[best_bridge_idx]
-        )
-        if next_step_idx < 0:
-            return None
-        return tiles_by_index[next_step_idx]
+        self.round_stopwatch.log_time(f"bridge_step astar done pops={pops} no_target")
+        return None
 
     def u_get_next_step_to_builder_action_range_astar(
         self,
@@ -5444,7 +5459,8 @@ class Map:
             heappush_local(
                 frontier,
                 (
-                    (heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy),
+                    (heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy)
+                    * BRIDGE_HEURISTIC_WEIGHT,
                     0,
                     0,
                     u_get_own_core_dist_by_index(goal_idx),
@@ -5552,7 +5568,8 @@ class Map:
                 if heuristic_dy < 0:
                     heuristic_dy = -heuristic_dy
                 lower_bound = next_cost + (
-                    heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
+                    (heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy)
+                    * BRIDGE_HEURISTIC_WEIGHT
                 )
                 if best_join_score is not None and lower_bound > best_join_score[0]:
                     continue
@@ -5590,6 +5607,10 @@ class Map:
         avoid_other_builder_bots: bool = True,
         stop_in_builder_action_range: bool = False,
     ) -> int | None:
+        self.round_stopwatch.log_time(
+            f"astar start src={source_idx} tgt={target_idx} "
+            f"action_range={stop_in_builder_action_range}"
+        )
         tiles_by_index = self.tiles_by_index
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
@@ -5607,22 +5628,26 @@ class Map:
         path_cost_by_index = self.path_cost_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
+        parsed_map_own_core_dist_by_index = self.parsed_map_own_core_dist_by_index
         target_x = index_x_by_index[target_idx]
         target_y = index_y_by_index[target_idx]
         heappush_local = heappush
         heappop_local = heappop
-        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        check_overtime = self.round_stopwatch.check_overtime
+        self.round_stopwatch.log_time("astar locals bound")
 
         if (
             not stop_in_builder_action_range
             and not intrinsic_passable_by_index[target_idx]
         ):
+            self.round_stopwatch.log_time("astar precond fail (target impassable)")
             return None
 
         self.path_epoch += 1
         path_epoch = self.path_epoch
         frontier = self.path_heap_buffer
         frontier.clear()
+        self.round_stopwatch.log_time("astar epoch + frontier reset")
 
         source_x = index_x_by_index[source_idx]
         source_y = index_y_by_index[source_idx]
@@ -5632,8 +5657,11 @@ class Map:
         first_step_requires_new_road_by_index[source_idx] = 0
         path_cost_by_index[source_idx] = 0
 
-        if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
-            source_own_core_dist = self.parsed_map_own_core_dist_by_index[source_idx]
+        if (
+            self.is_map_known
+            and parsed_map_own_core_dist_by_index is not None
+        ):
+            source_own_core_dist = parsed_map_own_core_dist_by_index[source_idx]
             use_parsed_core_dist = True
         else:
             use_parsed_core_dist = False
@@ -5648,6 +5676,21 @@ class Map:
         else:
             own_core_center_x = -1
             own_core_center_y = -1
+
+        # Hoist the own-core-distance strategy once per call so the inner
+        # loop only performs a single mode dispatch:
+        #   0 - parsed map distances available
+        #   1 - own-core distance field fully initialized
+        #   2 - partial field, Manhattan fallback from known core center
+        #   3 - partial field, INF when exact not available
+        if use_parsed_core_dist:
+            core_dist_mode = 0
+        elif own_core_dist_initialized:
+            core_dist_mode = 1
+        elif own_core_center_pos is not None:
+            core_dist_mode = 2
+        else:
+            core_dist_mode = 3
 
         if not use_parsed_core_dist:
             if own_core_dist_initialized or own_core_dist_exact_by_index[source_idx]:
@@ -5681,6 +5724,7 @@ class Map:
                 source_heuristic -= 1
         else:
             source_heuristic = dx if dx >= dy else dy
+        source_heuristic *= ASTAR_HEURISTIC_WEIGHT
         heappush_local(
             frontier,
             (
@@ -5693,13 +5737,16 @@ class Map:
                 source_idx,
             ),
         )
+        self.round_stopwatch.log_time("astar heap seed")
 
         overtime_check_countdown = 16
+        pops = 0
 
         while frontier:
             overtime_check_countdown -= 1
             if overtime_check_countdown == 0:
-                if check_overtime_interval():
+                if check_overtime():
+                    self.round_stopwatch.log_time(f"astar done pops={pops} overtime")
                     return None
                 overtime_check_countdown = 16
 
@@ -5709,6 +5756,7 @@ class Map:
                 or path_cost_by_index[current_idx] != current_cost
             ):
                 continue
+            pops += 1
 
             current_x = index_x_by_index[current_idx]
             current_y = index_y_by_index[current_idx]
@@ -5720,8 +5768,15 @@ class Map:
                 if goal_dy < 0:
                     goal_dy = -goal_dy
                 if goal_dx * goal_dx + goal_dy * goal_dy <= 2:
+                    self.round_stopwatch.log_time(
+                        f"astar done pops={pops} reached={current_idx} "
+                        f"(action_range)"
+                    )
                     return current_idx
             elif current_idx == target_idx:
+                self.round_stopwatch.log_time(
+                    f"astar done pops={pops} reached={current_idx}"
+                )
                 return current_idx
 
             neighbor_base = current_idx * max_neighbor_count
@@ -5734,6 +5789,11 @@ class Map:
                 if not active_mask_by_index[adjacent_idx]:
                     continue
                 if (
+                    adjacent_idx != target_idx
+                    and not intrinsic_passable_by_index[adjacent_idx]
+                ):
+                    continue
+                if (
                     avoid_enemy_turrets
                     and adjacent_idx != target_idx
                     and enemy_turret_target_by_index[adjacent_idx]
@@ -5744,11 +5804,6 @@ class Map:
                     and adjacent_idx != source_idx
                     and adjacent_idx != target_idx
                     and bot_present_by_index[adjacent_idx]
-                ):
-                    continue
-                if (
-                    adjacent_idx != target_idx
-                    and not intrinsic_passable_by_index[adjacent_idx]
                 ):
                     continue
                 if current_first_step_idx == -1:
@@ -5783,31 +5838,38 @@ class Map:
                 seen_epoch_by_index[adjacent_idx] = path_epoch
                 path_cost_by_index[adjacent_idx] = next_cost
 
-                if use_parsed_core_dist:
-                    own_core_dist = self.parsed_map_own_core_dist_by_index[adjacent_idx]
-                elif (
-                    own_core_dist_initialized
-                    or own_core_dist_exact_by_index[adjacent_idx]
-                ):
+                if core_dist_mode == 0:
+                    own_core_dist = parsed_map_own_core_dist_by_index[adjacent_idx]
+                elif core_dist_mode == 1:
                     own_core_dist = own_core_dist_by_index[adjacent_idx]
                     if own_core_dist >= CORE_DIST_INF:
                         own_core_dist = INF_DIST
-                elif own_core_center_pos is not None:
-                    own_core_dx = adjacent_x - own_core_center_x
-                    if own_core_dx < 0:
-                        own_core_dx = -own_core_dx
-                    own_core_dx -= 1
-                    if own_core_dx < 0:
-                        own_core_dx = 0
-                    own_core_dy = adjacent_y - own_core_center_y
-                    if own_core_dy < 0:
-                        own_core_dy = -own_core_dy
-                    own_core_dy -= 1
-                    if own_core_dy < 0:
-                        own_core_dy = 0
-                    own_core_dist = own_core_dx + own_core_dy
+                elif core_dist_mode == 2:
+                    if own_core_dist_exact_by_index[adjacent_idx]:
+                        own_core_dist = own_core_dist_by_index[adjacent_idx]
+                        if own_core_dist >= CORE_DIST_INF:
+                            own_core_dist = INF_DIST
+                    else:
+                        own_core_dx = adjacent_x - own_core_center_x
+                        if own_core_dx < 0:
+                            own_core_dx = -own_core_dx
+                        own_core_dx -= 1
+                        if own_core_dx < 0:
+                            own_core_dx = 0
+                        own_core_dy = adjacent_y - own_core_center_y
+                        if own_core_dy < 0:
+                            own_core_dy = -own_core_dy
+                        own_core_dy -= 1
+                        if own_core_dy < 0:
+                            own_core_dy = 0
+                        own_core_dist = own_core_dx + own_core_dy
                 else:
-                    own_core_dist = INF_DIST
+                    if own_core_dist_exact_by_index[adjacent_idx]:
+                        own_core_dist = own_core_dist_by_index[adjacent_idx]
+                        if own_core_dist >= CORE_DIST_INF:
+                            own_core_dist = INF_DIST
+                    else:
+                        own_core_dist = INF_DIST
 
                 heuristic_dx = adjacent_x - target_x
                 if heuristic_dx < 0:
@@ -5820,6 +5882,7 @@ class Map:
                 )
                 if stop_in_builder_action_range and heuristic > 0:
                     heuristic -= 1
+                heuristic *= ASTAR_HEURISTIC_WEIGHT
 
                 heappush_local(
                     frontier,
@@ -5834,6 +5897,7 @@ class Map:
                     ),
                 )
 
+        self.round_stopwatch.log_time(f"astar done pops={pops} exhausted")
         return None
 
     def u_calculate_shortest_path_to_frontier(

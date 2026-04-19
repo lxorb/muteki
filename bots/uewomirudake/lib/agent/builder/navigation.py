@@ -21,8 +21,9 @@ from lib.agent.constants import (
     HARD_AVOID_EXISTING_SUPPLY_CHAIN,
     NONDIRECTIONAL_BUILDING_TYPES,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
+    SUBMISSION_ENV,
 )
-from lib.debug.output import dprint
+from lib.debug.output import dprint, tprint
 from lib.map.constants import DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -34,13 +35,12 @@ _BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
     if 0 < dx * dx + dy * dy <= GameConstants.BRIDGE_TARGET_RADIUS_SQ
     and abs(dx) + abs(dy) != 1
 )
-_RESOURCE_ENVIRONMENTS = frozenset(
-    (Environment.ORE_TITANIUM, Environment.ORE_AXIONITE)
-)
+_RESOURCE_ENVIRONMENTS = frozenset((Environment.ORE_TITANIUM, Environment.ORE_AXIONITE))
 _CARDINAL_DIRECTIONS = tuple(
     direction
     for direction in Direction
-    if direction != Direction.CENTRE and sum(abs(delta) for delta in direction.delta()) == 1
+    if direction != Direction.CENTRE
+    and sum(abs(delta) for delta in direction.delta()) == 1
 )
 _DIRECTION_BY_DELTA = {
     direction.delta(): direction
@@ -59,6 +59,14 @@ _EMPTY_SOURCE_INDEX_SET = frozenset()
 _INCREMENTAL_PATH_INF = 0x3FFFFFFF
 _INCREMENTAL_OVERTIME_CHECK_INTERVAL = 16
 _INCREMENTAL_QUEUE_REBUILD_FACTOR = 8
+
+# Thresholds for the time-pressure greedy fallback in u_move_to.
+# When the remaining turn budget drops below the time threshold AND the target
+# is further away than the distance threshold (squared), skip the expensive
+# A* and take one greedy Manhattan step instead. Only active in submission
+# environments — local dev keeps the normal A* path.
+_FAR_TARGET_GREEDY_FALLBACK_TIME_MUS = -1e6
+_FAR_TARGET_GREEDY_FALLBACK_DIST_SQ = -1
 
 
 def _u_chebyshev_dist_by_index(
@@ -249,7 +257,12 @@ class _IncrementalShortestPathState:
         changed_indices: list[int] = []
         current_passable_mask_by_index = self.passable_mask_by_index
         current_goal_mask_by_index = self.goal_mask_by_index
+        check_overtime_interval = map.round_stopwatch.check_overtime_interval
         for idx in range(self.tile_count):
+            if check_overtime_interval():
+                # Tail tiles not yet compared stay mirrored to their prior
+                # state; next call's diff pass will pick them up.
+                return
             if (
                 current_passable_mask_by_index[idx] == passable_mask_by_index[idx]
                 and current_goal_mask_by_index[idx] == goal_mask_by_index[idx]
@@ -263,6 +276,8 @@ class _IncrementalShortestPathState:
             return
 
         for idx in changed_indices:
+            if check_overtime_interval():
+                return
             self.u_update_vertex(
                 map,
                 source_idx,
@@ -302,10 +317,9 @@ class _IncrementalShortestPathState:
                 index_y_by_index,
             )
             queue_key_1, queue_key_2, idx = self.queue[0]
-            if (
-                (queue_key_1, queue_key_2) >= source_key
-                and self.rhs_by_index[source_idx] == self.g_by_index[source_idx]
-            ):
+            if (queue_key_1, queue_key_2) >= source_key and self.rhs_by_index[
+                source_idx
+            ] == self.g_by_index[source_idx]:
                 break
 
             overtime_check_countdown -= 1
@@ -367,9 +381,7 @@ class BuilderNavigationMixin:
             return 0
 
         harvester_titanium_cost, _ = self.ct.get_harvester_cost()
-        return math.ceil(
-            BUILD_ACTION_MIN_TITANIUM_BASE * harvester_titanium_cost / 20
-        )
+        return math.ceil(BUILD_ACTION_MIN_TITANIUM_BASE * harvester_titanium_cost / 20)
 
     def u_can_spend_titanium_without_falling_below_reserve(
         self,
@@ -439,7 +451,9 @@ class BuilderNavigationMixin:
             return True
 
         adjacent_resource_tiles = []
-        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(next_tile.position):
+        for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
+            next_tile.position
+        ):
             adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
             if adjacent_tile.environment == Environment.ORE_TITANIUM:
                 adjacent_resource_tiles.append(adjacent_tile)
@@ -487,9 +501,8 @@ class BuilderNavigationMixin:
         avoid_enemy_turrets: bool = True,
     ) -> bool:
         current_pos = self.map.current_pos
-        current_dist = (
-            abs(current_pos.x - target_pos.x)
-            + abs(current_pos.y - target_pos.y)
+        current_dist = abs(current_pos.x - target_pos.x) + abs(
+            current_pos.y - target_pos.y
         )
         best_direction: Direction | None = None
         best_score: tuple[int, int, int] | None = None
@@ -504,10 +517,7 @@ class BuilderNavigationMixin:
             if not self.map.u_is_in_bounds(next_pos):
                 continue
             next_idx = self.map.u_to_index(next_pos)
-            if (
-                avoid_enemy_turrets
-                and self.map.enemy_turret_target_by_index[next_idx]
-            ):
+            if avoid_enemy_turrets and self.map.enemy_turret_target_by_index[next_idx]:
                 continue
             next_dist = abs(next_pos.x - target_pos.x) + abs(next_pos.y - target_pos.y)
             if next_dist >= current_dist:
@@ -539,12 +549,15 @@ class BuilderNavigationMixin:
     ) -> bool:
         current_pos = self.map.current_pos
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
+            tprint(f"u_move_to: target_reached tgt={pos}")
             return False
         if not self.map.u_is_in_bounds(pos):
+            tprint(f"u_move_to: out_of_bounds tgt={pos}")
             return False
         delta_x = pos.x - current_pos.x
         delta_y = pos.y - current_pos.y
         if -1 <= delta_x <= 1 and -1 <= delta_y <= 1:
+            tprint(f"u_move_to: adjacent_direct tgt={pos}")
             target_idx = self.map.u_to_index(pos)
             next_direction = _DIRECTION_BY_DELTA.get((delta_x, delta_y))
             return self.u_try_progress_move_step(
@@ -559,14 +572,18 @@ class BuilderNavigationMixin:
             )
         target_idx = self.map.u_to_index(pos)
         target_is_vision_reachable = self.map.u_is_vision_reachable_by_index(target_idx)
-        target_is_vision_action_reachable = self.map.u_is_vision_action_reachable_by_index(
-            target_idx
+        target_is_vision_action_reachable = (
+            self.map.u_is_vision_action_reachable_by_index(target_idx)
         )
         if not reach_builder_action_range and target_is_vision_reachable:
             next_tile = self.map.u_get_next_step_towards_vision_reachable_by_index(
                 target_idx
             )
             if next_tile is not None:
+                tprint(
+                    f"u_move_to: vision_reachable_first_step tgt={pos} "
+                    f"next={next_tile.position}"
+                )
                 next_direction = self.map.u_get_direction_between(
                     current_pos,
                     next_tile.position,
@@ -586,10 +603,27 @@ class BuilderNavigationMixin:
             if reach_builder_action_range
             else target_is_vision_reachable
         ):
+            tprint(f"u_move_to: caged_greedy tgt={pos}")
             return self.u_try_greedy_manhattan_move_toward(
                 pos,
                 avoid_enemy_turrets=avoid_enemy_turrets,
             )
+        if (
+            SUBMISSION_ENV
+            and current_pos.distance_squared(pos) > _FAR_TARGET_GREEDY_FALLBACK_DIST_SQ
+            and self.round_stopwatch.time_remaining_mus()
+            < _FAR_TARGET_GREEDY_FALLBACK_TIME_MUS
+        ):
+            tprint(
+                f"u_move_to: far_target_time_pressure_greedy tgt={pos} "
+                f"dist_sq={current_pos.distance_squared(pos)} "
+                f"time_left={self.round_stopwatch.time_remaining_mus():.2f}"
+            )
+            return self.u_try_greedy_manhattan_move_toward(
+                pos,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+            )
+        tprint(f"u_move_to: astar_fallthrough tgt={pos}")
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
                 respect_titanium_reserve_for_road_build
@@ -642,11 +676,14 @@ class BuilderNavigationMixin:
         intrinsic_passable_by_index = map.intrinsic_passable_by_index
         enemy_turret_target_by_index = map.enemy_turret_target_by_index
         bot_present_by_index = map.bot_present_by_index
+        check_overtime_interval = map.round_stopwatch.check_overtime_interval
 
         if not active_mask_by_index[source_idx]:
             return (passable_mask_by_index, goal_mask_by_index, False)
 
         for idx in range(tile_count):
+            if check_overtime_interval():
+                return (passable_mask_by_index, goal_mask_by_index, False)
             if not active_mask_by_index[idx]:
                 continue
             if idx == source_idx:
@@ -700,7 +737,7 @@ class BuilderNavigationMixin:
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             return False
 
-        dprint("Move to target:", pos)
+        tprint("Move to target:", pos)
 
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
@@ -1114,7 +1151,10 @@ class BuilderNavigationMixin:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is None and self.map.enemy_core_center_pos_candidates:
             enemy_core_center_pos = min(
-                (candidate_pos for _, candidate_pos in self.map.enemy_core_center_pos_candidates),
+                (
+                    candidate_pos
+                    for _, candidate_pos in self.map.enemy_core_center_pos_candidates
+                ),
                 key=lambda candidate_pos: (
                     pos.distance_squared(candidate_pos),
                     candidate_pos.x,
@@ -1225,10 +1265,7 @@ class BuilderNavigationMixin:
         respect_titanium_reserve: bool,
         require_affordable: bool = True,
     ) -> tuple[EntityType, Direction] | None:
-        if (
-            not require_affordable
-            or self.u_can_afford_gunner(respect_titanium_reserve)
-        ):
+        if not require_affordable or self.u_can_afford_gunner(respect_titanium_reserve):
             gunner_direction = self.u_get_gunner_orientation(pos)
             if self._u_gunner_can_target_useful_harvester_adjacent_enemy(
                 pos,
@@ -1263,11 +1300,15 @@ class BuilderNavigationMixin:
                 return sentinel_direction
             if sentinel_target_tile.building.team != enemy_team:
                 continue
-            if sentinel_target_tile.building.entity_type in (
-                EntityType.HARVESTER,
-                EntityType.FOUNDRY,
-                EntityType.LAUNCHER,
-            ) or sentinel_target_tile.building.entity_type in ENEMY_TURRET_TYPES:
+            if (
+                sentinel_target_tile.building.entity_type
+                in (
+                    EntityType.HARVESTER,
+                    EntityType.FOUNDRY,
+                    EntityType.LAUNCHER,
+                )
+                or sentinel_target_tile.building.entity_type in ENEMY_TURRET_TYPES
+            ):
                 return sentinel_direction
         return None
 
@@ -1283,7 +1324,9 @@ class BuilderNavigationMixin:
         candidate_entries: list[dict[str, object]] = []
 
         def tile_points_at_self(tile) -> bool:
-            return any(target_tile.index == source_idx for target_tile in tile.building.targets)
+            return any(
+                target_tile.index == source_idx for target_tile in tile.building.targets
+            )
 
         def is_visible_enemy_tile(tile) -> bool:
             if tile.is_core_of(enemy_team):
@@ -1326,7 +1369,9 @@ class BuilderNavigationMixin:
             if not shootable_tiles:
                 continue
 
-            if not any(is_visible_enemy_tile(target_tile) for target_tile in shootable_tiles):
+            if not any(
+                is_visible_enemy_tile(target_tile) for target_tile in shootable_tiles
+            ):
                 continue
 
             if any(
@@ -1367,7 +1412,8 @@ class BuilderNavigationMixin:
             lambda candidate_entry: (
                 candidate_entry["first_tile"].last_seen_turn == current_round
                 and candidate_entry["first_tile"].building.team == enemy_team
-                and candidate_entry["first_tile"].building.entity_type == EntityType.GUNNER
+                and candidate_entry["first_tile"].building.entity_type
+                == EntityType.GUNNER
                 and self._u_tile_is_targeted_by_titanium_supply_chain(
                     candidate_entry["first_tile"].index
                 )
@@ -1388,7 +1434,8 @@ class BuilderNavigationMixin:
             lambda candidate_entry: (
                 candidate_entry["first_tile"].last_seen_turn == current_round
                 and candidate_entry["first_tile"].building.team == enemy_team
-                and candidate_entry["first_tile"].building.entity_type == EntityType.BREACH
+                and candidate_entry["first_tile"].building.entity_type
+                == EntityType.BREACH
                 and self._u_tile_is_targeted_by_supply_chain(
                     candidate_entry["first_tile"].index
                 )
@@ -1528,11 +1575,9 @@ class BuilderNavigationMixin:
                 if target_type not in {EntityType.GUNNER, EntityType.SENTINEL}:
                     continue
 
-                target_source_indices = (
-                    self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
-                        target_tile.index,
-                        (),
-                    )
+                target_source_indices = self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                    target_tile.index,
+                    (),
                 )
                 target_is_fed = bool(target_source_indices)
                 source_targets_own_gunner = bool(build_source_indices) and any(
@@ -1693,14 +1738,18 @@ class BuilderNavigationMixin:
         self,
         tile_idx: int,
     ) -> bool:
-        for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+        for (
+            source_idx
+        ) in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
             tile_idx,
             _EMPTY_SOURCE_INDEX_SET,
         ):
             if self.map.u_supply_chain_has_titanium(source_idx, self.map.own_team):
                 return True
 
-        for source_idx in self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+        for (
+            source_idx
+        ) in self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
             tile_idx,
             _EMPTY_SOURCE_INDEX_SET,
         ):
@@ -1816,15 +1865,13 @@ class BuilderNavigationMixin:
         conveyor_targets_titanium_supply_chain = (
             conveyor_targets_existing_supply_chain
             and bool(
-                conveyor_target_tile.own_supply_chain_label
-                & SupplyChainLabel.TITANIUM
+                conveyor_target_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM
             )
         )
         bridge_targets_titanium_supply_chain = (
             bridge_targets_existing_supply_chain
             and bool(
-                bridge_target_tile.own_supply_chain_label
-                & SupplyChainLabel.TITANIUM
+                bridge_target_tile.own_supply_chain_label & SupplyChainLabel.TITANIUM
             )
         )
         if (
@@ -1874,8 +1921,7 @@ class BuilderNavigationMixin:
         source_core_dist = source_tile.own_core_dist
         tiles_by_index = map.tiles_by_index
         hard_avoid_existing_supply_chain = (
-            HARD_AVOID_EXISTING_SUPPLY_CHAIN
-            and not prefer_join_existing_supply_chain
+            HARD_AVOID_EXISTING_SUPPLY_CHAIN and not prefer_join_existing_supply_chain
         )
         incoming_supply_sources = (
             map.own_supply_link_source_indices_by_target_index_in_vision.get(
@@ -1911,7 +1957,9 @@ class BuilderNavigationMixin:
             surround_direction = None
 
             for direction in _CARDINAL_DIRECTIONS:
-                adjacent_idx = map.u_get_neighbor_index_by_direction(source_idx, direction)
+                adjacent_idx = map.u_get_neighbor_index_by_direction(
+                    source_idx, direction
+                )
                 if adjacent_idx is None:
                     continue
                 adjacent_tile = tiles_by_index[adjacent_idx]
@@ -1976,7 +2024,9 @@ class BuilderNavigationMixin:
             ):
                 if neighbor_idx in incoming_supply_sources:
                     continue
-            elif any(target.position == pos for target in neighbor_tile.building.targets):
+            elif any(
+                target.position == pos for target in neighbor_tile.building.targets
+            ):
                 continue
             if neighbor_tile.is_core_of(own_team):
                 if avoid_core:
@@ -2002,12 +2052,8 @@ class BuilderNavigationMixin:
             neighbor_core_dist = neighbor_tile.own_core_dist
             if neighbor_core_dist > source_core_dist:
                 continue
-            if (
-                neighbor_core_dist == source_core_dist
-                and (
-                    not hard_avoid_existing_supply_chain
-                    or is_existing_supply_chain_tile
-                )
+            if neighbor_core_dist == source_core_dist and (
+                not hard_avoid_existing_supply_chain or is_existing_supply_chain_tile
             ):
                 continue
 
@@ -2025,10 +2071,12 @@ class BuilderNavigationMixin:
                 1 if neighbor_core_dist == source_core_dist else 0,
                 category_rank,
                 neighbor_core_dist,
-                0
-                if current_pos.distance_squared(neighbor_tile.position)
-                <= BUILDER_ACTION_RADIUS_SQ
-                else 1,
+                (
+                    0
+                    if current_pos.distance_squared(neighbor_tile.position)
+                    <= BUILDER_ACTION_RADIUS_SQ
+                    else 1
+                ),
                 neighbor_tile.position.x,
                 neighbor_tile.position.y,
             )
@@ -2189,10 +2237,12 @@ class BuilderNavigationMixin:
                     ),
                     category_rank,
                     target_tile.own_core_dist,
-                    0
-                    if current_pos.distance_squared(target_tile.position)
-                    <= BUILDER_ACTION_RADIUS_SQ
-                    else 1,
+                    (
+                        0
+                        if current_pos.distance_squared(target_tile.position)
+                        <= BUILDER_ACTION_RADIUS_SQ
+                        else 1
+                    ),
                     target_tile.position.x,
                     target_tile.position.y,
                 )
@@ -2250,15 +2300,17 @@ class BuilderNavigationMixin:
             )
         )
 
-        dprint("Move to target:", pos)
+        tprint("Move to target:", pos)
 
         if reach_builder_action_range:
+            tprint("u_move_to_astar: u_get_next_step_to_builder_action_range_astar")
             next_tile = self.map.u_get_next_step_to_builder_action_range_astar(
                 current_pos,
                 pos,
                 avoid_enemy_turrets=avoid_enemy_turrets,
             )
         else:
+            tprint("u_move_to_astar: u_get_next_step_towards_astar")
             next_tile = self.map.u_get_next_step_towards_astar(
                 current_pos,
                 pos,
@@ -2311,9 +2363,7 @@ class BuilderNavigationMixin:
                 target_tile.building.id
             )
             if (
-                not (
-                    ignore_conveyor_reserve_if_target_damaged and target_is_damaged
-                )
+                not (ignore_conveyor_reserve_if_target_damaged and target_is_damaged)
                 and current_titanium - attack_titanium_cost < conveyor_titanium_cost
             ):
                 return False
@@ -2387,9 +2437,7 @@ class BuilderNavigationMixin:
                 and adjacent_tile.building.entity_type == EntityType.HARVESTER
                 for adjacent_tile in (
                     self.map.u_get_pos_tile(adjacent_pos)
-                    for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(
-                        pos
-                    )
+                    for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(pos)
                 )
             )
             conveyor_targets_own_turret = False
@@ -2406,10 +2454,7 @@ class BuilderNavigationMixin:
                 self.map.titanium >= armoured_titanium_cost
                 and self.map.axionite >= armoured_axionite_cost
                 and self.map.axionite - armoured_axionite_cost >= 1
-                and (
-                    adjacent_to_own_harvester
-                    or conveyor_targets_own_turret
-                )
+                and (adjacent_to_own_harvester or conveyor_targets_own_turret)
             ):
                 building_type = EntityType.ARMOURED_CONVEYOR
 
@@ -2540,8 +2585,7 @@ class BuilderNavigationMixin:
                         and conveyor_output_tile.environment == Environment.ORE_TITANIUM
                     )
             barrier_adjacent_to_own_harvester = (
-                building_type == EntityType.BARRIER
-                and adjacent_to_own_harvester
+                building_type == EntityType.BARRIER and adjacent_to_own_harvester
             )
             barrier_adjacent_to_own_titanium_harvester = (
                 building_type == EntityType.BARRIER
@@ -2562,10 +2606,7 @@ class BuilderNavigationMixin:
 
             preferred_building_type = building_type
             preferred_facing_direction = facing_direction
-            if (
-                allow_sentinel_next_to_harvester_instead_conveyor
-                and pos != current_pos
-            ):
+            if allow_sentinel_next_to_harvester_instead_conveyor and pos != current_pos:
                 should_try_turret_substitution = (
                     barrier_adjacent_to_own_titanium_harvester
                     or (
@@ -2610,7 +2651,9 @@ class BuilderNavigationMixin:
             if affordable:
                 actual_building_type = preferred_building_type
                 actual_facing_direction = preferred_facing_direction
-                can_build_method = getattr(self.ct, f"can_build_{actual_building_type.value}")
+                can_build_method = getattr(
+                    self.ct, f"can_build_{actual_building_type.value}"
+                )
                 build_method = getattr(self.ct, f"build_{actual_building_type.value}")
                 log_step("build method lookup")
                 if actual_building_type in DIRECTIONAL_BUILDING_TYPES:
@@ -2635,7 +2678,9 @@ class BuilderNavigationMixin:
                             f"build_{actual_building_type.value}",
                         )
                         if actual_facing_direction is None:
-                            return finish(False, "reject missing fallback facing direction")
+                            return finish(
+                                False, "reject missing fallback facing direction"
+                            )
                         can_build_directional = can_build_method(
                             pos,
                             actual_facing_direction,
@@ -2802,7 +2847,9 @@ class BuilderNavigationMixin:
                     and target_tile.building.hp <= REPLACE_ATTACKED_CONVEYOR_MAX_HP
                     and targeted_by_titanium_supply_chain
                 ):
-                    gunner_titanium_cost, gunner_axionite_cost = self.ct.get_gunner_cost()
+                    gunner_titanium_cost, gunner_axionite_cost = (
+                        self.ct.get_gunner_cost()
+                    )
                     if (
                         self.map.titanium >= gunner_titanium_cost
                         and self.map.axionite >= gunner_axionite_cost
@@ -2829,10 +2876,7 @@ class BuilderNavigationMixin:
                         ):
                             replacement_entity_type = EntityType.GUNNER
 
-                if (
-                    replacement_entity_type is not None
-                    and self.ct.can_destroy(pos)
-                ):
+                if replacement_entity_type is not None and self.ct.can_destroy(pos):
                     self.ct.destroy(pos)
                     target_tile.clear_building()
                     can_build_method = getattr(
