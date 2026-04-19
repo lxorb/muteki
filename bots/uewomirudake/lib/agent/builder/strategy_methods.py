@@ -6285,6 +6285,7 @@ class BuilderStrategyMethodsMixin:
                 self.round_stopwatch.log_time("no yeet")
 
             self.u_set_marker_target(target_pos)
+            self.round_stopwatch.log_time("set_marker_target")
 
             current_path = self.map.current_path
             path_reusable = (
@@ -6292,6 +6293,10 @@ class BuilderStrategyMethodsMixin:
                 and len(current_path) > 1
                 and current_path[0].position == current_pos
                 and current_path[-1].position == move_target_pos
+            )
+            self.round_stopwatch.log_time(
+                f"path_reusable_check reusable={path_reusable} "
+                f"len={len(current_path) if current_path else 0}"
             )
             dprint(
                 f"move_toward path: reusable={path_reusable} "
@@ -6303,15 +6308,22 @@ class BuilderStrategyMethodsMixin:
                     current_pos,
                     next_tile.position,
                 )
+                self.round_stopwatch.log_time(
+                    f"direction_between dir={next_direction}"
+                )
                 if next_direction is not None:
-                    if self.u_try_progress_move_step(
+                    progressed = self.u_try_progress_move_step(
                         next_tile,
                         next_direction,
                         move_target_pos,
                         build_new_roads=True,
                         allow_conveyor_building=False,
                         respect_titanium_reserve_for_road_build=True,
-                    ):
+                    )
+                    self.round_stopwatch.log_time(
+                        f"try_progress_move_step progressed={progressed}"
+                    )
+                    if progressed:
                         self.round_stopwatch.log_time("progressed on path")
                         return True
                 self.round_stopwatch.log_time("path reuse failed")
