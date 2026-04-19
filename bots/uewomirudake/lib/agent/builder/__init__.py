@@ -3,6 +3,7 @@ from cambc import Controller, EntityType, Environment, Position
 from lib.agent import Agent
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
 from lib.map import Map
+from lib.map.types import SupplyChainLabel
 
 from .execution import BuilderExecutionMixin
 from .navigation import BuilderNavigationMixin
@@ -24,15 +25,22 @@ class BuilderAgent(
     last_turn_completed: bool
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
+    pending_missing_supply_link_label: SupplyChainLabel | None
     pending_harvester_target_index: int | None
     pending_harvester_target_resource: Environment | None
+    pending_delete_tile_index: int | None
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
     harvesters_built: int
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
+    marker_target_pos: Position | None
+    marker_has_explicit_target: bool
     step_off_core_attempted: bool
+    spawn_relative_tile: tuple[int, int] | None
+    _d_star_lite_states_by_builder_id: dict[int, object]
+    _lpa_star_states_by_builder_id: dict[int, object]
 
     def __init__(self, strategy: str = ""):
         Agent.__init__(self)
@@ -41,17 +49,25 @@ class BuilderAgent(
         self.last_turn_completed = True
 
         self.supply_patrol_index = 0
+        self.enemy_supply_patrol_index = 0
         self.pending_missing_supply_link_index = None
         self.pending_missing_supply_link_resource = None
+        self.pending_missing_supply_link_label = None
         self.pending_harvester_target_index = None
         self.pending_harvester_target_resource = None
+        self.pending_delete_tile_index = None
         self.enemy_core_patrol_index = 0
         self.enemy_core_checkpoint_index = -1
         self.harvesters_built = 0
         self.last_built_entity_type = None
         self.enemy_core_proxy_target_pos = None
         self.enemy_core_proxy_base_target_pos = None
+        self.marker_target_pos = None
+        self.marker_has_explicit_target = False
         self.step_off_core_attempted = False
+        self.spawn_relative_tile = None
+        self._d_star_lite_states_by_builder_id = {}
+        self._lpa_star_states_by_builder_id = {}
 
     def u_infer_strategy_by_spawning_tile(self):
         current_pos = self.map.current_pos
@@ -66,6 +82,7 @@ class BuilderAgent(
             current_pos.x - core_center_pos.x,
             current_pos.y - core_center_pos.y,
         )
+        self.spawn_relative_tile = relative_tile
         self.strategy = BUILDER_STRATEGY_BY_TILE.get(relative_tile, "")
 
     def u_get_strategy_name(self) -> str:
@@ -75,6 +92,8 @@ class BuilderAgent(
     def u_handler(self):
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
+        self.marker_target_pos = None
+        self.marker_has_explicit_target = False
         if self.map.is_map_known:
             print(
                 f"Inferred map: {self.map.known_map_path} "

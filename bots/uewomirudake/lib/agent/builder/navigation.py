@@ -1,6 +1,8 @@
 import math
 import time
+from array import array
 from collections.abc import Callable
+from heapq import heappop, heappush
 
 from cambc import Direction, EntityType, Environment, GameConstants, Position
 
@@ -12,6 +14,7 @@ from lib.agent.constants import (
     BUILDER_ACTION_RADIUS_SQ,
     CONVEYOR_ENTITY_TYPES,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
+    ENABLE_SENTINEL_INTEGRATE_OWN_TURRET,
     DIRECTIONAL_BUILDING_TYPES,
     ENEMY_TURRET_TYPES,
     HARASSMENT_STRATEGY_ID,
@@ -38,6 +41,11 @@ _CARDINAL_DIRECTIONS = tuple(
     for direction in Direction
     if direction != Direction.CENTRE and sum(abs(delta) for delta in direction.delta()) == 1
 )
+_DIRECTION_BY_DELTA = {
+    direction.delta(): direction
+    for direction in Direction
+    if direction != Direction.CENTRE
+}
 _ADJACENT_DIRECTION_CANDIDATES_BY_DIRECTION = {
     direction: (
         direction,
@@ -47,6 +55,309 @@ _ADJACENT_DIRECTION_CANDIDATES_BY_DIRECTION = {
     for idx, direction in enumerate(DIRECTIONS)
 }
 _EMPTY_SOURCE_INDEX_SET = frozenset()
+_INCREMENTAL_PATH_INF = 0x3FFFFFFF
+_INCREMENTAL_OVERTIME_CHECK_INTERVAL = 16
+_INCREMENTAL_QUEUE_REBUILD_FACTOR = 8
+
+
+def _u_chebyshev_dist_by_index(
+    left_idx: int,
+    right_idx: int,
+    index_x_by_index,
+    index_y_by_index,
+) -> int:
+    dx = index_x_by_index[left_idx] - index_x_by_index[right_idx]
+    if dx < 0:
+        dx = -dx
+    dy = index_y_by_index[left_idx] - index_y_by_index[right_idx]
+    if dy < 0:
+        dy = -dy
+    return dx if dx >= dy else dy
+
+
+class _IncrementalShortestPathState:
+    __slots__ = (
+        "use_d_star_lite",
+        "tile_count",
+        "target_idx",
+        "avoid_enemy_turrets",
+        "reach_builder_action_range",
+        "last_source_idx",
+        "km",
+        "queue",
+        "inf_cost_by_index",
+        "g_by_index",
+        "rhs_by_index",
+        "passable_mask_by_index",
+        "goal_mask_by_index",
+    )
+
+    def __init__(self, use_d_star_lite: bool):
+        self.use_d_star_lite = use_d_star_lite
+        self.tile_count = 0
+        self.target_idx = -1
+        self.avoid_enemy_turrets = True
+        self.reach_builder_action_range = False
+        self.last_source_idx = -1
+        self.km = 0
+        self.queue: list[tuple[int, int, int]] = []
+        self.inf_cost_by_index = array("I")
+        self.g_by_index = array("I")
+        self.rhs_by_index = array("I")
+        self.passable_mask_by_index = bytearray()
+        self.goal_mask_by_index = bytearray()
+
+    def u_ensure_capacity(self, tile_count: int) -> None:
+        if self.tile_count == tile_count:
+            return
+        self.tile_count = tile_count
+        self.inf_cost_by_index = array("I", [_INCREMENTAL_PATH_INF]) * tile_count
+        self.g_by_index = array("I", self.inf_cost_by_index)
+        self.rhs_by_index = array("I", self.inf_cost_by_index)
+        self.passable_mask_by_index = bytearray(tile_count)
+        self.goal_mask_by_index = bytearray(tile_count)
+        self.queue = []
+
+    def u_calculate_key(
+        self,
+        source_idx: int,
+        idx: int,
+        index_x_by_index,
+        index_y_by_index,
+    ) -> tuple[int, int]:
+        best_cost = self.g_by_index[idx]
+        rhs_cost = self.rhs_by_index[idx]
+        if rhs_cost < best_cost:
+            best_cost = rhs_cost
+        heuristic = _u_chebyshev_dist_by_index(
+            source_idx,
+            idx,
+            index_x_by_index,
+            index_y_by_index,
+        )
+        if self.use_d_star_lite:
+            heuristic += self.km
+        return (best_cost + heuristic, best_cost)
+
+    def u_push_inconsistent(
+        self,
+        source_idx: int,
+        idx: int,
+        index_x_by_index,
+        index_y_by_index,
+    ) -> None:
+        if self.g_by_index[idx] == self.rhs_by_index[idx]:
+            return
+        key_1, key_2 = self.u_calculate_key(
+            source_idx,
+            idx,
+            index_x_by_index,
+            index_y_by_index,
+        )
+        heappush(self.queue, (key_1, key_2, idx))
+
+    def u_reset(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool,
+        reach_builder_action_range: bool,
+        passable_mask_by_index: bytearray,
+        goal_mask_by_index: bytearray,
+        index_x_by_index,
+        index_y_by_index,
+    ) -> None:
+        self.target_idx = target_idx
+        self.avoid_enemy_turrets = avoid_enemy_turrets
+        self.reach_builder_action_range = reach_builder_action_range
+        self.last_source_idx = source_idx
+        self.km = 0
+        self.g_by_index[:] = self.inf_cost_by_index
+        self.rhs_by_index[:] = self.inf_cost_by_index
+        self.passable_mask_by_index[:] = passable_mask_by_index
+        self.goal_mask_by_index[:] = goal_mask_by_index
+        self.queue.clear()
+        for idx in range(self.tile_count):
+            if not goal_mask_by_index[idx]:
+                continue
+            self.rhs_by_index[idx] = 0
+            self.u_push_inconsistent(
+                source_idx,
+                idx,
+                index_x_by_index,
+                index_y_by_index,
+            )
+
+    def u_update_vertex(
+        self,
+        map,
+        source_idx: int,
+        idx: int,
+        index_x_by_index,
+        index_y_by_index,
+    ) -> None:
+        if self.goal_mask_by_index[idx]:
+            self.rhs_by_index[idx] = 0
+        elif not self.passable_mask_by_index[idx]:
+            self.rhs_by_index[idx] = _INCREMENTAL_PATH_INF
+        else:
+            best_cost = _INCREMENTAL_PATH_INF
+            neighbor_base = idx * map.MAX_NEIGHBOR_COUNT
+            neighbor_count = map.neighbor_count_by_index[idx]
+            for offset in range(neighbor_count):
+                neighbor_idx = map.neighbor_indices_by_index[neighbor_base + offset]
+                if not self.passable_mask_by_index[neighbor_idx]:
+                    continue
+                candidate_cost = self.g_by_index[neighbor_idx] + 1
+                if candidate_cost < best_cost:
+                    best_cost = candidate_cost
+            self.rhs_by_index[idx] = best_cost
+        self.u_push_inconsistent(
+            source_idx,
+            idx,
+            index_x_by_index,
+            index_y_by_index,
+        )
+
+    def u_rebuild_queue(
+        self,
+        source_idx: int,
+        index_x_by_index,
+        index_y_by_index,
+    ) -> None:
+        self.queue.clear()
+        for idx in range(self.tile_count):
+            if self.g_by_index[idx] == self.rhs_by_index[idx]:
+                continue
+            self.u_push_inconsistent(
+                source_idx,
+                idx,
+                index_x_by_index,
+                index_y_by_index,
+            )
+
+    def u_apply_graph_changes(
+        self,
+        map,
+        source_idx: int,
+        passable_mask_by_index: bytearray,
+        goal_mask_by_index: bytearray,
+        index_x_by_index,
+        index_y_by_index,
+    ) -> None:
+        changed_indices: list[int] = []
+        current_passable_mask_by_index = self.passable_mask_by_index
+        current_goal_mask_by_index = self.goal_mask_by_index
+        for idx in range(self.tile_count):
+            if (
+                current_passable_mask_by_index[idx] == passable_mask_by_index[idx]
+                and current_goal_mask_by_index[idx] == goal_mask_by_index[idx]
+            ):
+                continue
+            current_passable_mask_by_index[idx] = passable_mask_by_index[idx]
+            current_goal_mask_by_index[idx] = goal_mask_by_index[idx]
+            changed_indices.append(idx)
+
+        if not changed_indices:
+            return
+
+        for idx in changed_indices:
+            self.u_update_vertex(
+                map,
+                source_idx,
+                idx,
+                index_x_by_index,
+                index_y_by_index,
+            )
+            neighbor_base = idx * map.MAX_NEIGHBOR_COUNT
+            neighbor_count = map.neighbor_count_by_index[idx]
+            for offset in range(neighbor_count):
+                neighbor_idx = map.neighbor_indices_by_index[neighbor_base + offset]
+                if not map.active_mask_by_index[neighbor_idx]:
+                    continue
+                self.u_update_vertex(
+                    map,
+                    source_idx,
+                    neighbor_idx,
+                    index_x_by_index,
+                    index_y_by_index,
+                )
+
+    def u_compute_shortest_path(
+        self,
+        map,
+        source_idx: int,
+        index_x_by_index,
+        index_y_by_index,
+    ) -> bool:
+        check_overtime_interval = map.round_stopwatch.check_overtime_interval
+        overtime_check_countdown = _INCREMENTAL_OVERTIME_CHECK_INTERVAL
+
+        while self.queue:
+            source_key = self.u_calculate_key(
+                source_idx,
+                source_idx,
+                index_x_by_index,
+                index_y_by_index,
+            )
+            queue_key_1, queue_key_2, idx = self.queue[0]
+            if (
+                (queue_key_1, queue_key_2) >= source_key
+                and self.rhs_by_index[source_idx] == self.g_by_index[source_idx]
+            ):
+                break
+
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    return False
+                overtime_check_countdown = _INCREMENTAL_OVERTIME_CHECK_INTERVAL
+
+            old_key_1, old_key_2, idx = heappop(self.queue)
+            new_key = self.u_calculate_key(
+                source_idx,
+                idx,
+                index_x_by_index,
+                index_y_by_index,
+            )
+            if (old_key_1, old_key_2) < new_key:
+                heappush(self.queue, (new_key[0], new_key[1], idx))
+                continue
+
+            if self.g_by_index[idx] > self.rhs_by_index[idx]:
+                self.g_by_index[idx] = self.rhs_by_index[idx]
+            else:
+                self.g_by_index[idx] = _INCREMENTAL_PATH_INF
+                self.u_update_vertex(
+                    map,
+                    source_idx,
+                    idx,
+                    index_x_by_index,
+                    index_y_by_index,
+                )
+
+            neighbor_base = idx * map.MAX_NEIGHBOR_COUNT
+            neighbor_count = map.neighbor_count_by_index[idx]
+            for offset in range(neighbor_count):
+                neighbor_idx = map.neighbor_indices_by_index[neighbor_base + offset]
+                if not map.active_mask_by_index[neighbor_idx]:
+                    continue
+                self.u_update_vertex(
+                    map,
+                    source_idx,
+                    neighbor_idx,
+                    index_x_by_index,
+                    index_y_by_index,
+                )
+
+            if len(self.queue) > self.tile_count * _INCREMENTAL_QUEUE_REBUILD_FACTOR:
+                self.u_rebuild_queue(
+                    source_idx,
+                    index_x_by_index,
+                    index_y_by_index,
+                )
+
+        return True
 
 
 class BuilderNavigationMixin:
@@ -120,13 +431,19 @@ class BuilderNavigationMixin:
         if not can_build_road:
             return False
 
+        if not allow_conveyor_building:
+            self.ct.build_road(next_tile.position)
+            if next_direction is not None and self.ct.can_move(next_direction):
+                self.u_move_with_target(next_direction, target_pos)
+            return True
+
         adjacent_resource_tiles = []
         for adjacent_pos in self.map.u_iter_adjacent_cardinal_positions(next_tile.position):
             adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
             if adjacent_tile.environment == Environment.ORE_TITANIUM:
                 adjacent_resource_tiles.append(adjacent_tile)
 
-        if allow_conveyor_building and adjacent_resource_tiles:
+        if adjacent_resource_tiles:
             resource_candidates: list[Environment] = []
             for adjacent_tile in adjacent_resource_tiles:
                 if (
@@ -163,6 +480,53 @@ class BuilderNavigationMixin:
             self.u_move_with_target(next_direction, target_pos)
         return True
 
+    def u_try_greedy_manhattan_move_toward(
+        self,
+        target_pos: Position,
+        avoid_enemy_turrets: bool = True,
+    ) -> bool:
+        current_pos = self.map.current_pos
+        current_dist = (
+            abs(current_pos.x - target_pos.x)
+            + abs(current_pos.y - target_pos.y)
+        )
+        best_direction: Direction | None = None
+        best_score: tuple[int, int, int] | None = None
+
+        for direction in DIRECTIONS:
+            if direction == Direction.CENTRE:
+                continue
+            if not self.ct.can_move(direction):
+                continue
+
+            next_pos = current_pos.add(direction)
+            if not self.map.u_is_in_bounds(next_pos):
+                continue
+            next_idx = self.map.u_to_index(next_pos)
+            if (
+                avoid_enemy_turrets
+                and self.map.enemy_turret_target_by_index[next_idx]
+            ):
+                continue
+            next_dist = abs(next_pos.x - target_pos.x) + abs(next_pos.y - target_pos.y)
+            if next_dist >= current_dist:
+                continue
+
+            score = (
+                next_dist,
+                self.map.u_get_own_core_dist_by_index(next_idx),
+                next_idx,
+            )
+            if best_score is None or score < best_score:
+                best_score = score
+                best_direction = direction
+
+        if best_direction is None:
+            return False
+
+        self.u_move_with_target(best_direction, target_pos)
+        return True
+
     def u_move_to(
         self,
         pos: Position,
@@ -175,6 +539,56 @@ class BuilderNavigationMixin:
         current_pos = self.map.current_pos
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             return False
+        if not self.map.u_is_in_bounds(pos):
+            return False
+        delta_x = pos.x - current_pos.x
+        delta_y = pos.y - current_pos.y
+        if -1 <= delta_x <= 1 and -1 <= delta_y <= 1:
+            target_idx = self.map.u_to_index(pos)
+            next_direction = _DIRECTION_BY_DELTA.get((delta_x, delta_y))
+            return self.u_try_progress_move_step(
+                self.map.tiles_by_index[target_idx],
+                next_direction,
+                pos,
+                build_new_roads=build_new_roads,
+                allow_conveyor_building=allow_conveyor_building,
+                respect_titanium_reserve_for_road_build=(
+                    respect_titanium_reserve_for_road_build
+                ),
+            )
+        target_idx = self.map.u_to_index(pos)
+        target_is_vision_reachable = self.map.u_is_vision_reachable_by_index(target_idx)
+        target_is_vision_action_reachable = self.map.u_is_vision_action_reachable_by_index(
+            target_idx
+        )
+        if not reach_builder_action_range and target_is_vision_reachable:
+            next_tile = self.map.u_get_next_step_towards_vision_reachable_by_index(
+                target_idx
+            )
+            if next_tile is not None:
+                next_direction = self.map.u_get_direction_between(
+                    current_pos,
+                    next_tile.position,
+                )
+                return self.u_try_progress_move_step(
+                    next_tile,
+                    next_direction,
+                    pos,
+                    build_new_roads=build_new_roads,
+                    allow_conveyor_building=allow_conveyor_building,
+                    respect_titanium_reserve_for_road_build=(
+                        respect_titanium_reserve_for_road_build
+                    ),
+                )
+        if self.map.is_caged and not (
+            target_is_vision_action_reachable
+            if reach_builder_action_range
+            else target_is_vision_reachable
+        ):
+            return self.u_try_greedy_manhattan_move_toward(
+                pos,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+            )
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
                 respect_titanium_reserve_for_road_build
@@ -182,6 +596,264 @@ class BuilderNavigationMixin:
         )
         return self.u_move_to_astar(
             pos,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            build_new_roads=build_new_roads,
+            allow_conveyor_building=allow_conveyor_building,
+            reach_builder_action_range=reach_builder_action_range,
+            respect_titanium_reserve_for_road_build=(
+                respect_titanium_reserve_for_road_build
+            ),
+        )
+
+    def _u_get_incremental_path_state(
+        self,
+        attribute_name: str,
+        use_d_star_lite: bool,
+    ) -> _IncrementalShortestPathState:
+        planner_states_by_builder_id = getattr(self, attribute_name, None)
+        if planner_states_by_builder_id is None:
+            planner_states_by_builder_id = {}
+            setattr(self, attribute_name, planner_states_by_builder_id)
+
+        current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        builder_id = current_tile.bot.id
+        if builder_id is None:
+            builder_id = -1
+
+        planner_state = planner_states_by_builder_id.get(builder_id)
+        if planner_state is None:
+            planner_state = _IncrementalShortestPathState(use_d_star_lite)
+            planner_states_by_builder_id[builder_id] = planner_state
+        return planner_state
+
+    def _u_build_incremental_path_masks(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool,
+        reach_builder_action_range: bool,
+    ) -> tuple[bytearray, bytearray, bool]:
+        map = self.map
+        tile_count = map.tile_count
+        passable_mask_by_index = bytearray(tile_count)
+        goal_mask_by_index = bytearray(tile_count)
+        active_mask_by_index = map.active_mask_by_index
+        intrinsic_passable_by_index = map.intrinsic_passable_by_index
+        enemy_turret_target_by_index = map.enemy_turret_target_by_index
+        bot_present_by_index = map.bot_present_by_index
+
+        if not active_mask_by_index[source_idx]:
+            return (passable_mask_by_index, goal_mask_by_index, False)
+
+        for idx in range(tile_count):
+            if not active_mask_by_index[idx]:
+                continue
+            if idx == source_idx:
+                passable_mask_by_index[idx] = 1
+                continue
+            if idx == target_idx and not reach_builder_action_range:
+                passable_mask_by_index[idx] = int(intrinsic_passable_by_index[idx])
+                continue
+            if not intrinsic_passable_by_index[idx]:
+                continue
+            if avoid_enemy_turrets and enemy_turret_target_by_index[idx]:
+                continue
+            if idx != target_idx and bot_present_by_index[idx]:
+                continue
+            passable_mask_by_index[idx] = 1
+
+        has_goal = False
+        if not reach_builder_action_range:
+            if passable_mask_by_index[target_idx]:
+                goal_mask_by_index[target_idx] = 1
+                has_goal = True
+            return (passable_mask_by_index, goal_mask_by_index, has_goal)
+
+        goal_base = target_idx * map.MAX_BUILDER_ACTION_TARGET_COUNT
+        goal_count = map.builder_action_target_count_by_index[target_idx]
+        goal_indices_by_index = map.builder_action_target_indices_by_index
+        for offset in range(goal_count):
+            goal_idx = goal_indices_by_index[goal_base + offset]
+            if not passable_mask_by_index[goal_idx]:
+                continue
+            goal_mask_by_index[goal_idx] = 1
+            has_goal = True
+
+        return (passable_mask_by_index, goal_mask_by_index, has_goal)
+
+    def _u_move_to_incremental_shortest_path(
+        self,
+        pos: Position,
+        planner_attribute_name: str,
+        use_d_star_lite: bool,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = True,
+        allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
+    ) -> bool:
+        map = self.map
+        current_pos = map.current_pos
+        if not map.u_is_in_bounds(pos):
+            return False
+        if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
+            return False
+
+        print("Move to target:", pos)
+
+        respect_titanium_reserve_for_road_build = (
+            self.u_should_respect_titanium_reserve_for_road_build(
+                respect_titanium_reserve_for_road_build
+            )
+        )
+
+        source_idx = map.u_to_index(current_pos)
+        target_idx = map.u_to_index(pos)
+        planner_state = self._u_get_incremental_path_state(
+            planner_attribute_name,
+            use_d_star_lite,
+        )
+        planner_state.u_ensure_capacity(map.tile_count)
+
+        passable_mask_by_index, goal_mask_by_index, has_goal = (
+            self._u_build_incremental_path_masks(
+                source_idx,
+                target_idx,
+                avoid_enemy_turrets,
+                reach_builder_action_range,
+            )
+        )
+        if not has_goal:
+            return False
+
+        index_x_by_index = map.index_x_by_index
+        index_y_by_index = map.index_y_by_index
+        requires_reset = (
+            planner_state.target_idx != target_idx
+            or planner_state.avoid_enemy_turrets != avoid_enemy_turrets
+            or planner_state.reach_builder_action_range != reach_builder_action_range
+            or planner_state.last_source_idx == -1
+            or (not use_d_star_lite and planner_state.last_source_idx != source_idx)
+        )
+
+        if requires_reset:
+            planner_state.u_reset(
+                source_idx,
+                target_idx,
+                avoid_enemy_turrets,
+                reach_builder_action_range,
+                passable_mask_by_index,
+                goal_mask_by_index,
+                index_x_by_index,
+                index_y_by_index,
+            )
+        else:
+            if planner_state.last_source_idx != source_idx:
+                planner_state.km += _u_chebyshev_dist_by_index(
+                    planner_state.last_source_idx,
+                    source_idx,
+                    index_x_by_index,
+                    index_y_by_index,
+                )
+                planner_state.last_source_idx = source_idx
+            planner_state.u_apply_graph_changes(
+                map,
+                source_idx,
+                passable_mask_by_index,
+                goal_mask_by_index,
+                index_x_by_index,
+                index_y_by_index,
+            )
+
+        if not planner_state.u_compute_shortest_path(
+            map,
+            source_idx,
+            index_x_by_index,
+            index_y_by_index,
+        ):
+            return False
+
+        best_next_idx: int | None = None
+        best_next_score: tuple[int, int, int, int, int] | None = None
+        tiles_by_index = map.tiles_by_index
+        get_own_core_dist = map.u_get_own_core_dist_by_index
+        neighbor_base = source_idx * map.MAX_NEIGHBOR_COUNT
+        neighbor_count = map.neighbor_count_by_index[source_idx]
+        neighbor_indices_by_index = map.neighbor_indices_by_index
+
+        for offset in range(neighbor_count):
+            neighbor_idx = neighbor_indices_by_index[neighbor_base + offset]
+            if not planner_state.passable_mask_by_index[neighbor_idx]:
+                continue
+            neighbor_cost = planner_state.g_by_index[neighbor_idx]
+            if neighbor_cost >= _INCREMENTAL_PATH_INF:
+                continue
+            neighbor_tile = tiles_by_index[neighbor_idx]
+            candidate_score = (
+                neighbor_cost + 1,
+                int(neighbor_tile.building.id is None),
+                get_own_core_dist(neighbor_idx),
+                index_x_by_index[neighbor_idx],
+                index_y_by_index[neighbor_idx],
+            )
+            if best_next_score is None or candidate_score < best_next_score:
+                best_next_score = candidate_score
+                best_next_idx = neighbor_idx
+
+        if best_next_idx is None:
+            return False
+
+        next_tile = tiles_by_index[best_next_idx]
+        next_direction = map.u_get_direction_between(
+            current_pos,
+            next_tile.position,
+        )
+        return self.u_try_progress_move_step(
+            next_tile,
+            next_direction,
+            pos,
+            build_new_roads=build_new_roads,
+            allow_conveyor_building=allow_conveyor_building,
+            respect_titanium_reserve_for_road_build=(
+                respect_titanium_reserve_for_road_build
+            ),
+        )
+
+    def u_move_to_d_star_lite(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = True,
+        allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
+    ) -> bool:
+        return self._u_move_to_incremental_shortest_path(
+            pos,
+            "_d_star_lite_states_by_builder_id",
+            use_d_star_lite=True,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            build_new_roads=build_new_roads,
+            allow_conveyor_building=allow_conveyor_building,
+            reach_builder_action_range=reach_builder_action_range,
+            respect_titanium_reserve_for_road_build=(
+                respect_titanium_reserve_for_road_build
+            ),
+        )
+
+    def u_move_to_lpa_star(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = True,
+        allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
+    ) -> bool:
+        return self._u_move_to_incremental_shortest_path(
+            pos,
+            "_lpa_star_states_by_builder_id",
+            use_d_star_lite=False,
             avoid_enemy_turrets=avoid_enemy_turrets,
             build_new_roads=build_new_roads,
             allow_conveyor_building=allow_conveyor_building,
@@ -460,76 +1132,20 @@ class BuilderNavigationMixin:
     def u_get_sentinel_orientation(self, pos: Position) -> Direction:
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if enemy_core_center_pos is not None:
-            base_direction = self.map.u_get_direction_between(pos, enemy_core_center_pos)
+            direction = self.map.u_get_direction_between(pos, enemy_core_center_pos)
         else:
             own_core_center_pos = self.map.own_core_center_pos
             if own_core_center_pos is None:
                 self.map.u_calc_core_center_positions()
                 own_core_center_pos = self.map.own_core_center_pos
             if own_core_center_pos is None:
-                base_direction = Direction.NORTH
+                direction = Direction.NORTH
             else:
-                base_direction = self.map.u_get_direction_between(own_core_center_pos, pos)
+                direction = self.map.u_get_direction_between(own_core_center_pos, pos)
 
-        if base_direction is None or base_direction == Direction.CENTRE:
-            base_direction = Direction.NORTH
-
-        source_idx = self.map.u_to_index(pos)
-        current_round = self.map.current_round
-        enemy_team = self.map.enemy_team
-        best_direction = base_direction
-        best_key = None
-
-        for candidate_order, direction in enumerate(
-            _ADJACENT_DIRECTION_CANDIDATES_BY_DIRECTION[base_direction]
-        ):
-            enemy_turret_count = 0
-            can_target_enemy_core = 0
-            enemy_harvester_count = 0
-            enemy_supply_chain_count = 0
-            other_enemy_building_count = 0
-
-            for target_idx in self.map.u_get_attackable_target_indices(
-                source_idx,
-                EntityType.SENTINEL,
-                direction,
-            ):
-                target_tile = self.map.tiles_by_index[target_idx]
-                if target_tile.is_core_of(enemy_team):
-                    can_target_enemy_core = 1
-                    continue
-                if (
-                    target_tile.last_seen_turn != current_round
-                    or target_tile.building.team != enemy_team
-                ):
-                    continue
-
-                target_type = target_tile.building.entity_type
-                if target_type in ENEMY_TURRET_TYPES:
-                    enemy_turret_count += 1
-                elif target_type == EntityType.HARVESTER:
-                    enemy_harvester_count += 1
-                elif target_type in SUPPLY_LINK_TYPES:
-                    enemy_supply_chain_count += 1
-                elif target_type is not None:
-                    other_enemy_building_count += 1
-
-            key = (
-                -enemy_turret_count,
-                -can_target_enemy_core,
-                -enemy_harvester_count,
-                -enemy_supply_chain_count,
-                -other_enemy_building_count,
-                candidate_order,
-            )
-            if best_key is None or key < best_key:
-                best_key = key
-                best_direction = direction
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        return best_direction
+        if direction is None or direction == Direction.CENTRE:
+            return Direction.NORTH
+        return direction
 
     def _u_tile_is_targeted_by_supply_chain(
         self,
@@ -619,7 +1235,7 @@ class BuilderNavigationMixin:
             ):
                 return (EntityType.GUNNER, gunner_direction)
 
-        if (
+        if ENABLE_SENTINEL_INTEGRATE_OWN_TURRET and (
             not require_affordable
             or self.u_can_afford_sentinel(respect_titanium_reserve)
         ):
@@ -2059,10 +2675,8 @@ class BuilderNavigationMixin:
                                 and output_tile.building.entity_type
                                 in CONVEYOR_ENTITY_TYPES
                                 and output_tile.conveyor_targets_harvester
-                                and self.ct.can_destroy(output_pos)
                             ):
-                                self.ct.destroy(output_pos)
-                                output_tile.clear_building()
+                                self.pending_delete_tile_index = output_tile.index
                         log_step("conveyor post build")
                     return finish(True, "return directional build")
 

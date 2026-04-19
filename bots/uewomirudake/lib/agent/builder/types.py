@@ -23,10 +23,13 @@ class BuilderCommonSelf(Protocol):
     strategy: list[StrategyEntry]
     last_strategy_index: int
     last_turn_completed: bool
+    enemy_supply_patrol_index: int
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
+    pending_missing_supply_link_label: SupplyChainLabel | None
     pending_harvester_target_index: int | None
     pending_harvester_target_resource: Environment | None
+    pending_delete_tile_index: int | None
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
     harvesters_built: int
@@ -34,6 +37,7 @@ class BuilderCommonSelf(Protocol):
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
     step_off_core_attempted: bool
+    spawn_relative_tile: tuple[int, int] | None
 
     def u_filter_tiles(
         self,
@@ -178,6 +182,26 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
         respect_titanium_reserve_for_road_build: bool = False,
     ) -> bool: ...
 
+    def u_move_to_d_star_lite(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = False,
+        allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
+    ) -> bool: ...
+
+    def u_move_to_lpa_star(
+        self,
+        pos: Position,
+        avoid_enemy_turrets: bool = True,
+        build_new_roads: bool = False,
+        allow_conveyor_building: bool = True,
+        reach_builder_action_range: bool = False,
+        respect_titanium_reserve_for_road_build: bool = False,
+    ) -> bool: ...
+
     def u_attack_passable(
         self,
         pos: Position,
@@ -303,6 +327,11 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         enforce_safe: bool = False,
     ) -> BuilderActionResult: ...
 
+    def s_information_gain_scout(
+        self,
+        min_titanium: int = 0,
+    ) -> BuilderActionResult: ...
+
     def s_frontier_expand(
         self,
         min_titanium: int = 0,
@@ -358,10 +387,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         require_no_enemy_bbs_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
+    def s_berserk(self) -> BuilderActionResult: ...
+
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,
-        wait_if_enemy_builder_bots_in_range: bool = True,
+        require_no_enemy_bbs_in_range: bool = False,
     ) -> BuilderActionResult: ...
 
     def s_build_enemy_supplied_turret(
@@ -389,7 +420,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         wait_if_enemy_builder_bots_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_move_toward_enemy_core(self) -> BuilderActionResult: ...
+    def s_patrol_enemy_supply_chains(self) -> BuilderActionResult: ...
+
+    def s_move_toward_enemy_core(
+        self,
+        allow_launcher_yeeting: bool = True,
+    ) -> BuilderActionResult: ...
 
     def s_checkpoint_move_toward_enemy_core(self) -> BuilderActionResult: ...
 
