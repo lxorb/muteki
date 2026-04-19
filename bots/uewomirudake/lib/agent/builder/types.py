@@ -28,6 +28,7 @@ class BuilderCommonSelf(Protocol):
     pending_missing_supply_link_label: SupplyChainLabel | None
     pending_harvester_target_index: int | None
     pending_harvester_target_resource: Environment | None
+    pending_delete_tile_index: int | None
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
     harvesters_built: int

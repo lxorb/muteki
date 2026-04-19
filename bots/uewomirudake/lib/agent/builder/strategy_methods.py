@@ -204,6 +204,23 @@ class BuilderStrategyMethodsMixin:
             DIRECTIONS,
         )
 
+    def s_delete_pending_tile(self):
+        pending_tile_idx = self.pending_delete_tile_index
+        if pending_tile_idx is None:
+            return False
+
+        self.pending_delete_tile_index = None
+        target_tile = self.map.tiles_by_index[pending_tile_idx]
+        if (
+            target_tile.building.team == self.map.own_team
+            and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+            and target_tile.conveyor_targets_harvester
+            and self.ct.can_destroy(target_tile.position)
+        ):
+            self.ct.destroy(target_tile.position)
+            target_tile.clear_building()
+        return False
+
     def s_return_to_core_center(self):
         own_core_center_pos = self.map.own_core_center_pos
         if own_core_center_pos is None:

@@ -2668,10 +2668,8 @@ class BuilderNavigationMixin:
                                 and output_tile.building.entity_type
                                 in CONVEYOR_ENTITY_TYPES
                                 and output_tile.conveyor_targets_harvester
-                                and self.ct.can_destroy(output_pos)
                             ):
-                                self.ct.destroy(output_pos)
-                                output_tile.clear_building()
+                                self.pending_delete_tile_index = output_tile.index
                         log_step("conveyor post build")
                     return finish(True, "return directional build")
 

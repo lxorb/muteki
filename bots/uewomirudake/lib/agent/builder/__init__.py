@@ -28,6 +28,7 @@ class BuilderAgent(
     pending_missing_supply_link_label: SupplyChainLabel | None
     pending_harvester_target_index: int | None
     pending_harvester_target_resource: Environment | None
+    pending_delete_tile_index: int | None
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
     harvesters_built: int
@@ -51,6 +52,7 @@ class BuilderAgent(
         self.pending_missing_supply_link_label = None
         self.pending_harvester_target_index = None
         self.pending_harvester_target_resource = None
+        self.pending_delete_tile_index = None
         self.enemy_core_patrol_index = 0
         self.enemy_core_checkpoint_index = -1
         self.harvesters_built = 0

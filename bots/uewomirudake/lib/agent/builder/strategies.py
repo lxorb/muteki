@@ -10,6 +10,7 @@ from .strategy_methods import BuilderStrategyMethodsMixin
 from .types import StrategyEntry
 
 SCAVENGER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_delete_pending_tile,),
     (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_turn_to_harassment,),
@@ -56,6 +57,7 @@ SCAVENGER_STRATEGY = [
 ]
 
 DEFENDER_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_delete_pending_tile,),
     (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
