@@ -59,6 +59,132 @@ _SCAVENGER_FRONTIER_TIEBREAK_MULTIPLIERS: dict[
     (-1, 1): (1, -1),
     (1, -1): (-1, 1),
 }
+_INFO_GAIN_SCOUT_DIRECTION_ORDER_BY_SPAWN_RELATIVE_TILE: dict[
+    tuple[int, int], tuple[Direction, ...]
+] = {
+    (-1, -1): (
+        Direction.NORTHWEST,
+        Direction.NORTH,
+        Direction.WEST,
+        Direction.NORTHEAST,
+        Direction.EAST,
+        Direction.SOUTHWEST,
+        Direction.SOUTH,
+        Direction.SOUTHEAST,
+    ),
+    (0, -1): (
+        Direction.NORTH,
+        Direction.NORTHWEST,
+        Direction.NORTHEAST,
+        Direction.WEST,
+        Direction.EAST,
+        Direction.SOUTHWEST,
+        Direction.SOUTH,
+        Direction.SOUTHEAST,
+    ),
+    (1, -1): (
+        Direction.NORTHEAST,
+        Direction.NORTH,
+        Direction.EAST,
+        Direction.NORTHWEST,
+        Direction.WEST,
+        Direction.SOUTHWEST,
+        Direction.SOUTH,
+        Direction.SOUTHEAST,
+    ),
+    (-1, 0): (
+        Direction.WEST,
+        Direction.NORTHWEST,
+        Direction.SOUTHWEST,
+        Direction.NORTH,
+        Direction.SOUTH,
+        Direction.NORTHEAST,
+        Direction.EAST,
+        Direction.SOUTHEAST,
+    ),
+    (1, 0): (
+        Direction.EAST,
+        Direction.NORTHEAST,
+        Direction.SOUTHEAST,
+        Direction.NORTH,
+        Direction.SOUTH,
+        Direction.NORTHWEST,
+        Direction.WEST,
+        Direction.SOUTHWEST,
+    ),
+    (-1, 1): (
+        Direction.SOUTHWEST,
+        Direction.SOUTH,
+        Direction.WEST,
+        Direction.SOUTHEAST,
+        Direction.EAST,
+        Direction.NORTHEAST,
+        Direction.NORTH,
+        Direction.NORTHWEST,
+    ),
+    (0, 1): (
+        Direction.SOUTH,
+        Direction.SOUTHWEST,
+        Direction.SOUTHEAST,
+        Direction.WEST,
+        Direction.EAST,
+        Direction.NORTHWEST,
+        Direction.NORTH,
+        Direction.NORTHEAST,
+    ),
+    (1, 1): (
+        Direction.SOUTHEAST,
+        Direction.SOUTH,
+        Direction.EAST,
+        Direction.SOUTHWEST,
+        Direction.WEST,
+        Direction.NORTHWEST,
+        Direction.NORTH,
+        Direction.NORTHEAST,
+    ),
+}
+
+
+def _build_information_gain_scout_max_gains() -> tuple[int, int]:
+    radius_sq = GameConstants.BUILDER_BOT_VISION_RADIUS_SQ
+    radius = int(math.sqrt(radius_sq)) + 1
+    max_orthogonal_gain = 0
+    max_diagonal_gain = 0
+
+    for direction in DIRECTIONS:
+        step_dx, step_dy = direction.delta()
+        directional_gain = 0
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if dx * dx + dy * dy > radius_sq:
+                    continue
+                if (
+                    (dx + step_dx) * (dx + step_dx)
+                    + (dy + step_dy) * (dy + step_dy)
+                    <= radius_sq
+                ):
+                    continue
+                directional_gain += 1
+        if sum(abs(delta) for delta in direction.delta()) == 1:
+            max_orthogonal_gain = max(max_orthogonal_gain, directional_gain)
+        else:
+            max_diagonal_gain = max(max_diagonal_gain, directional_gain)
+
+    return (max_orthogonal_gain, max_diagonal_gain)
+
+
+(
+    _INFO_GAIN_SCOUT_MAX_ORTHOGONAL_GAIN,
+    _INFO_GAIN_SCOUT_MAX_DIAGONAL_GAIN,
+) = _build_information_gain_scout_max_gains()
+_INFO_GAIN_SCOUT_MAX_GAIN_BY_DIRECTION = {
+    direction: (
+        _INFO_GAIN_SCOUT_MAX_ORTHOGONAL_GAIN
+        if sum(abs(delta) for delta in direction.delta()) == 1
+        else _INFO_GAIN_SCOUT_MAX_DIAGONAL_GAIN
+    )
+    for direction in DIRECTIONS
+}
 
 
 class BuilderStrategyMethodsMixin:
@@ -68,6 +194,14 @@ class BuilderStrategyMethodsMixin:
         return _SCAVENGER_FRONTIER_TIEBREAK_MULTIPLIERS.get(
             self.spawn_relative_tile,
             (1, 1),
+        )
+
+    def u_get_information_gain_scout_direction_order(self) -> tuple[Direction, ...]:
+        if self.strategy != SCAVENGER_STRATEGY_ID:
+            return DIRECTIONS
+        return _INFO_GAIN_SCOUT_DIRECTION_ORDER_BY_SPAWN_RELATIVE_TILE.get(
+            self.spawn_relative_tile,
+            DIRECTIONS,
         )
 
     def s_return_to_core_center(self):
@@ -2977,12 +3111,14 @@ class BuilderStrategyMethodsMixin:
         """
         Take a single step that reveals the most currently unseen tiles.
 
-        This evaluates the eight neighboring tiles that are intrinsically
-        passable and not occupied by another builder. For each candidate
-        step it counts only the tiles that would become newly visible from
-        that step but are not already visible from the current tile. Tiles
-        we have stood on before are filtered directly, and own-building
-        neighborhoods are treated as already scouted.
+        This evaluates neighboring tiles that are intrinsically passable and
+        not occupied by another builder. Scavengers prioritize directions
+        based on their spawn-relative tile around the core so they bias
+        outward from their starting quadrant. For each candidate step it
+        counts only the tiles that would become newly visible from that step
+        but are not already visible from the current tile. Tiles we have
+        stood on before are filtered directly, and own-building neighborhoods
+        are treated as already scouted.
         """
         if self.map.titanium < min_titanium:
             return False
@@ -2992,6 +3128,7 @@ class BuilderStrategyMethodsMixin:
         tiles_by_index = self.map.tiles_by_index
         intrinsic_passable_by_index = self.map.intrinsic_passable_by_index
         last_visited_turn_by_index = self.map.last_visited_turn_by_index
+        direction_order = self.u_get_information_gain_scout_direction_order()
         x_multiplier, y_multiplier = (
             self.u_get_frontier_expand_tiebreak_multipliers()
         )
@@ -2999,7 +3136,7 @@ class BuilderStrategyMethodsMixin:
         best_tile = None
         best_direction = None
 
-        for direction in DIRECTIONS:
+        for direction_order_idx, direction in enumerate(direction_order):
             step_idx = self.map.u_get_neighbor_index_by_direction(
                 current_idx,
                 direction,
@@ -3020,9 +3157,21 @@ class BuilderStrategyMethodsMixin:
             gain = self.map.u_get_scout_information_gain_for_step(step_idx, direction)
             if gain <= 0:
                 continue
+            if gain >= _INFO_GAIN_SCOUT_MAX_GAIN_BY_DIRECTION[direction]:
+                if self.u_try_progress_move_step(
+                    step_tile,
+                    direction,
+                    step_tile.position,
+                    build_new_roads=True,
+                    allow_conveyor_building=False,
+                    respect_titanium_reserve_for_road_build=False,
+                ):
+                    return True
+                continue
 
             key = (
                 -gain,
+                direction_order_idx,
                 x_multiplier * step_tile.position.x,
                 y_multiplier * step_tile.position.y,
                 step_tile.own_core_dist,
