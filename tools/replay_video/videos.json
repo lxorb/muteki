@@ -50,7 +50,10 @@
         "turns": 350,
         "result": "loss"
       }
-    ]
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 1
+    }
   },
   "3c540196-05e7-4430-a75f-245da5aa8d17": {
     "user": "einbocha",
@@ -103,7 +106,10 @@
         "turns": 2000,
         "result": "loss"
       }
-    ]
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 1
+    }
   },
   "f025a932-2265-42e2-a0a1-426495658dbe": {
     "user": "einbocha",
@@ -155,7 +161,10 @@
         "turns": 146,
         "result": "loss"
       }
-    ]
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 1
+    }
   },
   "4d6a76ae-660b-47d1-a56f-c9775537dd65": {
     "user": "einbocha",
@@ -208,13 +217,22 @@
         "turns": 2000,
         "result": "loss"
       }
-    ]
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1
+    }
   },
   "_stats": {
     "total_games": 25,
+    "total_wins": 8,
     "total_losses": 17,
+    "wins_by_condition": {
+      "Core Destroyed": 6,
+      "Axionite Collected": 1,
+      "Titanium Collected": 1
+    },
     "losses_by_condition": {
-      "Axionite Collected": 5,_
+      "Axionite Collected": 5,
       "Core Destroyed": 7,
       "Titanium Collected": 5
     }
@@ -269,6 +287,10 @@
     ],
     "losses_by_condition": {
       "Titanium Collected": 1
+    },
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 3
     }
   }
 }
