@@ -558,6 +558,9 @@ class BuilderNavigationMixin:
             )
         target_idx = self.map.u_to_index(pos)
         target_is_vision_reachable = self.map.u_is_vision_reachable_by_index(target_idx)
+        target_is_vision_action_reachable = self.map.u_is_vision_action_reachable_by_index(
+            target_idx
+        )
         if not reach_builder_action_range and target_is_vision_reachable:
             next_tile = self.map.u_get_next_step_towards_vision_reachable_by_index(
                 target_idx
@@ -577,7 +580,11 @@ class BuilderNavigationMixin:
                         respect_titanium_reserve_for_road_build
                     ),
                 )
-        if self.map.is_caged and not target_is_vision_reachable:
+        if self.map.is_caged and not (
+            target_is_vision_action_reachable
+            if reach_builder_action_range
+            else target_is_vision_reachable
+        ):
             return self.u_try_greedy_manhattan_move_toward(
                 pos,
                 avoid_enemy_turrets=avoid_enemy_turrets,

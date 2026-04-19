@@ -352,8 +352,17 @@ class Map:
         self.scout_seen_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.environment_code_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.vision_reachable_turn_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
+        self.vision_action_reachable_turn_by_index = (
+            array("I", [0]) * self.INITIAL_MAP_SIZE
+        )
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.vision_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
+        self.vision_action_goal_idx_by_index = array(
+            "h", [-1]
+        ) * self.INITIAL_MAP_SIZE
+        self.vision_action_first_step_by_index = (
+            array("h", [-1]) * self.INITIAL_MAP_SIZE
+        )
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
@@ -4193,6 +4202,12 @@ class Map:
     def u_is_vision_reachable_by_index(self, idx: int) -> bool:
         return self.vision_reachable_turn_by_index[idx] == self.current_round
 
+    def u_is_vision_action_reachable_by_index(self, idx: int) -> bool:
+        return self.vision_action_reachable_turn_by_index[idx] == self.current_round
+
+    def u_is_vision_action_reachable(self, pos: Position) -> bool:
+        return self.u_is_vision_action_reachable_by_index(self.u_to_index(pos))
+
     def u_get_next_step_towards_vision_reachable_by_index(
         self,
         target_idx: int,
@@ -4211,6 +4226,27 @@ class Map:
         if not self.u_is_in_bounds(target_pos):
             return None
         return self.u_get_next_step_towards_vision_reachable_by_index(
+            self.u_to_index(target_pos)
+        )
+
+    def u_get_next_step_towards_vision_action_reachable_by_index(
+        self,
+        target_idx: int,
+    ) -> Tile | None:
+        if not self.u_is_vision_action_reachable_by_index(target_idx):
+            return None
+        next_step_idx = self.vision_action_first_step_by_index[target_idx]
+        if next_step_idx < 0:
+            return None
+        return self.tiles_by_index[next_step_idx]
+
+    def u_get_next_step_towards_vision_action_reachable(
+        self,
+        target_pos: Position,
+    ) -> Tile | None:
+        if not self.u_is_in_bounds(target_pos):
+            return None
+        return self.u_get_next_step_towards_vision_action_reachable_by_index(
             self.u_to_index(target_pos)
         )
 
@@ -4245,10 +4281,18 @@ class Map:
         source_neighbor_count = self.neighbor_count_by_index[source_idx]
         source_dist = 1
         vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        vision_action_reachable_turn_by_index = (
+            self.vision_action_reachable_turn_by_index
+        )
         vision_first_step_by_index = self.vision_first_step_by_index
+        vision_action_goal_idx_by_index = self.vision_action_goal_idx_by_index
+        vision_action_first_step_by_index = self.vision_action_first_step_by_index
         vision_reachable_turn_by_index[source_idx] = current_round
+        vision_action_reachable_turn_by_index[source_idx] = current_round
         self.dist_to_self_by_index[source_idx] = 0
         vision_first_step_by_index[source_idx] = -1
+        vision_action_goal_idx_by_index[source_idx] = source_idx
+        vision_action_first_step_by_index[source_idx] = -1
         neighbor_indices_by_index = self.neighbor_indices_by_index
         neighbor_count_by_index = self.neighbor_count_by_index
         max_neighbor_count = self.MAX_NEIGHBOR_COUNT
@@ -4274,6 +4318,10 @@ class Map:
             if last_seen_turn_by_index[neighbor_idx] != current_round:
                 self.is_caged = False
                 continue
+            if vision_action_reachable_turn_by_index[neighbor_idx] != current_round:
+                vision_action_reachable_turn_by_index[neighbor_idx] = current_round
+                vision_action_goal_idx_by_index[neighbor_idx] = source_idx
+                vision_action_first_step_by_index[neighbor_idx] = -1
             if (
                 not vision_bfs_passable_by_index[neighbor_idx]
                 or bot_present_by_index[neighbor_idx]
@@ -4308,6 +4356,12 @@ class Map:
                 if last_seen_turn_by_index[neighbor_idx] != current_round:
                     self.is_caged = False
                     continue
+                if vision_action_reachable_turn_by_index[neighbor_idx] != current_round:
+                    vision_action_reachable_turn_by_index[neighbor_idx] = current_round
+                    vision_action_goal_idx_by_index[neighbor_idx] = current_idx
+                    vision_action_first_step_by_index[neighbor_idx] = (
+                        current_first_step_idx
+                    )
                 if (
                     not vision_bfs_passable_by_index[neighbor_idx]
                     or vision_reachable_turn_by_index[neighbor_idx] == current_round
@@ -4838,59 +4892,39 @@ class Map:
             return None
 
         active_mask_by_index = self.active_mask_by_index
-        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
-        dist_to_self_by_index = self.dist_to_self_by_index
-        vision_first_step_by_index = self.vision_first_step_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        vision_action_reachable_turn_by_index = (
+            self.vision_action_reachable_turn_by_index
+        )
+        vision_action_goal_idx_by_index = self.vision_action_goal_idx_by_index
+        vision_action_first_step_by_index = self.vision_action_first_step_by_index
         enemy_turret_target_by_index = self.enemy_turret_target_by_index
         bot_present_by_index = self.bot_present_by_index
-        index_x_by_index = self.index_x_by_index
-        index_y_by_index = self.index_y_by_index
-        u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
-
-        best_goal_idx = -1
-        best_score: tuple[int, int, int, int] | None = None
-
-        for goal_idx in self.u_iter_builder_action_target_indices(target_idx):
-            if (
-                not active_mask_by_index[goal_idx]
-                or vision_reachable_turn_by_index[goal_idx] != current_round
-            ):
-                continue
-            if not intrinsic_passable_by_index[goal_idx]:
-                continue
-            if avoid_enemy_turrets and enemy_turret_target_by_index[goal_idx]:
-                continue
-            if (
-                avoid_other_builder_bots
-                and goal_idx != source_idx
-                and bot_present_by_index[goal_idx]
-            ):
-                continue
-            next_step_idx = vision_first_step_by_index[goal_idx]
-            if next_step_idx < 0:
-                continue
-            if (
-                avoid_other_builder_bots
-                and next_step_idx != source_idx
-                and bot_present_by_index[next_step_idx]
-            ):
-                continue
-
-            candidate_score = (
-                dist_to_self_by_index[goal_idx],
-                u_get_own_core_dist_by_index(goal_idx),
-                index_x_by_index[goal_idx],
-                index_y_by_index[goal_idx],
-            )
-            if best_score is None or candidate_score < best_score:
-                best_score = candidate_score
-                best_goal_idx = goal_idx
-
-        if best_goal_idx < 0:
+        if (
+            not active_mask_by_index[target_idx]
+            or vision_action_reachable_turn_by_index[target_idx] != current_round
+        ):
             return None
 
-        next_step_idx = vision_first_step_by_index[best_goal_idx]
+        goal_idx = vision_action_goal_idx_by_index[target_idx]
+        if goal_idx < 0:
+            return None
+        if avoid_enemy_turrets and enemy_turret_target_by_index[goal_idx]:
+            return None
+        if (
+            avoid_other_builder_bots
+            and goal_idx != source_idx
+            and bot_present_by_index[goal_idx]
+        ):
+            return None
+        next_step_idx = vision_action_first_step_by_index[target_idx]
+        if next_step_idx < 0:
+            return None
+        if (
+            avoid_other_builder_bots
+            and next_step_idx != source_idx
+            and bot_present_by_index[next_step_idx]
+        ):
+            return None
         return self.tiles_by_index[next_step_idx]
 
     def _u_get_next_step_to_builder_action_range_vision_join_astar(
