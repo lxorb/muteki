@@ -10,8 +10,8 @@ from lib.agent.time.provider import (
 )
 from lib.debug.output import tprint
 
-ALLOCATED_MAP_TIME_MS = 1e6
-ALLOCATED_BOT_TIME_MS = 1e6
+ALLOCATED_MAP_TIME_MS = 0.75
+ALLOCATED_BOT_TIME_MS = 0.8
 
 MS_TO_MUS = 1e3
 
@@ -55,6 +55,15 @@ class RoundStopwatch:
         active_time = self.time_provider.get_active_time()
         tprint(f"[{label}] {active_time:.2f} mus")
 
+    def time_remaining_mus(self) -> float:
+        if self.ct is None:
+            return float("inf")
+        active = self.time_provider.get_active_time()
+        budget = (
+            ALLOCATED_MAP_AND_BOT_TIME_MUS if self.map_done else ALLOCATED_MAP_TIME_MUS
+        )
+        return budget - active
+
     def check_overtime_interval(self):
         if self.ct is None:
             return False
@@ -68,14 +77,18 @@ class RoundStopwatch:
         caller = inspect.currentframe().f_back.f_code.co_name
         tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
-        if not SUBMISSION_ENV:
-            return False
-
-        return (
+        is_overtime = (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
             if self.map_done
             else active_cpu_time > ALLOCATED_MAP_TIME_MUS
         )
+        if is_overtime:
+            tprint("[OVERTIME]")
+
+        if not SUBMISSION_ENV:
+            return False
+
+        return is_overtime
 
     def check_overtime(self):
         if self.ct is None:
@@ -85,11 +98,15 @@ class RoundStopwatch:
         caller = inspect.currentframe().f_back.f_code.co_name
         tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
-        if not SUBMISSION_ENV:
-            return False
-
-        return (
+        is_overtime = (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
             if self.map_done
             else active_cpu_time > ALLOCATED_MAP_TIME_MUS
         )
+        if is_overtime:
+            tprint("[OVERTIME]")
+
+        if not SUBMISSION_ENV:
+            return False
+
+        return is_overtime
