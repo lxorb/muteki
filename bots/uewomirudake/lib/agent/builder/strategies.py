@@ -53,6 +53,7 @@ SCAVENGER_STRATEGY = [
     ),
     (BuilderStrategyMethodsMixin.s_information_gain_scout, 0),
     (BuilderStrategyMethodsMixin.s_frontier_expand, 0),
+    (BuilderStrategyMethodsMixin.s_move_toward_enemy_core),
     (BuilderStrategyMethodsMixin.s_patrol_supply_chains,),
 ]
 

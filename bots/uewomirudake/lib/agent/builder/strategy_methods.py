@@ -1999,6 +1999,8 @@ class BuilderStrategyMethodsMixin:
             return False
 
         own_team = self.map.own_team
+        current_pos = self.map.current_pos
+        current_idx = self.map.u_to_index(current_pos)
         tiles_by_index = self.map.tiles_by_index
         get_own_core_dist = self.map.u_get_own_core_dist_by_index
         current_round = self.map.current_round
@@ -2008,6 +2010,11 @@ class BuilderStrategyMethodsMixin:
         continuable_root_cache: dict[int, bool] = {}
 
         def can_use_tile(target_tile) -> bool:
+            if (
+                target_tile.bot.id is not None
+                and target_tile.position != current_pos
+            ):
+                return False
             if target_tile.environment == Environment.WALL:
                 return False
             if target_tile.building.entity_type == EntityType.CORE:
@@ -2110,6 +2117,105 @@ class BuilderStrategyMethodsMixin:
                 return SupplyChainLabel.NONE
             return tiles_by_index[source_idx].own_supply_chain_label
 
+        def can_afford_building_type(
+            building_type: EntityType,
+            respect_titanium_reserve: bool = True,
+        ) -> bool:
+            titanium_cost, axionite_cost = getattr(
+                self.ct,
+                f"get_{building_type.value}_cost",
+            )()
+            return (
+                (
+                    not respect_titanium_reserve
+                    or self.u_can_spend_titanium_without_falling_below_reserve(
+                        titanium_cost
+                    )
+                )
+                and self.map.titanium >= titanium_cost
+                and self.map.axionite >= axionite_cost
+            )
+
+        def try_complete_target(
+            target_idx: int,
+            supply_chain_label: SupplyChainLabel,
+        ) -> bool:
+            target_tile = tiles_by_index[target_idx]
+            for resource in u_get_candidate_resources(
+                target_tile,
+                supply_chain_label,
+            ):
+                supplier_type, supplier_target = (
+                    self.u_get_transport_supplier_build_plan_for_supply_chain(
+                        target_tile.position,
+                        resource,
+                        supply_chain_label,
+                    )
+                )
+                if supplier_type is None or supplier_target is None:
+                    continue
+                if supplier_type in CONVEYOR_ENTITY_TYPES:
+                    if self.u_build_at(
+                        target_tile.position,
+                        supplier_type,
+                        hold=hold,
+                        move_towards=move_towards,
+                        attack_enemy_passable=attack_enemy_passable,
+                        facing_direction=supplier_target,
+                        respect_titanium_reserve=True,
+                    ):
+                        remember_pending_target(
+                            target_idx,
+                            resource,
+                            supply_chain_label,
+                        )
+                        return True
+                    continue
+                if supplier_type != EntityType.BRIDGE:
+                    continue
+                if not can_afford_building_type(
+                    EntityType.BRIDGE,
+                    respect_titanium_reserve=True,
+                ):
+                    if current_pos == target_tile.position:
+                        if hold:
+                            remember_pending_target(
+                                target_idx,
+                                resource,
+                                supply_chain_label,
+                            )
+                            return True
+                        continue
+                    if not move_towards:
+                        continue
+                    if self.u_move_to(
+                        target_tile.position,
+                        allow_conveyor_building=False,
+                    ):
+                        remember_pending_target(
+                            target_idx,
+                            resource,
+                            supply_chain_label,
+                        )
+                        return True
+                    continue
+                if self.u_build_at(
+                    target_tile.position,
+                    supplier_type,
+                    hold=hold,
+                    move_towards=move_towards,
+                    attack_enemy_passable=attack_enemy_passable,
+                    target_pos=supplier_target,
+                    respect_titanium_reserve=True,
+                ):
+                    remember_pending_target(
+                        target_idx,
+                        resource,
+                        supply_chain_label,
+                    )
+                    return True
+            return False
+
         candidate_entries_by_index: dict[
             int,
             tuple[tuple[int, int, int], int, int, int],
@@ -2178,6 +2284,19 @@ class BuilderStrategyMethodsMixin:
                         pending_target_idx,
                         int(pending_label),
                     )
+
+        current_tile = tiles_by_index[current_idx]
+        current_tile_label = u_get_continuable_supply_chain_label_for_target(
+            current_idx,
+        )
+        if (
+            current_tile_label != SupplyChainLabel.NONE
+            and can_use_tile(current_tile)
+        ):
+            return try_complete_target(
+                current_idx,
+                current_tile_label,
+            )
 
         for encounter_order, target_tile in enumerate(
             self.map.own_missing_supply_links
@@ -2260,51 +2379,8 @@ class BuilderStrategyMethodsMixin:
             target_tile = tiles_by_index[target_idx]
             attempted_target_positions.append(target_tile.position)
             supply_chain_label = SupplyChainLabel(target_label)
-            for resource in u_get_candidate_resources(
-                target_tile,
-                supply_chain_label,
-            ):
-                supplier_type, supplier_target = (
-                    self.u_get_transport_supplier_build_plan_for_supply_chain(
-                        target_tile.position,
-                        resource,
-                        supply_chain_label,
-                    )
-                )
-                if supplier_type is None or supplier_target is None:
-                    continue
-                if supplier_type in CONVEYOR_ENTITY_TYPES:
-                    if self.u_build_at(
-                        target_tile.position,
-                        supplier_type,
-                        hold=hold,
-                        move_towards=move_towards,
-                        attack_enemy_passable=attack_enemy_passable,
-                        facing_direction=supplier_target,
-                        respect_titanium_reserve=True,
-                    ):
-                        remember_pending_target(
-                            target_idx,
-                            resource,
-                            supply_chain_label,
-                        )
-                        return True
-                elif supplier_type == EntityType.BRIDGE:
-                    if self.u_build_at(
-                        target_tile.position,
-                        supplier_type,
-                        hold=hold,
-                        move_towards=move_towards,
-                        attack_enemy_passable=attack_enemy_passable,
-                        target_pos=supplier_target,
-                        respect_titanium_reserve=True,
-                    ):
-                        remember_pending_target(
-                            target_idx,
-                            resource,
-                            supply_chain_label,
-                        )
-                        return True
+            if try_complete_target(target_idx, supply_chain_label):
+                return True
 
             if self.round_stopwatch.check_overtime():
                 break
