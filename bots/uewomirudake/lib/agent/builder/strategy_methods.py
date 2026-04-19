@@ -22,7 +22,7 @@ from lib.agent.constants import (
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
 )
-from lib.map.constants import CARDINAL_DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
+from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
 _ENEMY_CORE_PATROL_OFFSETS = (
@@ -2971,6 +2971,79 @@ class BuilderStrategyMethodsMixin:
             resource=resource,
             enforce_safe=enforce_safe,
             require_connected=True,
+        )
+
+    def s_information_gain_scout(self, min_titanium: int = 0):
+        """
+        Take a single step that reveals the most currently unseen tiles.
+
+        This evaluates the eight neighboring tiles that are intrinsically
+        passable and not occupied by another builder. For each candidate
+        step it counts only the tiles that would become newly visible from
+        that step but are not already visible from the current tile. Tiles
+        we have stood on before are filtered directly, and own-building
+        neighborhoods are treated as already scouted.
+        """
+        if self.map.titanium < min_titanium:
+            return False
+
+        current_pos = self.map.current_pos
+        current_idx = self.map.u_to_index(current_pos)
+        tiles_by_index = self.map.tiles_by_index
+        intrinsic_passable_by_index = self.map.intrinsic_passable_by_index
+        last_visited_turn_by_index = self.map.last_visited_turn_by_index
+        x_multiplier, y_multiplier = (
+            self.u_get_frontier_expand_tiebreak_multipliers()
+        )
+        best_key = None
+        best_tile = None
+        best_direction = None
+
+        for direction in DIRECTIONS:
+            step_idx = self.map.u_get_neighbor_index_by_direction(
+                current_idx,
+                direction,
+            )
+            if step_idx is None:
+                continue
+            if last_visited_turn_by_index[step_idx] != -1:
+                continue
+
+            step_tile = tiles_by_index[step_idx]
+            if step_tile.bot.id is not None:
+                continue
+            if not intrinsic_passable_by_index[step_idx]:
+                continue
+            if step_tile.is_enemy_turret_target_tile:
+                continue
+
+            gain = self.map.u_get_scout_information_gain_for_step(step_idx, direction)
+            if gain <= 0:
+                continue
+
+            key = (
+                -gain,
+                x_multiplier * step_tile.position.x,
+                y_multiplier * step_tile.position.y,
+                step_tile.own_core_dist,
+                step_tile.position.x,
+                step_tile.position.y,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_tile = step_tile
+                best_direction = direction
+
+        if best_tile is None or best_direction is None:
+            return False
+
+        return self.u_try_progress_move_step(
+            best_tile,
+            best_direction,
+            best_tile.position,
+            build_new_roads=True,
+            allow_conveyor_building=False,
+            respect_titanium_reserve_for_road_build=False,
         )
 
     def s_frontier_expand(self, min_titanium: int = 0):

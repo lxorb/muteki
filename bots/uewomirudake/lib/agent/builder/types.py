@@ -325,6 +325,11 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         enforce_safe: bool = False,
     ) -> BuilderActionResult: ...
 
+    def s_information_gain_scout(
+        self,
+        min_titanium: int = 0,
+    ) -> BuilderActionResult: ...
+
     def s_frontier_expand(
         self,
         min_titanium: int = 0,

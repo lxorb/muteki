@@ -60,6 +60,39 @@ MAP_ENVIRONMENT_WALL = 1
 MAP_ENVIRONMENT_TITANIUM = 2
 MAP_ENVIRONMENT_AXIONITE = 3
 
+_SCOUT_SEEN_NEIGHBOR_OFFSETS = (
+    *((dx, dy) for dx in range(-1, 2) for dy in range(-1, 2) if dx or dy),
+)
+
+
+def _build_scout_new_vision_offsets_by_direction() -> dict[
+    Direction, tuple[tuple[int, int], ...]
+]:
+    radius_sq = GameConstants.BUILDER_BOT_VISION_RADIUS_SQ
+    radius = int(math.sqrt(radius_sq)) + 1
+    offsets_by_direction: dict[Direction, tuple[tuple[int, int], ...]] = {}
+
+    for direction in DIRECTIONS:
+        step_dx, step_dy = direction.delta()
+        offsets: list[tuple[int, int]] = []
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if dx * dx + dy * dy > radius_sq:
+                    continue
+                if (
+                    (dx + step_dx) * (dx + step_dx)
+                    + (dy + step_dy) * (dy + step_dy)
+                    <= radius_sq
+                ):
+                    continue
+                offsets.append((dx, dy))
+        offsets_by_direction[direction] = tuple(offsets)
+
+    return offsets_by_direction
+
+
+_SCOUT_NEW_VISION_OFFSETS_BY_DIRECTION = _build_scout_new_vision_offsets_by_direction()
+
 
 class _TouchedIndexMembership:
     __slots__ = ("marked_by_index", "touched_indices")
@@ -298,6 +331,8 @@ class Map:
         self.index_x_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.index_y_by_index = array("B", [0]) * self.INITIAL_MAP_SIZE
         self.last_seen_turn_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.last_visited_turn_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
+        self.scout_seen_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.environment_code_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.vision_reachable_turn_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
@@ -614,6 +649,9 @@ class Map:
                 self.turns_on_current_tile = 0
         self.current_round = next_round
         self.current_pos = next_pos
+        current_idx = self.u_to_index(next_pos)
+        self.last_visited_turn_by_index[current_idx] = next_round
+        self.scout_seen_by_index[current_idx] = 1
         self.titanium, self.axionite = self.ct.get_global_resources()
 
         if self.stale_builder_passability_touched_indices:
@@ -1425,6 +1463,44 @@ class Map:
             if self.active_mask_by_index[neighbor_idx]:
                 yield neighbor_idx
 
+    def u_mark_scout_seen_around_index(self, idx: int) -> None:
+        center_x = self.index_x_by_index[idx]
+        center_y = self.index_y_by_index[idx]
+        width = self.width
+        height = self.height
+        scout_seen_by_index = self.scout_seen_by_index
+
+        for dx, dy in _SCOUT_SEEN_NEIGHBOR_OFFSETS:
+            target_x = center_x + dx
+            target_y = center_y + dy
+            if 0 <= target_x < width and 0 <= target_y < height:
+                scout_seen_by_index[self.u_to_index_xy(target_x, target_y)] = 1
+
+    def u_get_scout_information_gain_for_step(
+        self,
+        step_idx: int,
+        direction: Direction,
+    ) -> int:
+        step_x = self.index_x_by_index[step_idx]
+        step_y = self.index_y_by_index[step_idx]
+        width = self.width
+        height = self.height
+        last_seen_turn_by_index = self.last_seen_turn_by_index
+        scout_seen_by_index = self.scout_seen_by_index
+        gain = 0
+
+        for dx, dy in _SCOUT_NEW_VISION_OFFSETS_BY_DIRECTION[direction]:
+            target_x = step_x + dx
+            target_y = step_y + dy
+            if not (0 <= target_x < width and 0 <= target_y < height):
+                continue
+            target_idx = self.u_to_index_xy(target_x, target_y)
+            if last_seen_turn_by_index[target_idx] != -1 or scout_seen_by_index[target_idx]:
+                continue
+            gain += 1
+
+        return gain
+
     def u_iter_builder_action_target_indices(self, idx: int):
         base = idx * self.MAX_BUILDER_ACTION_TARGET_COUNT
         count = self.builder_action_target_count_by_index[idx]
@@ -1542,6 +1618,7 @@ class Map:
             if building.id is not None:
                 if building.team == own_team:
                     own_buildings_in_vision.append(tile)
+                    self.u_mark_scout_seen_around_index(tile.index)
                 else:
                     enemy_buildings_in_vision.append(tile)
 
@@ -1799,29 +1876,35 @@ class Map:
         index_y_by_index = self.index_y_by_index
         own_core_center_pos = self.own_core_center_pos
         enemy_core_center_pos = self.enemy_core_center_pos
+        current_round = self.current_round
         core_entity_type = EntityType.CORE
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
+
+        def is_core_center_tile(tile: Tile, x: int, y: int) -> bool:
+            if tile.building.entity_type != core_entity_type:
+                return False
+            if own_core_center_pos is not None and x == own_core_center_pos.x and y == own_core_center_pos.y:
+                return True
+            if (
+                enemy_core_center_pos is not None
+                and x == enemy_core_center_pos.x
+                and y == enemy_core_center_pos.y
+            ):
+                return True
+            if (
+                tile.last_seen_turn == current_round
+                and tile.building.id is not None
+            ):
+                tile_core_center_pos = self.ct.get_position(tile.building.id)
+                return tile_core_center_pos.x == x and tile_core_center_pos.y == y
+            return False
 
         for tile in newly_seen_tiles:
             tile_index = tile.index
             x = index_x_by_index[tile_index]
             y = index_y_by_index[tile_index]
             tile_environment = tile.environment
-            tile_is_core_center = False
-            if tile.building.entity_type == core_entity_type:
-                tile_is_core_center = (
-                    (own_core_center_pos is not None and x == own_core_center_pos.x and y == own_core_center_pos.y)
-                    or (
-                        enemy_core_center_pos is not None
-                        and x == enemy_core_center_pos.x
-                        and y == enemy_core_center_pos.y
-                    )
-                )
-                if not tile_is_core_center and tile.building.id is not None:
-                    tile_core_center_pos = self.ct.get_position(tile.building.id)
-                    tile_is_core_center = (
-                        tile_core_center_pos.x == x and tile_core_center_pos.y == y
-                    )
+            tile_is_core_center = is_core_center_tile(tile, x, y)
             has_known_symmetric_tile = False
 
             if rotation_possible:
@@ -1832,31 +1915,11 @@ class Map:
                 rotation_environment = rotation_tile.environment
                 if rotation_environment is not None:
                     has_known_symmetric_tile = True
-                    rotation_is_core_center = False
-                    if rotation_tile.building.entity_type == core_entity_type:
-                        rotation_is_core_center = (
-                            (
-                                own_core_center_pos is not None
-                                and rotation_x == own_core_center_pos.x
-                                and rotation_y == own_core_center_pos.y
-                            )
-                            or (
-                                enemy_core_center_pos is not None
-                                and rotation_x == enemy_core_center_pos.x
-                                and rotation_y == enemy_core_center_pos.y
-                            )
-                        )
-                        if (
-                            not rotation_is_core_center
-                            and rotation_tile.building.id is not None
-                        ):
-                            rotation_core_center_pos = self.ct.get_position(
-                                rotation_tile.building.id
-                            )
-                            rotation_is_core_center = (
-                                rotation_core_center_pos.x == rotation_x
-                                and rotation_core_center_pos.y == rotation_y
-                            )
+                    rotation_is_core_center = is_core_center_tile(
+                        rotation_tile,
+                        rotation_x,
+                        rotation_y,
+                    )
                     if tile_environment != rotation_environment or (
                         tile_is_core_center != rotation_is_core_center
                     ):
@@ -1871,31 +1934,11 @@ class Map:
                 mirror_x_environment = mirror_x_tile.environment
                 if mirror_x_environment is not None:
                     has_known_symmetric_tile = True
-                    mirror_x_is_core_center = False
-                    if mirror_x_tile.building.entity_type == core_entity_type:
-                        mirror_x_is_core_center = (
-                            (
-                                own_core_center_pos is not None
-                                and mirror_x_x == own_core_center_pos.x
-                                and mirror_x_y == own_core_center_pos.y
-                            )
-                            or (
-                                enemy_core_center_pos is not None
-                                and mirror_x_x == enemy_core_center_pos.x
-                                and mirror_x_y == enemy_core_center_pos.y
-                            )
-                        )
-                        if (
-                            not mirror_x_is_core_center
-                            and mirror_x_tile.building.id is not None
-                        ):
-                            mirror_x_core_center_pos = self.ct.get_position(
-                                mirror_x_tile.building.id
-                            )
-                            mirror_x_is_core_center = (
-                                mirror_x_core_center_pos.x == mirror_x_x
-                                and mirror_x_core_center_pos.y == mirror_x_y
-                            )
+                    mirror_x_is_core_center = is_core_center_tile(
+                        mirror_x_tile,
+                        mirror_x_x,
+                        mirror_x_y,
+                    )
                     if tile_environment != mirror_x_environment or (
                         tile_is_core_center != mirror_x_is_core_center
                     ):
@@ -1910,31 +1953,11 @@ class Map:
                 mirror_y_environment = mirror_y_tile.environment
                 if mirror_y_environment is not None:
                     has_known_symmetric_tile = True
-                    mirror_y_is_core_center = False
-                    if mirror_y_tile.building.entity_type == core_entity_type:
-                        mirror_y_is_core_center = (
-                            (
-                                own_core_center_pos is not None
-                                and mirror_y_x == own_core_center_pos.x
-                                and mirror_y_y == own_core_center_pos.y
-                            )
-                            or (
-                                enemy_core_center_pos is not None
-                                and mirror_y_x == enemy_core_center_pos.x
-                                and mirror_y_y == enemy_core_center_pos.y
-                            )
-                        )
-                        if (
-                            not mirror_y_is_core_center
-                            and mirror_y_tile.building.id is not None
-                        ):
-                            mirror_y_core_center_pos = self.ct.get_position(
-                                mirror_y_tile.building.id
-                            )
-                            mirror_y_is_core_center = (
-                                mirror_y_core_center_pos.x == mirror_y_x
-                                and mirror_y_core_center_pos.y == mirror_y_y
-                            )
+                    mirror_y_is_core_center = is_core_center_tile(
+                        mirror_y_tile,
+                        mirror_y_x,
+                        mirror_y_y,
+                    )
                     if tile_environment != mirror_y_environment or (
                         tile_is_core_center != mirror_y_is_core_center
                     ):
