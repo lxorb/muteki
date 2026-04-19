@@ -6157,6 +6157,8 @@ class BuilderStrategyMethodsMixin:
         )
 
         for launcher_pos in buildable_launcher_positions:
+            if self.round_stopwatch.check_overtime():
+                break
             launcher_tile = self.map.u_get_pos_tile(launcher_pos)
             for landing_idx in self.map.u_get_attackable_target_indices(
                 launcher_tile.index,
