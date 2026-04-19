@@ -3869,6 +3869,22 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         own_team = self.map.own_team
         current_tile = self.map.u_get_pos_tile(current_pos)
+
+        if (
+            current_tile.building.id is not None
+            and current_tile.building.hp is not None
+            and current_tile.building.hp <= 18
+        ):
+            for harvester_tile in self.map.enemy_harvesters_in_vision:
+                if harvester_tile.position.distance_squared(current_pos) == 1:
+                    return bool(
+                        self.u_attack_passable(
+                            current_pos,
+                            move_towards=False,
+                            destroy_condition=lambda _: True,
+                        )
+                    )
+
         closest_enemy_builder_bot_pos = self.map.closest_enemy_builder_bot_in_vision_pos
         enemy_builder_close_enough_for_enemy_road_attack = (
             closest_enemy_builder_bot_pos is not None
