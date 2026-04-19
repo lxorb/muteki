@@ -3913,12 +3913,38 @@ class BuilderStrategyMethodsMixin:
         ]
         if not enemy_harvesters:
             return False
+        enemy_core_center_pos = self.map.enemy_core_center_pos
+        enemy_core_tiles = (
+            self.map.u_get_core_footprint_positions(enemy_core_center_pos)
+            if enemy_core_center_pos is not None
+            else ()
+        )
 
         def is_next_to_enemy_harvester(pos: Position) -> bool:
             for harvester_tile in enemy_harvesters:
                 if harvester_tile.position.distance_squared(pos) == 1:
                     return True
             return False
+
+        def get_harvester_adjacent_turret_build_plan(
+            pos: Position,
+        ) -> tuple[EntityType, Direction]:
+            build_entity_type, turret_direction = self.u_get_turret_build_plan(pos)
+            if build_entity_type != EntityType.SENTINEL:
+                return (build_entity_type, turret_direction)
+            if enemy_core_center_pos is None:
+                return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
+            if any(
+                self.map.u_sentinel_covers_target(
+                    pos,
+                    turret_direction,
+                    core_tile.position,
+                    GameConstants.SENTINEL_VISION_RADIUS_SQ,
+                )
+                for core_tile in enemy_core_tiles
+            ):
+                return (EntityType.SENTINEL, turret_direction)
+            return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
 
         def try_step_off_and_build_current_tile() -> bool:
             current_tile = self.map.u_get_pos_tile(current_pos)
@@ -3929,7 +3955,9 @@ class BuilderStrategyMethodsMixin:
             ):
                 return False
 
-            build_entity_type, turret_direction = self.u_get_turret_build_plan(current_pos)
+            build_entity_type, turret_direction = (
+                get_harvester_adjacent_turret_build_plan(current_pos)
+            )
             get_cost_method = getattr(self.ct, f"get_{build_entity_type.value}_cost")
             titanium_cost, axionite_cost = get_cost_method()
             if (
@@ -3939,7 +3967,6 @@ class BuilderStrategyMethodsMixin:
             ):
                 return False
 
-            enemy_core_center_pos = self.map.enemy_core_center_pos
             candidate_entries: list[tuple[tuple[int, int, int, int], Direction]] = []
 
             for direction_order, direction in enumerate(Direction):
@@ -4062,12 +4089,17 @@ class BuilderStrategyMethodsMixin:
         if target_tile is None:
             return False
 
+        build_entity_type, turret_direction = get_harvester_adjacent_turret_build_plan(
+            target_tile.position
+        )
         return bool(
-            self.u_build_turret(
+            self.u_build_at(
                 target_tile.position,
+                build_entity_type,
                 hold=hold,
                 move_towards=move_towards,
                 attack_enemy_passable=attack_enemy_passable,
+                facing_direction=turret_direction,
             )
         )
 
@@ -5007,66 +5039,53 @@ class BuilderStrategyMethodsMixin:
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,
-        wait_if_enemy_builder_bots_in_range: bool = True,
-        hold_if_standing_on_attackable_tile: bool = True,
+        require_no_enemy_bbs_in_range: bool = False,
     ):
         """
-        Attack enemy supply links that matter for core-facing sentinel positions.
+        Attack nearby key enemy titanium supply-chain tiles.
 
-        If the builder is already standing on an enemy supply-link tile where a
-        sentinel built on that tile would face the enemy core, attack that tile
-        immediately. Otherwise target the closest visible enemy supply-link tile
-        that had titanium on it within the last three turns and from which a
-        built sentinel would face the enemy core. The optional
-        `hold_if_standing_on_attackable_tile` flag controls whether the builder
-        may wait on an already-attackable target tile while enemy bots remain
-        in vision.
+        A key enemy supply-chain tile is an enemy supply-link tile that belongs
+        to an enemy titanium-carrying chain with at least one connected
+        harvester or resource item, is not occupied by another builder bot, and
+        is outside enemy turret threat tiles and spin-gunner first-target rays.
+        If the current tile qualifies, attack it. Otherwise, look only at the
+        eight adjacent tiles and move onto the first qualifying one.
         """
         current_pos = self.map.current_pos
-        current_round = self.map.current_round
-        enemy_core_center_pos = self.map.enemy_core_center_pos
-        if enemy_core_center_pos is None:
-            return False
-
         current_tile = self.map.u_get_pos_tile(current_pos)
+        enemy_team = self.map.enemy_team
 
-        enemy_core_tiles = self.map.u_get_core_footprint_positions(
-            enemy_core_center_pos
-        )
-        sentinel_targets_enemy_core_by_index: dict[int, bool] = {}
-
-        def sentinel_targets_enemy_core(tile) -> bool:
-            cached_value = sentinel_targets_enemy_core_by_index.get(tile.index)
-            if cached_value is not None:
-                return cached_value
-
-            sentinel_direction = self.u_get_sentinel_orientation(tile.position)
-            cached_value = any(
-                self.map.u_sentinel_covers_target(
-                    tile.position,
-                    sentinel_direction,
-                    core_tile.position,
-                    GameConstants.SENTINEL_VISION_RADIUS_SQ,
-                )
-                for core_tile in enemy_core_tiles
-            )
-            sentinel_targets_enemy_core_by_index[tile.index] = cached_value
-            return cached_value
+        def is_key_enemy_supply_chain_tile(
+            tile,
+            allow_current_tile: bool = False,
+        ) -> bool:
+            if tile.building.team != enemy_team:
+                return False
+            if tile.building.entity_type not in SUPPLY_LINK_TYPES:
+                return False
+            if tile.is_enemy_spin_gunner_ray_first_target:
+                return False
+            if tile.is_enemy_turret_target_tile:
+                return False
+            if not self.map.u_supply_chain_has_titanium(tile.index, enemy_team):
+                return False
+            if not self.map.u_supply_chain_is_continuable(tile.index, enemy_team):
+                return False
+            if self.map.u_enemy_supply_chain_feeds_own_turret(tile.index):
+                return False
+            if (
+                tile.bot.id is not None
+                and tile.bot.entity_type == EntityType.BUILDER_BOT
+                and not (allow_current_tile and tile.position == current_pos)
+            ):
+                return False
+            return True
 
         if (
-            current_tile.building.team == self.map.enemy_team
-            and current_tile.building.entity_type in SUPPLY_LINK_TYPES
-            and sentinel_targets_enemy_core(current_tile)
-            and not current_tile.is_enemy_spin_gunner_ray_first_target
+            current_tile.building.hp is not None
+            and current_tile.building.hp <= 16
+            and is_key_enemy_supply_chain_tile(current_tile, allow_current_tile=True)
         ):
-            if (
-                hold_if_standing_on_attackable_tile
-                and
-                wait_if_enemy_builder_bots_in_range
-                and self.map.has_enemy_bot_in_vision
-                and not self._is_visible_building_damaged(current_tile)
-            ):
-                return True
             return bool(
                 self.u_attack_passable(
                     current_pos,
@@ -5077,59 +5096,43 @@ class BuilderStrategyMethodsMixin:
                 )
             )
 
-        target_tile = None
-        target_key = None
-        for tile in dict.fromkeys(self.map.enemy_supply_links_in_vision):
-            if tile.last_seen_turn != current_round:
-                continue
-            if tile.building.team != self.map.enemy_team:
-                continue
-            if tile.building.entity_type not in SUPPLY_LINK_TYPES:
-                continue
-            if not tile.is_passable:
-                continue
-            if tile.is_enemy_spin_gunner_ray_first_target:
-                continue
-
-            last_titanium_turn = tile.building.last_titanium_onit_turn
-            if (
-                last_titanium_turn is None
-                or current_round - last_titanium_turn > 3
-                or not sentinel_targets_enemy_core(tile)
-            ):
-                continue
-
-            key = (
-                tile.dist_to_self,
-                current_round - last_titanium_turn,
-                tile.own_core_dist,
-                tile.index,
-            )
-            if target_key is None or key < target_key:
-                target_key = key
-                target_tile = tile
-
-        if target_tile is None:
+        if require_no_enemy_bbs_in_range and self.map.has_enemy_bot_in_vision:
             return False
 
-        if (
-            hold_if_standing_on_attackable_tile
-            and
-            wait_if_enemy_builder_bots_in_range
-            and self.map.has_enemy_bot_in_vision
-            and current_pos == target_tile.position
-            and not self._is_visible_building_damaged(target_tile)
-        ):
+        if is_key_enemy_supply_chain_tile(current_tile, allow_current_tile=True):
+            return bool(
+                self.u_attack_passable(
+                    current_pos,
+                    move_towards=False,
+                    destroy_condition=lambda _: True,
+                    avoid_enemy_turrets=False,
+                    ignore_conveyor_reserve_if_target_damaged=True,
+                )
+            )
+
+        if not move_towards:
+            return False
+
+        current_idx = self.map.u_to_index(current_pos)
+        tiles_by_index = self.map.tiles_by_index
+        for direction in DIRECTIONS:
+            adjacent_idx = self.map.u_get_neighbor_index_by_direction(
+                current_idx,
+                direction,
+            )
+            if adjacent_idx is None:
+                continue
+            adjacent_tile = tiles_by_index[adjacent_idx]
+            if not adjacent_tile.is_passable:
+                continue
+            if not is_key_enemy_supply_chain_tile(adjacent_tile):
+                continue
+            if not self.ct.can_move(direction):
+                continue
+            self.u_move_with_target(direction, adjacent_tile.position)
             return True
 
-        return bool(
-            self.u_attack_passable(
-                target_tile.position,
-                move_towards=move_towards,
-                destroy_condition=lambda _: True,
-                ignore_conveyor_reserve_if_target_damaged=True,
-            )
-        )
+        return False
 
     def s_build_enemy_supplied_turret(
         self,
