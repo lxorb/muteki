@@ -6004,72 +6004,38 @@ class BuilderStrategyMethodsMixin:
             return False
         return True
 
-    def good_yeeter_already_exists(self, target_position: Position) -> bool:
-        target_idx = self.map.u_to_index(target_position)
-        target_tile = self.map.tiles_by_index[target_idx]
-        if not self.u_is_valid_yeet_landing_tile(target_tile):
+    def lets_get_yeeted(self, target_pos: Position) -> bool:
+        current_pos = self.map.current_pos
+        target_idx = self.map.u_to_index(target_pos)
+        own_action_reachable_launcher_indices = (
+            self.map.own_action_reachable_launcher_indices
+        )
+        can_build_new_launcher = self.map.titanium >= LAUNCHER_BUILD_MIN_TITANIUM
+        buildable_launcher_positions: list[Position] = []
+
+        if can_build_new_launcher:
+            for launcher_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+                launcher_tile = self.map.u_get_pos_tile(launcher_pos)
+                if launcher_tile.in_own_launcher_pickup_zone != 0:
+                    continue
+                if not self.u_can_place_marker_or_launcher_here(launcher_tile):
+                    continue
+                buildable_launcher_positions.append(launcher_pos)
+
+        if not own_action_reachable_launcher_indices and not buildable_launcher_positions:
             return False
 
-        current_pos = self.map.current_pos
-        tiles_by_index = self.map.tiles_by_index
-        best_entry = None
-
-        for launcher_idx in self.map.own_action_reachable_launcher_indices:
-            launcher_tile = tiles_by_index[launcher_idx]
-            if not any(
-                landing_idx == target_idx
-                for landing_idx in self.map.u_get_attackable_target_indices(
-                    launcher_idx,
-                    EntityType.LAUNCHER,
-                    Direction.NORTH,
-                )
-            ):
-                continue
-
-            action_dist = self.map.u_get_vision_action_distance_by_index(launcher_idx)
-            if action_dist is None:
-                continue
-            if action_dist == 0:
-                self.u_set_marker_target(target_position)
-                return True
-
-            next_step = self.map.u_get_next_step_towards_vision_action_reachable_by_index(
-                launcher_idx
-            )
-            if next_step is None:
-                continue
-
-            next_direction = self.map.u_get_direction_between(
-                current_pos,
-                next_step.position,
-            )
-            if next_direction is None or not self.ct.can_move(next_direction):
-                continue
-            if action_dist <= 1:
-                self.u_set_marker_target(target_position)
-                self.ct.move(next_direction)
-                return True
-
-            key = (
-                action_dist,
-                launcher_tile.position.x,
-                launcher_tile.position.y,
-                next_step.position.x,
-                next_step.position.y,
-            )
-            if best_entry is None or key < best_entry[0]:
-                best_entry = (key, next_direction)
-
-        if best_entry is None:
+        if (
+            self.map.u_is_vision_reachable_by_index(target_idx)
+            and self.map.dist_to_self_by_index[target_idx]
+            < LAUNCHER_BUILD_MIN_IMPROVEMENT
+        ):
             return False
 
-        self.u_set_marker_target(target_position)
-        self.ct.move(best_entry[1])
-        return True
-
-    def lets_get_yeeted(self) -> bool:
-        current_pos = self.map.current_pos
-        current_path = self.map.current_path
+        current_path = self.map.u_calculate_shortest_path_via_vision_join(
+            current_pos,
+            target_pos,
+        )
         if (
             not current_path
             or len(current_path) < LAUNCHER_BUILD_MIN_IMPROVEMENT
@@ -6083,20 +6049,71 @@ class BuilderStrategyMethodsMixin:
                 path_index_by_tile_index.setdefault(neighbor_idx, path_idx)
 
         tiles_by_index = self.map.tiles_by_index
+        best_existing = None
+        best_build = None
 
-        best_pos = None
-        best_target_tile = None
-        best_improvement = LAUNCHER_BUILD_MIN_IMPROVEMENT - 1
-        potential_launcher_positions = 0
+        for launcher_idx in own_action_reachable_launcher_indices:
+            launcher_tile = tiles_by_index[launcher_idx]
+            action_dist = self.map.u_get_vision_action_distance_by_index(launcher_idx)
+            if action_dist is None:
+                continue
 
-        for launcher_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+            next_direction = None
+            next_step_x = current_pos.x
+            next_step_y = current_pos.y
+            if action_dist > 0:
+                next_step = (
+                    self.map.u_get_next_step_towards_vision_action_reachable_by_index(
+                        launcher_idx
+                    )
+                )
+                if next_step is None:
+                    continue
+                next_direction = self.map.u_get_direction_between(
+                    current_pos,
+                    next_step.position,
+                )
+                if next_direction is None or not self.ct.can_move(next_direction):
+                    continue
+                next_step_x = next_step.position.x
+                next_step_y = next_step.position.y
+
+            for landing_idx in self.map.u_get_attackable_target_indices(
+                launcher_idx,
+                EntityType.LAUNCHER,
+                Direction.NORTH,
+            ):
+                landing_tile = tiles_by_index[landing_idx]
+                if launcher_tile.position.distance_squared(landing_tile.position) <= 2:
+                    continue
+                if not self.u_is_valid_yeet_landing_tile(landing_tile):
+                    continue
+
+                path_idx = path_index_by_tile_index.get(landing_idx)
+                if (
+                    path_idx is None
+                    or path_idx < LAUNCHER_BUILD_MIN_IMPROVEMENT
+                ):
+                    continue
+
+                key = (
+                    path_idx,
+                    -action_dist,
+                    -launcher_tile.position.x,
+                    -launcher_tile.position.y,
+                    -next_step_x,
+                    -next_step_y,
+                )
+                if best_existing is None or key > best_existing[0]:
+                    best_existing = (
+                        key,
+                        landing_tile.position,
+                        action_dist,
+                        next_direction,
+                    )
+
+        for launcher_pos in buildable_launcher_positions:
             launcher_tile = self.map.u_get_pos_tile(launcher_pos)
-            if launcher_tile.in_own_launcher_pickup_zone != 0:
-                continue
-            if not self.u_can_place_marker_or_launcher_here(launcher_tile):
-                continue
-
-            potential_launcher_positions += 1
             for landing_idx in self.map.u_get_attackable_target_indices(
                 launcher_tile.index,
                 EntityType.LAUNCHER,
@@ -6109,34 +6126,59 @@ class BuilderStrategyMethodsMixin:
                     continue
 
                 path_idx = path_index_by_tile_index.get(landing_idx)
-                if path_idx is not None and path_idx > best_improvement:
-                    best_improvement = path_idx
-                    best_pos = launcher_pos
-                    best_target_tile = landing_tile
+                if (
+                    path_idx is None
+                    or path_idx < LAUNCHER_BUILD_MIN_IMPROVEMENT
+                ):
+                    continue
+
+                key = (
+                    path_idx,
+                    -launcher_pos.x,
+                    -launcher_pos.y,
+                )
+                if best_build is None or key > best_build[0]:
+                    best_build = (
+                        key,
+                        launcher_pos,
+                        landing_tile.position,
+                    )
+
+        def execute_existing_launcher(existing_entry) -> bool:
+            _, landing_pos, action_dist, next_direction = existing_entry
+            self.u_set_marker_target(landing_pos)
+            if action_dist == 0:
+                return True
+            if next_direction is None:
+                return False
+            self.ct.move(next_direction)
+            return True
 
         if (
-            best_target_tile is not None
-            and self.good_yeeter_already_exists(best_target_tile.position)
+            best_existing is not None
+            and (
+                best_build is None
+                or best_existing[0][0] >= best_build[0][0]
+            )
         ):
-            return True
+            if execute_existing_launcher(best_existing):
+                return True
 
         current_tile = self.map.u_get_pos_tile(current_pos)
         if current_tile.in_own_launcher_pickup_zone != 0:
-            return False
-        if self.map.titanium < LAUNCHER_BUILD_MIN_TITANIUM:
-            return False
+            return best_existing is not None and execute_existing_launcher(best_existing)
         if (
-            best_pos is None
-            or best_target_tile is None
-            or potential_launcher_positions < 2
+            best_build is None
+            or len(buildable_launcher_positions) < 2
         ):
-            return False
+            return best_existing is not None and execute_existing_launcher(best_existing)
 
-        if not self.ct.can_build_launcher(best_pos):
-            return False
+        build_pos = best_build[1]
+        if not self.ct.can_build_launcher(build_pos):
+            return best_existing is not None and execute_existing_launcher(best_existing)
 
-        self.u_set_marker_target(best_target_tile.position)
-        self.ct.build_launcher(best_pos)
+        self.u_set_marker_target(best_build[2])
+        self.ct.build_launcher(build_pos)
         self.last_built_entity_type = EntityType.LAUNCHER
         return True
 
@@ -6172,14 +6214,33 @@ class BuilderStrategyMethodsMixin:
                 move_method = self.u_move_to
 
             if allow_launcher_yeeting:
-                self.map.u_calculate_shortest_path_astar(
-                    current_pos,
-                    move_target_pos,
-                )
-                if self.lets_get_yeeted():
+                if self.lets_get_yeeted(move_target_pos):
                     return True
 
             self.u_set_marker_target(target_pos)
+
+            current_path = self.map.current_path
+            if (
+                current_path
+                and len(current_path) > 1
+                and current_path[0].position == current_pos
+                and current_path[-1].position == move_target_pos
+            ):
+                next_tile = current_path[1]
+                next_direction = self.map.u_get_direction_between(
+                    current_pos,
+                    next_tile.position,
+                )
+                if next_direction is not None:
+                    if self.u_try_progress_move_step(
+                        next_tile,
+                        next_direction,
+                        move_target_pos,
+                        build_new_roads=True,
+                        allow_conveyor_building=False,
+                        respect_titanium_reserve_for_road_build=True,
+                    ):
+                        return True
 
             return bool(
                 move_method(

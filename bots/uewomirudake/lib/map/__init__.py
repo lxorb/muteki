@@ -4634,6 +4634,373 @@ class Map:
         self.current_path = path
         return path
 
+    def _u_reconstruct_current_vision_reachable_path_by_index(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> list[Tile]:
+        current_round = self.current_round
+        if (
+            source_idx != self.last_dist_to_self_source_idx
+            or self.vision_reachable_turn_by_index[source_idx] != current_round
+            or self.vision_reachable_turn_by_index[target_idx] != current_round
+        ):
+            return []
+
+        tiles_by_index = self.tiles_by_index
+        if source_idx == target_idx:
+            return [tiles_by_index[source_idx]]
+
+        active_mask_by_index = self.active_mask_by_index
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        neighbor_count_by_index = self.neighbor_count_by_index
+        max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+        u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+
+        path = [tiles_by_index[target_idx]]
+        current_idx = target_idx
+        current_dist = dist_to_self_by_index[current_idx]
+        overtime_check_countdown = 16
+
+        while current_idx != source_idx:
+            predecessor_idx = -1
+            predecessor_score: tuple[int, int, int] | None = None
+            neighbor_base = current_idx * max_neighbor_count
+            neighbor_count = neighbor_count_by_index[current_idx]
+
+            for offset in range(neighbor_count):
+                adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if (
+                    not active_mask_by_index[adjacent_idx]
+                    or vision_reachable_turn_by_index[adjacent_idx] != current_round
+                    or dist_to_self_by_index[adjacent_idx] != current_dist - 1
+                ):
+                    continue
+                if (
+                    avoid_enemy_turrets
+                    and adjacent_idx != source_idx
+                    and enemy_turret_target_by_index[adjacent_idx]
+                ):
+                    continue
+                if (
+                    avoid_other_builder_bots
+                    and adjacent_idx != source_idx
+                    and adjacent_idx != target_idx
+                    and bot_present_by_index[adjacent_idx]
+                ):
+                    continue
+
+                candidate_score = (
+                    u_get_own_core_dist_by_index(adjacent_idx),
+                    index_x_by_index[adjacent_idx],
+                    index_y_by_index[adjacent_idx],
+                )
+                if (
+                    predecessor_score is None
+                    or candidate_score < predecessor_score
+                ):
+                    predecessor_score = candidate_score
+                    predecessor_idx = adjacent_idx
+
+            if predecessor_idx < 0:
+                return []
+
+            current_idx = predecessor_idx
+            current_dist -= 1
+            path.append(tiles_by_index[current_idx])
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    return []
+                overtime_check_countdown = 16
+
+        path.reverse()
+        return path
+
+    def _u_find_best_vision_bridge_join_by_index(
+        self,
+        source_idx: int,
+        target_idx: int,
+        avoid_enemy_turrets: bool = True,
+    ) -> tuple[int, int] | None:
+        current_round = self.current_round
+        if (
+            source_idx != self.last_dist_to_self_source_idx
+            or self.vision_reachable_turn_by_index[source_idx] != current_round
+            or self.vision_reachable_turn_by_index[target_idx] == current_round
+        ):
+            return None
+
+        active_mask_by_index = self.active_mask_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        if (
+            not active_mask_by_index[source_idx]
+            or not active_mask_by_index[target_idx]
+            or not intrinsic_passable_by_index[target_idx]
+        ):
+            return None
+
+        neighbor_indices_by_index = self.neighbor_indices_by_index
+        neighbor_count_by_index = self.neighbor_count_by_index
+        max_neighbor_count = self.MAX_NEIGHBOR_COUNT
+        enemy_turret_target_by_index = self.enemy_turret_target_by_index
+        bot_present_by_index = self.bot_present_by_index
+        vision_reachable_turn_by_index = self.vision_reachable_turn_by_index
+        dist_to_self_by_index = self.dist_to_self_by_index
+        vision_first_step_by_index = self.vision_first_step_by_index
+        seen_epoch_by_index = self.path_seen_epoch_by_index
+        predecessor_by_index = self.path_predecessor_by_index
+        path_cost_by_index = self.path_cost_by_index
+        index_x_by_index = self.index_x_by_index
+        index_y_by_index = self.index_y_by_index
+        u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
+        heappush_local = heappush
+        heappop_local = heappop
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+
+        self.path_epoch += 1
+        path_epoch = self.path_epoch
+        frontier = self.path_heap_buffer
+        frontier.clear()
+
+        source_x = index_x_by_index[source_idx]
+        source_y = index_y_by_index[source_idx]
+        target_x = index_x_by_index[target_idx]
+        target_y = index_y_by_index[target_idx]
+        dx = target_x - source_x
+        if dx < 0:
+            dx = -dx
+        dy = target_y - source_y
+        if dy < 0:
+            dy = -dy
+        seen_epoch_by_index[target_idx] = path_epoch
+        predecessor_by_index[target_idx] = target_idx
+        path_cost_by_index[target_idx] = 0
+        heappush_local(
+            frontier,
+            (
+                dx if dx >= dy else dy,
+                0,
+                0,
+                u_get_own_core_dist_by_index(target_idx),
+                target_x,
+                target_y,
+                target_idx,
+            ),
+        )
+
+        best_bridge_idx = -1
+        best_bridge_score: tuple[int, int, int, int, int] | None = None
+        overtime_check_countdown = 16
+
+        while frontier:
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    break
+                overtime_check_countdown = 16
+
+            (
+                current_lower_bound,
+                current_cost,
+                _,
+                current_own_core_dist,
+                current_x,
+                current_y,
+                current_idx,
+            ) = heappop_local(frontier)
+            if (
+                seen_epoch_by_index[current_idx] != path_epoch
+                or path_cost_by_index[current_idx] != current_cost
+            ):
+                continue
+            if (
+                best_bridge_score is not None
+                and current_lower_bound > best_bridge_score[0]
+            ):
+                break
+
+            if vision_reachable_turn_by_index[current_idx] == current_round:
+                bridge_next_step_idx = (
+                    predecessor_by_index[current_idx]
+                    if current_idx == source_idx
+                    else vision_first_step_by_index[current_idx]
+                )
+                if (
+                    bridge_next_step_idx >= 0
+                    and bridge_next_step_idx != source_idx
+                    and not bot_present_by_index[bridge_next_step_idx]
+                ):
+                    candidate_score = (
+                        current_cost + dist_to_self_by_index[current_idx],
+                        current_cost,
+                        current_own_core_dist,
+                        current_x,
+                        current_y,
+                    )
+                    if (
+                        best_bridge_score is None
+                        or candidate_score < best_bridge_score
+                    ):
+                        best_bridge_score = candidate_score
+                        best_bridge_idx = current_idx
+                continue
+
+            neighbor_base = current_idx * max_neighbor_count
+            neighbor_count = neighbor_count_by_index[current_idx]
+            next_cost = current_cost + 1
+
+            for offset in range(neighbor_count):
+                adjacent_idx = neighbor_indices_by_index[neighbor_base + offset]
+                if not active_mask_by_index[adjacent_idx]:
+                    continue
+                if (
+                    avoid_enemy_turrets
+                    and adjacent_idx != target_idx
+                    and enemy_turret_target_by_index[adjacent_idx]
+                ):
+                    continue
+                if (
+                    adjacent_idx != target_idx
+                    and not intrinsic_passable_by_index[adjacent_idx]
+                ):
+                    continue
+
+                if seen_epoch_by_index[adjacent_idx] == path_epoch:
+                    previous_cost = path_cost_by_index[adjacent_idx]
+                    if next_cost > previous_cost:
+                        continue
+                    if next_cost == previous_cost:
+                        if adjacent_idx != source_idx:
+                            continue
+                        existing_first_step_idx = predecessor_by_index[source_idx]
+                        if (
+                            existing_first_step_idx >= 0
+                            and existing_first_step_idx != source_idx
+                            and not bot_present_by_index[existing_first_step_idx]
+                        ):
+                            continue
+                        if bot_present_by_index[current_idx]:
+                            continue
+
+                adjacent_x = index_x_by_index[adjacent_idx]
+                adjacent_y = index_y_by_index[adjacent_idx]
+                predecessor_by_index[adjacent_idx] = current_idx
+                seen_epoch_by_index[adjacent_idx] = path_epoch
+                path_cost_by_index[adjacent_idx] = next_cost
+
+                heuristic_dx = adjacent_x - source_x
+                if heuristic_dx < 0:
+                    heuristic_dx = -heuristic_dx
+                heuristic_dy = adjacent_y - source_y
+                if heuristic_dy < 0:
+                    heuristic_dy = -heuristic_dy
+                heuristic = (
+                    heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
+                )
+                lower_bound = next_cost + heuristic
+                if (
+                    best_bridge_score is not None
+                    and lower_bound > best_bridge_score[0]
+                ):
+                    continue
+
+                heappush_local(
+                    frontier,
+                    (
+                        lower_bound,
+                        next_cost,
+                        0,
+                        u_get_own_core_dist_by_index(adjacent_idx),
+                        adjacent_x,
+                        adjacent_y,
+                        adjacent_idx,
+                    ),
+                )
+
+        if best_bridge_idx < 0 or best_bridge_score is None:
+            return None
+        return (best_bridge_idx, best_bridge_score[0])
+
+    def u_calculate_shortest_path_via_vision_join(
+        self,
+        source_pos: Position,
+        target_pos: Position,
+        avoid_enemy_turrets: bool = True,
+        avoid_other_builder_bots: bool = True,
+    ) -> list[Tile]:
+        if not self.u_is_in_bounds(source_pos) or not self.u_is_in_bounds(target_pos):
+            self.current_path = []
+            return []
+
+        source_idx = self.u_to_index(source_pos)
+        target_idx = self.u_to_index(target_pos)
+        tiles_by_index = self.tiles_by_index
+        if source_idx == target_idx:
+            self.current_path = [tiles_by_index[source_idx]]
+            return self.current_path
+
+        if self.u_is_vision_reachable_by_index(target_idx):
+            path = self._u_reconstruct_current_vision_reachable_path_by_index(
+                source_idx,
+                target_idx,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+                avoid_other_builder_bots=avoid_other_builder_bots,
+            )
+            self.current_path = path
+            return path
+
+        bridge_result = self._u_find_best_vision_bridge_join_by_index(
+            source_idx,
+            target_idx,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+        )
+        if bridge_result is None:
+            self.current_path = []
+            return []
+
+        best_bridge_idx, _ = bridge_result
+        path = self._u_reconstruct_current_vision_reachable_path_by_index(
+            source_idx,
+            best_bridge_idx,
+            avoid_enemy_turrets=avoid_enemy_turrets,
+            avoid_other_builder_bots=avoid_other_builder_bots,
+        )
+        if not path:
+            self.current_path = []
+            return []
+
+        predecessor_by_index = self.path_predecessor_by_index
+        walk_idx = best_bridge_idx
+        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        overtime_check_countdown = 16
+
+        while walk_idx != target_idx:
+            next_idx = predecessor_by_index[walk_idx]
+            if next_idx == -1 or next_idx == walk_idx:
+                self.current_path = []
+                return []
+            path.append(tiles_by_index[next_idx])
+            walk_idx = next_idx
+            overtime_check_countdown -= 1
+            if overtime_check_countdown == 0:
+                if check_overtime_interval():
+                    self.current_path = []
+                    return []
+                overtime_check_countdown = 16
+
+        self.current_path = path
+        return path
+
     def u_get_next_step_towards_astar(
         self,
         source_pos: Position,
