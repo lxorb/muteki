@@ -63,19 +63,6 @@ MAP_ENVIRONMENT_WALL = 1
 MAP_ENVIRONMENT_TITANIUM = 2
 MAP_ENVIRONMENT_AXIONITE = 3
 
-_MARKER_SYMMETRY_SLOTS = {
-    SymmetryMode.ROTATION: 0,
-    SymmetryMode.MIRROR_X: 1,
-    SymmetryMode.MIRROR_Y: 2,
-    None: 3,
-}
-_MARKER_SYMMETRY_BY_SLOT = (
-    SymmetryMode.ROTATION,
-    SymmetryMode.MIRROR_X,
-    SymmetryMode.MIRROR_Y,
-    None,
-)
-
 _SCOUT_SEEN_NEIGHBOR_OFFSETS = (
     *((dx, dy) for dx in range(-1, 2) for dy in range(-1, 2) if dx or dy),
 )
@@ -314,6 +301,20 @@ class SymmetryMode(Enum):
     MIRROR_Y = "mirror_y"
 
 
+_MARKER_SYMMETRY_SLOTS = {
+    SymmetryMode.ROTATION: 0,
+    SymmetryMode.MIRROR_X: 1,
+    SymmetryMode.MIRROR_Y: 2,
+    None: 3,
+}
+_MARKER_SYMMETRY_BY_SLOT = (
+    SymmetryMode.ROTATION,
+    SymmetryMode.MIRROR_X,
+    SymmetryMode.MIRROR_Y,
+    None,
+)
+
+
 class Map:
     INITIAL_HEIGHT = 50
     INITIAL_WIDTH = 50
@@ -518,6 +519,7 @@ class Map:
         )
         self.path_cost_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.path_epoch = 0
+        self.current_path: list[Tile] = []
         self.tiles_by_index: list[Tile] = [
             Tile(Position(x, y), self)
             for x in range(self.INITIAL_WIDTH)
@@ -613,6 +615,7 @@ class Map:
                 "Map controller must be set before resetting turn state."
             )
 
+        self.current_path = []
         self._reset_marked_bytearray_indices(
             self.enemy_gunner_ray_first_target_touched_indices,
             self.enemy_gunner_ray_first_target_by_index,
@@ -4495,6 +4498,7 @@ class Map:
         avoid_other_builder_bots: bool = True,
     ) -> list[Tile]:
         if not self.u_is_in_bounds(source_pos) or not self.u_is_in_bounds(target_pos):
+            self.current_path = []
             return []
 
         source_tile = self.u_get_pos_tile(source_pos)
@@ -4502,7 +4506,8 @@ class Map:
         source_idx = source_tile.index
         target_idx = target_tile.index
         if source_idx == target_idx:
-            return [source_tile]
+            self.current_path = [source_tile]
+            return self.current_path
 
         reached_idx = self._u_run_astar_search(
             source_idx,
@@ -4511,6 +4516,7 @@ class Map:
             avoid_other_builder_bots=avoid_other_builder_bots,
         )
         if reached_idx is None:
+            self.current_path = []
             return []
 
         tiles_by_index = self.tiles_by_index
@@ -4523,16 +4529,19 @@ class Map:
         while walk_idx != source_idx:
             previous_idx = predecessor_by_index[walk_idx]
             if previous_idx == -1:
+                self.current_path = []
                 return []
             path.append(tiles_by_index[previous_idx])
             walk_idx = previous_idx
             overtime_check_countdown -= 1
             if overtime_check_countdown == 0:
                 if check_overtime_interval():
+                    self.current_path = []
                     return []
                 overtime_check_countdown = 16
 
         path.reverse()
+        self.current_path = path
         return path
 
     def u_get_next_step_towards_astar(

@@ -112,13 +112,6 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if not candidate_tiles:
             return None
 
-        turret_covered_tiles = self.u_filter_tiles(
-            candidate_tiles,
-            lambda tile: self.u_is_in_own_turret_attack_range(tile.position),
-        )
-        if turret_covered_tiles:
-            candidate_tiles = turret_covered_tiles
-
         yeet_from_pos = self.map.own_core_center_pos
         enemy_core_center_pos = self.map.enemy_core_center_pos
         if (
@@ -131,18 +124,30 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if yeet_from_pos is None:
             return None
 
+        best_covered_entry = None
+        for tile in candidate_tiles:
+            coverage_rank = self.u_get_own_turret_coverage_rank(tile.position)
+            if coverage_rank is None:
+                continue
+            key = (
+                coverage_rank,
+                -tile.position.distance_squared(yeet_from_pos),
+                tile.position.x,
+                tile.position.y,
+            )
+            if best_covered_entry is None or key < best_covered_entry[0]:
+                best_covered_entry = (key, tile)
+
+        if best_covered_entry is not None:
+            return best_covered_entry[1].position
+
         candidate_tiles = self.u_prioritize_tiles(
             candidate_tiles,
             lambda tile: -tile.position.distance_squared(yeet_from_pos),
             lambda tile: tile.position.x,
             lambda tile: tile.position.y,
         )
-        if not candidate_tiles:
-            return None
-
         target_tile = candidate_tiles[0]
-        if turret_covered_tiles:
-            return target_tile.position
 
         if (
             target_tile.position.distance_squared(yeet_from_pos)
@@ -151,6 +156,70 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         ):
             return None
         return target_tile.position
+
+    def u_get_own_turret_coverage_rank(self, target_pos: Position) -> int | None:
+        for building_tile in self.map.own_buildings_in_vision:
+            building = building_tile.building
+            building_pos = building_tile.position
+
+            if building.entity_type == EntityType.GUNNER:
+                current_direction = building.direction
+                if (
+                    current_direction is not None
+                    and current_direction != Direction.CENTRE
+                    and self.map.u_gunner_covers_target(
+                        building_pos,
+                        current_direction,
+                        target_pos,
+                        building.vision_radius_sq,
+                    )
+                ):
+                    return 0
+                continue
+
+            if building.entity_type == EntityType.SENTINEL:
+                if self.map.u_sentinel_covers_target(
+                    building_pos,
+                    building.direction,
+                    target_pos,
+                    building.vision_radius_sq,
+                ):
+                    return 2
+                continue
+
+            if building.entity_type == EntityType.BREACH:
+                if self.map.u_breach_covers_target(
+                    building_pos,
+                    building.direction,
+                    target_pos,
+                ):
+                    return 2
+
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+        for building_tile in self.map.own_buildings_in_vision:
+            building = building_tile.building
+            if building.entity_type != EntityType.GUNNER:
+                continue
+
+            building_pos = building_tile.position
+            current_direction = building.direction
+            for direction in Direction:
+                if direction == Direction.CENTRE or direction == current_direction:
+                    continue
+                if self.map.u_gunner_covers_target(
+                    building_pos,
+                    direction,
+                    target_pos,
+                    building.vision_radius_sq,
+                ):
+                    return 1
+
+            if self.round_stopwatch.check_overtime_interval():
+                break
+
+        return None
 
     def u_get_launcher_ally_throw_target(
         self,
@@ -798,38 +867,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         return candidate_tiles[0].position
 
     def u_is_in_own_turret_attack_range(self, target_pos: Position) -> bool:
-        for building_tile in self.map.own_buildings_in_vision:
-            building_pos = building_tile.position
-            if building_tile.building.entity_type == EntityType.GUNNER:
-                if self.map.u_gunner_covers_target(
-                    building_pos,
-                    building_tile.building.direction,
-                    target_pos,
-                    building_tile.building.vision_radius_sq,
-                ):
-                    return True
-                continue
-            if building_tile.building.entity_type == EntityType.SENTINEL:
-                if self.map.u_sentinel_covers_target(
-                    building_pos,
-                    building_tile.building.direction,
-                    target_pos,
-                    building_tile.building.vision_radius_sq,
-                ):
-                    return True
-                continue
-            if building_tile.building.entity_type == EntityType.BREACH:
-                if self.map.u_breach_covers_target(
-                    building_pos,
-                    building_tile.building.direction,
-                    target_pos,
-                ):
-                    return True
-
-            if self.round_stopwatch.check_overtime_interval():
-                break
-
-        return False
+        return self.u_get_own_turret_coverage_rank(target_pos) is not None
 
     def u_get_target_priority_key(
         self,

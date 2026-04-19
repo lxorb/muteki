@@ -131,7 +131,7 @@ HARASSMENT_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
     # (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_patrol_enemy_supply_chains,),
-    (BuilderStrategyMethodsMixin.s_move_toward_enemy_core),
+    (BuilderStrategyMethodsMixin.s_move_toward_enemy_core, True),
     (BuilderStrategyMethodsMixin.s_patrol_enemy_core,),
     (BuilderStrategyMethodsMixin.s_information_gain_scout,),
     (BuilderStrategyMethodsMixin.s_frontier_expand,),

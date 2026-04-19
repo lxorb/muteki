@@ -111,6 +111,8 @@ LAUNCHER_THROWABLE_PRIORITY_RANK = {
 LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_armoured_conveyor"] = (
     LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_conveyor"]
 )
+LAUNCHER_BUILD_MIN_IMPROVEMENT = 8
+LAUNCHER_BUILD_MIN_TITANIUM = 100
 LAUNCHER_YEET_AWAY_MIN_DISTANCE = 2
 LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE = 2
 
@@ -183,6 +185,16 @@ try:
             exclude,
             "HARASSMENT_ENEMY_CORE_MOVER",
             HARASSMENT_ENEMY_CORE_MOVER,
+        )
+        LAUNCHER_BUILD_MIN_IMPROVEMENT = getattr(
+            exclude,
+            "LAUNCHER_BUILD_MIN_IMPROVEMENT",
+            LAUNCHER_BUILD_MIN_IMPROVEMENT,
+        )
+        LAUNCHER_BUILD_MIN_TITANIUM = getattr(
+            exclude,
+            "LAUNCHER_BUILD_MIN_TITANIUM",
+            LAUNCHER_BUILD_MIN_TITANIUM,
         )
         ENABLE_SENTINEL_INTEGRATE_OWN_TURRET = getattr(
             exclude,

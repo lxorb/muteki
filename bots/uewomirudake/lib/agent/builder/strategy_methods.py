@@ -16,6 +16,8 @@ from lib.agent.constants import (
     HARASSMENT_STRATEGY_ID,
     HARASSMENT_ENEMY_CORE_MOVER,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
+    LAUNCHER_BUILD_MIN_IMPROVEMENT,
+    LAUNCHER_BUILD_MIN_TITANIUM,
     MAX_CORE_ORE_DIRECT_DIST,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
@@ -5969,7 +5971,91 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
-    def s_move_toward_enemy_core(self):
+    def u_can_place_marker_or_launcher_here(self, tile) -> bool:
+        if tile.in_own_resource_range != 0:
+            return False
+        if (
+            tile.building.id is None
+            or tile.building.entity_type == self.map.MARKER_ENTITY_TYPE
+        ):
+            return True
+        if tile.building.team != self.map.own_team:
+            return False
+        if tile.building.entity_type == EntityType.ROAD:
+            return True
+        return (
+            tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+            and tile.conveyor_targets_harvester
+        )
+
+    def u_lets_get_yeeted(self) -> bool:
+        current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if current_tile.in_own_launcher_pickup_zone != 0:
+            return False
+        if self.map.titanium < LAUNCHER_BUILD_MIN_TITANIUM:
+            return False
+
+        current_path = self.map.current_path
+        if (
+            not current_path
+            or len(current_path) < LAUNCHER_BUILD_MIN_IMPROVEMENT
+        ):
+            return False
+
+        path_index_by_tile_index: dict[int, int] = {}
+        for path_idx, tile in enumerate(current_path):
+            path_index_by_tile_index[tile.index] = path_idx
+            for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
+                path_index_by_tile_index.setdefault(neighbor_idx, path_idx)
+
+        best_pos = None
+        best_target_tile = None
+        best_improvement = LAUNCHER_BUILD_MIN_IMPROVEMENT - 1
+        potential_launcher_positions = 0
+        tiles_by_index = self.map.tiles_by_index
+
+        for launcher_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+            launcher_tile = self.map.u_get_pos_tile(launcher_pos)
+            if launcher_tile.in_own_launcher_pickup_zone != 0:
+                continue
+            if not self.u_can_place_marker_or_launcher_here(launcher_tile):
+                continue
+
+            potential_launcher_positions += 1
+            for landing_idx in self.map.u_get_attackable_target_indices(
+                launcher_tile.index,
+                EntityType.LAUNCHER,
+                Direction.NORTH,
+            ):
+                landing_tile = tiles_by_index[landing_idx]
+                if launcher_pos.distance_squared(landing_tile.position) <= 2:
+                    continue
+                if not landing_tile.is_passable or landing_tile.bot.id is not None:
+                    continue
+
+                path_idx = path_index_by_tile_index.get(landing_idx)
+                if path_idx is not None and path_idx > best_improvement:
+                    best_improvement = path_idx
+                    best_pos = launcher_pos
+                    best_target_tile = landing_tile
+
+        if (
+            best_pos is None
+            or best_target_tile is None
+            or potential_launcher_positions < 2
+        ):
+            return False
+
+        if not self.ct.can_build_launcher(best_pos):
+            return False
+
+        self.u_set_marker_target(best_target_tile.position)
+        self.ct.build_launcher(best_pos)
+        self.last_built_entity_type = EntityType.LAUNCHER
+        return True
+
+    def s_move_toward_enemy_core(self, allow_launcher_yeeting: bool = True):
         """
         Harassment step for advancing toward the enemy core.
 
@@ -6000,6 +6086,15 @@ class BuilderStrategyMethodsMixin:
             else:
                 move_target_pos = get_move_target(target_pos)
                 move_method = self.u_move_to
+
+            if allow_launcher_yeeting:
+                self.map.u_calculate_shortest_path_astar(
+                    current_pos,
+                    move_target_pos,
+                )
+                if self.u_lets_get_yeeted():
+                    return True
+
             return bool(
                 move_method(
                     move_target_pos,
