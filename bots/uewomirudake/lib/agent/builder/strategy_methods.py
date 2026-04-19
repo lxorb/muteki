@@ -2454,14 +2454,8 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         if resource == Environment.ORE_TITANIUM:
             ore_indices = self.map.known_accessible_titanium_indices
-            restrict_to_vision_reachable = (
-                self.map.found_vision_reachable_titanium_this_turn
-            )
         elif resource == Environment.ORE_AXIONITE:
             ore_indices = self.map.known_accessible_axionite_indices
-            restrict_to_vision_reachable = (
-                self.map.found_vision_reachable_axionite_this_turn
-            )
         else:
             return False
         current_tile = self.map.u_get_pos_tile(current_pos)
@@ -2615,42 +2609,28 @@ class BuilderStrategyMethodsMixin:
                 return (EntityType.BARRIER, None, False)
             return (supplier_type, supplier_target, not is_best_supply_tile)
 
-        def can_use_tile(target_tile) -> bool:
-            if target_tile.building.id is None:
-                return True
-            if (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type
-                in {EntityType.ROAD, EntityType.BARRIER}
-            ):
-                return True
-            if (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
-                and target_tile.conveyor_targets_harvester
-            ):
-                return True
-            if (
-                target_tile.building.team == own_team
-                and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
-            ):
-                return (
-                    self.map.u_get_supply_chain_resource_item_count_by_index(
-                        target_tile.index,
-                        own_team,
-                    )
-                    == 0
-                    and self.map.u_get_supply_chain_harvester_count_by_index(
-                        target_tile.index,
-                        own_team,
-                    )
-                    == 0
+        def get_harvester_safety_move_tile(harvester_tile, empty_adjacent_tiles):
+            candidate_entries = []
+            for safe_order, adjacent_tile in enumerate(empty_adjacent_tiles):
+                supplier_type, _, _ = get_harvester_safety_build_plan(
+                    harvester_tile,
+                    adjacent_tile,
                 )
-            return (
-                attack_enemy_passable
-                and target_tile.building.team != own_team
-                and target_tile.is_passable
-            )
+                if supplier_type is None:
+                    continue
+                candidate_entries.append(
+                    (
+                        (
+                            adjacent_tile.own_core_dist,
+                            adjacent_tile.dist_to_self,
+                            safe_order,
+                        ),
+                        adjacent_tile,
+                    )
+                )
+            if not candidate_entries:
+                return None
+            return min(candidate_entries)[1]
 
         def can_still_move() -> bool:
             for direction in Direction:
@@ -2819,8 +2799,6 @@ class BuilderStrategyMethodsMixin:
                 return False
             if get_harvester_best_supply_idx(target_tile.index) is None:
                 return False
-            if not can_use_tile(target_tile):
-                return False
             if (
                 require_connected
                 and not has_orthogonally_adjacent_own_supply_link(target_tile.index)
@@ -2913,10 +2891,17 @@ class BuilderStrategyMethodsMixin:
                                 remember_pending_harvester_target(target_tile.index)
                                 return finish_with_harvester_target(True, target_tile)
 
-                    if current_pos != target_tile.position:
+                    surround_move_tile = get_harvester_safety_move_tile(
+                        target_tile,
+                        empty_adjacent_tiles,
+                    )
+                    if surround_move_tile is not None:
                         if not move_towards:
                             return False
-                        moved = self.u_move_to(target_tile.position)
+                        moved = self.u_move_to(
+                            surround_move_tile.position,
+                            reach_builder_action_range=True,
+                        )
                         if moved:
                             remember_pending_harvester_target(target_tile.index)
                         return finish_with_harvester_target(moved, target_tile)
@@ -2950,14 +2935,8 @@ class BuilderStrategyMethodsMixin:
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if (
-                (
-                    not restrict_to_vision_reachable
-                    or self.map.u_is_vision_reachable_by_index(pending_target_idx)
-                )
-                and (
                 pending_target_tile.last_seen_turn == self.map.current_round
                 and is_valid_harvester_target(pending_target_tile)
-                )
             ):
                 return finish_with_harvester_target(
                     try_progress_harvester_target(
@@ -2974,14 +2953,7 @@ class BuilderStrategyMethodsMixin:
                 return False
             if tile.environment != resource:
                 continue
-            if (
-                restrict_to_vision_reachable
-                and not self.map.u_is_vision_reachable_by_index(tile.index)
-            ):
-                continue
             if get_harvester_best_supply_idx(tile.index) is None:
-                continue
-            if not can_use_tile(tile):
                 continue
             if (
                 require_connected
@@ -3125,10 +3097,17 @@ class BuilderStrategyMethodsMixin:
                             remember_pending_harvester_target(target_tile.index)
                             return finish_with_harvester_target(True, target_tile)
 
-                if current_pos != target_tile.position:
+                road_move_tile = get_harvester_safety_move_tile(
+                    target_tile,
+                    empty_adjacent_tiles,
+                )
+                if road_move_tile is not None:
                     if not move_towards:
                         return False
-                    moved = self.u_move_to(target_tile.position)
+                    moved = self.u_move_to(
+                        road_move_tile.position,
+                        reach_builder_action_range=True,
+                    )
                     if moved:
                         remember_pending_harvester_target(target_tile.index)
                     return finish_with_harvester_target(moved, target_tile)
