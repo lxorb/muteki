@@ -4753,12 +4753,16 @@ class Map:
         target_idx: int,
         avoid_enemy_turrets: bool = True,
     ) -> tuple[int, int] | None:
+        self.round_stopwatch.log_time(
+            f"bridge_join start src={source_idx} tgt={target_idx}"
+        )
         current_round = self.current_round
         if (
             source_idx != self.last_dist_to_self_source_idx
             or self.vision_reachable_turn_by_index[source_idx] != current_round
             or self.vision_reachable_turn_by_index[target_idx] == current_round
         ):
+            self.round_stopwatch.log_time("bridge_join precond fail (vision)")
             return None
 
         active_mask_by_index = self.active_mask_by_index
@@ -4768,6 +4772,7 @@ class Map:
             or not active_mask_by_index[target_idx]
             or not intrinsic_passable_by_index[target_idx]
         ):
+            self.round_stopwatch.log_time("bridge_join precond fail (mask)")
             return None
 
         neighbor_indices_by_index = self.neighbor_indices_by_index
@@ -4787,11 +4792,13 @@ class Map:
         heappush_local = heappush
         heappop_local = heappop
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        self.round_stopwatch.log_time("bridge_join locals bound")
 
         self.path_epoch += 1
         path_epoch = self.path_epoch
         frontier = self.path_heap_buffer
         frontier.clear()
+        self.round_stopwatch.log_time("bridge_join epoch + frontier reset")
 
         source_x = index_x_by_index[source_idx]
         source_y = index_y_by_index[source_idx]
@@ -4818,10 +4825,12 @@ class Map:
                 target_idx,
             ),
         )
+        self.round_stopwatch.log_time("bridge_join heap seed")
 
         best_bridge_idx = -1
         best_bridge_score: tuple[int, int, int, int, int] | None = None
         overtime_check_countdown = 16
+        pops = 0
 
         while frontier:
             overtime_check_countdown -= 1
@@ -4844,6 +4853,7 @@ class Map:
                 or path_cost_by_index[current_idx] != current_cost
             ):
                 continue
+            pops += 1
             if (
                 best_bridge_score is not None
                 and current_lower_bound > best_bridge_score[0]
@@ -4948,6 +4958,10 @@ class Map:
                     ),
                 )
 
+        self.round_stopwatch.log_time(
+            f"bridge_join astar done pops={pops} "
+            f"best_idx={best_bridge_idx}"
+        )
         if best_bridge_idx < 0 or best_bridge_score is None:
             return None
         return (best_bridge_idx, best_bridge_score[0])

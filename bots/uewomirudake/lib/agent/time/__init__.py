@@ -10,8 +10,8 @@ from lib.agent.time.provider import (
 )
 from lib.debug.output import tprint
 
-ALLOCATED_MAP_TIME_MS = 0.75
-ALLOCATED_BOT_TIME_MS = 0.8
+ALLOCATED_MAP_TIME_MS = 1e6
+ALLOCATED_BOT_TIME_MS = 1e6
 
 MS_TO_MUS = 1e3
 

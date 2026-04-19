@@ -6035,6 +6035,7 @@ class BuilderStrategyMethodsMixin:
         return True
 
     def lets_get_yeeted(self, target_pos: Position) -> bool:
+        self.round_stopwatch.log_time(f"lets_get_yeeted start tgt={target_pos}")
         current_pos = self.map.current_pos
         target_idx = self.map.u_to_index(target_pos)
         own_action_reachable_launcher_indices = (
@@ -6051,6 +6052,10 @@ class BuilderStrategyMethodsMixin:
                 if not self.u_can_place_marker_or_launcher_here(launcher_tile):
                     continue
                 buildable_launcher_positions.append(launcher_pos)
+        self.round_stopwatch.log_time(
+            f"buildable launchers={len(buildable_launcher_positions)} "
+            f"reachable={len(own_action_reachable_launcher_indices)}"
+        )
 
         if not own_action_reachable_launcher_indices and not buildable_launcher_positions:
             return False
@@ -6066,6 +6071,9 @@ class BuilderStrategyMethodsMixin:
             current_pos,
             target_pos,
         )
+        self.round_stopwatch.log_time(
+            f"shortest_path len={len(current_path) if current_path else 0}"
+        )
         if (
             not current_path
             or len(current_path) < LAUNCHER_BUILD_MIN_IMPROVEMENT
@@ -6077,6 +6085,9 @@ class BuilderStrategyMethodsMixin:
             path_index_by_tile_index[tile.index] = path_idx
             for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
                 path_index_by_tile_index.setdefault(neighbor_idx, path_idx)
+        self.round_stopwatch.log_time(
+            f"path_index built={len(path_index_by_tile_index)}"
+        )
 
         tiles_by_index = self.map.tiles_by_index
         best_existing = None
@@ -6141,6 +6152,9 @@ class BuilderStrategyMethodsMixin:
                         action_dist,
                         next_direction,
                     )
+        self.round_stopwatch.log_time(
+            f"scan existing launchers best={best_existing is not None}"
+        )
 
         for launcher_pos in buildable_launcher_positions:
             launcher_tile = self.map.u_get_pos_tile(launcher_pos)
@@ -6173,6 +6187,9 @@ class BuilderStrategyMethodsMixin:
                         launcher_pos,
                         landing_tile.position,
                     )
+        self.round_stopwatch.log_time(
+            f"scan build launchers best={best_build is not None}"
+        )
 
         def execute_existing_launcher(existing_entry) -> bool:
             _, landing_pos, action_dist, next_direction = existing_entry
