@@ -38,6 +38,7 @@ class BuilderExecutionMixin:
             if self.round_stopwatch.check_overtime():
                 stopwatch.lap("Overtime")
                 stopwatch.log()
+                self.after_strategy()
                 return False
 
             strategy_method, strategy_args = self.u_get_bound_method_and_args(
@@ -54,9 +55,14 @@ class BuilderExecutionMixin:
                 self.last_turn_completed = True
                 print(f"Executed strategy: {strategy_method.__name__}")
                 stopwatch.log()
+                self.after_strategy()
                 return True
 
         self.last_turn_completed = True
         stopwatch.lap("Complete turn")
         stopwatch.log()
+        self.after_strategy()
         return False
+
+    def after_strategy(self) -> None:
+        self.u_place_marker_if_possible()

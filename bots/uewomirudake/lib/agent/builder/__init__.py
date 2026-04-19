@@ -35,6 +35,8 @@ class BuilderAgent(
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
+    marker_target_pos: Position | None
+    marker_has_explicit_target: bool
     step_off_core_attempted: bool
     spawn_relative_tile: tuple[int, int] | None
     _d_star_lite_states_by_builder_id: dict[int, object]
@@ -60,6 +62,8 @@ class BuilderAgent(
         self.last_built_entity_type = None
         self.enemy_core_proxy_target_pos = None
         self.enemy_core_proxy_base_target_pos = None
+        self.marker_target_pos = None
+        self.marker_has_explicit_target = False
         self.step_off_core_attempted = False
         self.spawn_relative_tile = None
         self._d_star_lite_states_by_builder_id = {}
@@ -88,6 +92,8 @@ class BuilderAgent(
     def u_handler(self):
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
+        self.marker_target_pos = None
+        self.marker_has_explicit_target = False
         if self.map.is_map_known:
             print(
                 f"Inferred map: {self.map.known_map_path} "

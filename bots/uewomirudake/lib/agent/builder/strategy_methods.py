@@ -204,6 +204,64 @@ class BuilderStrategyMethodsMixin:
             DIRECTIONS,
         )
 
+    def u_set_marker_target(
+        self,
+        target_pos: Position | None,
+        has_explicit_target: bool = True,
+    ) -> None:
+        self.marker_target_pos = target_pos
+        self.marker_has_explicit_target = has_explicit_target and target_pos is not None
+
+    def u_place_marker_if_possible(self) -> bool:
+        can_place_marker = getattr(self.ct, "can_place_marker", None)
+        place_marker = getattr(self.ct, "place_marker", None)
+        get_marker_value = getattr(self.ct, "get_marker_value", None)
+        if (
+            self.map.MARKER_ENTITY_TYPE is None
+            or can_place_marker is None
+            or place_marker is None
+            or get_marker_value is None
+        ):
+            return False
+
+        marker_value = self.map.u_encode_marker_value(
+            self.ct.get_id(),
+            self.marker_target_pos,
+            self.marker_has_explicit_target,
+        )
+        if marker_value is None:
+            return False
+
+        current_round_mod = self.map.current_round & 63
+        oldest_marker_age = -1
+        oldest_marker_pos = None
+        for pos in self.ct.get_nearby_tiles(BUILDER_ACTION_RADIUS_SQ):
+            if not can_place_marker(pos):
+                continue
+
+            building_id = self.ct.get_tile_building_id(pos)
+            if (
+                building_id is not None
+                and self.ct.get_entity_type(building_id) == EntityType.MARKER
+                and self.ct.get_team(building_id) == self.map.own_team
+            ):
+                _, _, round_mod, _, _ = self.map.u_decode_marker_value(
+                    get_marker_value(building_id)
+                )
+                marker_age = (current_round_mod - round_mod) & 63
+                if marker_age > oldest_marker_age:
+                    oldest_marker_age = marker_age
+                    oldest_marker_pos = pos
+                continue
+
+            place_marker(pos, marker_value)
+            return True
+
+        if oldest_marker_pos is not None:
+            place_marker(oldest_marker_pos, marker_value)
+            return True
+        return False
+
     def s_delete_pending_tile(self):
         pending_tile_idx = self.pending_delete_tile_index
         if pending_tile_idx is None:
@@ -5929,6 +5987,7 @@ class BuilderStrategyMethodsMixin:
         move_mode = HARASSMENT_ENEMY_CORE_MOVER
 
         def move_toward_enemy_core_target(target_pos: Position) -> bool:
+            self.u_set_marker_target(target_pos)
             if move_mode == "astar_no_proxy":
                 move_target_pos = target_pos
                 move_method = self.u_move_to_astar
