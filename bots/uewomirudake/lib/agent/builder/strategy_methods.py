@@ -8,6 +8,7 @@ from lib.agent.constants import (
     ATTACK_TURRET_TYPES,
     AXIONITE_HARVESTER_MIN_TITANIUM,
     AXIONITE_HARVESTER_MIN_TURN,
+    BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION,
     BUILDER_ACTION_RADIUS_SQ,
     CONVEYOR_ENTITY_TYPES,
     DEFENDER_STRATEGY_ID,
@@ -4051,7 +4052,7 @@ class BuilderStrategyMethodsMixin:
             return True
 
         tile_kind_by_pos: dict[Position, str | None] = {}
-        ignore_enemy_bridges_and_conveyors = self.map.has_enemy_bot_in_vision
+        ignore_enemy_bridges_and_conveyors = self.map.enemy_bot_vision_reachable
 
         def get_tile_kind(pos: Position) -> str | None:
             if pos not in tile_kind_by_pos:
@@ -4911,7 +4912,7 @@ class BuilderStrategyMethodsMixin:
         conveyor or bridge tiles that the builder can stand on, and then either
         attacks from the current tile or moves toward the best target.
         """
-        if require_no_enemy_bbs_in_range and self.map.has_enemy_bot_in_vision:
+        if require_no_enemy_bbs_in_range and self.map.enemy_bot_vision_reachable:
             return False
 
         current_pos = self.map.current_pos
@@ -4952,6 +4953,33 @@ class BuilderStrategyMethodsMixin:
                 target_tile.position,
                 move_towards=move_towards,
                 destroy_condition=lambda _: True,
+            )
+        )
+
+    def s_berserk(self):
+        current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        enemy_team = self.map.enemy_team
+
+        if (
+            self.map.own_team_bbs_in_vision_count
+            < BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION + 1
+        ):
+            return False
+        if current_tile.building.team != enemy_team:
+            return False
+        if current_tile.building.entity_type not in SUPPLY_LINK_TYPES:
+            return False
+        if not self.map.u_supply_chain_is_continuable(current_tile.index, enemy_team):
+            return False
+
+        return bool(
+            self.u_attack_passable(
+                current_pos,
+                move_towards=False,
+                destroy_condition=lambda _: True,
+                avoid_enemy_turrets=False,
+                ignore_conveyor_reserve_if_target_damaged=True,
             )
         )
 
@@ -5002,7 +5030,7 @@ class BuilderStrategyMethodsMixin:
 
         if (
             wait_if_enemy_builder_bots_in_range
-            and self.map.has_enemy_bot_in_vision
+            and self.map.enemy_bot_vision_reachable
             and current_pos == target_tile.position
             and not self._is_visible_building_damaged(target_tile)
         ):
@@ -5145,7 +5173,7 @@ class BuilderStrategyMethodsMixin:
                 )
             )
 
-        if require_no_enemy_bbs_in_range and self.map.has_enemy_bot_in_vision:
+        if require_no_enemy_bbs_in_range and self.map.enemy_bot_vision_reachable:
             return False
 
         if is_key_enemy_supply_chain_tile(current_tile, allow_current_tile=True):

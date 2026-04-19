@@ -616,6 +616,7 @@ class Map:
         self.known_own_supply_link_indices: set[int] = set()
         self.known_enemy_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
+        self.own_team_bbs_in_vision_count = 0
 
         self.stopwatch = Stopwatch("Map")
 
@@ -712,8 +713,9 @@ class Map:
                 )
             self.stale_builder_passability_touched_indices.clear()
 
-        self.has_enemy_bot_in_vision = False
+        self.enemy_bot_vision_reachable = False
         self.closest_enemy_builder_bot_in_vision_pos = None
+        self.own_team_bbs_in_vision_count = 0
         self.tiles_in_vision: list[Tile] = []
         self.newly_seen_tiles_in_vision: list[Tile] = []
         self.own_harvesters_in_vision: list[Tile] = []
@@ -1650,7 +1652,6 @@ class Map:
                         break
 
             if tile.bot.id is not None and tile.bot.team != own_team:
-                self.has_enemy_bot_in_vision = True
                 if tile.bot.entity_type == EntityType.BUILDER_BOT:
                     key = (
                         current_pos.distance_squared(tile.position),
@@ -1663,6 +1664,12 @@ class Map:
                     ):
                         closest_enemy_builder_key = key
                         self.closest_enemy_builder_bot_in_vision_pos = tile.position
+            elif (
+                tile.bot.id is not None
+                and tile.bot.team == own_team
+                and tile.bot.entity_type == EntityType.BUILDER_BOT
+            ):
+                self.own_team_bbs_in_vision_count += 1
 
             if building.id is not None:
                 if building.team == own_team:
@@ -4281,6 +4288,7 @@ class Map:
         self.vision_max_dist_to_self_this_turn = 0
         self.found_vision_reachable_titanium_this_turn = False
         self.found_vision_reachable_axionite_this_turn = False
+        self.enemy_bot_vision_reachable = False
         self.is_caged = True
         self.own_action_reachable_launcher_indices.clear()
         queue = self.distance_queue_buffer_by_index
@@ -4340,11 +4348,17 @@ class Map:
             if last_seen_turn_by_index[neighbor_idx] != current_round:
                 self.is_caged = False
                 continue
+            neighbor_tile = tiles_by_index[neighbor_idx]
+            if (
+                neighbor_tile.bot.id is not None
+                and neighbor_tile.bot.team != own_team
+                and neighbor_tile.bot.entity_type == EntityType.BUILDER_BOT
+            ):
+                self.enemy_bot_vision_reachable = True
             if vision_action_reachable_turn_by_index[neighbor_idx] != current_round:
                 vision_action_reachable_turn_by_index[neighbor_idx] = current_round
                 vision_action_goal_idx_by_index[neighbor_idx] = source_idx
                 vision_action_first_step_by_index[neighbor_idx] = -1
-                neighbor_tile = tiles_by_index[neighbor_idx]
                 if (
                     neighbor_tile.building.id is not None
                     and neighbor_tile.building.team == own_team
@@ -4385,13 +4399,19 @@ class Map:
                 if last_seen_turn_by_index[neighbor_idx] != current_round:
                     self.is_caged = False
                     continue
+                neighbor_tile = tiles_by_index[neighbor_idx]
+                if (
+                    neighbor_tile.bot.id is not None
+                    and neighbor_tile.bot.team != own_team
+                    and neighbor_tile.bot.entity_type == EntityType.BUILDER_BOT
+                ):
+                    self.enemy_bot_vision_reachable = True
                 if vision_action_reachable_turn_by_index[neighbor_idx] != current_round:
                     vision_action_reachable_turn_by_index[neighbor_idx] = current_round
                     vision_action_goal_idx_by_index[neighbor_idx] = current_idx
                     vision_action_first_step_by_index[neighbor_idx] = (
                         current_first_step_idx
                     )
-                    neighbor_tile = tiles_by_index[neighbor_idx]
                     if (
                         neighbor_tile.building.id is not None
                         and neighbor_tile.building.team == own_team

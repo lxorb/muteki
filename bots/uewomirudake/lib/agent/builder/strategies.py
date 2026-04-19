@@ -113,6 +113,7 @@ CORE_DEFENDER_STRATEGY = [
 ]
 
 HARASSMENT_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_berserk,),
     (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
