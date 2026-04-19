@@ -390,8 +390,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,
-        wait_if_enemy_builder_bots_in_range: bool = True,
-        hold_if_standing_on_attackable_tile: bool = True,
+        require_no_enemy_bbs_in_range: bool = False,
     ) -> BuilderActionResult: ...
 
     def s_build_enemy_supplied_turret(

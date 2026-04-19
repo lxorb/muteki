@@ -1661,7 +1661,12 @@ class Map:
             if tile.environment == Environment.ORE_TITANIUM:
                 if building.id is None or (
                     building.team == own_team
-                    and building.entity_type != EntityType.HARVESTER
+                    and building.entity_type in {
+                        EntityType.ROAD,
+                        EntityType.CONVEYOR,
+                        EntityType.ARMOURED_CONVEYOR,
+                        EntityType.BARRIER,
+                    }
                 ):
                     known_accessible_titanium_indices.add(tile.index)
                 else:
@@ -1672,7 +1677,12 @@ class Map:
             if tile.environment == Environment.ORE_AXIONITE:
                 if building.id is None or (
                     building.team == own_team
-                    and building.entity_type != EntityType.HARVESTER
+                    and building.entity_type in {
+                        EntityType.ROAD,
+                        EntityType.CONVEYOR,
+                        EntityType.ARMOURED_CONVEYOR,
+                        EntityType.BARRIER,
+                    }
                 ):
                     known_accessible_axionite_indices.add(tile.index)
                 else:
@@ -2249,7 +2259,12 @@ class Map:
             if tile.environment == Environment.ORE_TITANIUM:
                 if building.id is None or (
                     building.team == self.own_team
-                    and building.entity_type != EntityType.HARVESTER
+                    and building.entity_type in {
+                        EntityType.ROAD,
+                        EntityType.CONVEYOR,
+                        EntityType.ARMOURED_CONVEYOR,
+                        EntityType.BARRIER,
+                    }
                 ):
                     titanium_indices.add(tile.index)
                 else:
@@ -2260,7 +2275,12 @@ class Map:
             if tile.environment == Environment.ORE_AXIONITE:
                 if building.id is None or (
                     building.team == self.own_team
-                    and building.entity_type != EntityType.HARVESTER
+                    and building.entity_type in {
+                        EntityType.ROAD,
+                        EntityType.CONVEYOR,
+                        EntityType.ARMOURED_CONVEYOR,
+                        EntityType.BARRIER,
+                    }
                 ):
                     axionite_indices.add(tile.index)
                 else:
