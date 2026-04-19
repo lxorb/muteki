@@ -108,6 +108,7 @@ CORE_DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
+    (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (BuilderStrategyMethodsMixin.s_return_to_core_center,),
 ]
 
@@ -157,11 +158,12 @@ BUILDER_STRATEGY_BY_TILE: dict[tuple[int, int], str] = {
     (0, 0): CORE_DEFENDER_STRATEGY_ID,
 }
 INITIAL_BB_ORDER: list[str] = [
+    HARASSMENT_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
-    SCAVENGER_STRATEGY_ID,
-    SCAVENGER_STRATEGY_ID,
-    # HARASSMENT_STRATEGY_ID,
+    # SCAVENGER_STRATEGY_ID,
+    # SCAVENGER_STRATEGY_ID,
+    HARASSMENT_STRATEGY_ID,
     # HARASSMENT_STRATEGY_ID,
 ]
 FUTHER_BB_ROTATION: list[str] = [
