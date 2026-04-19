@@ -4375,7 +4375,7 @@ class BuilderStrategyMethodsMixin:
         )
 
     def _been_waiting_for_way_too_long(self):
-        return self.map.turns_on_current_tile > PATIENCE_TO_MOVE
+        return self.map.turns_on_current_tile > PATIENCE_TO_GIVE_UP
     
     def _can_get_launcher_hugs(self):
         # RETURNS TRUE IF POSSIBLE - EVEN IF NOT BUILT !!!! (titanium threshold)
@@ -5906,6 +5906,8 @@ class BuilderStrategyMethodsMixin:
 
         if ENABLE_PRINTING: print("LET ME MOVE TO", target_position, "PLLSSSS")
         
+        if not written_position:
+            raise ValueError(f"own_core_center_pos is None! strategy={self.strategy}, round={self.ct.get_current_round()}, pos={self.map.current_pos}, self.map.last_three_pos")
         written_index = written_position.x * self.map.INDEX_STRIDE + written_position.y
         if ENABLE_PRINTING: print("putting on the marker that I want to move to ", target_position, ":D")
         # 12 bits

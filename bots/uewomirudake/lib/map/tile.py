@@ -365,6 +365,8 @@ class Tile:
 
     def update_bot(self, id_changed: bool) -> None:
         ct = self.map.ct
+        # if self.bot.id == 972:
+        #     raise ValueError(f"spotted bot here: {self.map.ct.get_position()} in round {self.map.ct.get_current_round()}")
         if id_changed:
             self.bot.entity_type = ct.get_entity_type(self.bot.id)
             self.bot.team = ct.get_team(self.bot.id)
@@ -373,6 +375,9 @@ class Tile:
         if self.map.is_launcher and self in self.map.launcher_action_radius:
             self.map.launcher_action_radius_bots.append(self)
         self.update_target_zones_bot()
+        if self.map.is_launcher:
+            if self.bot.id not in self.map.launcher_known_buddies:
+                self.map.launcher_newcomer_buddies.add(self.bot.id)
         if self.bot.team == self.map.own_team:
             self.map.visible_own_builder_bot_count += 1
         else:

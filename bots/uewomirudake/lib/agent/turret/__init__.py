@@ -65,6 +65,8 @@ class TurretAgent(BuilderNavigationMixin, Agent):
 
         for bot_tile in candidate_bots:
             if ENABLE_PRINTING: print("trying to send", bot_tile.bot.id, "somewhere")
+            if bot_tile.bot.id in self.map.launcher_newcomer_buddies:
+                continue
             if bot_tile.bot.team == self.map.enemy_team:
                 if self.launcher_handle_enemy(bot_tile): 
                     return True

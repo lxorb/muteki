@@ -458,6 +458,9 @@ class Map:
         self.launcher_killer_zone_tiles = [] 
         self.launcher_safe_zone_tiles = []
             # these lists are re-updated in EACH ROUND!
+        
+        self.launcher_newcomer_buddies = set()
+        self.launcher_known_buddies = set()
 
         self.seen_markers_for_debugging = []
         self.seen_ids_for_debugging = []
@@ -520,6 +523,8 @@ class Map:
             self.been_here_combo = 0
         self.last_three_pos = [self.last_three_pos[1], self.last_three_pos[2], self.current_pos]
         self.titanium, self.axionite = self.ct.get_global_resources()
+        self.launcher_known_buddies.update(self.launcher_newcomer_buddies)
+        self.launcher_newcomer_buddies = set()
         
 
         self.has_enemy_bot_in_vision = False
