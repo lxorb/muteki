@@ -384,6 +384,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         wait_if_enemy_builder_bots_in_range: bool = True,
+        hold_if_standing_on_attackable_tile: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_build_enemy_supplied_turret(

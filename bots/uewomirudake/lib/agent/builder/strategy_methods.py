@@ -4516,6 +4516,7 @@ class BuilderStrategyMethodsMixin:
         self,
         move_towards: bool = True,
         wait_if_enemy_builder_bots_in_range: bool = True,
+        hold_if_standing_on_attackable_tile: bool = True,
     ):
         """
         Attack enemy supply links that matter for core-facing sentinel positions.
@@ -4524,7 +4525,10 @@ class BuilderStrategyMethodsMixin:
         sentinel built on that tile would face the enemy core, attack that tile
         immediately. Otherwise target the closest visible enemy supply-link tile
         that had titanium on it within the last three turns and from which a
-        built sentinel would face the enemy core.
+        built sentinel would face the enemy core. The optional
+        `hold_if_standing_on_attackable_tile` flag controls whether the builder
+        may wait on an already-attackable target tile while enemy bots remain
+        in vision.
         """
         current_pos = self.map.current_pos
         current_round = self.map.current_round
@@ -4564,6 +4568,8 @@ class BuilderStrategyMethodsMixin:
             and not current_tile.is_enemy_spin_gunner_ray_first_target
         ):
             if (
+                hold_if_standing_on_attackable_tile
+                and
                 wait_if_enemy_builder_bots_in_range
                 and self.map.has_enemy_bot_in_vision
                 and not self._is_visible_building_damaged(current_tile)
@@ -4615,6 +4621,8 @@ class BuilderStrategyMethodsMixin:
             return False
 
         if (
+            hold_if_standing_on_attackable_tile
+            and
             wait_if_enemy_builder_bots_in_range
             and self.map.has_enemy_bot_in_vision
             and current_pos == target_tile.position
