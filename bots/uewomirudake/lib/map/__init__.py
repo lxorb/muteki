@@ -232,10 +232,10 @@ class Map:
         self.enemy_team: Team | None = None
         self.current_round = -1
         self.current_pos = Position(0, 0)
-        self.current_pos_since = 0
         self.last_three_pos = [Position(-1, -1), Position(-1, -1), Position(-1, -1)]
         self.been_here_combo = 0
         self.is_stuck = True
+        self.turns_on_current_tile = 0
         self.titanium = 0
         self.axionite = 0
         self.compute_dist_to_self = False
@@ -280,7 +280,7 @@ class Map:
         self.own_core_dist_manhattan_init_next_y = 0
         self.distance_queue_buffer_by_index: list[int] = []
         self.path_queue_buffer_by_index: list[int] = []
-        self.path_heap_buffer: list[tuple[int, int, int, int, int, int]] = []
+        self.path_heap_buffer: list[tuple[int, int, int, int, int, int, int]] = []
         self.visible_builder_bot_ids_by_index: dict[int, int] = {}
         self.visible_building_ids_by_index: dict[int, int] = {}
         self.visible_own_builder_bot_count = 0
@@ -360,6 +360,9 @@ class Map:
         self.path_seen_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.path_predecessor_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.path_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
+        self.path_first_step_requires_new_road_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.path_cost_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.path_epoch = 0
         self._astar_cache_round: int = -1
@@ -460,6 +463,8 @@ class Map:
         self.seen_ids_for_debugging = []
         self.id_to_target_pos_round = {}
 
+        self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
+
         self.stopwatch = Stopwatch("Map")
 
     def _reset_turn_state(self) -> None:
@@ -497,13 +502,15 @@ class Map:
             self.enemy_supply_chain_feeds_own_turret_by_index,
         )
 
-        self.current_round = self.ct.get_current_round()
-        new_pos = self.ct.get_position()
-        if new_pos == self.current_pos:
-            self.current_pos_since += 1
-        else:
-            self.current_pos_since = 0
-        self.current_pos = new_pos
+        next_round = self.ct.get_current_round()
+        next_pos = self.ct.get_position()
+        if next_round != self.current_round:
+            if self.current_round != -1 and next_pos == self.current_pos:
+                self.turns_on_current_tile += 1
+            else:
+                self.turns_on_current_tile = 0
+        self.current_round = next_round
+        self.current_pos = next_pos
         self.is_stuck = False
         if self.current_pos in self.last_three_pos:
             self.been_here_combo += 1
@@ -516,6 +523,7 @@ class Map:
         
 
         self.has_enemy_bot_in_vision = False
+        self.closest_enemy_builder_bot_in_vision_pos = None
         self.tiles_in_vision: list[Tile] = []
         self.newly_seen_tiles_in_vision: list[Tile] = []
         self.titanium_tiles_in_vision: list[Tile] = []
@@ -864,6 +872,18 @@ class Map:
             return False
         return bool(self.own_supply_chain_feeds_own_turret_by_index[root])
 
+    def _u_apply_connected_harvester_resource_flags(
+        self,
+        harvester_tile: Tile,
+        root: int,
+        has_titanium_by_index: bytearray,
+        has_raw_axionite_by_index: bytearray,
+    ) -> None:
+        if harvester_tile.environment == Environment.ORE_TITANIUM:
+            has_titanium_by_index[root] = 1
+        elif harvester_tile.environment == Environment.ORE_AXIONITE:
+            has_raw_axionite_by_index[root] = 1
+
     def u_update_supply_chain_union_find_for_team(self, team: Team) -> None:
         if team == self.own_team:
             supply_links_in_vision = self.own_supply_links_in_vision
@@ -953,6 +973,12 @@ class Map:
                     continue
                 counted_harvester_component_keys.add(pair_key)
                 supply_chain_harvester_count_by_index[root] += 1
+                self._u_apply_connected_harvester_resource_flags(
+                    target_tile,
+                    root,
+                    supply_chain_has_titanium_by_index,
+                    supply_chain_has_raw_axionite_by_index,
+                )
 
             # Harvesters feed any orthogonally adjacent supplier, even when the
             # supplier does not target the harvester itself, such as a splitter
@@ -970,6 +996,12 @@ class Map:
                     continue
                 counted_harvester_component_keys.add(pair_key)
                 supply_chain_harvester_count_by_index[root] += 1
+                self._u_apply_connected_harvester_resource_flags(
+                    adjacent_tile,
+                    root,
+                    supply_chain_has_titanium_by_index,
+                    supply_chain_has_raw_axionite_by_index,
+                )
 
             if supply_chain_feeds_own_turret_by_index is not None:
                 if any(
@@ -1327,6 +1359,7 @@ class Map:
 
         known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)
         known_accessible_axionite_indices = set(self.known_accessible_axionite_indices)
+        closest_enemy_builder_key = None
 
         for tile in self.tiles_in_vision:
             building = tile.building
@@ -1343,6 +1376,15 @@ class Map:
 
             if tile.bot.id is not None and tile.bot.team != self.own_team:
                 self.has_enemy_bot_in_vision = True
+                if tile.bot.entity_type == EntityType.BUILDER_BOT:
+                    key = (
+                        self.current_pos.distance_squared(tile.position),
+                        tile.position.x,
+                        tile.position.y,
+                    )
+                    if closest_enemy_builder_key is None or key < closest_enemy_builder_key:
+                        closest_enemy_builder_key = key
+                        self.closest_enemy_builder_bot_in_vision_pos = tile.position
 
             if building.id is not None:
                 if building.team == self.own_team:
@@ -2200,13 +2242,37 @@ class Map:
 
         return tiles
 
+    def u_enemy_titanium_harvester_has_adjacent_own_turret(self, harvester_tile) -> bool:
+        if (
+            harvester_tile.building.team != self.enemy_team
+            or harvester_tile.environment != Environment.ORE_TITANIUM
+        ):
+            return False
+
+        for adjacent_idx in self.u_iter_neighbor_indices(harvester_tile.index):
+            adjacent_tile = self.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.building.team == self.own_team
+                and adjacent_tile.building.entity_type
+                in {
+                    EntityType.GUNNER,
+                    EntityType.SENTINEL,
+                    EntityType.BREACH,
+                }
+            ):
+                return True
+
+        return False
+
     def u_get_gunner_shootable_tiles(
         self,
         source_pos: Position,
         direction: Direction,
         radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
+        enemy_supply_chain_feeding_own_turret_blocks: bool = True,
     ) -> list[Tile]:
         shootable_tiles: list[Tile] = []
+        current_round = self.current_round
         for target_tile in self.u_get_gunner_ray_tiles(
             source_pos,
             direction,
@@ -2216,9 +2282,29 @@ class Map:
                 break
 
             if (
+                target_tile.building.entity_type == EntityType.HARVESTER
+                and (
+                    source_pos.distance_squared(target_tile.position) <= 2
+                    or self.u_enemy_titanium_harvester_has_adjacent_own_turret(
+                        target_tile
+                    )
+                )
+            ):
+                break
+
+            if (
                 target_tile.building.id is not None
                 and target_tile.building.team == self.own_team
                 and target_tile.building.entity_type != EntityType.ROAD
+            ):
+                break
+
+            if (
+                enemy_supply_chain_feeding_own_turret_blocks
+                and target_tile.last_seen_turn == current_round
+                and target_tile.building.team == self.enemy_team
+                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and self.u_enemy_supply_chain_feeds_own_turret(target_tile.index)
             ):
                 break
 
@@ -3025,6 +3111,12 @@ class Map:
                     if pair_key not in counted_harvester_component_keys:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1
+                        self._u_apply_connected_harvester_resource_flags(
+                            target_tile,
+                            root,
+                            has_titanium_by_index,
+                            has_raw_axionite_by_index,
+                        )
 
             # Harvesters feed any orthogonally adjacent supplier, even when the
             # supplier does not target the harvester itself, such as a splitter
@@ -3041,6 +3133,12 @@ class Map:
                     if pair_key not in counted_harvester_component_keys:
                         counted_harvester_component_keys.add(pair_key)
                         harvester_count_by_index[root] += 1
+                        self._u_apply_connected_harvester_resource_flags(
+                            adjacent_tile,
+                            root,
+                            has_titanium_by_index,
+                            has_raw_axionite_by_index,
+                        )
 
                 if (
                     not feeds_own_turret
@@ -3813,6 +3911,9 @@ class Map:
         seen_epoch_by_index = self.path_seen_epoch_by_index
         predecessor_by_index = self.path_predecessor_by_index
         first_step_by_index = self.path_first_step_by_index
+        first_step_requires_new_road_by_index = (
+            self.path_first_step_requires_new_road_by_index
+        )
         path_cost_by_index = self.path_cost_by_index
         index_x_by_index = self.index_x_by_index
         index_y_by_index = self.index_y_by_index
@@ -3835,6 +3936,7 @@ class Map:
         seen_epoch_by_index[source_idx] = path_epoch
         predecessor_by_index[source_idx] = source_idx
         first_step_by_index[source_idx] = -1
+        first_step_requires_new_road_by_index[source_idx] = 0
         path_cost_by_index[source_idx] = 0
 
         if self.is_map_known and self.parsed_map_own_core_dist_by_index is not None:
@@ -3891,6 +3993,7 @@ class Map:
             (
                 source_heuristic,
                 0,
+                0,
                 source_own_core_dist,
                 source_x,
                 source_y,
@@ -3907,7 +4010,7 @@ class Map:
                     return None
                 overtime_check_countdown = 16
 
-            _, current_cost, _, _, _, current_idx = heappop_local(frontier)
+            _, current_cost, _, _, _, _, current_idx = heappop_local(frontier)
             if (
                 seen_epoch_by_index[current_idx] != path_epoch
                 or path_cost_by_index[current_idx] != current_cost
@@ -3957,9 +4060,24 @@ class Map:
                     and not intrinsic_passable_by_index[adjacent_idx]
                 ):
                     continue
+                if current_first_step_idx == -1:
+                    first_step_requires_new_road = int(
+                        tiles_by_index[adjacent_idx].building.id is None
+                    )
+                else:
+                    first_step_requires_new_road = (
+                        first_step_requires_new_road_by_index[current_idx]
+                    )
                 if (
                     seen_epoch_by_index[adjacent_idx] == path_epoch
-                    and next_cost >= path_cost_by_index[adjacent_idx]
+                    and (
+                        next_cost > path_cost_by_index[adjacent_idx]
+                        or (
+                            next_cost == path_cost_by_index[adjacent_idx]
+                            and first_step_requires_new_road
+                            >= first_step_requires_new_road_by_index[adjacent_idx]
+                        )
+                    )
                 ):
                     continue
 
@@ -3970,6 +4088,9 @@ class Map:
                     adjacent_idx
                     if current_first_step_idx == -1
                     else current_first_step_idx
+                )
+                first_step_requires_new_road_by_index[adjacent_idx] = (
+                    first_step_requires_new_road
                 )
                 seen_epoch_by_index[adjacent_idx] = path_epoch
                 path_cost_by_index[adjacent_idx] = next_cost
@@ -4017,6 +4138,7 @@ class Map:
                     (
                         next_cost + heuristic,
                         next_cost,
+                        first_step_requires_new_road,
                         own_core_dist,
                         adjacent_x,
                         adjacent_y,

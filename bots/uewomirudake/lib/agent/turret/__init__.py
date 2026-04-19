@@ -1,6 +1,7 @@
-from cambc import EntityType, Environment, Position
+from cambc import Direction, EntityType, Environment, Position
 
 from lib.agent import Agent
+from lib.agent.builder.navigation import BuilderNavigationMixin
 from lib.agent.constants import (
     ENABLE_PRINTING,
     ATTACK_TURRET_TYPES,
@@ -10,9 +11,10 @@ from lib.agent.constants import (
     LAUNCHER_YEET_AWAY_MIN_DISTANCE,
     LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE,
 )
+from lib.map.constants import SUPPLY_LINK_TYPES
 
 
-class TurretAgent(Agent):
+class TurretAgent(BuilderNavigationMixin, Agent):
     def __init__(self):
         super().__init__()
 
@@ -26,7 +28,7 @@ class TurretAgent(Agent):
             case EntityType.GUNNER:
                 return self.u_gunner_attack()
             case EntityType.SENTINEL:
-                return self.u_turret_attack()
+                return self.u_sentinel_attack()
             case EntityType.BREACH:
                 return self.u_turret_attack()
         return False
@@ -160,7 +162,8 @@ class TurretAgent(Agent):
 
     def u_gunner_attack(self) -> bool:
         """
-        Fire according to the engine's current gunner target selection.
+        Rotate toward a better lane when justified, otherwise fire according to
+        the engine's current gunner target selection.
 
         The engine's `get_gunner_target()` is used as one hint, but target
         selection is resolved locally from the firing ray so every tile in the
@@ -190,6 +193,20 @@ class TurretAgent(Agent):
         vision_radius_sq = current_tile.building.vision_radius_sq
         if vision_radius_sq is None:
             vision_radius_sq = self.ct.get_vision_radius_sq()
+        current_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+            current_pos,
+            direction,
+            vision_radius_sq,
+        )
+        if self.u_try_rotate_gunner(
+            current_pos,
+            direction,
+            current_shootable_tiles,
+            vision_radius_sq,
+            current_round,
+        ):
+            return True
+
         ray_tiles = self.map.u_get_gunner_ray_tiles(
             current_pos,
             direction,
@@ -244,6 +261,123 @@ class TurretAgent(Agent):
 
         return False
 
+    def u_try_rotate_gunner(
+        self,
+        current_pos: Position,
+        current_direction: Direction,
+        current_shootable_tiles,
+        vision_radius_sq: int,
+        current_round: int,
+    ) -> bool:
+        enemy_building_in_current_direction = any(
+            self.u_is_visible_enemy_building_tile(tile, current_round)
+            for tile in current_shootable_tiles
+        )
+        enemy_turret_in_current_direction = any(
+            self.u_is_visible_enemy_turret_tile(tile, current_round)
+            for tile in current_shootable_tiles
+        )
+        should_try_rotate = not enemy_building_in_current_direction
+        best_direction = None
+        best_shootable_tiles = None
+
+        if not should_try_rotate and not enemy_turret_in_current_direction:
+            best_direction = self.u_get_gunner_orientation(current_pos)
+            if best_direction != current_direction:
+                best_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+                    current_pos,
+                    best_direction,
+                    vision_radius_sq,
+                )
+                should_try_rotate = any(
+                    self.u_is_enemy_turret_connected_to_supply_chain(
+                        tile,
+                        current_round,
+                    )
+                    for tile in best_shootable_tiles
+                )
+
+        if not should_try_rotate:
+            return False
+
+        if best_direction is None:
+            best_direction = self.u_get_gunner_orientation(current_pos)
+        if best_direction == current_direction or best_direction == Direction.CENTRE:
+            return False
+        if not self.ct.can_rotate(best_direction):
+            return False
+
+        if best_shootable_tiles is None:
+            best_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+                current_pos,
+                best_direction,
+                vision_radius_sq,
+            )
+        if not any(
+            self.u_is_nontrivial_enemy_gunner_rotation_target(tile, current_round)
+            for tile in best_shootable_tiles
+        ):
+            return False
+
+        self.ct.rotate(best_direction)
+        return True
+
+    def u_is_visible_enemy_building_tile(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        if tile.is_core_of(self.map.enemy_team):
+            return True
+        return (
+            tile.last_seen_turn == current_round
+            and tile.building.id is not None
+            and tile.building.team == self.map.enemy_team
+        )
+
+    def u_is_visible_enemy_turret_tile(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        return (
+            tile.last_seen_turn == current_round
+            and tile.building.id is not None
+            and tile.building.team == self.map.enemy_team
+            and tile.building.entity_type in ATTACK_TURRET_TYPES
+        )
+
+    def u_is_enemy_turret_connected_to_supply_chain(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        return self.u_is_visible_enemy_turret_tile(
+            tile,
+            current_round,
+        ) and self._u_tile_is_targeted_by_supply_chain(tile.index)
+
+    def u_is_nontrivial_enemy_gunner_rotation_target(
+        self,
+        tile,
+        current_round: int,
+    ) -> bool:
+        if tile.is_core_of(self.map.enemy_team):
+            return True
+        if tile.last_seen_turn != current_round:
+            return False
+        if tile.bot.id is not None and tile.bot.team == self.map.enemy_team:
+            return True
+        return (
+            tile.building.id is not None
+            and tile.building.team == self.map.enemy_team
+            and tile.building.entity_type
+            not in (
+                EntityType.ROAD,
+                EntityType.BARRIER,
+            )
+        )
+
     def u_get_gunner_target_tile(
         self,
         ray_tiles,
@@ -252,16 +386,55 @@ class TurretAgent(Agent):
         return self.u_get_gunner_first_targetable_tile(ray_tiles, current_round)
 
     def u_gunner_should_attack_target(self, target_tile) -> bool:
+        if target_tile.bot.id is not None and target_tile.bot.team == self.map.own_team:
+            return False
+        if (
+            target_tile.bot.id is not None
+            and target_tile.bot.team != self.map.own_team
+        ):
+            return True
+        if target_tile.is_core_of(self.map.enemy_team):
+            return True
+        return self.u_gunner_should_attack_enemy_building(
+            target_tile,
+            allow_marker=True,
+        )
+
+    def u_gunner_should_attack_enemy_building(
+        self,
+        target_tile,
+        allow_marker: bool,
+    ) -> bool:
+        marker_entity_type = getattr(EntityType, "MARKER", None)
+        if (
+            target_tile.building.id is None
+            or target_tile.building.team == self.map.own_team
+        ):
+            return False
+        if (
+            not allow_marker
+            and target_tile.building.entity_type == marker_entity_type
+        ):
+            return False
+        if (
+            target_tile.bot.id is not None
+            and target_tile.bot.team == self.map.own_team
+        ):
+            return False
+        if (
+            target_tile.building.entity_type == EntityType.HARVESTER
+            and target_tile.environment == Environment.ORE_TITANIUM
+            and self.u_enemy_harvester_has_adjacent_allied_turret(target_tile)
+        ):
+            return False
+        if (
+            target_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and self.map.u_enemy_supply_chain_feeds_own_turret(target_tile.index)
+        ):
+            return False
         return (
-            (
-                target_tile.bot.id is not None
-                and target_tile.bot.team != self.map.own_team
-            )
-            or target_tile.is_core_of(self.map.enemy_team)
-            or (
-                target_tile.building.id is not None
-                and target_tile.building.team != self.map.own_team
-            )
+            target_tile.building.id is not None
+            and target_tile.building.team != self.map.own_team
         )
 
     def u_gunner_should_clear_own_road(
@@ -275,17 +448,15 @@ class TurretAgent(Agent):
         return self.u_gunner_should_clear_for_followup_target(followup_target)
 
     def u_gunner_should_clear_for_followup_target(self, target_tile) -> bool:
-        marker_entity_type = getattr(EntityType, "MARKER", None)
         return (
             (
                 target_tile.bot.id is not None
                 and target_tile.bot.team != self.map.own_team
             )
             or target_tile.is_core_of(self.map.enemy_team)
-            or (
-                target_tile.building.id is not None
-                and target_tile.building.team != self.map.own_team
-                and target_tile.building.entity_type != marker_entity_type
+            or self.u_gunner_should_attack_enemy_building(
+                target_tile,
+                allow_marker=False,
             )
         )
 
@@ -312,6 +483,40 @@ class TurretAgent(Agent):
                 return tile
 
         return None
+
+    def u_sentinel_attack(self) -> bool:
+        current_round = self.ct.get_current_round()
+        enemy_chain_roots_feeding_enemy_turret = (
+            self.u_get_enemy_supply_chain_roots_feeding_enemy_turret(current_round)
+        )
+        candidate_entries: list[tuple[tuple[int, ...], object]] = []
+
+        for pos in self.ct.get_attackable_tiles():
+            target_tile = self.map.u_get_pos_tile(pos)
+            if target_tile.last_seen_turn != current_round:
+                continue
+            if not self.ct.can_fire(target_tile.position):
+                continue
+
+            priority_key = self.u_get_sentinel_target_priority_key(
+                target_tile,
+                current_round,
+                enemy_chain_roots_feeding_enemy_turret,
+            )
+            if priority_key is None:
+                continue
+
+            candidate_entries.append((priority_key, target_tile))
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        _, target_tile = min(candidate_entries, key=lambda candidate: candidate[0])
+        self.ct.fire(target_tile.position)
+        return True
 
     def u_turret_attack(self) -> bool:
         """
@@ -347,14 +552,120 @@ class TurretAgent(Agent):
         self.ct.fire(candidate_tiles[0].position)
         return True
 
+    def u_get_enemy_supply_chain_roots_feeding_enemy_turret(
+        self,
+        current_round: int,
+    ) -> set[int]:
+        enemy_team = self.map.enemy_team
+        enemy_chain_roots_feeding_enemy_turret: set[int] = set()
+
+        for tile in self.map.enemy_supply_links_in_vision:
+            if (
+                tile.last_seen_turn != current_round
+                or tile.building.team != enemy_team
+                or tile.building.entity_type not in SUPPLY_LINK_TYPES
+            ):
+                continue
+
+            root = self.map.u_find_supply_chain_root_by_index(tile.index, enemy_team)
+            if root is None:
+                continue
+
+            if any(
+                target_tile.last_seen_turn == current_round
+                and target_tile.building.team == enemy_team
+                and target_tile.building.entity_type in ATTACK_TURRET_TYPES
+                for target_tile in tile.building.targets
+            ):
+                enemy_chain_roots_feeding_enemy_turret.add(root)
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return enemy_chain_roots_feeding_enemy_turret
+
+    def u_enemy_supply_chain_feeds_enemy_turret(
+        self,
+        tile,
+        enemy_chain_roots_feeding_enemy_turret: set[int],
+    ) -> bool:
+        if (
+            tile.building.team != self.map.enemy_team
+            or tile.building.entity_type not in SUPPLY_LINK_TYPES
+        ):
+            return False
+
+        root = self.map.u_find_supply_chain_root_by_index(
+            tile.index,
+            self.map.enemy_team,
+        )
+        return root is not None and root in enemy_chain_roots_feeding_enemy_turret
+
     def u_enemy_harvester_has_adjacent_own_turret(self, harvester_tile) -> bool:
-        harvester_team = harvester_tile.building.team
         for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
             harvester_tile.index
         ):
             adjacent_tile = self.map.tiles_by_index[adjacent_idx]
             if (
-                adjacent_tile.building.team == harvester_team
+                adjacent_tile.building.team == self.map.own_team
+                and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                return True
+        return False
+
+    def u_enemy_harvester_has_adjacent_enemy_turret(
+        self,
+        harvester_tile,
+        current_round: int,
+    ) -> bool:
+        enemy_team = self.map.enemy_team
+        for adjacent_idx in self.map.u_iter_neighbor_indices(harvester_tile.index):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.team == enemy_team
+                and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                return True
+        return False
+
+    def u_enemy_harvester_connected_to_supply_chain_feeding_own_turret(
+        self,
+        harvester_tile,
+    ) -> bool:
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+            harvester_tile.index
+        ):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.building.team == self.map.enemy_team
+                and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and self.map.u_enemy_supply_chain_feeds_own_turret(adjacent_tile.index)
+            ):
+                return True
+        return False
+
+    def u_enemy_harvester_connected_to_supply_chain_feeding_enemy_turret(
+        self,
+        harvester_tile,
+        enemy_chain_roots_feeding_enemy_turret: set[int],
+    ) -> bool:
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+            harvester_tile.index
+        ):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if self.u_enemy_supply_chain_feeds_enemy_turret(
+                adjacent_tile,
+                enemy_chain_roots_feeding_enemy_turret,
+            ):
+                return True
+        return False
+
+    def u_enemy_harvester_has_adjacent_allied_turret(self, harvester_tile) -> bool:
+        for adjacent_idx in self.map.u_iter_neighbor_indices(harvester_tile.index):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.building.team == self.map.own_team
                 and adjacent_tile.building.entity_type in ATTACK_TURRET_TYPES
             ):
                 return True
@@ -561,3 +872,382 @@ class TurretAgent(Agent):
             TURRET_TARGET_PRIORITY_RANK[enemy_building_type],
             target_tile.building.hp,
         )
+
+    def u_get_sentinel_target_priority_key(
+        self,
+        target_tile,
+        current_round: int,
+        enemy_chain_roots_feeding_enemy_turret: set[int],
+    ) -> tuple[int, ...] | None:
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+        building = target_tile.building
+        building_type = building.entity_type
+        building_hp = building.hp if building.hp is not None else 10**9
+        own_builder_bot_present = (
+            target_tile.bot.id is not None and target_tile.bot.team == own_team
+        )
+        enemy_builder_bot_present = (
+            target_tile.bot.id is not None and target_tile.bot.team == enemy_team
+        )
+        enemy_builder_bot_hp = (
+            target_tile.bot.hp
+            if enemy_builder_bot_present and target_tile.bot.hp is not None
+            else 10**9
+        )
+        enemy_supply_tile = (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type in SUPPLY_LINK_TYPES
+        )
+        enemy_titanium_chain_supply_tile = (
+            enemy_supply_tile
+            and self.map.u_supply_chain_has_titanium(target_tile.index, enemy_team)
+        )
+        low_hp_turret_type_key = (
+            0
+            if building_type == EntityType.SENTINEL
+            else 1
+            if building_type == EntityType.GUNNER
+            else 2
+        )
+        low_hp_supply_key = (
+            0
+            if building_type == EntityType.BRIDGE
+            else 1
+            if building_type == EntityType.ARMOURED_CONVEYOR
+            else 2
+            if building_type == EntityType.CONVEYOR
+            else 3
+        )
+        enemy_turret_feed_key = (
+            0
+            if building_type == EntityType.BRIDGE
+            else 1
+            if building_type == EntityType.CONVEYOR
+            else 2
+            if building_type == EntityType.SPLITTER
+            else 3
+        )
+
+        if own_builder_bot_present:
+            return None
+
+        if building.team == own_team and not enemy_builder_bot_present:
+            return None
+
+        if enemy_supply_tile and self.map.u_enemy_supply_chain_feeds_own_turret(
+            target_tile.index
+        ):
+            return None
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.HARVESTER
+            and target_tile.environment == Environment.ORE_TITANIUM
+            and (
+                self.map.u_enemy_titanium_harvester_has_adjacent_own_turret(target_tile)
+                or self.u_enemy_harvester_connected_to_supply_chain_feeding_own_turret(
+                    target_tile
+                )
+            )
+        ):
+            return None
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type in ATTACK_TURRET_TYPES
+            and building_hp <= 18
+        ):
+            return (
+                0,
+                building_hp,
+                low_hp_turret_type_key,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if enemy_builder_bot_present and enemy_builder_bot_hp <= 18:
+            return (
+                1,
+                enemy_builder_bot_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if enemy_titanium_chain_supply_tile and building_hp <= 18:
+            return (
+                2,
+                building_hp,
+                low_hp_supply_key,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.LAUNCHER
+            and building_hp <= 18
+        ):
+            return (
+                3,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.FOUNDRY
+            and building_hp <= 18
+        ):
+            return (
+                4,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.GUNNER
+            and self._u_tile_is_targeted_by_titanium_supply_chain(target_tile.index)
+        ):
+            return (
+                5,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.SENTINEL
+            and self._u_tile_is_targeted_by_titanium_supply_chain(target_tile.index)
+        ):
+            return (
+                6,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.BREACH
+            and self._u_tile_is_targeted_by_titanium_supply_chain(target_tile.index)
+        ):
+            return (
+                7,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.GUNNER
+        ):
+            return (
+                8,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.SENTINEL
+        ):
+            return (
+                9,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.BREACH
+        ):
+            return (
+                10,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            enemy_titanium_chain_supply_tile
+            and self.u_enemy_supply_chain_feeds_enemy_turret(
+                target_tile,
+                enemy_chain_roots_feeding_enemy_turret,
+            )
+        ):
+            return (
+                11,
+                building_hp,
+                enemy_turret_feed_key,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.HARVESTER
+            and self.u_enemy_harvester_has_adjacent_enemy_turret(
+                target_tile,
+                current_round,
+            )
+        ):
+            return (
+                12,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.HARVESTER
+            and self.u_enemy_harvester_connected_to_supply_chain_feeding_enemy_turret(
+                target_tile,
+                enemy_chain_roots_feeding_enemy_turret,
+            )
+        ):
+            return (
+                13,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if target_tile.is_core_of(enemy_team):
+            return (
+                14,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.FOUNDRY
+        ):
+            return (
+                15,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.BRIDGE
+        ):
+            return (
+                16,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.CONVEYOR
+        ):
+            return (
+                17,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.SPLITTER
+        ):
+            return (
+                18,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.ARMOURED_CONVEYOR
+        ):
+            return (
+                19,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.LAUNCHER
+        ):
+            return (
+                20,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.HARVESTER
+        ):
+            return (
+                21,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.BARRIER
+        ):
+            return (
+                22,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        if (
+            building.id is not None
+            and building.team == enemy_team
+            and building_type == EntityType.ROAD
+        ):
+            return (
+                23,
+                building_hp,
+                target_tile.position.x,
+                target_tile.position.y,
+            )
+
+        return None

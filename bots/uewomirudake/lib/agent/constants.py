@@ -1,4 +1,5 @@
 from cambc import EntityType
+import builtins
 from lib.map.types import SymmetryMode
 
 ### GAME CONSTANTS ###
@@ -23,6 +24,7 @@ MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD: int = 99999
 BRIDGE_PREFERRED_DIST: int = 6
 FOUNDRY_CAN_REPLACE_BRIDGE: bool = False
 DISABLE_HARASSMENT: bool = False
+ENABLE_PRINTING: bool = False
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 HARD_AVOID_EXISTING_SUPPLY_CHAIN: bool = True
 MAX_CORE_ORE_DIRECT_DIST: int = 20
@@ -81,14 +83,14 @@ TURRET_TARGET_PRIORITY = (
     EntityType.CORE,
     "enemy_harvester_without_adjacent_own_turret",
     EntityType.LAUNCHER,
-    "enemy_bot_on_ally_tile",
-    "enemy_bot_on_non_ally_tile",
     EntityType.BRIDGE,
     EntityType.CONVEYOR,
     EntityType.BARRIER,
     EntityType.SPLITTER,
     EntityType.FOUNDRY,
     EntityType.ROAD,
+    "enemy_bot_on_ally_tile",
+    "enemy_bot_on_non_ally_tile",
     EntityType.ARMOURED_CONVEYOR,
 )
 TURRET_TARGET_PRIORITY_RANK = {
@@ -194,6 +196,7 @@ try:
             "DISABLE_HARASSMENT",
             DISABLE_HARASSMENT,
         )
+
         ENABLE_PRINTING = getattr(
             exclude,
             "ENABLE_PRINTING",
@@ -203,3 +206,14 @@ except Exception:
     pass
 
 
+def _disabled_print(*_args, **_kwargs) -> None:
+    return None
+
+
+if not hasattr(builtins, "_cbc_original_print"):
+    builtins._cbc_original_print = builtins.print
+
+if ENABLE_PRINTING:
+    builtins.print = builtins._cbc_original_print
+else:
+    builtins.print = _disabled_print

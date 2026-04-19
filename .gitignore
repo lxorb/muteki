@@ -43,6 +43,7 @@ Thumbs.db
 *.replay*
 /profiles/
 replay_*.json
+/tools/replay_parser/last_replay.parsed.json
 
 # local test bot
 /src/bots/test_bot.py
@@ -57,8 +58,10 @@ replay_*.json
 /tools/unrated_runner/config/discord_webhook.txt
 # queued match ids (may not be current anymore)
 /tools/unrated_runner/data/queued.json
+# requested teams (auto generated)
+/tools/unrated_runner/data/requested_teams.json
 # partial results (only useful in the case of conflicts)
-/tools/unrated_runner/results/partial/
+/tools/unrated_runner/results/
 # output logs (can generate at any time)
 /tools/unrated_runner/outputs/
 # compare logs (can generate at any time)
