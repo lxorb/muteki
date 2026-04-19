@@ -48,7 +48,7 @@ class CoreAgent(Agent):
         self.further_spawn_count = 0
         self.further_spawn_rotation_pos = 0
         self.core_defender_requested = False
-        self.core_defender_spawned = False
+        self.core_defender_bot_id: int | None = None
 
     def u_handler(self):
         if self.ct.get_current_round() >= SURRENDER_AT_TURN:
@@ -61,7 +61,7 @@ class CoreAgent(Agent):
         self.u_spawn_further_bb()
 
     def u_request_core_defender_on_first_enemy_builder_seen(self) -> bool:
-        if self.core_defender_requested or self.core_defender_spawned:
+        if self.core_defender_requested:
             return False
 
         for tile in self.map.tiles_in_vision:
@@ -96,12 +96,18 @@ class CoreAgent(Agent):
         return False
 
     def u_spawn_core_defender(self) -> bool:
-        if not self.core_defender_requested or self.core_defender_spawned:
+        if not self.core_defender_requested:
             return False
-        if not self.u_spawn_builder(CORE_DEFENDER_STRATEGY_ID):
+        if (
+            self.core_defender_bot_id is not None
+            and self.core_defender_bot_id in self.map.visible_builder_bot_ids_in_vision
+        ):
+            return False
+        spawned_builder_id = self.u_spawn_builder_with_id(CORE_DEFENDER_STRATEGY_ID)
+        if spawned_builder_id is None:
             return False
 
-        self.core_defender_spawned = True
+        self.core_defender_bot_id = spawned_builder_id
         return True
 
     def u_convert_axionite_if_low_on_titanium(self) -> bool:
@@ -205,22 +211,28 @@ class CoreAgent(Agent):
         return candidate_spawns
 
     def u_spawn_builder(self, builder_bot_strategy: str) -> bool:
+        return self.u_spawn_builder_with_id(builder_bot_strategy) is not None
+
+    def u_spawn_builder_with_id(
+        self,
+        builder_bot_strategy: str,
+    ) -> int | None:
         if DISABLE_HARASSMENT and builder_bot_strategy == HARASSMENT_STRATEGY_ID:
-            return False
+            return None
 
         core_center_pos = self.map.own_core_center_pos
         if core_center_pos is None:
-            return False
+            return None
         candidate_spawns = self.u_get_builder_spawn_candidates(builder_bot_strategy)
         if not candidate_spawns:
-            return False
+            return None
 
         _, _, spawn_direction = min(
             candidate_spawns,
             key=lambda candidate: candidate[:2],
         )
         spawn_pos = core_center_pos.add(spawn_direction)
-        self.ct.spawn_builder(spawn_pos)
+        spawned_builder_id = self.ct.spawn_builder(spawn_pos)
         self.spawn_bb_count += 1
         self.spawn_tile_counts[spawn_direction] += 1
-        return True
+        return spawned_builder_id

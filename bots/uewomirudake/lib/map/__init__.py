@@ -403,6 +403,7 @@ class Map:
         self.path_heap_buffer: list[tuple[int, int, int, int, int, int, int]] = []
         self.visible_builder_bot_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
         self.visible_builder_bot_ids_touched_indices: list[int] = []
+        self.visible_builder_bot_ids_in_vision: set[int] = set()
         self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
         self.visible_building_ids_touched_indices: list[int] = []
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -608,6 +609,7 @@ class Map:
             self.visible_builder_bot_ids_by_index,
             -1,
         )
+        self.visible_builder_bot_ids_in_vision.clear()
         self._reset_marked_array_indices(
             self.visible_building_ids_touched_indices,
             self.visible_building_ids_by_index,
@@ -1548,6 +1550,7 @@ class Map:
         for unit_id in self.ct.get_nearby_units():
             if self.ct.get_entity_type(unit_id) != EntityType.BUILDER_BOT:
                 continue
+            self.visible_builder_bot_ids_in_vision.add(unit_id)
             pos = self.ct.get_position(unit_id)
             if self.u_is_in_bounds(pos):
                 idx = self.u_to_index(pos)
