@@ -31,8 +31,6 @@ SCAVENGER_STRATEGY = [
     ),
     # (BuilderStrategyMethodsMixin.s_convert_to_defender,),
     (BuilderStrategyMethodsMixin.s_swap_with_splitter, True, True),
-    (BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
-    (BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
     (
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,
@@ -106,6 +104,8 @@ CORE_DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
     (BuilderStrategyMethodsMixin.s_replace_damaged_conveyor, True, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
+    (BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
+    (BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
     (BuilderStrategyMethodsMixin.s_return_to_core_center,),
 ]
 

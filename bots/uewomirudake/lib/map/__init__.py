@@ -406,6 +406,7 @@ class Map:
         self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
         self.visible_building_ids_touched_indices: list[int] = []
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.locked_in_titanium_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.all_own_supply_link_target_indices_in_vision = _TouchedIndexMembership(
             self.INITIAL_MAP_SIZE
         )

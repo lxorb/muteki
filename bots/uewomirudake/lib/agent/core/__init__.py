@@ -73,6 +73,26 @@ class CoreAgent(Agent):
                 self.core_defender_requested = True
                 return True
 
+        for tile in self.map.own_supply_links_in_vision:
+            if tile.building.team != self.map.own_team:
+                continue
+            if not self.map.u_supply_chain_has_raw_axionite(
+                tile.index,
+                self.map.own_team,
+            ):
+                continue
+            if (
+                self.map.u_get_supply_chain_harvester_count_by_index(
+                    tile.index,
+                    self.map.own_team,
+                )
+                <= 0
+            ):
+                continue
+
+            self.core_defender_requested = True
+            return True
+
         return False
 
     def u_spawn_core_defender(self) -> bool:

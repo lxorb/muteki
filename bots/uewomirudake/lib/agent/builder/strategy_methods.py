@@ -2460,6 +2460,11 @@ class BuilderStrategyMethodsMixin:
             self.pending_harvester_target_index = tile_index
             self.pending_harvester_target_resource = resource
 
+        def remember_locked_in_titanium(tile_index: int) -> None:
+            if resource != Environment.ORE_TITANIUM:
+                return
+            self.map.locked_in_titanium_by_index[tile_index] = 1
+
         def finish_with_harvester_target(result: bool, harvester_tile) -> bool:
             if result:
                 print("Build harvester strategy target:", harvester_tile.position)
@@ -2608,6 +2613,22 @@ class BuilderStrategyMethodsMixin:
                 and target_tile.conveyor_targets_harvester
             ):
                 return True
+            if (
+                target_tile.building.team == own_team
+                and target_tile.building.entity_type in CONVEYOR_ENTITY_TYPES
+            ):
+                return (
+                    self.map.u_get_supply_chain_resource_item_count_by_index(
+                        target_tile.index,
+                        own_team,
+                    )
+                    == 0
+                    and self.map.u_get_supply_chain_harvester_count_by_index(
+                        target_tile.index,
+                        own_team,
+                    )
+                    == 0
+                )
             return (
                 attack_enemy_passable
                 and target_tile.building.team != own_team
@@ -2847,6 +2868,7 @@ class BuilderStrategyMethodsMixin:
                                 respect_titanium_reserve=True,
                                 safety_conveyor=safety_conveyor,
                             ):
+                                remember_locked_in_titanium(target_tile.index)
                                 remember_pending_harvester_target(target_tile.index)
                                 return finish_with_harvester_target(True, target_tile)
                         elif supplier_type == EntityType.BRIDGE:
@@ -2870,6 +2892,7 @@ class BuilderStrategyMethodsMixin:
                                 attack_enemy_passable=False,
                                 respect_titanium_reserve=True,
                             ):
+                                remember_locked_in_titanium(target_tile.index)
                                 remember_pending_harvester_target(target_tile.index)
                                 return finish_with_harvester_target(True, target_tile)
 
@@ -2928,8 +2951,7 @@ class BuilderStrategyMethodsMixin:
                 )
             clear_pending_harvester_target()
 
-        target_tile = None
-        target_key = None
+        candidate_tiles: list = []
         for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
             if self.round_stopwatch.check_overtime_interval():
                 return False
@@ -2960,10 +2982,52 @@ class BuilderStrategyMethodsMixin:
                 and tile.own_core_dist > max_core_ore_direct_dist
             ):
                 continue
-            key = (tile.dist_to_self, tile.own_core_dist)
-            if target_key is None or key < target_key:
-                target_key = key
-                target_tile = tile
+
+            candidate_tiles.append(tile)
+
+        target_tile = None
+        if resource == Environment.ORE_TITANIUM:
+            locked_in_tiles = [
+                tile for tile in candidate_tiles if tile.is_locked_in_titanium
+            ]
+            if locked_in_tiles:
+                if len(locked_in_tiles) == 1:
+                    target_tile = locked_in_tiles[0]
+                else:
+                    candidate_tiles = locked_in_tiles
+
+        if target_tile is None:
+            own_barrier_tiles = [
+                tile
+                for tile in candidate_tiles
+                if (
+                    tile.building.team == own_team
+                    and tile.building.entity_type == EntityType.BARRIER
+                )
+            ]
+            if own_barrier_tiles:
+                if len(own_barrier_tiles) == 1:
+                    target_tile = own_barrier_tiles[0]
+                else:
+                    candidate_tiles = own_barrier_tiles
+
+        if target_tile is None and len(candidate_tiles) == 1:
+            target_tile = candidate_tiles[0]
+        elif target_tile is None:
+            if candidate_tiles:
+                best_dist_to_self = min(tile.dist_to_self for tile in candidate_tiles)
+                dist_filtered_tiles = [
+                    tile
+                    for tile in candidate_tiles
+                    if tile.dist_to_self == best_dist_to_self
+                ]
+                if len(dist_filtered_tiles) == 1:
+                    target_tile = dist_filtered_tiles[0]
+                else:
+                    target_tile = min(
+                        dist_filtered_tiles,
+                        key=lambda tile: (tile.own_core_dist, tile.index),
+                    )
 
         if target_tile is None:
             return False
@@ -3016,6 +3080,7 @@ class BuilderStrategyMethodsMixin:
                             respect_titanium_reserve=True,
                             safety_conveyor=safety_conveyor,
                         ):
+                            remember_locked_in_titanium(target_tile.index)
                             remember_pending_harvester_target(target_tile.index)
                             return finish_with_harvester_target(True, target_tile)
                     elif supplier_type == EntityType.BRIDGE:
@@ -3039,6 +3104,7 @@ class BuilderStrategyMethodsMixin:
                             attack_enemy_passable=False,
                             respect_titanium_reserve=True,
                         ):
+                            remember_locked_in_titanium(target_tile.index)
                             remember_pending_harvester_target(target_tile.index)
                             return finish_with_harvester_target(True, target_tile)
 
@@ -3111,6 +3177,7 @@ class BuilderStrategyMethodsMixin:
                         facing_direction=supplier_target,
                         safety_conveyor=safety_conveyor,
                     ):
+                        remember_locked_in_titanium(current_tile.index)
                         remember_pending_harvester_target(current_tile.index)
                         return finish_with_harvester_target(True, current_tile)
                 elif supplier_type == EntityType.BRIDGE:
@@ -3143,6 +3210,7 @@ class BuilderStrategyMethodsMixin:
                         move_towards=move_towards,
                         attack_enemy_passable=False,
                     ):
+                        remember_locked_in_titanium(current_tile.index)
                         remember_pending_harvester_target(current_tile.index)
                         return finish_with_harvester_target(True, current_tile)
 

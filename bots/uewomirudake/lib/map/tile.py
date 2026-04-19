@@ -200,6 +200,14 @@ class Tile:
     def conveyor_targets_harvester(self) -> bool:
         return bool(self.map.conveyor_targets_harvester_by_index[self.index])
 
+    @property
+    def is_locked_in_titanium(self) -> bool:
+        return bool(self.map.locked_in_titanium_by_index[self.index])
+
+    @is_locked_in_titanium.setter
+    def is_locked_in_titanium(self, value: bool) -> None:
+        self.map.locked_in_titanium_by_index[self.index] = int(value)
+
     def u_get_resource_targets(self) -> list["Tile"]:
         if self.building.entity_type in RESOURCE_TARGET_TYPES:
             return self.building.targets
