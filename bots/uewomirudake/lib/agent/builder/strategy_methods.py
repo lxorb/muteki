@@ -26,6 +26,7 @@ from lib.agent.constants import (
     SURROUND_HARVESTER_ENTITY_TYPE,
 )
 # from lib.debug import Stopwatch
+from lib.debug.output import dprint
 from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -1864,14 +1865,14 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
-        print(
+        dprint(
             "Protect harvester timing: candidate scan",
             f"{elapsed_ms(candidate_scan_start_ns):.3f} ms,",
             "candidates",
             len(candidate_entries),
         )
         if not candidate_entries:
-            print(
+            dprint(
                 "Protect harvester timing: total",
                 f"{elapsed_ms(total_start_ns):.3f} ms",
             )
@@ -1879,7 +1880,7 @@ class BuilderStrategyMethodsMixin:
 
         sort_start_ns = time.perf_counter_ns()
         candidate_entries.sort(key=lambda entry: entry[0])
-        print(
+        dprint(
             "Protect harvester timing: sort",
             f"{elapsed_ms(sort_start_ns):.3f} ms",
         )
@@ -1895,7 +1896,7 @@ class BuilderStrategyMethodsMixin:
             candidate_start_ns = time.perf_counter_ns()
             harvester_tile = tiles_by_index[harvester_idx]
             target_tile = tiles_by_index[target_idx]
-            print(
+            dprint(
                 "Protect harvester timing: trying candidate",
                 harvester_tile.position,
                 "via",
@@ -1910,7 +1911,7 @@ class BuilderStrategyMethodsMixin:
                 }
                 and should_build_harvester
             ):
-                print(
+                dprint(
                     "Protect harvester timing: resource-tile check",
                     f"{elapsed_ms(resource_tile_check_start_ns):.3f} ms",
                 )
@@ -1922,27 +1923,27 @@ class BuilderStrategyMethodsMixin:
                     move_towards=move_towards,
                     attack_enemy_passable=False,
                 ):
-                    print(
+                    dprint(
                         "Protect harvester timing: harvester build_at",
                         f"{elapsed_ms(build_start_ns):.3f} ms",
                     )
-                    print(
+                    dprint(
                         "Protect harvester timing: candidate total",
                         f"{elapsed_ms(candidate_start_ns):.3f} ms",
                     )
-                    print(
+                    dprint(
                         "Protect harvester timing: total",
                         f"{elapsed_ms(total_start_ns):.3f} ms",
                     )
                     return True
-                print(
+                dprint(
                     "Protect harvester timing: harvester build_at",
                     f"{elapsed_ms(build_start_ns):.3f} ms",
                 )
                 if self.round_stopwatch.check_overtime():
                     break
                 continue
-            print(
+            dprint(
                 "Protect harvester timing: resource-tile check",
                 f"{elapsed_ms(resource_tile_check_start_ns):.3f} ms",
             )
@@ -1958,7 +1959,7 @@ class BuilderStrategyMethodsMixin:
                     EntityType.CONVEYOR,
                     harvester_direction,
                 )
-            print(
+            dprint(
                 "Protect harvester timing: supplier plan",
                 f"{elapsed_ms(supplier_plan_start_ns):.3f} ms",
             )
@@ -1984,7 +1985,7 @@ class BuilderStrategyMethodsMixin:
                         if self.round_stopwatch.check_overtime():
                             break
                         continue
-                print(
+                dprint(
                     "Protect harvester timing: conveyor retarget",
                     f"{elapsed_ms(retarget_start_ns):.3f} ms",
                 )
@@ -1998,20 +1999,20 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=False,
                     facing_direction=supplier_target,
                 ):
-                    print(
+                    dprint(
                         "Protect harvester timing: conveyor build_at",
                         f"{elapsed_ms(build_start_ns):.3f} ms",
                     )
-                    print(
+                    dprint(
                         "Protect harvester timing: candidate total",
                         f"{elapsed_ms(candidate_start_ns):.3f} ms",
                     )
-                    print(
+                    dprint(
                         "Protect harvester timing: total",
                         f"{elapsed_ms(total_start_ns):.3f} ms",
                     )
                     return True
-                print(
+                dprint(
                     "Protect harvester timing: conveyor build_at",
                     f"{elapsed_ms(build_start_ns):.3f} ms",
                 )
@@ -2025,25 +2026,25 @@ class BuilderStrategyMethodsMixin:
                     attack_enemy_passable=False,
                     target_pos=supplier_target,
                 ):
-                    print(
+                    dprint(
                         "Protect harvester timing: bridge build_at",
                         f"{elapsed_ms(build_start_ns):.3f} ms",
                     )
-                    print(
+                    dprint(
                         "Protect harvester timing: candidate total",
                         f"{elapsed_ms(candidate_start_ns):.3f} ms",
                     )
-                    print(
+                    dprint(
                         "Protect harvester timing: total",
                         f"{elapsed_ms(total_start_ns):.3f} ms",
                     )
                     return True
-                print(
+                dprint(
                     "Protect harvester timing: bridge build_at",
                     f"{elapsed_ms(build_start_ns):.3f} ms",
                 )
 
-            print(
+            dprint(
                 "Protect harvester timing: candidate total",
                 f"{elapsed_ms(candidate_start_ns):.3f} ms",
             )
@@ -2051,7 +2052,7 @@ class BuilderStrategyMethodsMixin:
             if self.round_stopwatch.check_overtime():
                 break
 
-        print(
+        dprint(
             "Protect harvester timing: total",
             f"{elapsed_ms(total_start_ns):.3f} ms",
         )
@@ -2465,7 +2466,7 @@ class BuilderStrategyMethodsMixin:
                 break
 
         if not candidate_entries and attempted_target_positions:
-            print(
+            dprint(
                 "Build missing supply link: no valid conveyor or bridge for",
                 attempted_target_positions,
             )
@@ -2540,7 +2541,7 @@ class BuilderStrategyMethodsMixin:
 
         def finish_with_harvester_target(result: bool, harvester_tile) -> bool:
             if result:
-                print("Build harvester strategy target:", harvester_tile.position)
+                dprint("Build harvester strategy target:", harvester_tile.position)
             return result
 
         def get_harvester_best_supply_idx(harvester_idx: int) -> int | None:
@@ -5419,7 +5420,7 @@ class BuilderStrategyMethodsMixin:
             target_tile = tiles_by_index[target_idx]
             if target_tile.position == current_pos:
                 if move_towards and step_off_current_build_tile(target_tile):
-                    print(
+                    dprint(
                         "Build enemy supplied turret: step off",
                         target_tile.position,
                     )
@@ -5463,7 +5464,7 @@ class BuilderStrategyMethodsMixin:
                     EntityType.GUNNER,
                     EntityType.SENTINEL,
                 }:
-                    print(
+                    dprint(
                         "Build enemy supplied turret: built",
                         self.last_built_entity_type.value,
                         "at",
@@ -5475,14 +5476,14 @@ class BuilderStrategyMethodsMixin:
                     current_pos.distance_squared(target_tile.position)
                     > BUILDER_ACTION_RADIUS_SQ
                 ):
-                    print(
+                    dprint(
                         "Build enemy supplied turret: move toward",
                         target_tile.position,
                         "for",
                         build_entity_type.value,
                     )
                 else:
-                    print(
+                    dprint(
                         "Build enemy supplied turret: hold for",
                         target_tile.position,
                         "with",
@@ -5648,7 +5649,7 @@ class BuilderStrategyMethodsMixin:
                 attack_enemy_passable=False,
                 facing_direction=conveyor_direction,
             ):
-                print(
+                dprint(
                     "Gunner next to enemy core: feed adjacent",
                     conveyor_target_tile.building.entity_type.value,
                     conveyor_target_tile.position,
@@ -5766,7 +5767,7 @@ class BuilderStrategyMethodsMixin:
 
             if target_tile.position == current_pos:
                 if move_towards and step_off_current_build_tile(target_tile):
-                    print(
+                    dprint(
                         "Gunner next to enemy core: step off",
                         target_tile.position,
                     )
@@ -5783,7 +5784,7 @@ class BuilderStrategyMethodsMixin:
                 facing_direction=gunner_direction,
             ):
                 if self.last_built_entity_type == EntityType.GUNNER:
-                    print(
+                    dprint(
                         "Gunner next to enemy core: built at",
                         target_tile.position,
                         "facing",
@@ -5793,12 +5794,12 @@ class BuilderStrategyMethodsMixin:
                     current_pos.distance_squared(target_tile.position)
                     > BUILDER_ACTION_RADIUS_SQ
                 ):
-                    print(
+                    dprint(
                         "Gunner next to enemy core: move toward",
                         target_tile.position,
                     )
                 else:
-                    print(
+                    dprint(
                         "Gunner next to enemy core: hold for",
                         target_tile.position,
                     )
@@ -6232,7 +6233,7 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         move_mode = HARASSMENT_ENEMY_CORE_MOVER
 
-        print(
+        dprint(
             f"s_move_toward_enemy_core ctx: "
             f"current={current_pos} "
             f"enemy_core_center={enemy_core_center_pos} "
@@ -6273,7 +6274,7 @@ class BuilderStrategyMethodsMixin:
                 and current_path[0].position == current_pos
                 and current_path[-1].position == move_target_pos
             )
-            print(
+            dprint(
                 f"move_toward path: reusable={path_reusable} "
                 f"len={len(current_path) if current_path else 0}"
             )
@@ -6382,7 +6383,7 @@ class BuilderStrategyMethodsMixin:
                 default=None,
             )
             self.round_stopwatch.log_time(f"pick ring tgt={target_pos}")
-            print(f"s_move_toward_enemy_core: known core, target={target_pos}")
+            dprint(f"s_move_toward_enemy_core: known core, target={target_pos}")
             if target_pos is None:
                 return False
             return move_toward_enemy_core_target(target_pos)
@@ -6392,7 +6393,7 @@ class BuilderStrategyMethodsMixin:
             and not self.map.u_calc_core_center_positions()
         ):
             self.round_stopwatch.log_time("no symmetry cands")
-            print("s_move_toward_enemy_core: no symmetry candidates")
+            dprint("s_move_toward_enemy_core: no symmetry candidates")
             return False
         self.round_stopwatch.log_time(
             f"symmetry cands={len(self.map.enemy_core_center_pos_candidates)}"
@@ -6410,7 +6411,7 @@ class BuilderStrategyMethodsMixin:
                 default=None,
             )
         self.round_stopwatch.log_time(f"pick symmetry tgt={target_pos}")
-        print(f"s_move_toward_enemy_core: symmetry target={target_pos}")
+        dprint(f"s_move_toward_enemy_core: symmetry target={target_pos}")
         if target_pos is None:
             return False
 

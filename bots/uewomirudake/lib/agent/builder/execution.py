@@ -1,5 +1,6 @@
 from lib.agent.builder.strategies import STRATEGIES
 # from lib.debug import Stopwatch
+from lib.debug.output import dprint
 
 
 class BuilderExecutionMixin:
@@ -53,7 +54,7 @@ class BuilderExecutionMixin:
 
             if acted:
                 self.last_turn_completed = True
-                print(f"Executed strategy: {strategy_method.__name__}")
+                dprint(f"Executed strategy: {strategy_method.__name__}")
                 # stopwatch.log()
                 self.after_strategy()
                 return True

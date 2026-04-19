@@ -10,6 +10,7 @@ from lib.agent.constants import (
     LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE,
     TURRET_TARGET_PRIORITY_RANK,
 )
+from lib.debug.output import dprint
 from lib.map.constants import SUPPLY_LINK_TYPES
 
 
@@ -270,7 +271,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if direction is None:
             direction = self.ct.get_direction()
         if direction is None:
-            print(
+            dprint(
                 "Gunner next target:",
                 None,
                 "building:",
@@ -303,7 +304,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
             vision_radius_sq,
         )
         target_tile = self.u_get_gunner_target_tile(ray_tiles, current_round)
-        print(
+        dprint(
             "Gunner next target:",
             None if target_tile is None else target_tile.position,
             "building:",

@@ -2,6 +2,7 @@ from cambc import Controller, EntityType, Environment, Position
 
 from lib.agent import Agent
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
+from lib.debug.output import dprint
 from lib.map import Map
 from lib.map.types import SupplyChainLabel
 
@@ -95,23 +96,23 @@ class BuilderAgent(
         self.marker_target_pos = None
         self.marker_has_explicit_target = False
         if self.map.is_map_known:
-            print(
+            dprint(
                 f"Inferred map: {self.map.known_map_path} "
                 f"(map inference loading took "
                 f"{self.map.map_inference_time_ns / 1_000_000:.2f} ms)."
             )
         if self.map.map_json_loaded_print_pending:
-            print(
+            dprint(
                 "Finished loading parsed map data into map object. "
                 f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
             )
             self.map.map_json_loaded_print_pending = False
-        print(f"Builder strategy: {self.u_get_strategy_name()}")
+        dprint(f"Builder strategy: {self.u_get_strategy_name()}")
 
         handled = self.u_execute_strategy()
         finished_loading_map = self.map.u_update_map()
         if finished_loading_map:
-            print(
+            dprint(
                 "Finished loading parsed map data into map object. "
                 f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
             )

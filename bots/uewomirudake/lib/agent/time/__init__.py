@@ -8,6 +8,7 @@ from lib.agent.time.provider import (
     SubmissionTimeProvider,
     TimeProvider,
 )
+from lib.debug.output import tprint
 
 ALLOCATED_MAP_TIME_MS = 0.75
 ALLOCATED_BOT_TIME_MS = 0.8
@@ -48,11 +49,11 @@ class RoundStopwatch:
 
     def end_round(self):
         active_time = self.time_provider.get_active_time()
-        print(f"[end_round] {active_time:.2f} mus")
+        tprint(f"[end_round] {active_time:.2f} mus")
 
     def log_time(self, label: str = "log_time"):
         active_time = self.time_provider.get_active_time()
-        print(f"[{label}] {active_time:.2f} mus")
+        tprint(f"[{label}] {active_time:.2f} mus")
 
     def check_overtime_interval(self):
         if self.ct is None:
@@ -65,7 +66,7 @@ class RoundStopwatch:
 
         active_cpu_time = self.time_provider.get_active_time()
         caller = inspect.currentframe().f_back.f_code.co_name
-        print(f"[{caller}] {active_cpu_time:.2f} mus")
+        tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
@@ -79,7 +80,7 @@ class RoundStopwatch:
 
         active_cpu_time = self.time_provider.get_active_time()
         caller = inspect.currentframe().f_back.f_code.co_name
-        print(f"[{caller}] {active_cpu_time:.2f} mus")
+        tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
         return (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS

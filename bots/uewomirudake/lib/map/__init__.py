@@ -42,6 +42,7 @@ from lib.map.tile import Tile
 from lib.map.types import SupplyChainLabel
 
 # from lib.debug import Stopwatch
+from lib.debug.output import dprint
 
 
 PARSED_TILE_TYPE_INACTIVE = 0
@@ -2496,7 +2497,7 @@ class Map:
         if not candidate_maps:
             return
         if len(candidate_maps) > 1:
-            print(f"Map inference ambiguous for {key}: {candidate_maps}")
+            dprint(f"Map inference ambiguous for {key}: {candidate_maps}")
             return
 
         inferred_map_path = candidate_maps[0]
@@ -2504,7 +2505,7 @@ class Map:
         if parsed_map_data is None:
             parsed_map_path = self.u_get_parsed_map_data_path(inferred_map_path)
             if not parsed_map_path.exists():
-                print(
+                dprint(
                     f"Parsed map data missing for inferred map {inferred_map_path}: "
                     f"{parsed_map_path}"
                 )

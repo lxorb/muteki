@@ -22,6 +22,7 @@ from lib.agent.constants import (
     NONDIRECTIONAL_BUILDING_TYPES,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
 )
+from lib.debug.output import dprint
 from lib.map.constants import DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
@@ -699,7 +700,7 @@ class BuilderNavigationMixin:
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             return False
 
-        print("Move to target:", pos)
+        dprint("Move to target:", pos)
 
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
@@ -868,7 +869,7 @@ class BuilderNavigationMixin:
         direction: Direction,
         target_pos: Position,
     ) -> None:
-        print(
+        dprint(
             "Move target:",
             target_pos,
             "via",
@@ -2249,7 +2250,7 @@ class BuilderNavigationMixin:
             )
         )
 
-        print("Move to target:", pos)
+        dprint("Move to target:", pos)
 
         if reach_builder_action_range:
             next_tile = self.map.u_get_next_step_to_builder_action_range_astar(
@@ -2358,7 +2359,7 @@ class BuilderNavigationMixin:
         def log_step(label: str) -> None:
             nonlocal last_step_ns
             now_ns = time.perf_counter_ns()
-            print(
+            dprint(
                 "Build_at timing:",
                 label,
                 f"{(now_ns - last_step_ns) / 1_000_000:.3f} ms",
@@ -2367,7 +2368,7 @@ class BuilderNavigationMixin:
 
         def finish(result: bool, label: str) -> bool:
             log_step(label)
-            print(
+            dprint(
                 "Build_at timing: total",
                 f"{(time.perf_counter_ns() - total_start_ns) / 1_000_000:.3f} ms",
             )
@@ -2414,7 +2415,7 @@ class BuilderNavigationMixin:
 
         if building_type in CONVEYOR_ENTITY_TYPES and not allow_conveyor_building:
             return finish(False, "reject conveyor build")
-        print(
+        dprint(
             "Build target:",
             building_type,
             "at",
