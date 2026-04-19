@@ -47080,7 +47080,7 @@
     "55d69169-9544-491a-a450-0d54d07e0c27": {
         "chemistry_class": {
             "wins": 11,
-            "losses": 7,
+            "losses": 8,
             "6db5b9c3-60cf-4246-984f-3e01363ccce4": {
                 "win": true,
                 "condition": "Titanium Collected",
@@ -47188,6 +47188,12 @@
                 "condition": "Axionite Collected",
                 "turns": 2000,
                 "time": 1776591439
+            },
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1718,
+                "time": 1776623106
             }
         },
         "chess": {
@@ -50229,7 +50235,7 @@
             }
         },
         "wasteland_oasis": {
-            "wins": 9,
+            "wins": 10,
             "losses": 9,
             "3064aecc-9a2c-46ce-b2b4-13908a97e6af": {
                 "win": true,
@@ -50338,6 +50344,12 @@
                 "condition": "Titanium Collected",
                 "turns": 2000,
                 "time": 1776590079
+            },
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776623106
             }
         },
         "default_large1": {
@@ -50926,7 +50938,7 @@
         },
         "battlebot": {
             "wins": 7,
-            "losses": 11,
+            "losses": 12,
             "5d88d65a-7fd5-4aba-bc6a-a73a4b82d3e7": {
                 "win": false,
                 "condition": "Core Destroyed",
@@ -51034,6 +51046,12 @@
                 "condition": "Titanium Collected",
                 "turns": 2000,
                 "time": 1776593665
+            },
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 494,
+                "time": 1776623106
             }
         },
         "clash_arena": {
@@ -51615,7 +51633,7 @@
             }
         },
         "castle_keep": {
-            "wins": 9,
+            "wins": 10,
             "losses": 9,
             "ef21fa91-25f6-49ca-a2cd-e874637bf86d": {
                 "win": true,
@@ -51724,6 +51742,12 @@
                 "condition": "Core Destroyed",
                 "turns": 245,
                 "time": 1776592424
+            },
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 233,
+                "time": 1776623106
             }
         },
         "hooks": {
@@ -53709,7 +53733,7 @@
             }
         },
         "the_great_divide": {
-            "wins": 13,
+            "wins": 14,
             "losses": 5,
             "794aeceb-c9ed-4ba3-8f76-d6418d6f0852": {
                 "win": false,
@@ -53818,6 +53842,12 @@
                 "condition": "Core Destroyed",
                 "turns": 197,
                 "time": 1776609133
+            },
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 183,
+                "time": 1776623106
             }
         },
         "galaxy": {

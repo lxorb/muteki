@@ -1,0 +1,54 @@
+{
+    "55d69169-9544-491a-a450-0d54d07e0c27": {
+        "castle_keep": {
+            "wins": 1,
+            "losses": 0,
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 233,
+                "time": 1776623106
+            }
+        },
+        "the_great_divide": {
+            "wins": 1,
+            "losses": 0,
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 183,
+                "time": 1776623106
+            }
+        },
+        "battlebot": {
+            "wins": 0,
+            "losses": 1,
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 494,
+                "time": 1776623106
+            }
+        },
+        "wasteland_oasis": {
+            "wins": 1,
+            "losses": 0,
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776623106
+            }
+        },
+        "chemistry_class": {
+            "wins": 0,
+            "losses": 1,
+            "18cfb027-69a7-4230-880f-6c48107e645e": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1718,
+                "time": 1776623106
+            }
+        }
+    }
+}
