@@ -3915,6 +3915,8 @@ class BuilderStrategyMethodsMixin:
             and current_tile.building.hp <= 18
         ):
             for harvester_tile in self.map.enemy_harvesters_in_vision:
+                if harvester_tile.environment != Environment.ORE_TITANIUM:
+                    continue
                 if harvester_tile.position.distance_squared(current_pos) == 1:
                     return bool(
                         self.u_attack_passable(
