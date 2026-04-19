@@ -44,7 +44,6 @@ from lib.map.types import SupplyChainLabel
 # from lib.debug import Stopwatch
 from lib.debug.output import dprint
 
-
 PARSED_TILE_TYPE_INACTIVE = 0
 PARSED_TILE_TYPE_EMPTY = 1
 PARSED_TILE_TYPE_WALL = 2
@@ -69,9 +68,9 @@ _SCOUT_SEEN_NEIGHBOR_OFFSETS = (
 )
 
 
-def _build_scout_new_vision_offsets_by_direction() -> dict[
-    Direction, tuple[tuple[int, int], ...]
-]:
+def _build_scout_new_vision_offsets_by_direction() -> (
+    dict[Direction, tuple[tuple[int, int], ...]]
+):
     radius_sq = GameConstants.BUILDER_BOT_VISION_RADIUS_SQ
     radius = int(math.sqrt(radius_sq)) + 1
     offsets_by_direction: dict[Direction, tuple[tuple[int, int], ...]] = {}
@@ -83,11 +82,9 @@ def _build_scout_new_vision_offsets_by_direction() -> dict[
             for dy in range(-radius, radius + 1):
                 if dx * dx + dy * dy > radius_sq:
                     continue
-                if (
-                    (dx + step_dx) * (dx + step_dx)
-                    + (dy + step_dy) * (dy + step_dy)
-                    <= radius_sq
-                ):
+                if (dx + step_dx) * (dx + step_dx) + (dy + step_dy) * (
+                    dy + step_dy
+                ) <= radius_sq:
                     continue
                 offsets.append((dx, dy))
         offsets_by_direction[direction] = tuple(offsets)
@@ -179,10 +176,9 @@ def _resolve_bot_root() -> Path:
         if candidate_root in seen_roots:
             continue
         seen_roots.add(candidate_root)
-        if (
-            (candidate_root / "fast_map_inference.json").exists()
-            and (candidate_root / "parsed_maps").is_dir()
-        ):
+        if (candidate_root / "fast_map_inference.json").exists() and (
+            candidate_root / "parsed_maps"
+        ).is_dir():
             return candidate_root
 
     return Path.cwd()
@@ -358,9 +354,7 @@ class Map:
         )
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.vision_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
-        self.vision_action_goal_idx_by_index = array(
-            "h", [-1]
-        ) * self.INITIAL_MAP_SIZE
+        self.vision_action_goal_idx_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.vision_action_first_step_by_index = (
             array("h", [-1]) * self.INITIAL_MAP_SIZE
         )
@@ -388,9 +382,7 @@ class Map:
             array("H", [0]) * self.INITIAL_MAP_SIZE
         )
         self.enemy_turret_target_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.enemy_gunner_ray_first_target_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
+        self.enemy_gunner_ray_first_target_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_spin_gunner_ray_first_target_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
@@ -399,9 +391,7 @@ class Map:
         self.enemy_gunner_ray_first_target_touched_indices: list[int] = []
         self.enemy_spin_gunner_ray_first_target_touched_indices: list[int] = []
         self.core_distance_enqueued_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.core_distance_seed_enqueued_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
+        self.core_distance_seed_enqueued_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_core_source_indices: tuple[int, ...] = ()
         self.enemy_core_source_indices: tuple[int, ...] = ()
         self.own_core_source_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -437,9 +427,7 @@ class Map:
         self.visible_marker_target_index_by_owner_mod64 = (
             array("h", [-1]) * MARKER_OWNER_MODULO
         )
-        self.visible_marker_age_by_owner_mod64 = array(
-            "b", [-1]
-        ) * MARKER_OWNER_MODULO
+        self.visible_marker_age_by_owner_mod64 = array("b", [-1]) * MARKER_OWNER_MODULO
         self.visible_marker_has_explicit_target_by_owner_mod64 = bytearray(
             MARKER_OWNER_MODULO
         )
@@ -462,9 +450,7 @@ class Map:
         )
         self.own_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.enemy_supply_chain_labels_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.own_supply_chain_parent_by_index = array(
-            "H", range(self.INITIAL_MAP_SIZE)
-        )
+        self.own_supply_chain_parent_by_index = array("H", range(self.INITIAL_MAP_SIZE))
         self.enemy_supply_chain_parent_by_index = array(
             "H", range(self.INITIAL_MAP_SIZE)
         )
@@ -496,12 +482,8 @@ class Map:
         self.enemy_supply_chain_max_euclidean_dist_to_self_by_index = (
             array("f", [0.0]) * self.INITIAL_MAP_SIZE
         )
-        self.own_supply_chain_has_titanium_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
-        self.enemy_supply_chain_has_titanium_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
+        self.own_supply_chain_has_titanium_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.enemy_supply_chain_has_titanium_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.own_supply_chain_has_raw_axionite_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
@@ -953,12 +935,10 @@ class Map:
             max_euclidean_dist_to_self_by_index[second_root],
         )
         has_titanium_by_index[first_root] |= has_titanium_by_index[second_root]
-        has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[
+        has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[second_root]
+        has_refined_axionite_by_index[first_root] |= has_refined_axionite_by_index[
             second_root
         ]
-        has_refined_axionite_by_index[first_root] |= (
-            has_refined_axionite_by_index[second_root]
-        )
         if feeds_own_turret_by_index is not None:
             feeds_own_turret_by_index[first_root] |= feeds_own_turret_by_index[
                 second_root
@@ -1095,7 +1075,9 @@ class Map:
         self,
         idx: int,
     ) -> bool:
-        for source_idx in self.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+        for (
+            source_idx
+        ) in self.enemy_supply_link_source_indices_by_target_index_in_vision.get(
             idx,
             (),
         ):
@@ -1403,12 +1385,8 @@ class Map:
         ):
             return
 
-        self.enemy_core_center_pos_candidates = (
-            pruned_enemy_core_center_pos_candidates
-        )
-        remaining_positions = {
-            pos for _, pos in self.enemy_core_center_pos_candidates
-        }
+        self.enemy_core_center_pos_candidates = pruned_enemy_core_center_pos_candidates
+        remaining_positions = {pos for _, pos in self.enemy_core_center_pos_candidates}
         if len(remaining_positions) == 1:
             self.enemy_core_center_pos = next(iter(remaining_positions))
             self.enemy_core_source_indices = self.u_set_core_source_indices(
@@ -1546,7 +1524,10 @@ class Map:
             if not (0 <= target_x < width and 0 <= target_y < height):
                 continue
             target_idx = self.u_to_index_xy(target_x, target_y)
-            if last_seen_turn_by_index[target_idx] != -1 or scout_seen_by_index[target_idx]:
+            if (
+                last_seen_turn_by_index[target_idx] != -1
+                or scout_seen_by_index[target_idx]
+            ):
                 continue
             gain += 1
 
@@ -1713,7 +1694,8 @@ class Map:
             if tile.environment == Environment.ORE_TITANIUM:
                 if building.id is None or (
                     building.team == own_team
-                    and building.entity_type in {
+                    and building.entity_type
+                    in {
                         EntityType.ROAD,
                         EntityType.CONVEYOR,
                         EntityType.ARMOURED_CONVEYOR,
@@ -1729,7 +1711,8 @@ class Map:
             if tile.environment == Environment.ORE_AXIONITE:
                 if building.id is None or (
                     building.team == own_team
-                    and building.entity_type in {
+                    and building.entity_type
+                    in {
                         EntityType.ROAD,
                         EntityType.CONVEYOR,
                         EntityType.ARMOURED_CONVEYOR,
@@ -1854,9 +1837,9 @@ class Map:
         if symmetry_mode is not None and self.symmetry_mode is None:
             self.u_apply_marker_symmetry_hint(symmetry_mode)
 
-        marker_age = (
-            (self.current_round & (MARKER_ROUND_MODULO - 1)) - round_mod
-        ) & (MARKER_ROUND_MODULO - 1)
+        marker_age = ((self.current_round & (MARKER_ROUND_MODULO - 1)) - round_mod) & (
+            MARKER_ROUND_MODULO - 1
+        )
         if marker_age > MARKER_MAXIMUM_AGE or not self.u_is_index_active(target_idx):
             return
 
@@ -1965,7 +1948,9 @@ class Map:
             if harvester_tile.environment != Environment.ORE_TITANIUM:
                 continue
 
-            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(harvester_tile.index):
+            for adjacent_idx in self.u_iter_cardinal_neighbor_indices(
+                harvester_tile.index
+            ):
                 if candidate_mark_by_index[adjacent_idx]:
                     continue
 
@@ -2063,7 +2048,11 @@ class Map:
         def is_core_center_tile(tile: Tile, x: int, y: int) -> bool:
             if tile.building.entity_type != core_entity_type:
                 return False
-            if own_core_center_pos is not None and x == own_core_center_pos.x and y == own_core_center_pos.y:
+            if (
+                own_core_center_pos is not None
+                and x == own_core_center_pos.x
+                and y == own_core_center_pos.y
+            ):
                 return True
             if (
                 enemy_core_center_pos is not None
@@ -2071,10 +2060,7 @@ class Map:
                 and y == enemy_core_center_pos.y
             ):
                 return True
-            if (
-                tile.last_seen_turn == current_round
-                and tile.building.id is not None
-            ):
+            if tile.last_seen_turn == current_round and tile.building.id is not None:
                 tile_core_center_pos = self.ct.get_position(tile.building.id)
                 return tile_core_center_pos.x == x and tile_core_center_pos.y == y
             return False
@@ -2221,7 +2207,11 @@ class Map:
         ore_type: Environment,
         consider_diagonal: bool = OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     ) -> bool:
-        iter_fn = self.u_iter_adjacent_all_positions if consider_diagonal else self.u_iter_adjacent_cardinal_positions
+        iter_fn = (
+            self.u_iter_adjacent_all_positions
+            if consider_diagonal
+            else self.u_iter_adjacent_cardinal_positions
+        )
         for adjacent_pos in iter_fn(pos):
             if self.u_get_pos_tile(adjacent_pos).environment == ore_type:
                 return True
@@ -2424,7 +2414,8 @@ class Map:
             if tile.environment == Environment.ORE_TITANIUM:
                 if building.id is None or (
                     building.team == self.own_team
-                    and building.entity_type in {
+                    and building.entity_type
+                    in {
                         EntityType.ROAD,
                         EntityType.CONVEYOR,
                         EntityType.ARMOURED_CONVEYOR,
@@ -2440,7 +2431,8 @@ class Map:
             if tile.environment == Environment.ORE_AXIONITE:
                 if building.id is None or (
                     building.team == self.own_team
-                    and building.entity_type in {
+                    and building.entity_type
+                    in {
                         EntityType.ROAD,
                         EntityType.CONVEYOR,
                         EntityType.ARMOURED_CONVEYOR,
@@ -2535,7 +2527,11 @@ class Map:
         self.known_map_path = inferred_map_path
         self.parsed_map_tile_type_by_index = parsed_map_data["tile_type_by_index"]
         self.parsed_map_own_core_dist_by_index = parsed_map_data[
-            "core_a_dist_by_index" if self.own_team == Team.A else "core_b_dist_by_index"
+            (
+                "core_a_dist_by_index"
+                if self.own_team == Team.A
+                else "core_b_dist_by_index"
+            )
         ]
         self.parsed_titanium_indices = parsed_map_data[own_resource_titanium_key]
         self.parsed_axionite_indices = parsed_map_data[own_resource_axionite_key]
@@ -2851,7 +2847,9 @@ class Map:
             if self.round_stopwatch.check_overtime_interval():
                 break
 
-    def u_enemy_titanium_harvester_has_adjacent_own_turret(self, harvester_tile) -> bool:
+    def u_enemy_titanium_harvester_has_adjacent_own_turret(
+        self, harvester_tile
+    ) -> bool:
         if (
             harvester_tile.building.team != self.enemy_team
             or harvester_tile.environment != Environment.ORE_TITANIUM
@@ -2890,14 +2888,9 @@ class Map:
             if target_tile.environment == Environment.WALL:
                 break
 
-            if (
-                target_tile.building.entity_type == EntityType.HARVESTER
-                and (
-                    source_pos.distance_squared(target_tile.position) <= 2
-                    or self.u_enemy_titanium_harvester_has_adjacent_own_turret(
-                        target_tile
-                    )
-                )
+            if target_tile.building.entity_type == EntityType.HARVESTER and (
+                source_pos.distance_squared(target_tile.position) <= 2
+                or self.u_enemy_titanium_harvester_has_adjacent_own_turret(target_tile)
             ):
                 break
 
@@ -3398,7 +3391,10 @@ class Map:
                             and target_building_entity_type in RESOURCE_TARGET_TYPES
                         ):
                             can_preserve = True
-                        elif target_building_entity_type in preservable_visible_entity_types:
+                        elif (
+                            target_building_entity_type
+                            in preservable_visible_entity_types
+                        ):
                             can_preserve = (
                                 target_idx in supply_link_target_indices_in_vision
                             )
@@ -3438,8 +3434,7 @@ class Map:
             can_preserve = False
             if tile.environment != Environment.WALL:
                 if (
-                    building_entity_type == EntityType.CORE
-                    and building.team == team
+                    building_entity_type == EntityType.CORE and building.team == team
                 ) or core_source_by_index[tile_idx]:
                     can_preserve = True
                 elif building.id is None:
@@ -3501,7 +3496,10 @@ class Map:
                             and target_building_entity_type in RESOURCE_TARGET_TYPES
                         ):
                             can_preserve = True
-                        elif target_building_entity_type in preservable_visible_entity_types:
+                        elif (
+                            target_building_entity_type
+                            in preservable_visible_entity_types
+                        ):
                             can_preserve = (
                                 target_idx in supply_link_target_indices_in_vision
                             )
@@ -3577,7 +3575,9 @@ class Map:
             has_refined_axionite_by_index = (
                 self.enemy_supply_chain_has_refined_axionite_by_index
             )
-            feeds_own_turret_by_index = self.enemy_supply_chain_feeds_own_turret_by_index
+            feeds_own_turret_by_index = (
+                self.enemy_supply_chain_feeds_own_turret_by_index
+            )
             touched_indices = self.enemy_supply_chain_touched_indices
             turret_team = own_team
 
@@ -3624,9 +3624,9 @@ class Map:
             has_raw_axionite_by_index[first_root] |= has_raw_axionite_by_index[
                 second_root
             ]
-            has_refined_axionite_by_index[first_root] |= (
-                has_refined_axionite_by_index[second_root]
-            )
+            has_refined_axionite_by_index[first_root] |= has_refined_axionite_by_index[
+                second_root
+            ]
             if feeds_own_turret_by_index is not None:
                 feeds_own_turret_by_index[first_root] |= feeds_own_turret_by_index[
                     second_root
@@ -4116,17 +4116,11 @@ class Map:
 
             building = adjacent_tile.building
             building_type = building.entity_type
-            if (
-                building.id is not None
-                and building.team != own_team
-            ):
+            if building.id is not None and building.team != own_team:
                 continue
-            if (
-                building.team == own_team
-                and (
-                    building_type == EntityType.HARVESTER
-                    or building_type in WEAPON_TARGET_TYPES
-                )
+            if building.team == own_team and (
+                building_type == EntityType.HARVESTER
+                or building_type in WEAPON_TARGET_TYPES
             ):
                 continue
 
@@ -4725,10 +4719,7 @@ class Map:
                     index_x_by_index[adjacent_idx],
                     index_y_by_index[adjacent_idx],
                 )
-                if (
-                    predecessor_score is None
-                    or candidate_score < predecessor_score
-                ):
+                if predecessor_score is None or candidate_score < predecessor_score:
                     predecessor_score = candidate_score
                     predecessor_idx = adjacent_idx
 
@@ -4791,7 +4782,7 @@ class Map:
         u_get_own_core_dist_by_index = self.u_get_own_core_dist_by_index
         heappush_local = heappush
         heappop_local = heappop
-        check_overtime_interval = self.round_stopwatch.check_overtime_interval
+        check_overtime = self.round_stopwatch.check_overtime
         self.round_stopwatch.log_time("bridge_join locals bound")
 
         self.path_epoch += 1
@@ -4835,7 +4826,7 @@ class Map:
         while frontier:
             overtime_check_countdown -= 1
             if overtime_check_countdown == 0:
-                if check_overtime_interval():
+                if check_overtime():
                     break
                 overtime_check_countdown = 16
 
@@ -4878,10 +4869,7 @@ class Map:
                         current_x,
                         current_y,
                     )
-                    if (
-                        best_bridge_score is None
-                        or candidate_score < best_bridge_score
-                    ):
+                    if best_bridge_score is None or candidate_score < best_bridge_score:
                         best_bridge_score = candidate_score
                         best_bridge_idx = current_idx
                 continue
@@ -4939,10 +4927,7 @@ class Map:
                     heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
                 )
                 lower_bound = next_cost + heuristic
-                if (
-                    best_bridge_score is not None
-                    and lower_bound > best_bridge_score[0]
-                ):
+                if best_bridge_score is not None and lower_bound > best_bridge_score[0]:
                     continue
 
                 heappush_local(
@@ -4959,8 +4944,7 @@ class Map:
                 )
 
         self.round_stopwatch.log_time(
-            f"bridge_join astar done pops={pops} "
-            f"best_idx={best_bridge_idx}"
+            f"bridge_join astar done pops={pops} " f"best_idx={best_bridge_idx}"
         )
         if best_bridge_idx < 0 or best_bridge_score is None:
             return None
@@ -5195,10 +5179,7 @@ class Map:
                         current_x,
                         current_y,
                     )
-                    if (
-                        best_bridge_score is None
-                        or candidate_score < best_bridge_score
-                    ):
+                    if best_bridge_score is None or candidate_score < best_bridge_score:
                         best_bridge_score = candidate_score
                         best_bridge_idx = current_idx
                 continue
@@ -5256,10 +5237,7 @@ class Map:
                     heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
                 )
                 lower_bound = next_cost + heuristic
-                if (
-                    best_bridge_score is not None
-                    and lower_bound > best_bridge_score[0]
-                ):
+                if best_bridge_score is not None and lower_bound > best_bridge_score[0]:
                     continue
 
                 heappush_local(
@@ -5299,11 +5277,13 @@ class Map:
 
         source_idx = self.u_to_index(source_pos)
         target_idx = self.u_to_index(target_pos)
-        direct_next_tile = self._u_get_next_step_to_builder_action_range_vision_reachable(
-            source_idx,
-            target_idx,
-            avoid_enemy_turrets=avoid_enemy_turrets,
-            avoid_other_builder_bots=avoid_other_builder_bots,
+        direct_next_tile = (
+            self._u_get_next_step_to_builder_action_range_vision_reachable(
+                source_idx,
+                target_idx,
+                avoid_enemy_turrets=avoid_enemy_turrets,
+                avoid_other_builder_bots=avoid_other_builder_bots,
+            )
         )
         if direct_next_tile is not None:
             return direct_next_tile
@@ -5436,11 +5416,7 @@ class Map:
             heappush_local(
                 frontier,
                 (
-                    (
-                        heuristic_dx
-                        if heuristic_dx >= heuristic_dy
-                        else heuristic_dy
-                    ),
+                    (heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy),
                     0,
                     0,
                     u_get_own_core_dist_by_index(goal_idx),
@@ -5479,10 +5455,7 @@ class Map:
                 or path_cost_by_index[current_idx] != current_cost
             ):
                 continue
-            if (
-                best_join_score is not None
-                and current_lower_bound > best_join_score[0]
-            ):
+            if best_join_score is not None and current_lower_bound > best_join_score[0]:
                 break
 
             if vision_reachable_turn_by_index[current_idx] == current_round:
@@ -5503,10 +5476,7 @@ class Map:
                         current_x,
                         current_y,
                     )
-                    if (
-                        best_join_score is None
-                        or candidate_score < best_join_score
-                    ):
+                    if best_join_score is None or candidate_score < best_join_score:
                         best_join_score = candidate_score
                         best_join_idx = current_idx
                 continue
@@ -5519,10 +5489,7 @@ class Map:
                 adjacent_idx = self.neighbor_indices_by_index[neighbor_base + offset]
                 if not active_mask_by_index[adjacent_idx]:
                     continue
-                if (
-                    avoid_enemy_turrets
-                    and enemy_turret_target_by_index[adjacent_idx]
-                ):
+                if avoid_enemy_turrets and enemy_turret_target_by_index[adjacent_idx]:
                     continue
                 if not intrinsic_passable_by_index[adjacent_idx]:
                     continue
@@ -5559,10 +5526,7 @@ class Map:
                 lower_bound = next_cost + (
                     heuristic_dx if heuristic_dx >= heuristic_dy else heuristic_dy
                 )
-                if (
-                    best_join_score is not None
-                    and lower_bound > best_join_score[0]
-                ):
+                if best_join_score is not None and lower_bound > best_join_score[0]:
                     continue
 
                 heappush_local(
@@ -5621,7 +5585,10 @@ class Map:
         heappop_local = heappop
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
 
-        if not stop_in_builder_action_range and not intrinsic_passable_by_index[target_idx]:
+        if (
+            not stop_in_builder_action_range
+            and not intrinsic_passable_by_index[target_idx]
+        ):
             return None
 
         self.path_epoch += 1
@@ -5764,15 +5731,12 @@ class Map:
                     first_step_requires_new_road = (
                         first_step_requires_new_road_by_index[current_idx]
                     )
-                if (
-                    seen_epoch_by_index[adjacent_idx] == path_epoch
-                    and (
-                        next_cost > path_cost_by_index[adjacent_idx]
-                        or (
-                            next_cost == path_cost_by_index[adjacent_idx]
-                            and first_step_requires_new_road
-                            >= first_step_requires_new_road_by_index[adjacent_idx]
-                        )
+                if seen_epoch_by_index[adjacent_idx] == path_epoch and (
+                    next_cost > path_cost_by_index[adjacent_idx]
+                    or (
+                        next_cost == path_cost_by_index[adjacent_idx]
+                        and first_step_requires_new_road
+                        >= first_step_requires_new_road_by_index[adjacent_idx]
                     )
                 ):
                     continue
@@ -5891,10 +5855,7 @@ class Map:
             frontier_tile = tiles_by_index[frontier_idx]
             if frontier_tile.last_seen_turn != -1:
                 continue
-            if (
-                avoid_enemy_turrets
-                and enemy_turret_target_by_index[frontier_idx]
-            ):
+            if avoid_enemy_turrets and enemy_turret_target_by_index[frontier_idx]:
                 continue
             if (
                 avoid_other_builder_bots
@@ -5921,10 +5882,7 @@ class Map:
                     index_x_by_index[entry_idx],
                     index_y_by_index[entry_idx],
                 )
-                if (
-                    frontier_entry_score is None
-                    or entry_score < frontier_entry_score
-                ):
+                if frontier_entry_score is None or entry_score < frontier_entry_score:
                     frontier_entry_score = entry_score
                     frontier_entry_idx = entry_idx
 
