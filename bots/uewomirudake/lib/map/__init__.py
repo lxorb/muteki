@@ -54,11 +54,27 @@ PARSED_TILE_TYPE_CORE = 5
 MAP_UPDATE_MIN_REMAINING_MUS = 100
 PRELOADED_MAP_INDEX_STRIDE = 50
 STALE_BUILDER_BOT_PASSABILITY_THRESHOLD = 10
+MARKER_OWNER_MODULO = 64
+MARKER_ROUND_MODULO = 64
+MARKER_MAXIMUM_AGE = 4
 
 MAP_ENVIRONMENT_OTHER = 0
 MAP_ENVIRONMENT_WALL = 1
 MAP_ENVIRONMENT_TITANIUM = 2
 MAP_ENVIRONMENT_AXIONITE = 3
+
+_MARKER_SYMMETRY_SLOTS = {
+    SymmetryMode.ROTATION: 0,
+    SymmetryMode.MIRROR_X: 1,
+    SymmetryMode.MIRROR_Y: 2,
+    None: 3,
+}
+_MARKER_SYMMETRY_BY_SLOT = (
+    SymmetryMode.ROTATION,
+    SymmetryMode.MIRROR_X,
+    SymmetryMode.MIRROR_Y,
+    None,
+)
 
 _SCOUT_SEEN_NEIGHBOR_OFFSETS = (
     *((dx, dy) for dx in range(-1, 2) for dy in range(-1, 2) if dx or dy),
@@ -406,6 +422,15 @@ class Map:
         self.visible_builder_bot_ids_in_vision: set[int] = set()
         self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
         self.visible_building_ids_touched_indices: list[int] = []
+        self.visible_marker_target_index_by_owner_mod64 = (
+            array("h", [-1]) * MARKER_OWNER_MODULO
+        )
+        self.visible_marker_age_by_owner_mod64 = array(
+            "b", [-1]
+        ) * MARKER_OWNER_MODULO
+        self.visible_marker_has_explicit_target_by_owner_mod64 = bytearray(
+            MARKER_OWNER_MODULO
+        )
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.locked_in_titanium_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.all_own_supply_link_target_indices_in_vision = _TouchedIndexMembership(
@@ -614,6 +639,12 @@ class Map:
             self.visible_building_ids_touched_indices,
             self.visible_building_ids_by_index,
             -1,
+        )
+        for marker_owner_mod in range(MARKER_OWNER_MODULO):
+            self.visible_marker_target_index_by_owner_mod64[marker_owner_mod] = -1
+            self.visible_marker_age_by_owner_mod64[marker_owner_mod] = -1
+        self.visible_marker_has_explicit_target_by_owner_mod64[:] = bytes(
+            MARKER_OWNER_MODULO
         )
         self._reset_supply_chain_union_find_arrays(
             self.own_supply_chain_touched_indices,
@@ -1563,6 +1594,7 @@ class Map:
                 self.MARKER_ENTITY_TYPE is not None
                 and self.ct.get_entity_type(building_id) == self.MARKER_ENTITY_TYPE
             ):
+                self.u_process_visible_marker(building_id)
                 continue
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
@@ -1728,6 +1760,119 @@ class Map:
         self.stopwatch.lap("Distances")
 
         self.stopwatch.log()
+
+    def u_encode_marker_value(
+        self,
+        owner_id: int,
+        target_pos: Position | None,
+        has_explicit_target: bool,
+    ) -> int | None:
+        written_pos = target_pos if has_explicit_target else self.own_core_center_pos
+        if written_pos is None or not self.u_is_in_bounds(written_pos):
+            return None
+
+        symmetry_slot = _MARKER_SYMMETRY_SLOTS.get(self.symmetry_mode, 3)
+        owner_mod = owner_id & (MARKER_OWNER_MODULO - 1)
+        round_mod = self.current_round & (MARKER_ROUND_MODULO - 1)
+        target_idx = self.u_to_index(written_pos)
+
+        value = 0
+        value |= symmetry_slot
+        value |= owner_mod << 2
+        value |= round_mod << 8
+        value |= target_idx << 14
+        value |= int(has_explicit_target) << 26
+        return value
+
+    def u_decode_marker_value(
+        self,
+        value: int,
+    ) -> tuple[SymmetryMode | None, int, int, int, bool]:
+        symmetry_slot = value & 0b11
+        owner_mod = (value >> 2) & 0b111111
+        round_mod = (value >> 8) & 0b111111
+        target_idx = (value >> 14) & 0b111111111111
+        has_explicit_target = bool((value >> 26) & 0b1)
+        return (
+            _MARKER_SYMMETRY_BY_SLOT[symmetry_slot],
+            owner_mod,
+            round_mod,
+            target_idx,
+            has_explicit_target,
+        )
+
+    def u_apply_marker_symmetry_hint(self, symmetry_mode: SymmetryMode) -> None:
+        if symmetry_mode == self.symmetry_mode:
+            return
+        if symmetry_mode not in self.symmetry_mode_candidates:
+            return
+
+        self.symmetry_mode = symmetry_mode
+        self.symmetry_mode_candidates = [symmetry_mode]
+        if not self.enemy_core_center_pos_candidates:
+            self.u_calc_core_center_positions()
+        self.enemy_core_center_pos_candidates = [
+            (mode, pos)
+            for mode, pos in self.enemy_core_center_pos_candidates
+            if mode == symmetry_mode
+        ]
+        self.u_prune_enemy_core_center_pos_candidates()
+
+    def u_process_visible_marker(self, building_id: int) -> None:
+        if self.ct.get_team(building_id) != self.own_team:
+            return
+
+        (
+            symmetry_mode,
+            owner_mod,
+            round_mod,
+            target_idx,
+            has_explicit_target,
+        ) = self.u_decode_marker_value(self.ct.get_marker_value(building_id))
+
+        if symmetry_mode is not None and self.symmetry_mode is None:
+            self.u_apply_marker_symmetry_hint(symmetry_mode)
+
+        marker_age = (
+            (self.current_round & (MARKER_ROUND_MODULO - 1)) - round_mod
+        ) & (MARKER_ROUND_MODULO - 1)
+        if marker_age > MARKER_MAXIMUM_AGE or not self.u_is_index_active(target_idx):
+            return
+
+        cached_age = self.visible_marker_age_by_owner_mod64[owner_mod]
+        if cached_age >= 0:
+            cached_has_explicit_target = bool(
+                self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]
+            )
+            if marker_age > cached_age:
+                return
+            if (
+                marker_age == cached_age
+                and cached_has_explicit_target >= has_explicit_target
+            ):
+                return
+
+        self.visible_marker_target_index_by_owner_mod64[owner_mod] = target_idx
+        self.visible_marker_age_by_owner_mod64[owner_mod] = marker_age
+        self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod] = int(
+            has_explicit_target
+        )
+
+    def u_get_visible_marker_target_pos(
+        self,
+        owner_id: int,
+        require_explicit_target: bool = True,
+    ) -> Position | None:
+        owner_mod = owner_id & (MARKER_OWNER_MODULO - 1)
+        target_idx = self.visible_marker_target_index_by_owner_mod64[owner_mod]
+        if target_idx < 0:
+            return None
+        if (
+            require_explicit_target
+            and not self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]
+        ):
+            return None
+        return self.tiles_by_index[target_idx].position
 
     def u_get_attackable_target_indices(
         self,
