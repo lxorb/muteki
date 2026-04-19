@@ -4751,6 +4751,14 @@ class BuilderStrategyMethodsMixin:
         known_enemy_supply_link_indices = self.map.known_enemy_supply_link_indices
         get_own_core_dist = self.map.u_get_own_core_dist_by_index
 
+        if not any(
+            tiles_by_index[idx].building.entity_type == EntityType.CORE
+            and tiles_by_index[idx].building.team == enemy_team
+            and tiles_by_index[idx].building.id is not None
+            for idx in self.map.enemy_core_source_indices
+        ):
+            return False
+
         if not known_enemy_supply_link_indices:
             return False
 
