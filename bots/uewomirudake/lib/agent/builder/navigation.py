@@ -1867,11 +1867,13 @@ class BuilderNavigationMixin:
         """
         map = self.map
         own_team = map.own_team
+        enemy_team = map.enemy_team
         current_pos = map.current_pos
         source_tile = map.u_get_pos_tile(pos)
         source_idx = source_tile.index
         source_core_dist = source_tile.own_core_dist
         tiles_by_index = map.tiles_by_index
+        avoid_enemy_owned_targets = map.enemy_bot_vision_reachable
         hard_avoid_existing_supply_chain = (
             HARD_AVOID_EXISTING_SUPPLY_CHAIN
             and not prefer_join_existing_supply_chain
@@ -1968,6 +1970,11 @@ class BuilderNavigationMixin:
                 continue
 
             neighbor_tile = tiles_by_index[neighbor_idx]
+            if avoid_enemy_owned_targets and (
+                neighbor_tile.is_core_of(enemy_team)
+                or neighbor_tile.building.team == enemy_team
+            ):
+                continue
             if (
                 neighbor_tile.last_seen_turn == map.current_round
                 and neighbor_tile.building.team == own_team
@@ -2087,12 +2094,14 @@ class BuilderNavigationMixin:
         source_idx = source_tile.index
         source_core_dist = source_tile.own_core_dist
         own_team = map.own_team
+        enemy_team = map.enemy_team
         map_width = map.width
         map_height = map.height
         active_mask = map.active_mask_by_index
         tiles_by_index = map.tiles_by_index
         pos_x = pos.x
         pos_y = pos.y
+        avoid_enemy_owned_targets = map.enemy_bot_vision_reachable
         incoming_supply_sources = (
             map.own_supply_link_source_indices_by_target_index_in_vision.get(
                 source_idx,
@@ -2130,6 +2139,11 @@ class BuilderNavigationMixin:
             if not active_mask[target_idx]:
                 continue
             target_tile = tiles_by_index[target_idx]
+            if avoid_enemy_owned_targets and (
+                target_tile.is_core_of(enemy_team)
+                or target_tile.building.team == enemy_team
+            ):
+                continue
             if (
                 target_tile.last_seen_turn == map.current_round
                 and target_tile.building.team == own_team
