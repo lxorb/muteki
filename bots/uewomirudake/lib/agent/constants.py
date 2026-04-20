@@ -1,5 +1,5 @@
-SURRENDER_AT_TURN: int = 500  # TODO set to 1e6
-ENABLE_PRINTING: bool = True  # TODO set to False
+SURRENDER_AT_TURN: int = 1e6  # TODO set to 1e6
+ENABLE_PRINTING: bool = False  # TODO set to False
 
 from cambc import EntityType
 import builtins

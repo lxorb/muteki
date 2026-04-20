@@ -547,6 +547,9 @@ class BuilderNavigationMixin:
         reach_builder_action_range: bool = False,
         respect_titanium_reserve_for_road_build: bool = False,
     ) -> bool:
+        if self.round_stopwatch.check_overtime():
+            tprint(f"u_move_to: overtime at entry tgt={pos}")
+            return False
         current_pos = self.map.current_pos
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             tprint(f"u_move_to: target_reached tgt={pos}")

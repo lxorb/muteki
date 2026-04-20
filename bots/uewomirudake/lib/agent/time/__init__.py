@@ -64,6 +64,21 @@ class RoundStopwatch:
         )
         return budget - active
 
+    @staticmethod
+    def _describe_caller() -> str:
+        """Return 'func_name(arg1=val, arg2=val, ...)' for the caller's caller."""
+        frame = inspect.currentframe().f_back.f_back
+        code = frame.f_code
+        arg_count = code.co_argcount
+        arg_names = code.co_varnames[:arg_count]
+        f_locals = frame.f_locals
+        args_str = ", ".join(
+            f"{name}={f_locals.get(name, '?')!r}"
+            for name in arg_names
+            if name != "self"
+        )
+        return f"{code.co_name}({args_str})"
+
     def check_overtime_interval(self):
         if self.ct is None:
             return False
@@ -74,7 +89,7 @@ class RoundStopwatch:
             return False
 
         active_cpu_time = self.time_provider.get_active_time()
-        caller = inspect.currentframe().f_back.f_code.co_name
+        caller = self._describe_caller()
         tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
         is_overtime = (
@@ -83,7 +98,7 @@ class RoundStopwatch:
             else active_cpu_time > ALLOCATED_MAP_TIME_MUS
         )
         if is_overtime:
-            tprint("[OVERTIME]")
+            tprint(f"[OVERTIME] {caller}")
 
         if not SUBMISSION_ENV:
             return False
@@ -95,7 +110,7 @@ class RoundStopwatch:
             return False
 
         active_cpu_time = self.time_provider.get_active_time()
-        caller = inspect.currentframe().f_back.f_code.co_name
+        caller = self._describe_caller()
         tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
         is_overtime = (
@@ -104,7 +119,7 @@ class RoundStopwatch:
             else active_cpu_time > ALLOCATED_MAP_TIME_MUS
         )
         if is_overtime:
-            tprint("[OVERTIME]")
+            tprint(f"[OVERTIME] {caller}")
 
         if not SUBMISSION_ENV:
             return False
