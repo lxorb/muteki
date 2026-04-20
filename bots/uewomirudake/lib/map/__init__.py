@@ -4604,7 +4604,11 @@ class Map:
             vision_reachable_turn_by_index[neighbor_idx] = current_round
             dist_to_self_by_index[neighbor_idx] = source_dist
             vision_first_step_by_index[neighbor_idx] = neighbor_idx
-            queue_append(neighbor_idx)
+            neighbor_in_enemy_launcher_pickup_zone = (
+                neighbor_tile.in_enemy_launcher_pickup_zone > 0
+            )
+            if not neighbor_in_enemy_launcher_pickup_zone:
+                queue_append(neighbor_idx)
 
         while queue_head < len(queue):
             current_idx = queue[queue_head]
@@ -4658,7 +4662,11 @@ class Map:
                 vision_reachable_turn_by_index[neighbor_idx] = current_round
                 dist_to_self_by_index[neighbor_idx] = next_dist
                 vision_first_step_by_index[neighbor_idx] = current_first_step_idx
-                queue_append(neighbor_idx)
+                neighbor_in_enemy_launcher_pickup_zone = (
+                    neighbor_tile.in_enemy_launcher_pickup_zone > 0
+                )
+                if not neighbor_in_enemy_launcher_pickup_zone:
+                    queue_append(neighbor_idx)
 
             overtime_check_countdown -= 1
             if overtime_check_countdown == 0:
