@@ -181,19 +181,29 @@ class Tile:
 
     @property
     def is_enemy_gunner_ray_first_target(self) -> int:
-        return self.map.enemy_gunner_ray_first_target_by_index[self.index]
+        return int(
+            self.map.enemy_gunner_ray_first_target_by_index[self.index]
+            == self.map.current_round_stamp
+        )
 
     @is_enemy_gunner_ray_first_target.setter
     def is_enemy_gunner_ray_first_target(self, value: int) -> None:
-        self.map.enemy_gunner_ray_first_target_by_index[self.index] = int(value)
+        self.map.enemy_gunner_ray_first_target_by_index[self.index] = (
+            self.map.current_round_stamp if value else 0
+        )
 
     @property
     def is_enemy_spin_gunner_ray_first_target(self) -> int:
-        return self.map.enemy_spin_gunner_ray_first_target_by_index[self.index]
+        return int(
+            self.map.enemy_spin_gunner_ray_first_target_by_index[self.index]
+            == self.map.current_round_stamp
+        )
 
     @is_enemy_spin_gunner_ray_first_target.setter
     def is_enemy_spin_gunner_ray_first_target(self, value: int) -> None:
-        self.map.enemy_spin_gunner_ray_first_target_by_index[self.index] = int(value)
+        self.map.enemy_spin_gunner_ray_first_target_by_index[self.index] = (
+            self.map.current_round_stamp if value else 0
+        )
 
     @property
     def conveyor_targets_harvester(self) -> bool:
@@ -344,10 +354,14 @@ class Tile:
         self.map.last_seen_turn_by_index[self.index] = current_round
 
         bot_id = self.map.visible_builder_bot_ids_by_index[self.index]
-        if bot_id < 0:
+        if self.map.visible_builder_bot_seen_turn_by_index[self.index] != (
+            self.map.current_round_stamp
+        ):
             bot_id = None
         building_id = self.map.visible_building_ids_by_index[self.index]
-        if building_id < 0:
+        if self.map.visible_building_seen_turn_by_index[self.index] != (
+            self.map.current_round_stamp
+        ):
             building_id = None
 
         if bot_id != self.bot.id:
@@ -399,12 +413,6 @@ class Tile:
             self.u_refresh_intrinsic_passability()
         elif intrinsic_passability_may_have_changed:
             self.u_refresh_intrinsic_passability()
-        if self._is_intrinsically_passable():
-            self.map._u_mark_bytearray_index(
-                self.map.vision_bfs_passable_touched_indices,
-                self.map.vision_bfs_passable_by_index,
-                self.index,
-            )
         self.is_passable = self._is_intrinsically_passable() and (
             self.bot.id is None or self.position == self.map.current_pos
         )

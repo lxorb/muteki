@@ -32,6 +32,7 @@ from lib.map.constants import (
     DISABLE_CORRECT_OWN_CORE_DISTANCE,
     ENABLE_MAP_DETECTION,
     INF_DIST,
+    OWN_CORE_DISTANCE_INCREMENTAL_UPDATE_BUDGET,
     OWN_CORE_DISTANCE_INIT_SETTLE_BUDGET,
     OPPOSITE_ORE_SUPPLY_CHAIN_SEPARATION_INCLUDES_DIAGONALS,
     RESOURCE_TARGET_TYPES,
@@ -98,48 +99,62 @@ _SCOUT_NEW_VISION_OFFSETS_BY_DIRECTION = _build_scout_new_vision_offsets_by_dire
 
 
 class _TouchedIndexMembership:
-    __slots__ = ("marked_by_index", "touched_indices")
+    __slots__ = ("mark_turn_by_index", "touched_indices", "current_turn")
 
     def __init__(self, size: int):
-        self.marked_by_index = bytearray(size)
+        self.mark_turn_by_index = array("I", [0]) * size
         self.touched_indices: list[int] = []
+        self.current_turn = 0
+
+    def set_current_turn(self, current_turn: int) -> None:
+        self.current_turn = current_turn
+        self.touched_indices.clear()
 
     def add(self, idx: int) -> None:
-        if self.marked_by_index[idx]:
+        if self.mark_turn_by_index[idx] == self.current_turn:
             return
-        self.marked_by_index[idx] = 1
+        self.mark_turn_by_index[idx] = self.current_turn
         self.touched_indices.append(idx)
 
     def clear(self) -> None:
-        for idx in self.touched_indices:
-            self.marked_by_index[idx] = 0
         self.touched_indices.clear()
 
     def __contains__(self, idx: int) -> bool:
-        return bool(self.marked_by_index[idx])
+        return self.mark_turn_by_index[idx] == self.current_turn
 
 
 class _TouchedIndexSourceMap:
-    __slots__ = ("source_indices_by_target_index", "touched_target_indices")
+    __slots__ = (
+        "source_indices_by_target_index",
+        "source_turn_by_target_index",
+        "current_turn",
+    )
 
     def __init__(self, size: int):
         self.source_indices_by_target_index: list[list[int] | None] = [None] * size
-        self.touched_target_indices: list[int] = []
+        self.source_turn_by_target_index = array("I", [0]) * size
+        self.current_turn = 0
+
+    def set_current_turn(self, current_turn: int) -> None:
+        self.current_turn = current_turn
 
     def add(self, target_idx: int, source_idx: int) -> None:
+        if self.source_turn_by_target_index[target_idx] != self.current_turn:
+            self.source_turn_by_target_index[target_idx] = self.current_turn
+            self.source_indices_by_target_index[target_idx] = [source_idx]
+            return
         source_indices = self.source_indices_by_target_index[target_idx]
         if source_indices is None:
             self.source_indices_by_target_index[target_idx] = [source_idx]
-            self.touched_target_indices.append(target_idx)
             return
         source_indices.append(source_idx)
 
     def clear(self) -> None:
-        for idx in self.touched_target_indices:
-            self.source_indices_by_target_index[idx] = None
-        self.touched_target_indices.clear()
+        return
 
     def get(self, target_idx: int, default=None):
+        if self.source_turn_by_target_index[target_idx] != self.current_turn:
+            return default
         source_indices = self.source_indices_by_target_index[target_idx]
         if source_indices is None:
             return default
@@ -385,17 +400,16 @@ class Map:
         self.builder_bot_stationary_turns_by_index = (
             array("H", [0]) * self.INITIAL_MAP_SIZE
         )
+        self.current_round_stamp = 0
         self.enemy_turret_target_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.enemy_gunner_ray_first_target_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
-        self.enemy_spin_gunner_ray_first_target_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
+        self.enemy_gunner_ray_first_target_by_index = array(
+            "I", [0]
+        ) * self.INITIAL_MAP_SIZE
+        self.enemy_spin_gunner_ray_first_target_by_index = array(
+            "I", [0]
+        ) * self.INITIAL_MAP_SIZE
         self.core_distance_dirty_indices: list[int] = []
         self.core_distance_dirty_mark_by_index = bytearray(self.INITIAL_MAP_SIZE)
-        self.enemy_gunner_ray_first_target_touched_indices: list[int] = []
-        self.enemy_spin_gunner_ray_first_target_touched_indices: list[int] = []
         self.core_distance_enqueued_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.core_distance_seed_enqueued_by_index = bytearray(
             self.INITIAL_MAP_SIZE
@@ -428,10 +442,14 @@ class Map:
         self.path_queue_buffer_by_index: list[int] = []
         self.path_heap_buffer: list[tuple[int, int, int, int, int, int, int]] = []
         self.visible_builder_bot_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
-        self.visible_builder_bot_ids_touched_indices: list[int] = []
+        self.visible_builder_bot_seen_turn_by_index = array(
+            "I", [0]
+        ) * self.INITIAL_MAP_SIZE
         self.visible_builder_bot_ids_in_vision: set[int] = set()
         self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
-        self.visible_building_ids_touched_indices: list[int] = []
+        self.visible_building_seen_turn_by_index = array(
+            "I", [0]
+        ) * self.INITIAL_MAP_SIZE
         self.visible_marker_target_index_by_owner_mod64 = (
             array("h", [-1]) * MARKER_OWNER_MODULO
         )
@@ -602,17 +620,14 @@ class Map:
         self.frontier_expand_newly_seen_indices: list[int] = []
         self.frontier_expand_pending_indices: list[int] = []
         self.frontier_expand_pending_head = 0
-        self.vision_bfs_passable_touched_indices: list[int] = []
-        self.vision_bfs_passable_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.stale_builder_passability_touched_indices: list[int] = []
         self.stale_builder_passability_tracked_by_index = bytearray(
             self.INITIAL_MAP_SIZE
         )
         self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
-        self.own_titanium_harvester_adjacent_candidate_mark_by_index = bytearray(
-            self.INITIAL_MAP_SIZE
-        )
-        self.own_titanium_harvester_adjacent_candidate_touched_indices: list[int] = []
+        self.own_titanium_harvester_adjacent_candidate_mark_by_index = array(
+            "I", [0]
+        ) * self.INITIAL_MAP_SIZE
         self.known_own_supply_link_indices: set[int] = set()
         self.known_enemy_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
@@ -626,33 +641,7 @@ class Map:
             )
 
         self.current_path = []
-        self._reset_marked_bytearray_indices(
-            self.enemy_gunner_ray_first_target_touched_indices,
-            self.enemy_gunner_ray_first_target_by_index,
-        )
-        self._reset_marked_bytearray_indices(
-            self.enemy_spin_gunner_ray_first_target_touched_indices,
-            self.enemy_spin_gunner_ray_first_target_by_index,
-        )
-        self._reset_marked_bytearray_indices(
-            self.vision_bfs_passable_touched_indices,
-            self.vision_bfs_passable_by_index,
-        )
-        self._reset_marked_bytearray_indices(
-            self.own_titanium_harvester_adjacent_candidate_touched_indices,
-            self.own_titanium_harvester_adjacent_candidate_mark_by_index,
-        )
-        self._reset_marked_array_indices(
-            self.visible_builder_bot_ids_touched_indices,
-            self.visible_builder_bot_ids_by_index,
-            -1,
-        )
         self.visible_builder_bot_ids_in_vision.clear()
-        self._reset_marked_array_indices(
-            self.visible_building_ids_touched_indices,
-            self.visible_building_ids_by_index,
-            -1,
-        )
         for marker_owner_mod in range(MARKER_OWNER_MODULO):
             self.visible_marker_target_index_by_owner_mod64[marker_owner_mod] = -1
             self.visible_marker_age_by_owner_mod64[marker_owner_mod] = -1
@@ -696,11 +685,27 @@ class Map:
             else:
                 self.turns_on_current_tile = 0
         self.current_round = next_round
+        self.current_round_stamp = next_round + 1
         self.current_pos = next_pos
         current_idx = self.u_to_index(next_pos)
         self.last_visited_turn_by_index[current_idx] = next_round
         self.scout_seen_by_index[current_idx] = 1
         self.titanium, self.axionite = self.ct.get_global_resources()
+        self.all_own_supply_link_target_indices_in_vision.set_current_turn(
+            self.current_round_stamp
+        )
+        self.own_supply_link_target_indices_in_vision.set_current_turn(
+            self.current_round_stamp
+        )
+        self.enemy_supply_link_target_indices_in_vision.set_current_turn(
+            self.current_round_stamp
+        )
+        self.own_supply_link_source_indices_by_target_index_in_vision.set_current_turn(
+            self.current_round_stamp
+        )
+        self.enemy_supply_link_source_indices_by_target_index_in_vision.set_current_turn(
+            self.current_round_stamp
+        )
 
         if self.stale_builder_passability_touched_indices:
             for idx in self.stale_builder_passability_touched_indices:
@@ -728,42 +733,7 @@ class Map:
         self.own_missing_supply_links: list[Tile] = []
         self.enemy_missing_supply_links: list[Tile] = []
         self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
-        self.all_own_supply_link_target_indices_in_vision.clear()
-        self.own_supply_link_target_indices_in_vision.clear()
-        self.enemy_supply_link_target_indices_in_vision.clear()
-        self.own_supply_link_source_indices_by_target_index_in_vision.clear()
-        self.enemy_supply_link_source_indices_by_target_index_in_vision.clear()
         self.frontier_expand_newly_seen_indices = []
-
-    def _reset_marked_bytearray_indices(
-        self,
-        touched_indices: list[int],
-        values: bytearray,
-    ) -> None:
-        for idx in touched_indices:
-            values[idx] = 0
-        touched_indices.clear()
-
-    def _u_mark_bytearray_index(
-        self,
-        touched_indices: list[int],
-        values: bytearray,
-        idx: int,
-    ) -> None:
-        if values[idx]:
-            return
-        values[idx] = 1
-        touched_indices.append(idx)
-
-    def _reset_marked_array_indices(
-        self,
-        touched_indices: list[int],
-        values,
-        reset_value: int,
-    ) -> None:
-        for idx in touched_indices:
-            values[idx] = reset_value
-        touched_indices.clear()
 
     def u_mark_core_distance_dirty_index(self, idx: int) -> None:
         if self.core_distance_dirty_mark_by_index[idx]:
@@ -1598,9 +1568,10 @@ class Map:
             pos = self.ct.get_position(unit_id)
             if self.u_is_in_bounds(pos):
                 idx = self.u_to_index(pos)
-                if self.visible_builder_bot_ids_by_index[idx] < 0:
-                    self.visible_builder_bot_ids_touched_indices.append(idx)
                 self.visible_builder_bot_ids_by_index[idx] = unit_id
+                self.visible_builder_bot_seen_turn_by_index[idx] = (
+                    self.current_round_stamp
+                )
 
         for building_id in self.ct.get_nearby_buildings():
             if (
@@ -1612,9 +1583,10 @@ class Map:
             pos = self.ct.get_position(building_id)
             if self.u_is_in_bounds(pos):
                 idx = self.u_to_index(pos)
-                if self.visible_building_ids_by_index[idx] < 0:
-                    self.visible_building_ids_touched_indices.append(idx)
                 self.visible_building_ids_by_index[idx] = building_id
+                self.visible_building_seen_turn_by_index[idx] = (
+                    self.current_round_stamp
+                )
         self.stopwatch.lap("Reset + nearby queries")
 
         processed_tiles_in_vision = []
@@ -1944,13 +1916,11 @@ class Map:
 
     def u_update_own_titanium_harvester_adjacent_candidate_cache(self) -> None:
         current_round = self.current_round
+        current_round_stamp = self.current_round_stamp
         own_team = self.own_team
         candidate_indices = self.own_titanium_harvester_adjacent_candidate_indices
         candidate_mark_by_index = (
             self.own_titanium_harvester_adjacent_candidate_mark_by_index
-        )
-        candidate_touched_indices = (
-            self.own_titanium_harvester_adjacent_candidate_touched_indices
         )
         conveyor_targets_harvester_by_index = self.conveyor_targets_harvester_by_index
         tiles_by_index = self.tiles_by_index
@@ -1960,7 +1930,7 @@ class Map:
                 continue
 
             for adjacent_idx in self.u_iter_cardinal_neighbor_indices(harvester_tile.index):
-                if candidate_mark_by_index[adjacent_idx]:
+                if candidate_mark_by_index[adjacent_idx] == current_round_stamp:
                     continue
 
                 adjacent_tile = tiles_by_index[adjacent_idx]
@@ -1987,8 +1957,7 @@ class Map:
                 if not is_candidate_tile:
                     continue
 
-                candidate_mark_by_index[adjacent_idx] = 1
-                candidate_touched_indices.append(adjacent_idx)
+                candidate_mark_by_index[adjacent_idx] = current_round_stamp
                 candidate_indices.append(adjacent_idx)
 
     def u_update_frontier_expand_cache(self) -> None:
@@ -2793,6 +2762,7 @@ class Map:
 
     def u_update_enemy_gunner_first_target_caches(self) -> None:
         current_round = self.current_round
+        current_round_stamp = self.current_round_stamp
 
         for gunner_tile in self.enemy_buildings_in_vision:
             if gunner_tile.last_seen_turn != current_round:
@@ -2819,11 +2789,9 @@ class Map:
                     current_round,
                 )
                 if target_tile is not None:
-                    self._u_mark_bytearray_index(
-                        self.enemy_gunner_ray_first_target_touched_indices,
-                        self.enemy_gunner_ray_first_target_by_index,
-                        target_tile.index,
-                    )
+                    self.enemy_gunner_ray_first_target_by_index[
+                        target_tile.index
+                    ] = current_round_stamp
 
             for direction in Direction:
                 if direction == Direction.CENTRE:
@@ -2836,11 +2804,9 @@ class Map:
                 )
                 if target_tile is None:
                     continue
-                self._u_mark_bytearray_index(
-                    self.enemy_spin_gunner_ray_first_target_touched_indices,
-                    self.enemy_spin_gunner_ray_first_target_by_index,
-                    target_tile.index,
-                )
+                self.enemy_spin_gunner_ray_first_target_by_index[
+                    target_tile.index
+                ] = current_round_stamp
 
             if self.round_stopwatch.check_overtime_interval():
                 break
@@ -3883,6 +3849,7 @@ class Map:
         source_by_index: bytearray,
         distance_by_index,
         dirty_indices: list[int] | tuple[int, ...],
+        max_processed_indices: int,
     ) -> bool:
         if not source_indices:
             self.u_reset_own_core_distance_incremental_update()
@@ -3900,6 +3867,7 @@ class Map:
         active_mask_by_index = self.active_mask_by_index
         core_distance_passable_by_index = self.core_distance_passable_by_index
         neighbor_step_costs_by_index = self.neighbor_step_costs_by_index
+        processed_indices = 0
 
         if not queue and not dirty_queue and not seed_queue:
             for idx in source_indices:
@@ -3909,6 +3877,14 @@ class Map:
             dirty_queue.extend(dirty_indices)
 
         while dirty_queue_head < len(dirty_queue):
+            if (
+                max_processed_indices > 0
+                and processed_indices >= max_processed_indices
+            ):
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = dirty_queue_head
+                self.own_core_dist_incremental_seed_queue_head = seed_queue_head
+                return False
             if self.round_stopwatch.check_overtime_interval():
                 self.own_core_dist_incremental_queue_head = queue_head
                 self.own_core_dist_incremental_dirty_queue_head = dirty_queue_head
@@ -3917,6 +3893,7 @@ class Map:
 
             idx = dirty_queue[dirty_queue_head]
             dirty_queue_head += 1
+            processed_indices += 1
             self.u_enqueue_core_distance_seed_index(idx, seed_queue)
             neighbor_base = idx * max_neighbor_count
             neighbor_count = neighbor_count_by_index[idx]
@@ -3930,6 +3907,14 @@ class Map:
         self.own_core_dist_incremental_dirty_queue_head = 0
 
         while seed_queue_head < len(seed_queue):
+            if (
+                max_processed_indices > 0
+                and processed_indices >= max_processed_indices
+            ):
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = 0
+                self.own_core_dist_incremental_seed_queue_head = seed_queue_head
+                return False
             if self.round_stopwatch.check_overtime_interval():
                 self.own_core_dist_incremental_queue_head = queue_head
                 self.own_core_dist_incremental_dirty_queue_head = 0
@@ -3938,6 +3923,7 @@ class Map:
 
             self.u_enqueue_core_distance_index(seed_queue[seed_queue_head], queue)
             seed_queue_head += 1
+            processed_indices += 1
 
         for idx in seed_queue:
             self.core_distance_seed_enqueued_by_index[idx] = 0
@@ -3945,6 +3931,14 @@ class Map:
         self.own_core_dist_incremental_seed_queue_head = 0
 
         while queue_head < len(queue):
+            if (
+                max_processed_indices > 0
+                and processed_indices >= max_processed_indices
+            ):
+                self.own_core_dist_incremental_queue_head = queue_head
+                self.own_core_dist_incremental_dirty_queue_head = 0
+                self.own_core_dist_incremental_seed_queue_head = 0
+                return False
             if self.round_stopwatch.check_overtime_interval():
                 self.own_core_dist_incremental_queue_head = queue_head
                 self.own_core_dist_incremental_dirty_queue_head = 0
@@ -3953,6 +3947,7 @@ class Map:
 
             idx = queue[queue_head]
             queue_head += 1
+            processed_indices += 1
             self.core_distance_enqueued_by_index[idx] = 0
 
             if source_by_index[idx]:
@@ -4349,7 +4344,7 @@ class Map:
         active_mask_by_index = self.active_mask_by_index
         last_seen_turn_by_index = self.last_seen_turn_by_index
         environment_code_by_index = self.environment_code_by_index
-        vision_bfs_passable_by_index = self.vision_bfs_passable_by_index
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
         bot_present_by_index = self.bot_present_by_index
         dist_to_self_by_index = self.dist_to_self_by_index
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
@@ -4373,7 +4368,7 @@ class Map:
                 vision_action_goal_idx_by_index[neighbor_idx] = source_idx
                 vision_action_first_step_by_index[neighbor_idx] = -1
             if (
-                not vision_bfs_passable_by_index[neighbor_idx]
+                not intrinsic_passable_by_index[neighbor_idx]
                 or bot_present_by_index[neighbor_idx]
             ):
                 continue
@@ -4413,7 +4408,7 @@ class Map:
                         current_first_step_idx
                     )
                 if (
-                    not vision_bfs_passable_by_index[neighbor_idx]
+                    not intrinsic_passable_by_index[neighbor_idx]
                     or vision_reachable_turn_by_index[neighbor_idx] == current_round
                 ):
                     continue
@@ -5653,6 +5648,7 @@ class Map:
                     self.own_core_source_by_index,
                     self.own_core_dist_by_index,
                     dirty_indices,
+                    OWN_CORE_DISTANCE_INCREMENTAL_UPDATE_BUDGET,
                 )
 
         sw.lap("Own core field")
