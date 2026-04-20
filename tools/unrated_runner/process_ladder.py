@@ -10,7 +10,12 @@ def main():
         ladder = json.load(f)
 
     active = {
-        entry["teamId"]: entry["teamName"]
+        entry["teamId"]: {
+            "name": entry["teamName"],
+            "category": entry["category"],
+            "isStudent": entry["isStudent"],
+            "region": entry["region"],
+        }
         for entry in ladder
         if entry["matchesPlayed"] > 0
     }

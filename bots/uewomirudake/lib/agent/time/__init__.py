@@ -1,4 +1,14 @@
+import inspect
+
 from cambc import Controller
+
+from lib.agent.constants import SUBMISSION_ENV
+from lib.agent.time.provider import (
+    LocalTimeProvider,
+    SubmissionTimeProvider,
+    TimeProvider,
+)
+from lib.debug.output import tprint
 
 ALLOCATED_MAP_TIME_MS = 0.75
 ALLOCATED_BOT_TIME_MS = 0.8
@@ -13,10 +23,6 @@ ALLOCATED_MAP_AND_BOT_TIME_MUS = ALLOCATED_MAP_TIME_MUS + ALLOCATED_BOT_TIME_MUS
 OVERTIME_CHECK_INTERVAL_POWER_OF_TWO = 1 << 6
 OVERTIME_CHECK_MASK = OVERTIME_CHECK_INTERVAL_POWER_OF_TWO - 1
 
-import inspect
-
-LOG_TIME = False
-
 
 class RoundStopwatch:
     def __init__(self):
@@ -24,6 +30,9 @@ class RoundStopwatch:
         self.map_done: bool = False
         self.iterations: int = 0
         self.short_iterations: int = 0
+        self.time_provider: TimeProvider = (
+            SubmissionTimeProvider() if SUBMISSION_ENV else LocalTimeProvider()
+        )
 
     def start_round(self, ct: Controller):
         self.ct = ct
@@ -33,8 +42,42 @@ class RoundStopwatch:
 
         self.map_done = False
 
+        self.time_provider.start_round(ct)
+
     def start_bot(self):
         self.map_done = True
+
+    def end_round(self):
+        active_time = self.time_provider.get_active_time()
+        tprint(f"[end_round] {active_time:.2f} mus")
+
+    def log_time(self, label: str = "log_time"):
+        active_time = self.time_provider.get_active_time()
+        tprint(f"[{label}] {active_time:.2f} mus")
+
+    def time_remaining_mus(self) -> float:
+        if self.ct is None:
+            return float("inf")
+        active = self.time_provider.get_active_time()
+        budget = (
+            ALLOCATED_MAP_AND_BOT_TIME_MUS if self.map_done else ALLOCATED_MAP_TIME_MUS
+        )
+        return budget - active
+
+    @staticmethod
+    def _describe_caller() -> str:
+        """Return 'func_name(arg1=val, arg2=val, ...)' for the caller's caller."""
+        frame = inspect.currentframe().f_back.f_back
+        code = frame.f_code
+        arg_count = code.co_argcount
+        arg_names = code.co_varnames[:arg_count]
+        f_locals = frame.f_locals
+        args_str = ", ".join(
+            f"{name}={f_locals.get(name, '?')!r}"
+            for name in arg_names
+            if name != "self"
+        )
+        return f"{code.co_name}({args_str})"
 
     def check_overtime_interval(self):
         if self.ct is None:
@@ -45,28 +88,40 @@ class RoundStopwatch:
         if self.iterations & OVERTIME_CHECK_MASK:
             return False
 
-        active_cpu_time = self.ct.get_cpu_time_elapsed()
+        active_cpu_time = self.time_provider.get_active_time()
+        caller = self._describe_caller()
+        tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
-        if LOG_TIME:
-            print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
-
-        return (
+        is_overtime = (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
             if self.map_done
             else active_cpu_time > ALLOCATED_MAP_TIME_MUS
         )
+        if is_overtime:
+            tprint(f"[OVERTIME] {caller}")
+
+        if not SUBMISSION_ENV:
+            return False
+
+        return is_overtime
 
     def check_overtime(self):
         if self.ct is None:
             return False
 
-        active_cpu_time = self.ct.get_cpu_time_elapsed()
+        active_cpu_time = self.time_provider.get_active_time()
+        caller = self._describe_caller()
+        tprint(f"[{caller}] {active_cpu_time:.2f} mus")
 
-        if LOG_TIME:
-            print(active_cpu_time, inspect.currentframe().f_back.f_code.co_name)
-
-        return (
+        is_overtime = (
             active_cpu_time > ALLOCATED_MAP_AND_BOT_TIME_MUS
             if self.map_done
             else active_cpu_time > ALLOCATED_MAP_TIME_MUS
         )
+        if is_overtime:
+            tprint(f"[OVERTIME] {caller}")
+
+        if not SUBMISSION_ENV:
+            return False
+
+        return is_overtime

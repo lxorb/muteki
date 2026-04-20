@@ -1,32 +1,39 @@
+SURRENDER_AT_TURN: int = 1e6  # TODO set to 1e6
+ENABLE_PRINTING: bool = False  # TODO set to False
+
 from cambc import EntityType
+import builtins
 
 ### GAME CONSTANTS ###
 BUILDER_ACTION_RADIUS_SQ: int = 2
 NS_PER_TURN: int = 2_000_000
 
 ### STRATEGY NAMES ###
-INITRES_STRATEGY_ID: str = "initres"
 SCAVENGER_STRATEGY_ID: str = "scavenger"
 HARASSMENT_STRATEGY_ID: str = "harassment"
 DEFENDER_STRATEGY_ID: str = "defender"
+CORE_DEFENDER_STRATEGY_ID: str = "core_defender"
 
 ### BOT LOGIC ###
 AXIONITE_HARVESTER_MIN_TITANIUM: int = 300
 AXIONITE_HARVESTER_MIN_TURN: int = 200
+ENABLE_AXIONITE_TO_TITANIUM_CONVERSION: bool = False
 AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM: int = 500
 AXIONITE_TO_TITANIUM_CONVERSION_MIN_ARMOURED_CONVEYORS: int = 3
 BUILD_ACTION_MIN_TITANIUM_BASE: int = 5
-MOVE_TO_BUGNAV_MANHATTAN_THRESHOLD: int = 99999
 BRIDGE_PREFERRED_DIST: int = 6
 FOUNDRY_CAN_REPLACE_BRIDGE: bool = False
 DISABLE_HARASSMENT: bool = False
+HARASSMENT_ENEMY_CORE_MOVER: str = "astar_proxy"
 HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER: int = 1
 HARD_AVOID_EXISTING_SUPPLY_CHAIN: bool = True
-MAX_CORE_ORE_DIRECT_DIST: int = 20
+BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION: int = 4
+MAX_CORE_ORE_DIRECT_DIST: int = 999
 PREVENT_SUPPLY_LINKS_TILL_HARVESTER: bool = True
 REPLACE_ATTACKED_CONVEYOR_MAX_HP: int = 10
 SURROUND_HARVESTER_ENTITY_TYPE: EntityType = EntityType.CONVEYOR
 DISABLE_CONVEYORS_POINTING_AT_HARVESTERS: bool = False
+ENABLE_SENTINEL_INTEGRATE_OWN_TURRET: bool = True
 
 ### ENTITY TYPE GROUPS ###
 CONVEYOR_ENTITY_TYPES: set[EntityType] = {
@@ -77,22 +84,22 @@ TURRET_TARGET_PRIORITY = (
     EntityType.CORE,
     "enemy_harvester_without_adjacent_own_turret",
     EntityType.LAUNCHER,
-    "enemy_bot_on_ally_tile",
-    "enemy_bot_on_non_ally_tile",
     EntityType.BRIDGE,
     EntityType.CONVEYOR,
     EntityType.BARRIER,
     EntityType.SPLITTER,
     EntityType.FOUNDRY,
     EntityType.ROAD,
+    "enemy_bot_on_ally_tile",
+    "enemy_bot_on_non_ally_tile",
     EntityType.ARMOURED_CONVEYOR,
 )
 TURRET_TARGET_PRIORITY_RANK = {
     target_type: idx for idx, target_type in enumerate(TURRET_TARGET_PRIORITY)
 }
-TURRET_TARGET_PRIORITY_RANK[EntityType.ARMOURED_CONVEYOR] = (
-    TURRET_TARGET_PRIORITY_RANK[EntityType.CONVEYOR]
-)
+TURRET_TARGET_PRIORITY_RANK[EntityType.ARMOURED_CONVEYOR] = TURRET_TARGET_PRIORITY_RANK[
+    EntityType.CONVEYOR
+]
 LAUNCHER_THROWABLE_PRIORITY = (
     "enemy_bot_on_ally_bridge",
     "enemy_bot_on_ally_conveyor",
@@ -107,6 +114,10 @@ LAUNCHER_THROWABLE_PRIORITY_RANK = {
 LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_armoured_conveyor"] = (
     LAUNCHER_THROWABLE_PRIORITY_RANK["enemy_bot_on_ally_conveyor"]
 )
+LAUNCHER_BUILD_MIN_IMPROVEMENT = 8
+LAUNCHER_BUILD_MIN_TITANIUM = 100
+LAUNCHER_YEET_AWAY_MIN_DISTANCE = 2
+LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE = 2
 
 
 """
@@ -117,7 +128,9 @@ surrendering early in submissions.
 import sys
 from pathlib import Path
 
-SURRENDER_AT_TURN: int = 1e6
+# True when running in a submission environment (no local exclude.py found).
+# Flipped to False below when exclude.py is discovered (local dev).
+SUBMISSION_ENV: bool = True
 
 try:
     exclude_module_dir: str | None = None
@@ -128,6 +141,7 @@ try:
             break
 
     if exclude_module_dir is not None:
+        SUBMISSION_ENV = False
         sys.path.insert(0, exclude_module_dir)
 
         import exclude
@@ -142,6 +156,11 @@ try:
             exclude,
             "AXIONITE_HARVESTER_MIN_TURN",
             AXIONITE_HARVESTER_MIN_TURN,
+        )
+        ENABLE_AXIONITE_TO_TITANIUM_CONVERSION = getattr(
+            exclude,
+            "ENABLE_AXIONITE_TO_TITANIUM_CONVERSION",
+            ENABLE_AXIONITE_TO_TITANIUM_CONVERSION,
         )
         AXIONITE_TO_TITANIUM_CONVERSION_MIN_TITANIUM = getattr(
             exclude,
@@ -163,5 +182,48 @@ try:
             "DISABLE_HARASSMENT",
             DISABLE_HARASSMENT,
         )
+        ENABLE_PRINTING = getattr(
+            exclude,
+            "ENABLE_PRINTING",
+            ENABLE_PRINTING,
+        )
+        HARASSMENT_ENEMY_CORE_MOVER = getattr(
+            exclude,
+            "HARASSMENT_ENEMY_CORE_MOVER",
+            HARASSMENT_ENEMY_CORE_MOVER,
+        )
+        BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION = getattr(
+            exclude,
+            "BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION",
+            BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION,
+        )
+        LAUNCHER_BUILD_MIN_IMPROVEMENT = getattr(
+            exclude,
+            "LAUNCHER_BUILD_MIN_IMPROVEMENT",
+            LAUNCHER_BUILD_MIN_IMPROVEMENT,
+        )
+        LAUNCHER_BUILD_MIN_TITANIUM = getattr(
+            exclude,
+            "LAUNCHER_BUILD_MIN_TITANIUM",
+            LAUNCHER_BUILD_MIN_TITANIUM,
+        )
+        ENABLE_SENTINEL_INTEGRATE_OWN_TURRET = getattr(
+            exclude,
+            "ENABLE_SENTINEL_INTEGRATE_OWN_TURRET",
+            ENABLE_SENTINEL_INTEGRATE_OWN_TURRET,
+        )
 except Exception:
     pass
+
+
+def _disabled_print(*_args, **_kwargs) -> None:
+    return None
+
+
+if not hasattr(builtins, "_cbc_original_print"):
+    builtins._cbc_original_print = builtins.print
+
+if ENABLE_PRINTING:
+    builtins.print = builtins._cbc_original_print
+else:
+    builtins.print = _disabled_print

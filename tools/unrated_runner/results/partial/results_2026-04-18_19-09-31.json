@@ -1,0 +1,54 @@
+{
+    "31724ff8-4f57-42fc-9271-0d0cb5832b70": {
+        "the_great_divide": {
+            "wins": 1,
+            "losses": 0,
+            "df98bb46-53b3-43aa-83c9-2cb66de501ac": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776532437
+            }
+        },
+        "the_powerful_egg": {
+            "wins": 0,
+            "losses": 1,
+            "df98bb46-53b3-43aa-83c9-2cb66de501ac": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776532437
+            }
+        },
+        "settlement": {
+            "wins": 0,
+            "losses": 1,
+            "df98bb46-53b3-43aa-83c9-2cb66de501ac": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776532437
+            }
+        },
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "df98bb46-53b3-43aa-83c9-2cb66de501ac": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776532437
+            }
+        },
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "df98bb46-53b3-43aa-83c9-2cb66de501ac": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776532437
+            }
+        }
+    }
+}

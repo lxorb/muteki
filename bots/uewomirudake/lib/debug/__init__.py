@@ -1,6 +1,8 @@
 import itertools
 import time
 
+from lib.debug.output import dprint
+
 
 class Stopwatch:
     def __init__(self, name: str):
@@ -33,10 +35,10 @@ class Stopwatch:
         """
         Outputs the elapsed milliseconds between every two registered times, using messages if provided.
         """
-        print(f"{self.name} - Time elapsed")
+        dprint(f"{self.name} - Time elapsed")
         for t1, t2 in itertools.pairwise(self.lap_times):
             elapsed = (t2[0] - t1[0]) / 1_000_000
-            print(f"|- {t2[1]}: {elapsed:.2f} ms")
+            dprint(f"|- {t2[1]}: {elapsed:.2f} ms")
 
         total_elapsed = (self.lap_times[-1][0] - self.lap_times[0][0]) / 1_000_000
-        print(f"Σ = {total_elapsed:.2f} ms")
+        dprint(f"Σ = {total_elapsed:.2f} ms")

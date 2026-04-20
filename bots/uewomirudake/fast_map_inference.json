@@ -23,6 +23,12 @@
   "(20, 20, (5, 7))": [
     "maps/face.map26"
   ],
+  "(20, 50, (1, 48))": [
+    "maps/climbing_wall.map26"
+  ],
+  "(20, 50, (18, 48))": [
+    "maps/climbing_wall.map26"
+  ],
   "(21, 21, (10, 1))": [
     "maps/default_small2.map26"
   ],
@@ -83,6 +89,9 @@
   "(30, 30, (19, 10))": [
     "maps/default_medium1.map26"
   ],
+  "(30, 30, (2, 2))": [
+    "maps/tea.map26"
+  ],
   "(30, 30, (2, 27))": [
     "maps/cinnamon_roll.map26"
   ],
@@ -92,8 +101,14 @@
   "(30, 30, (26, 3))": [
     "maps/default_medium2.map26"
   ],
+  "(30, 30, (26, 5))": [
+    "maps/perch_point.map26"
+  ],
   "(30, 30, (27, 2))": [
     "maps/cinnamon_roll.map26"
+  ],
+  "(30, 30, (27, 27))": [
+    "maps/tea.map26"
   ],
   "(30, 30, (3, 2))": [
     "maps/landscape.map26"
@@ -103,6 +118,9 @@
   ],
   "(30, 30, (3, 3))": [
     "maps/default_medium2.map26"
+  ],
+  "(30, 30, (3, 5))": [
+    "maps/perch_point.map26"
   ],
   "(30, 30, (9, 24))": [
     "maps/shrub.map26"
@@ -130,6 +148,12 @@
   ],
   "(31, 31, (8, 24))": [
     "maps/butterfly.map26"
+  ],
+  "(31, 40, (27, 18))": [
+    "maps/hopscotch.map26"
+  ],
+  "(31, 40, (3, 18))": [
+    "maps/hopscotch.map26"
   ],
   "(32, 32, (22, 26))": [
     "maps/wall.map26"
@@ -185,6 +209,18 @@
   "(39, 30, (4, 22))": [
     "maps/tree_of_life.map26"
   ],
+  "(40, 20, (1, 6))": [
+    "maps/flappy_bird.map26"
+  ],
+  "(40, 20, (38, 6))": [
+    "maps/flappy_bird.map26"
+  ],
+  "(40, 25, (1, 23))": [
+    "maps/spikes.map26"
+  ],
+  "(40, 25, (38, 23))": [
+    "maps/spikes.map26"
+  ],
   "(40, 30, (1, 1))": [
     "maps/tiles.map26"
   ],
@@ -233,6 +269,12 @@
   "(41, 30, (30, 16))": [
     "maps/binary_tree.map26"
   ],
+  "(42, 20, (1, 18))": [
+    "maps/window_shopping.map26"
+  ],
+  "(42, 20, (40, 18))": [
+    "maps/window_shopping.map26"
+  ],
   "(43, 43, (3, 8))": [
     "maps/flowers.map26"
   ],
@@ -251,6 +293,18 @@
   "(49, 49, (2, 28))": [
     "maps/castle_keep.map26"
   ],
+  "(49, 49, (21, 16))": [
+    "maps/building_blocks.map26"
+  ],
+  "(49, 49, (27, 3))": [
+    "maps/chess.map26"
+  ],
+  "(49, 49, (27, 32))": [
+    "maps/building_blocks.map26"
+  ],
+  "(49, 49, (27, 45))": [
+    "maps/chess.map26"
+  ],
   "(49, 49, (35, 31))": [
     "maps/pls_buy_cucats_merch.map26"
   ],
@@ -263,17 +317,35 @@
   "(50, 20, (3, 18))": [
     "maps/socket.map26"
   ],
+  "(50, 30, (12, 15))": [
+    "maps/craters.map26"
+  ],
   "(50, 30, (3, 16))": [
     "maps/default_large2.map26"
+  ],
+  "(50, 30, (37, 15))": [
+    "maps/craters.map26"
   ],
   "(50, 30, (46, 16))": [
     "maps/default_large2.map26"
   ],
+  "(50, 35, (41, 8))": [
+    "maps/pong.map26"
+  ],
   "(50, 35, (43, 5))": [
     "maps/git_branches.map26"
   ],
+  "(50, 35, (44, 22))": [
+    "maps/the_powerful_egg.map26"
+  ],
+  "(50, 35, (5, 22))": [
+    "maps/the_powerful_egg.map26"
+  ],
   "(50, 35, (6, 5))": [
     "maps/git_branches.map26"
+  ],
+  "(50, 35, (8, 8))": [
+    "maps/pong.map26"
   ],
   "(50, 38, (3, 24))": [
     "maps/settlement.map26"
@@ -305,6 +377,12 @@
   "(50, 50, (14, 35))": [
     "maps/cubes.map26"
   ],
+  "(50, 50, (18, 6))": [
+    "maps/coffee.map26"
+  ],
+  "(50, 50, (31, 43))": [
+    "maps/coffee.map26"
+  ],
   "(50, 50, (35, 14))": [
     "maps/cubes.map26"
   ],
@@ -314,7 +392,19 @@
   "(50, 50, (38, 32))": [
     "maps/labyrinth.map26"
   ],
+  "(50, 50, (40, 32))": [
+    "maps/drawing_circles_is_hard.map26"
+  ],
+  "(50, 50, (42, 17))": [
+    "maps/separated.map26"
+  ],
   "(50, 50, (48, 1))": [
     "maps/metropolitan_dystopia.map26"
+  ],
+  "(50, 50, (7, 32))": [
+    "maps/separated.map26"
+  ],
+  "(50, 50, (9, 17))": [
+    "maps/drawing_circles_is_hard.map26"
   ]
 }

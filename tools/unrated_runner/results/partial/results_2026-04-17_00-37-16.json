@@ -1,0 +1,54 @@
+{
+    "a2b913f3-6c6c-49e8-ac1c-1c7c69e3b5ab": {
+        "rush_bait": {
+            "wins": 1,
+            "losses": 0,
+            "ad3c1ade-66ec-4e4d-9e48-1381836435fd": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776379037
+            }
+        },
+        "vase": {
+            "wins": 0,
+            "losses": 1,
+            "ad3c1ade-66ec-4e4d-9e48-1381836435fd": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776379037
+            }
+        },
+        "we_love_tetris": {
+            "wins": 1,
+            "losses": 0,
+            "ad3c1ade-66ec-4e4d-9e48-1381836435fd": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776379037
+            }
+        },
+        "hourglass": {
+            "wins": 0,
+            "losses": 1,
+            "ad3c1ade-66ec-4e4d-9e48-1381836435fd": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776379037
+            }
+        },
+        "shrub": {
+            "wins": 1,
+            "losses": 0,
+            "ad3c1ade-66ec-4e4d-9e48-1381836435fd": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776379037
+            }
+        }
+    }
+}

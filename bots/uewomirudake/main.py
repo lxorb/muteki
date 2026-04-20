@@ -5,12 +5,12 @@ from lib.agent.builder import BuilderAgent
 from lib.agent.core import CoreAgent
 from lib.agent.turret import TurretAgent
 
-from lib.debug import Stopwatch
+# from lib.debug import Stopwatch
 
 core_agent = CoreAgent()
 builder_agent = BuilderAgent()
 turret_agent = TurretAgent()
-sw = Stopwatch("main-stopwatch")
+# sw = Stopwatch("main-stopwatch")
 
 initial_run = False
 
@@ -23,7 +23,7 @@ class Player:
         entity_type: EntityType = ct.get_entity_type()
 
         if self.agent is None:
-            sw.start()
+            # sw.start()
             match entity_type:
                 case EntityType.CORE:
                     self.agent = core_agent
@@ -38,10 +38,10 @@ class Player:
                     self.agent = turret_agent
                 case _:
                     self.agent = Agent()
-            sw.lap("Initialize agent")
-            sw.log()
+            # sw.lap("Initialize agent")
+            # sw.log()
 
-        sw.start()
+        # sw.start()
         self.agent.u_run(ct)
-        sw.lap("whole run time")
-        sw.log()
+        # sw.lap("whole run time")
+        # sw.log()

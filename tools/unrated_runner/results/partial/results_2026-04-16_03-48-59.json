@@ -1,0 +1,262 @@
+{
+    "3800991c-52ce-4232-b77e-deb1ba1d30f6": {
+        "cubes": {
+            "wins": 1,
+            "losses": 0,
+            "3d344ffa-bd81-4e61-85b8-b3d440acbee8": {
+                "win": true,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776304141
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "3d344ffa-bd81-4e61-85b8-b3d440acbee8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304141
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 0,
+            "3d344ffa-bd81-4e61-85b8-b3d440acbee8": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304141
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "3d344ffa-bd81-4e61-85b8-b3d440acbee8": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 1174,
+                "time": 1776304141
+            }
+        },
+        "default_small1": {
+            "wins": 0,
+            "losses": 1,
+            "3d344ffa-bd81-4e61-85b8-b3d440acbee8": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304141
+            }
+        }
+    },
+    "ab8198de-3062-4789-b1ce-653e3d420efb": {
+        "cubes": {
+            "wins": 0,
+            "losses": 1,
+            "76d288ce-0772-4080-82d7-daf1065b917a": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304181
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "76d288ce-0772-4080-82d7-daf1065b917a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 447,
+                "time": 1776304181
+            }
+        },
+        "default_medium1": {
+            "wins": 0,
+            "losses": 1,
+            "76d288ce-0772-4080-82d7-daf1065b917a": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304181
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "76d288ce-0772-4080-82d7-daf1065b917a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 586,
+                "time": 1776304181
+            }
+        },
+        "default_small1": {
+            "wins": 0,
+            "losses": 1,
+            "76d288ce-0772-4080-82d7-daf1065b917a": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304181
+            }
+        }
+    },
+    "bbde9d3c-7048-4e4c-b433-0ca13e387c3b": {
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "018b1f34-b12e-4b21-b060-95802ee85b6a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 162,
+                "time": 1776304223
+            }
+        },
+        "dna": {
+            "wins": 1,
+            "losses": 0,
+            "018b1f34-b12e-4b21-b060-95802ee85b6a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 591,
+                "time": 1776304223
+            }
+        },
+        "donut": {
+            "wins": 1,
+            "losses": 0,
+            "018b1f34-b12e-4b21-b060-95802ee85b6a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 585,
+                "time": 1776304223
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 1,
+            "losses": 0,
+            "018b1f34-b12e-4b21-b060-95802ee85b6a": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 372,
+                "time": 1776304223
+            }
+        },
+        "first_sound": {
+            "wins": 1,
+            "losses": 0,
+            "018b1f34-b12e-4b21-b060-95802ee85b6a": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304223
+            }
+        }
+    },
+    "023ce802-d72e-44f5-b99e-71a6f97db4b7": {
+        "cubes": {
+            "wins": 0,
+            "losses": 1,
+            "7e1f7a04-6342-49a0-89af-16644c9e786e": {
+                "win": false,
+                "condition": "Axionite Collected",
+                "turns": 2000,
+                "time": 1776304302
+            }
+        },
+        "default_large2": {
+            "wins": 1,
+            "losses": 0,
+            "7e1f7a04-6342-49a0-89af-16644c9e786e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304302
+            }
+        },
+        "default_medium1": {
+            "wins": 1,
+            "losses": 0,
+            "7e1f7a04-6342-49a0-89af-16644c9e786e": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 377,
+                "time": 1776304302
+            }
+        },
+        "default_medium2": {
+            "wins": 1,
+            "losses": 0,
+            "7e1f7a04-6342-49a0-89af-16644c9e786e": {
+                "win": true,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304302
+            }
+        },
+        "default_small1": {
+            "wins": 0,
+            "losses": 1,
+            "7e1f7a04-6342-49a0-89af-16644c9e786e": {
+                "win": false,
+                "condition": "Titanium Collected",
+                "turns": 2000,
+                "time": 1776304302
+            }
+        }
+    },
+    "db64a383-a20a-4cf9-a57c-082e1dc9dfbf": {
+        "default_small2": {
+            "wins": 1,
+            "losses": 0,
+            "fcb0d6f8-04d6-448d-90a6-a03b450707dd": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 849,
+                "time": 1776304305
+            }
+        },
+        "dna": {
+            "wins": 0,
+            "losses": 1,
+            "fcb0d6f8-04d6-448d-90a6-a03b450707dd": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 380,
+                "time": 1776304305
+            }
+        },
+        "donut": {
+            "wins": 0,
+            "losses": 1,
+            "fcb0d6f8-04d6-448d-90a6-a03b450707dd": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 1678,
+                "time": 1776304305
+            }
+        },
+        "drawing_circles_is_hard": {
+            "wins": 0,
+            "losses": 1,
+            "fcb0d6f8-04d6-448d-90a6-a03b450707dd": {
+                "win": false,
+                "condition": "Core Destroyed",
+                "turns": 142,
+                "time": 1776304305
+            }
+        },
+        "first_sound": {
+            "wins": 1,
+            "losses": 0,
+            "fcb0d6f8-04d6-448d-90a6-a03b450707dd": {
+                "win": true,
+                "condition": "Core Destroyed",
+                "turns": 68,
+                "time": 1776304305
+            }
+        }
+    }
+}

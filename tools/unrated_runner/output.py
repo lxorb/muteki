@@ -7,6 +7,9 @@ from pathlib import Path
 RENDER_IMAGES = True
 HALF_LIFE_MINUTES = 60
 DECAY_LAMBDA = math.log(2) / (HALF_LIFE_MINUTES / 1440)  # in days^-1
+CUTOFF_HOURS: float | None = (
+    12  # ignore games older than this; set to 0 or None to disable
+)
 
 # Map win-rate color cutoffs: (threshold, background_color)
 # Applied top-down; first match wins.
@@ -33,7 +36,8 @@ def load_team_names() -> dict[str, str]:
     if not TEAM_LIST_FILE.exists():
         return {}
     with open(TEAM_LIST_FILE) as f:
-        return json.load(f)
+        data = json.load(f)
+    return {tid: info["name"] for tid, info in data.items()}
 
 
 def load_results() -> dict:
@@ -42,6 +46,40 @@ def load_results() -> dict:
         return {}
     with open(RESULTS_ALL_FILE) as f:
         return json.load(f)
+
+
+def filter_by_cutoff(results: dict, cutoff_hours: float | None) -> dict:
+    """Drop game entries older than cutoff_hours; recompute wins/losses.
+
+    Map entries with no remaining games are dropped, as are teams with no
+    remaining maps. If cutoff_hours is falsy or non-positive, returns results
+    unchanged.
+    """
+    if not cutoff_hours or cutoff_hours <= 0:
+        return results
+    cutoff_ts = time.time() - cutoff_hours * 3600
+    filtered: dict = {}
+    for team_id, maps in results.items():
+        team_filtered: dict = {}
+        for map_name, map_data in maps.items():
+            wins = 0
+            losses = 0
+            entries: dict = {}
+            for k, v in map_data.items():
+                if k in ("wins", "losses"):
+                    continue
+                if v.get("time", 0) < cutoff_ts:
+                    continue
+                entries[k] = v
+                if v.get("win"):
+                    wins += 1
+                else:
+                    losses += 1
+            if entries:
+                team_filtered[map_name] = {"wins": wins, "losses": losses, **entries}
+        if team_filtered:
+            filtered[team_id] = team_filtered
+    return filtered
 
 
 def win_pct(wins: int, games: int) -> str:
@@ -165,6 +203,7 @@ def render_table_to_image(
 def main():
     team_names = load_team_names()
     combined = load_results()
+    combined = filter_by_cutoff(combined, CUTOFF_HOURS)
     now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     # Compute per-map totals (across all teams)
@@ -196,7 +235,11 @@ def main():
     requested_rank = {name: i for i, name in enumerate(requested_order)}
     output_set = set(requested_order)
     all_teams = sorted(
-        [t for t in combined.keys() if not output_set or team_names.get(t, t) in output_set],
+        [
+            t
+            for t in combined.keys()
+            if not output_set or team_names.get(t, t) in output_set
+        ],
         key=lambda t: (
             requested_rank.get(team_names.get(t, t), len(requested_order)),
             team_names.get(t, t),
