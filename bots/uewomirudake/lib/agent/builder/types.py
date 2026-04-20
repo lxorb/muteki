@@ -387,6 +387,8 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         require_no_enemy_bbs_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
+    def s_berserk(self) -> BuilderActionResult: ...
+
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,

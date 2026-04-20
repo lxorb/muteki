@@ -115,6 +115,7 @@ CORE_DEFENDER_STRATEGY = [
 ]
 
 HARASSMENT_STRATEGY = [
+    (BuilderStrategyMethodsMixin.s_berserk,),
     (BuilderStrategyMethodsMixin.s_step_off_core,),
     (BuilderStrategyMethodsMixin.s_move_out_of_gunner_range,),
     (BuilderStrategyMethodsMixin.s_heal_self,),
@@ -171,8 +172,8 @@ INITIAL_BB_ORDER: list[str] = [
 FUTHER_BB_ROTATION: list[str] = [
     HARASSMENT_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
-    DEFENDER_STRATEGY_ID
+    SCAVENGER_STRATEGY_ID,
+    HARASSMENT_STRATEGY_ID,
 ]
 FURTHER_BB_MIN_TURN: int = 50
-FURTHER_BB_MIN_TITANIUM: int = 200
-FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN: int = 70
+FURTHER_BB_MIN_REM_TITANIUM: int = 50

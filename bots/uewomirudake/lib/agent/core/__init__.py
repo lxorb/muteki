@@ -3,10 +3,9 @@ from cambc import Direction, EntityType
 from lib.agent import Agent
 from lib.agent.builder.strategies import (
     BUILDER_STRATEGY_BY_TILE,
+    FURTHER_BB_MIN_REM_TITANIUM,
     FURTHER_BB_MIN_TURN,
-    FURTHER_BB_MIN_TITANIUM,
     FUTHER_BB_ROTATION,
-    FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN,
     INITIAL_BB_ORDER,
 )
 from lib.agent.constants import (
@@ -45,7 +44,6 @@ class CoreAgent(Agent):
             )
         ]
         self.spawning_order_pos = 0
-        self.further_spawn_count = 0
         self.further_spawn_rotation_pos = 0
         self.core_defender_requested = False
         self.core_defender_bot_id: int | None = None
@@ -138,11 +136,12 @@ class CoreAgent(Agent):
         if self.ct.get_current_round() < FURTHER_BB_MIN_TURN:
             return False
 
-        required_titanium = (
-            FURTHER_BB_MIN_TITANIUM
-            + self.further_spawn_count * FURTHER_BB_TITANIUM_INCREASE_PER_SPAWN
-        )
-        if self.map.titanium < required_titanium:
+        builder_titanium_cost, _ = getattr(
+            self.ct,
+            f"get_{EntityType.BUILDER_BOT.value}_cost",
+        )()
+        remaining_titanium_after_spawn = self.map.titanium - builder_titanium_cost
+        if remaining_titanium_after_spawn < FURTHER_BB_MIN_REM_TITANIUM:
             return False
 
         rotation_length = len(self.further_builder_rotation)
@@ -152,7 +151,6 @@ class CoreAgent(Agent):
             if not self.u_spawn_builder(builder_bot_strategy):
                 continue
 
-            self.further_spawn_count += 1
             self.further_spawn_rotation_pos = (rotation_idx + 1) % rotation_length
             return True
 
