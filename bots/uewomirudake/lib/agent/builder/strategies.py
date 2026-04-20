@@ -141,7 +141,7 @@ HARASSMENT_STRATEGY = [
     ),
     (False, BuilderStrategyMethodsMixin.s_hijack_enemy_supply_chain, True, True),
     (False, BuilderStrategyMethodsMixin.s_build_enemy_supplied_turret, True, False),
-    (False, BuilderStrategyMethodsMixin.s_heal_own_building, True, True, 3),
+    (False, BuilderStrategyMethodsMixin.s_heal_own_building, True, True),
     (False, BuilderStrategyMethodsMixin.s_attack_key_enemy_supply_chain, True, True),
     (False, BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
     (False, BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
