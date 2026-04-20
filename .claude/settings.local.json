@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('lib/map/__init__.py'\\).read\\(\\)\\); ast.parse\\(open\\('lib/agent/__init__.py'\\).read\\(\\)\\); ast.parse\\(open\\('lib/agent/builder/__init__.py'\\).read\\(\\)\\); print\\('OK: all three modules parse'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git -C /c/Users/ninag/PycharmProjects/cbc-muteki status --short)",
+      "Bash(git -C /c/Users/ninag/PycharmProjects/cbc-muteki diff --stat -- bots/uewomirudake/lib/agent/builder/)"
     ]
   }
 }
