@@ -3941,6 +3941,17 @@ class BuilderStrategyMethodsMixin:
                 for target_tile in source_tile.building.targets
             )
 
+        def points_at_enemy_road_with_enemy_builder_bot(source_tile) -> bool:
+            return any(
+                target_tile.building.id is not None
+                and target_tile.building.team != own_team
+                and target_tile.building.entity_type == EntityType.ROAD
+                and target_tile.bot.id is not None
+                and target_tile.bot.team != own_team
+                and target_tile.bot.entity_type == EntityType.BUILDER_BOT
+                for target_tile in source_tile.building.targets
+            )
+
         def points_at_enemy_rebuildable_structure(source_tile) -> bool:
             return any(
                 target_tile.building.id is not None
@@ -4016,7 +4027,10 @@ class BuilderStrategyMethodsMixin:
             if points_at_enemy_turret(tile):
                 enemy_turret_bucket.append(tile)
                 continue
-            if points_at_enemy_supply_link(tile):
+            if (
+                points_at_enemy_supply_link(tile)
+                or points_at_enemy_road_with_enemy_builder_bot(tile)
+            ):
                 enemy_supply_link_bucket.append(tile)
                 continue
             if (
