@@ -1,0 +1,2999 @@
+{
+  "34c34ca6-0ef5-4f43-832f-9b805d7886b3": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 465,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 1692,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 875,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 465,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 2
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2
+    }
+  },
+  "_stats": {
+    "total_games": 265,
+    "total_wins": 148,
+    "total_losses": 117,
+    "wins_by_condition": {
+      "Titanium Collected": 61,
+      "Core Destroyed": 54,
+      "Axionite Collected": 32,
+      "Harvesters": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 61,
+      "Axionite Collected": 30,
+      "Titanium Collected": 26
+    }
+  },
+  "8db8398a-8e19-45fb-9462-aa010e49ba95": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "bwaaa",
+    "score": "3-2",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "settlement",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "gaussian",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 266,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "the_great_divide",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 316,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "window_shopping",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 237,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "flappy_bird",
+        "winner": "bwaaa",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2,
+      "Axionite Collected": 1
+    }
+  },
+  "0907f725-1c5c-4064-b1c7-fd7ae6f103d9": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "first_sound",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "starry_night",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "we_love_tetris",
+        "winner": "PPP",
+        "condition": "Core Destroyed",
+        "turns": 487,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "butterfly",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 362,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2,
+      "Core Destroyed": 1,
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1
+    }
+  },
+  "da77a4cb-903c-43f4-896a-fe95ae4548c2": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "test",
+    "score": "3-2",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "castle_keep",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "rush_bait",
+        "winner": "test",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "galaxy",
+        "winner": "test",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "dna",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "minimaze",
+        "winner": "test",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 3
+    }
+  },
+  "8a720273-f3bf-440b-a75f-2b03e888f89d": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "something else",
+    "score": "3-2",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "default_medium1",
+        "winner": "something else",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "dna",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 1771,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "cubes",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 424,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "gaussian",
+        "winner": "something else",
+        "condition": "Core Destroyed",
+        "turns": 309,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "binary_tree",
+        "winner": "something else",
+        "condition": "Core Destroyed",
+        "turns": 933,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 2
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 1,
+      "Core Destroyed": 2
+    }
+  },
+  "0dc7bd0d-85bd-4a4e-a891-751153a96ba9": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "okbro",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "donut",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "hooks",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "flappy_bird",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "tea",
+        "winner": "okbro",
+        "condition": "Core Destroyed",
+        "turns": 199,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "butterfly",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 3,
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1
+    }
+  },
+  "4106ca6e-1d30-47d4-9ccb-edb7e048838b": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Squishy",
+    "score": "3-2",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "shish_kebab",
+        "winner": "Squishy",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "default_medium2",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 772,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "starry_night",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 464,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "minimaze",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "window_shopping",
+        "winner": "Squishy",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 2,
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 2
+    }
+  },
+  "4c17f8cd-da64-49f1-b745-fd7a0a266ec7": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "galaxy",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 632,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "default_medium1",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "window_shopping",
+        "winner": "MFF1",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "butterfly",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 453,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "default_medium2",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2,
+      "Axionite Collected": 1
+    }
+  },
+  "65fadeb4-269c-4aee-8895-edca6aad6d34": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "coffee",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 115,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_medium2",
+        "winner": "PPP",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "cinnamon_roll",
+        "winner": "PPP",
+        "condition": "Core Destroyed",
+        "turns": 279,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "shrub",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 260,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 2,
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 1
+    }
+  },
+  "f14e7763-7382-4c5b-adae-025be86c4bd7": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "4-1",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "first_sound",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "separated",
+        "winner": "PPP",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "PPP",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "bear_of_doom",
+        "winner": "PPP",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "building_blocks",
+        "winner": "PPP",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 3,
+      "Axionite Collected": 1
+    }
+  },
+  "cbdcae1e-c2af-4e4b-b76c-2224e8fb2911": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Kessoku Band",
+    "score": "3-2",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "chemistry_class",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "metropolitan_dystopia",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "craters",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "pls_buy_cucats_merch",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "default_medium1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 440,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 1,
+      "Titanium Collected": 1
+    }
+  },
+  "d258c382-1b4d-4ac5-8f14-94db1d6d83e2": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "3-2",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "pixel_forest",
+        "winner": "PPP",
+        "condition": "Core Destroyed",
+        "turns": 1460,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "tree_of_life",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "gaussian",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 222,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "starry_night",
+        "winner": "PPP",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1,
+      "Titanium Collected": 1
+    }
+  },
+  "e3c408b8-b194-4cf9-9f19-061c40831254": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 212,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 319,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 115,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 541,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 3,
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1
+    }
+  },
+  "9ec2f434-a45e-4123-bdac-1f67548bd91e": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "1-4",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 648,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 371,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "MFF1",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 2,
+      "Core Destroyed": 2
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 1
+    }
+  },
+  "83e4d477-6d5c-4f36-9ac6-ebae7ab8ae96": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Kessoku Band",
+    "score": "2-3",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "hopscotch",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "the_great_divide",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "default_large1",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "craters",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "chess",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 2
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 2,
+      "Titanium Collected": 1
+    }
+  },
+  "0dc6c71c-f74e-44fa-adfc-8b1e8bdd3110": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 831,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "MFF1",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 1,
+      "Axionite Collected": 2
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 1
+    }
+  },
+  "7fe089a9-5a2d-4cdc-946f-e3cacd4af015": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "3-2",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 294,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 1598,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 662,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "MFF1",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 1,
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2,
+      "Axionite Collected": 1
+    }
+  },
+  "2cbd4f56-00a2-46a7-91a3-5356b2fbd718": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "default_medium1",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "pong",
+        "winner": "PPP",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "cinnamon_roll",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "thread_of_connection",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 142,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "shrub",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 219,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2,
+      "Core Destroyed": 2
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 1
+    }
+  },
+  "2c999739-bccb-43b7-8dfe-c21fd60931ec": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "MFF1",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 238,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 607,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2,
+      "Core Destroyed": 2
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1
+    }
+  },
+  "49cd950f-c9af-4f5f-a502-27625e41c3b8": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "1-4",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 184,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "MFF1",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 2,
+      "Core Destroyed": 1,
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 1
+    }
+  },
+  "272e9b70-b559-41ab-b0e9-2e02b1550d6d": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 870,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 448,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 1714,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 2
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 3
+    }
+  },
+  "8c122efb-b9da-4d6b-88d4-54781873e6fe": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "bwaaa",
+    "score": "3-2",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "vase",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_medium1",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 781,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "socket",
+        "winner": "bwaaa",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "pong",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "coffee",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 295,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1,
+      "Titanium Collected": 1
+    }
+  },
+  "c19d3a5b-379e-48be-b942-e3fa1dd50e7d": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 931,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 333,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 212,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 269,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "MFF1",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 3
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1,
+      "Axionite Collected": 1
+    }
+  },
+  "8e961008-b304-4460-ab61-fa6dd4db0b31": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "minimaze",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 1021,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "default_small1",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 411,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "wasteland_oasis",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "climbing_wall",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 223,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 1096,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 3
+    }
+  },
+  "9ee0926a-65a2-4ee9-ba27-2b8f6029cd5b": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Pantheon",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "gaussian",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "shish_kebab",
+        "winner": "Pantheon",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "default_small1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 1780,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "git_branches",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "hooks",
+        "winner": "Pantheon",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 1
+    }
+  },
+  "411886e2-5402-4133-986b-dcea2800023e": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "okbro",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "rush_bait",
+        "winner": "okbro",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "first_sound",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "cubes",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 246,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "flowers",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 417,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "chess",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 113,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 3
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1
+    }
+  },
+  "ec65e30f-d5ce-43fe-85f3-cb242d1b1627": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Squishy",
+    "score": "0-5",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "sierpinski_evil",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 362,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small2",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 121,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "tea",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "strings",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 1594,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "bar_chart",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 3,
+      "Titanium Collected": 1,
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {}
+  },
+  "875f7573-9d80-4a71-8bcf-fa248b35a869": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "1-4",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "shrub",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 169,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_medium2",
+        "winner": "PPP",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "wasteland",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "default_medium1",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 1,
+      "Titanium Collected": 3
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1
+    }
+  },
+  "4fb02f29-3f31-4de5-8a12-8126c6cd310e": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "3-2",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "mandelbrot",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "flowers",
+        "winner": "PPP",
+        "condition": "Core Destroyed",
+        "turns": 1307,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "we_love_tetris",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "starry_night",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "labyrinth",
+        "winner": "PPP",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 3
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1,
+      "Titanium Collected": 1
+    }
+  },
+  "ffc37b38-37a0-4bac-bf5e-636d51a71614": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "bwaaa",
+    "score": "1-4",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "socket",
+        "winner": "bwaaa",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "donut",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 1601,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "we_love_tetris",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 234,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "default_large1",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "shish_kebab",
+        "winner": "bwaaa",
+        "condition": "Core Destroyed",
+        "turns": 272,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 3
+    }
+  },
+  "a1329446-1b62-413f-8660-df84b87d00c6": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "shrub",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 522,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "galaxy",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 293,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "donut",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "wasteland",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 276,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "face",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 1339,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 3
+    }
+  },
+  "693a451e-e915-4911-93ed-0aa8b98f0207": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Pantheon",
+    "score": "1-4",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "wasteland",
+        "winner": "Pantheon",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "minimaze",
+        "winner": "Pantheon",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "craters",
+        "winner": "Pantheon",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "default_medium1",
+        "winner": "Pantheon",
+        "condition": "Core Destroyed",
+        "turns": 1951,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "first_sound",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 2,
+      "Axionite Collected": 1,
+      "Core Destroyed": 1
+    }
+  },
+  "32e9d0b9-7099-43a3-bf0c-fcfe4432288c": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "1-4",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "hourglass",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "pong",
+        "winner": "PPP",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "strings",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 348,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "thread_of_connection",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 151,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2,
+      "Core Destroyed": 2
+    },
+    "losses_by_condition": {
+      "Axionite Collected": 1
+    }
+  },
+  "5c466484-1c7b-4c4c-bff4-df0587bcb1ed": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 511,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 501,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 444,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2
+    }
+  },
+  "7a8f9eb5-98be-4bdb-85eb-5e4425032126": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Pantheon",
+    "score": "3-2",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "wasteland",
+        "winner": "Pantheon",
+        "condition": "Core Destroyed",
+        "turns": 166,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "flappy_bird",
+        "winner": "Pantheon",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "chess",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "default_large1",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 378,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "clash_arena",
+        "winner": "Pantheon",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1,
+      "Axionite Collected": 1,
+      "Titanium Collected": 1
+    }
+  },
+  "60240279-fd42-4c61-8b00-4d2878ca2a40": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "something else",
+    "score": "0-5",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "thread_of_connection",
+        "winner": "something else",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "rush_bait",
+        "winner": "something else",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pong",
+        "winner": "something else",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "wasteland_oasis",
+        "winner": "something else",
+        "condition": "Core Destroyed",
+        "turns": 1933,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "window_shopping",
+        "winner": "something else",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {},
+    "losses_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 3,
+      "Core Destroyed": 1
+    }
+  },
+  "4434eb87-29e8-4c09-be9e-f781f230372e": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Harvesters",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 154,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 279,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 159,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Harvesters": 1,
+      "Titanium Collected": 1,
+      "Core Destroyed": 2
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1
+    }
+  },
+  "0e54622b-4b8f-4cd4-9516-e38c8a860b47": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 876,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 568,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 322,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 2,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2
+    }
+  },
+  "3a323646-7cd0-4f3c-84d7-b3debf9ccc05": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 311,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 425,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 225,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1,
+      "Core Destroyed": 1,
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2
+    }
+  },
+  "c5143d4b-32bd-4185-a961-99f14750ed70": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "2-3",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 776,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 504,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 191,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1,
+      "Titanium Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2
+    }
+  },
+  "0d4aaa2f-dbb2-436d-a6ab-7ce7ec43e825": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "PPP",
+    "score": "5-0",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "socket",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "hopscotch",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "bar_chart",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "cold",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "donut",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 5
+    },
+    "losses_by_condition": {}
+  },
+  "2f741349-654e-49de-a41a-6ef6739dc9aa": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "4-1",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 467,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 396,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 148,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 281,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 613,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 4
+    }
+  },
+  "9842632c-2a4d-46cb-b02a-61a1c4a24c95": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Kessoku Band",
+    "score": "5-0",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "galaxy",
+        "winner": "Kessoku Band",
+        "condition": "Core Destroyed",
+        "turns": 124,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "drawing_circles_is_hard",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "separated",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "git_branches",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {},
+    "losses_by_condition": {
+      "Core Destroyed": 1,
+      "Titanium Collected": 2,
+      "Axionite Collected": 2
+    }
+  },
+  "103ae371-9bd3-41fd-8801-1729dc5b5bd8": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Master Oogway",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "hooks",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "building_blocks",
+        "winner": "Master Oogway",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "first_sound",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "socket",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "bar_chart",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 4
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1
+    }
+  },
+  "6eb89d16-5203-4329-b1db-982e9afc1326": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "3-2",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 543,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 235,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 228,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 1,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2
+    }
+  },
+  "0bc4853f-c5bd-40e1-8071-4bab84a3021b": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Blue Dragon",
+    "score": "3-2",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "face",
+        "winner": "Blue Dragon",
+        "condition": "Core Destroyed",
+        "turns": 994,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "drawing_circles_is_hard",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "gaussian",
+        "winner": "Blue Dragon",
+        "condition": "Core Destroyed",
+        "turns": 280,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "thread_of_connection",
+        "winner": "Blue Dragon",
+        "condition": "Core Destroyed",
+        "turns": 267,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "tree_of_life",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 2
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 3
+    }
+  },
+  "306d811d-0f37-4204-a26e-5afda059364d": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "1-4",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "clash_arena",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "tea",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 127,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "pixel_forest",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 361,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "the_powerful_egg",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "cold",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 1,
+      "Axionite Collected": 2
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1
+    }
+  },
+  "2dab41f0-3c14-4510-a02f-7bde873a804e": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Kessoku Band",
+    "score": "1-4",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "first_sound",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "rush_bait",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 3,
+        "map": "the_powerful_egg",
+        "winner": "Kessoku Band",
+        "condition": "Core Destroyed",
+        "turns": 764,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "perch_point",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "metropolitan_dystopia",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Titanium Collected": 1,
+      "Core Destroyed": 1,
+      "Axionite Collected": 2
+    }
+  },
+  "50051bc1-5cd1-44d2-9ff1-ccf7e2d32eec": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Kessoku Band",
+    "score": "4-1",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "default_large2",
+        "winner": "Kessoku Band",
+        "condition": "Core Destroyed",
+        "turns": 807,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "starry_night",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "mandelbrot",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "perch_point",
+        "winner": "Kessoku Band",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "labyrinth",
+        "winner": "Kessoku Band",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Axionite Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1,
+      "Titanium Collected": 2,
+      "Axionite Collected": 1
+    }
+  },
+  "f8e562e1-1820-4feb-a84f-1b9267e35ede": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "Master Oogway",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "cinnamon_roll",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 2,
+        "map": "default_small2",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "arena",
+        "winner": "Master Oogway",
+        "condition": "Core Destroyed",
+        "turns": 340,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "flowers",
+        "winner": "muteki",
+        "condition": "Axionite Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "flappy_bird",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 299,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1,
+      "Axionite Collected": 2,
+      "Core Destroyed": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1
+    }
+  },
+  "89f40637-daf6-4fb4-bfac-8ffff39f8426": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "4-1",
+    "result": "loss",
+    "games": [
+      {
+        "game": 1,
+        "map": "binary_tree",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 1750,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "perch_point",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "rush_bait",
+        "winner": "MFF1",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "git_branches",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 683,
+        "result": "loss"
+      },
+      {
+        "game": 5,
+        "map": "git_branches",
+        "winner": "MFF1",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "loss"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2,
+      "Titanium Collected": 2
+    }
+  },
+  "a940e90b-bbfc-48a8-9d0f-b402978577c2": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "MFF1",
+    "score": "4-1",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "binary_tree",
+        "winner": "MFF1",
+        "condition": "Core Destroyed",
+        "turns": 1224,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "perch_point",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 496,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "rush_bait",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 4,
+        "map": "git_branches",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 171,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "git_branches",
+        "winner": "muteki",
+        "condition": "Core Destroyed",
+        "turns": 947,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Core Destroyed": 3,
+      "Titanium Collected": 1
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 1
+    }
+  },
+  "bf5cdc50-6f4e-48d5-b72e-66d0033bbc3c": {
+    "user": "einbocha",
+    "date": "2026-04-19",
+    "enemy": "cheesynachos",
+    "score": "3-2",
+    "result": "win",
+    "games": [
+      {
+        "game": 1,
+        "map": "binary_tree",
+        "winner": "cheesynachos",
+        "condition": "Core Destroyed",
+        "turns": 825,
+        "result": "loss"
+      },
+      {
+        "game": 2,
+        "map": "vase",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 3,
+        "map": "chemistry_class",
+        "winner": "cheesynachos",
+        "condition": "Core Destroyed",
+        "turns": 270,
+        "result": "loss"
+      },
+      {
+        "game": 4,
+        "map": "shish_kebab",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      },
+      {
+        "game": 5,
+        "map": "wall",
+        "winner": "muteki",
+        "condition": "Titanium Collected",
+        "turns": 2000,
+        "result": "win"
+      }
+    ],
+    "wins_by_condition": {
+      "Titanium Collected": 3
+    },
+    "losses_by_condition": {
+      "Core Destroyed": 2
+    }
+  }
+}

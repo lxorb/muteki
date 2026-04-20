@@ -1,7 +1,7 @@
 """Temporary script to rename existing videos to the new format.
 
 New format: {date}__{enemy}__{match_id}__{game_nr}__{turns}__{map}__{tag}.mp4
-Run once, then delete. The main game_video.py script handles this for new videos.
+Run once, then delete. The main videos.py script handles this for new videos.
 """
 
 import glob

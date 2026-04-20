@@ -292,7 +292,7 @@ def process_match(match_id: str) -> None:
     date, enemy_team, team_names, score, result, games, game_details = fetch_match_info(match_id)
     print(f"  Teams: {' vs '.join(team_names)}, Date: {date}, Score: {score} ({result}), Games: {games}")
 
-    image_dir = os.path.join(SCRIPT_DIR, "images")
+    image_dir = os.path.join(SCRIPT_DIR, "temp")
     os.makedirs(image_dir, exist_ok=True)
 
     # Screenshot all rounds
@@ -402,7 +402,7 @@ def process_match(match_id: str) -> None:
 
 
 if __name__ == "__main__":
-    image_dir = os.path.join(SCRIPT_DIR, "images")
+    image_dir = os.path.join(SCRIPT_DIR, "temp")
     old_images = glob.glob(os.path.join(image_dir, "*.png"))
     print(f"[{_timestamp()}] {len(old_images)} images to clean up")
     if old_images:
