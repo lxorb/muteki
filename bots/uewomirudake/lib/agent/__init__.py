@@ -34,6 +34,8 @@ class Agent:
         else:
             self.map.ct = ct
 
+        self.map.skip_frontier_expand_this_turn = False
+        self.u_before_vision_update()
         self.map.u_update_vision()
         self.stopwatch.lap("Map vision")
 
@@ -87,6 +89,15 @@ class Agent:
             tiles,
             key=lambda tile: tuple(criterion(tile) for criterion in criteria),
         )
+
+    def u_before_vision_update(self) -> None:
+        """
+        Hook that runs after the controller is bound and before
+        `self.map.u_update_vision()`. Subclasses may override to configure
+        per-turn map preprocessing flags (e.g. `skip_frontier_expand_this_turn`).
+        The flag is reset to its default by `u_run` before this hook fires.
+        """
+        pass
 
     def u_handler(self):
         """

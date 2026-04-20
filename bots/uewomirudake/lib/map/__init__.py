@@ -682,6 +682,12 @@ class Map:
         self.frontier_expand_newly_seen_indices: list[int] = []
         self.frontier_expand_pending_indices: list[int] = []
         self.frontier_expand_pending_head = 0
+        # Set by the agent before `u_update_vision` to suppress the expensive
+        # frontier-expand cache population for roles that don't benefit from
+        # it (currently harassment and core_defender builders). The
+        # newly-seen → pending transfer still runs so that when the next bot
+        # whose role does need the cache runs, no tile indices are lost.
+        self.skip_frontier_expand_this_turn: bool = False
         self.stale_builder_passability_touched_indices: list[int] = []
         self.stale_builder_passability_tracked_by_index = bytearray(
             self.INITIAL_MAP_SIZE
@@ -2163,6 +2169,9 @@ class Map:
         if self.frontier_expand_newly_seen_indices:
             pending_indices.extend(self.frontier_expand_newly_seen_indices)
             self.frontier_expand_newly_seen_indices.clear()
+
+        if self.skip_frontier_expand_this_turn:
+            return
 
         pending_head = self.frontier_expand_pending_head
         if pending_head >= len(pending_indices):

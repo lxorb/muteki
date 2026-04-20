@@ -2,7 +2,11 @@ from cambc import Controller, EntityType, Environment, Position
 
 from lib.agent import Agent
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
-from lib.agent.constants import YEET_STUCK_OSCILLATION_ROUNDS
+from lib.agent.constants import (
+    CORE_DEFENDER_STRATEGY_ID,
+    HARASSMENT_STRATEGY_ID,
+    YEET_STUCK_OSCILLATION_ROUNDS,
+)
 from lib.map import Map
 from lib.map.types import SupplyChainLabel
 
@@ -96,6 +100,28 @@ class BuilderAgent(
 
     def u_get_strategy_name(self) -> str:
         return self.strategy or "unknown"
+
+    @override
+    def u_before_vision_update(self) -> None:
+        """
+        Suppress the expensive frontier-expand cache population for the
+        current turn when this builder will run as a harassment bot or a
+        core-defender bot. Role is inferred from the bot's current position
+        relative to the own core center (mirroring
+        `u_infer_strategy_by_spawning_tile`). When the own core center is not
+        yet known (e.g. very first turn), fall back to the default (no skip).
+        """
+        core_center_pos = self.map.own_core_center_pos
+        if core_center_pos is None:
+            return
+        current_pos = self.ct.get_position()
+        relative_tile = (
+            current_pos.x - core_center_pos.x,
+            current_pos.y - core_center_pos.y,
+        )
+        strategy = BUILDER_STRATEGY_BY_TILE.get(relative_tile, "")
+        if strategy in {HARASSMENT_STRATEGY_ID, CORE_DEFENDER_STRATEGY_ID}:
+            self.map.skip_frontier_expand_this_turn = True
 
     def u_is_stuck_oscillating(self) -> bool:
         window = YEET_STUCK_OSCILLATION_ROUNDS + 1
