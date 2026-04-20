@@ -2359,33 +2359,6 @@ class BuilderNavigationMixin:
             avoid_enemy_turrets=avoid_enemy_turrets,
         )
 
-    def _u_try_step_off_current_build_tile(self) -> bool:
-        current_pos = self.map.current_pos
-        best: tuple[int, int, int, Direction, Position] | None = None
-        for direction_order, direction in enumerate(DIRECTIONS):
-            if not self.ct.can_move(direction):
-                continue
-            adj_pos = current_pos.add(direction)
-            if not self.map.u_is_in_bounds(adj_pos):
-                continue
-            adj_tile = self.map.u_get_pos_tile(adj_pos)
-            if adj_tile.building.id is None:
-                continue
-            if not adj_tile.is_passable:
-                continue
-            key = (
-                adj_tile.own_core_dist,
-                direction_order,
-                adj_tile.index,
-            )
-            if best is None or key < best[:3]:
-                best = (*key, direction, adj_pos)
-        if best is None:
-            return False
-        _, _, _, direction, adj_pos = best
-        self.u_move_with_target(direction, adj_pos)
-        return True
-
     def u_build_at(
         self,
         pos: Position,
@@ -2536,13 +2509,6 @@ class BuilderNavigationMixin:
             )
             log_step("astar unaffordable")
             return finish(move_result, "return unaffordable move")
-
-        if (
-            pos == current_pos
-            and not can_build_on_own_tile
-        ):
-            if self._u_try_step_off_current_build_tile():
-                return finish(True, "step off for non-passable build")
 
         if current_pos.distance_squared(pos) <= BUILDER_ACTION_RADIUS_SQ and (
             pos != current_pos or can_build_on_own_tile

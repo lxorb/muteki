@@ -2,7 +2,6 @@ from cambc import Controller, EntityType, Environment, Position
 
 from lib.agent import Agent
 from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
-from lib.agent.constants import YEET_STUCK_OSCILLATION_ROUNDS
 from lib.map import Map
 from lib.map.types import SupplyChainLabel
 
@@ -38,9 +37,6 @@ class BuilderAgent(
     enemy_core_proxy_base_target_pos: Position | None
     marker_target_pos: Position | None
     marker_has_explicit_target: bool
-    marker_placed_already: bool
-    awaiting_yeet_from_pos: Position | None
-    recent_positions: list[Position]
     step_off_core_attempted: bool
     spawn_relative_tile: tuple[int, int] | None
     _d_star_lite_states_by_builder_id: dict[int, object]
@@ -68,9 +64,6 @@ class BuilderAgent(
         self.enemy_core_proxy_base_target_pos = None
         self.marker_target_pos = None
         self.marker_has_explicit_target = False
-        self.marker_placed_already = False
-        self.awaiting_yeet_from_pos = None
-        self.recent_positions = []
         self.step_off_core_attempted = False
         self.spawn_relative_tile = None
         self._d_star_lite_states_by_builder_id = {}
@@ -95,35 +88,12 @@ class BuilderAgent(
     def u_get_strategy_name(self) -> str:
         return self.strategy or "unknown"
 
-    def u_is_stuck_oscillating(self) -> bool:
-        window = YEET_STUCK_OSCILLATION_ROUNDS + 1
-        if len(self.recent_positions) < window:
-            return False
-        return len(set(self.recent_positions[-window:])) <= 2
-
     @override
     def u_handler(self):
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
         self.marker_target_pos = None
         self.marker_has_explicit_target = False
-        self.marker_placed_already = False
-
-        fresh_pos = self.ct.get_position()
-        self.recent_positions.append(fresh_pos)
-        history_cap = YEET_STUCK_OSCILLATION_ROUNDS + 1
-        if len(self.recent_positions) > history_cap:
-            del self.recent_positions[: len(self.recent_positions) - history_cap]
-
-        if self.awaiting_yeet_from_pos is not None:
-            if fresh_pos != self.awaiting_yeet_from_pos:
-                self.awaiting_yeet_from_pos = None
-            else:
-                finished_loading_map = self.map.u_update_map()
-                if finished_loading_map:
-                    self.map.map_json_loaded_print_pending = False
-                return False
-
         if self.map.is_map_known:
             print(
                 f"Inferred map: {self.map.known_map_path} "

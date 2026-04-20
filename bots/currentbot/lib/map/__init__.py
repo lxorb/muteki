@@ -388,7 +388,6 @@ class Map:
             array("h", [-1]) * self.INITIAL_MAP_SIZE
         )
         self.own_action_reachable_launcher_indices: list[int] = []
-        self.one_move_action_reachable_launcher_indices: list[int] = []
         self.dist_to_self_epoch_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.dist_to_self_epoch = 0
         self.last_dist_to_self_source_idx: int | None = None
@@ -4596,56 +4595,6 @@ class Map:
                 if check_overtime_interval():
                     break
                 overtime_check_countdown = 32
-
-        self._u_refresh_one_move_action_reachable_launcher_indices(source_idx)
-
-    def _u_refresh_one_move_action_reachable_launcher_indices(
-        self, source_idx: int
-    ) -> None:
-        own_team = self.own_team
-        tiles_by_index = self.tiles_by_index
-        neighbor_indices_by_index = self.neighbor_indices_by_index
-        neighbor_count_by_index = self.neighbor_count_by_index
-        max_neighbor_count = self.MAX_NEIGHBOR_COUNT
-        active_mask_by_index = self.active_mask_by_index
-        intrinsic_passable_by_index = self.intrinsic_passable_by_index
-        bot_present_by_index = self.bot_present_by_index
-
-        out = self.one_move_action_reachable_launcher_indices
-        out.clear()
-        seen: set[int] = set()
-
-        def _collect_launchers_adjacent_to(center_idx: int) -> None:
-            base = center_idx * max_neighbor_count
-            count = neighbor_count_by_index[center_idx]
-            for offset in range(count):
-                cand_idx = neighbor_indices_by_index[base + offset]
-                if cand_idx in seen:
-                    continue
-                if not active_mask_by_index[cand_idx]:
-                    continue
-                cand_tile = tiles_by_index[cand_idx]
-                if (
-                    cand_tile.building.id is not None
-                    and cand_tile.building.team == own_team
-                    and cand_tile.building.entity_type == EntityType.LAUNCHER
-                ):
-                    seen.add(cand_idx)
-                    out.append(cand_idx)
-
-        _collect_launchers_adjacent_to(source_idx)
-
-        base = source_idx * max_neighbor_count
-        count = neighbor_count_by_index[source_idx]
-        for offset in range(count):
-            step_idx = neighbor_indices_by_index[base + offset]
-            if not active_mask_by_index[step_idx]:
-                continue
-            if not intrinsic_passable_by_index[step_idx]:
-                continue
-            if bot_present_by_index[step_idx]:
-                continue
-            _collect_launchers_adjacent_to(step_idx)
 
     def u_refresh_dist_to_self(self) -> None:
         self.u_refresh_vision_reachable_dist_to_self()
