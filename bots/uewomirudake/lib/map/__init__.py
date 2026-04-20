@@ -74,6 +74,57 @@ _SCOUT_SEEN_NEIGHBOR_OFFSETS = (
     *((dx, dy) for dx in range(-1, 2) for dy in range(-1, 2) if dx or dy),
 )
 
+# Canonical sentinel attack stencil for S (delta 0, 1). All other cardinals are
+# obtained from this by rotation.
+_SENTINEL_CARDINAL_S_OFFSETS: tuple[tuple[int, int], ...] = (
+    (-1, 0), (1, 0),
+    (-1, 1), (0, 1), (1, 1),
+    (-1, 2), (0, 2), (1, 2),
+    (-1, 3), (0, 3), (1, 3),
+    (-1, 4), (0, 4), (1, 4),
+    (-1, 5), (0, 5), (1, 5),
+)
+
+# Canonical sentinel attack stencil for NW (delta -1, -1). Other diagonals are
+# obtained from this by reflection.
+_SENTINEL_DIAGONAL_NW_OFFSETS: tuple[tuple[int, int], ...] = (
+    (-2, 0), (-1, 0),
+    (-3, -1), (-2, -1), (-1, -1), (0, -1),
+    (-4, -2), (-3, -2), (-2, -2), (-1, -2), (0, -2),
+    (-4, -3), (-3, -3), (-2, -3), (-1, -3),
+    (-4, -4), (-3, -4), (-2, -4),
+)
+
+
+def _build_sentinel_stencil_by_direction() -> (
+    dict[Direction, frozenset[tuple[int, int]]]
+):
+    # Cardinal rotations from S template:
+    #   S: identity
+    #   N: reflect across x-axis
+    #   E: rotate 90° CW   (dx, dy) -> (dy, -dx)
+    #   W: rotate 90° CCW  (dx, dy) -> (-dy, dx)
+    # Diagonal reflections from NW template:
+    #   NW: identity
+    #   NE: flip sign of dx
+    #   SW: flip sign of dy
+    #   SE: flip sign of both
+    s = _SENTINEL_CARDINAL_S_OFFSETS
+    nw = _SENTINEL_DIAGONAL_NW_OFFSETS
+    return {
+        Direction.SOUTH: frozenset(s),
+        Direction.NORTH: frozenset((dx, -dy) for dx, dy in s),
+        Direction.EAST: frozenset((dy, -dx) for dx, dy in s),
+        Direction.WEST: frozenset((-dy, dx) for dx, dy in s),
+        Direction.NORTHWEST: frozenset(nw),
+        Direction.NORTHEAST: frozenset((-dx, dy) for dx, dy in nw),
+        Direction.SOUTHWEST: frozenset((dx, -dy) for dx, dy in nw),
+        Direction.SOUTHEAST: frozenset((-dx, -dy) for dx, dy in nw),
+    }
+
+
+_SENTINEL_STENCIL_BY_DIRECTION = _build_sentinel_stencil_by_direction()
+
 
 def _build_scout_new_vision_offsets_by_direction() -> dict[
     Direction, tuple[tuple[int, int], ...]
@@ -3036,32 +3087,11 @@ class Map:
         target_pos: Position,
         radius_sq: int,
     ) -> bool:
-        if direction == Direction.CENTRE:
+        stencil = _SENTINEL_STENCIL_BY_DIRECTION.get(direction)
+        if stencil is None:
             return False
-
-        delta_x, delta_y = direction.delta()
-        max_steps = max(self.width, self.height)
-
-        for step in range(max_steps + 1):
-            line_pos = Position(
-                turret_pos.x + delta_x * step,
-                turret_pos.y + delta_y * step,
-            )
-            if turret_pos.distance_squared(line_pos) > radius_sq:
-                break
-            if (
-                max(
-                    abs(target_pos.x - line_pos.x),
-                    abs(target_pos.y - line_pos.y),
-                )
-                <= 1
-            ):
-                return True
-
-            if self.round_stopwatch.check_overtime_interval():
-                break
-
-        return False
+        offset = (target_pos.x - turret_pos.x, target_pos.y - turret_pos.y)
+        return offset in stencil
 
     def u_breach_covers_target(
         self,
