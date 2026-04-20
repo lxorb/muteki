@@ -700,6 +700,7 @@ class Map:
         self.known_enemy_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
         self.own_team_bbs_in_vision_count = 0
+        self.enemy_team_bbs_in_vision_count = 0
         self._next_turn_reset_prep_phase = _NEXT_TURN_RESET_PREP_PHASE_NONE
         self._next_turn_reset_prep_own_supply_head = 0
         self._next_turn_reset_prep_enemy_supply_head = 0
@@ -720,6 +721,7 @@ class Map:
         self.has_enemy_bot_in_vision = False
         self.closest_enemy_builder_bot_in_vision_pos = None
         self.own_team_bbs_in_vision_count = 0
+        self.enemy_team_bbs_in_vision_count = 0
         self.tiles_in_vision = []
         self.newly_seen_tiles_in_vision = []
         self.own_harvesters_in_vision = []
@@ -1797,6 +1799,7 @@ class Map:
 
             if tile.bot.id is not None and tile.bot.team != own_team:
                 if tile.bot.entity_type == EntityType.BUILDER_BOT:
+                    self.enemy_team_bbs_in_vision_count += 1
                     key = (
                         current_pos.distance_squared(tile.position),
                         tile.position.x,

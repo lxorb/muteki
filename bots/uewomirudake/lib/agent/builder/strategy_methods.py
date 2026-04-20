@@ -5412,10 +5412,13 @@ class BuilderStrategyMethodsMixin:
         current_tile = self.map.u_get_pos_tile(current_pos)
         enemy_team = self.map.enemy_team
 
-        if (
-            self.map.own_team_bbs_in_vision_count
-            < BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION + 1
-        ):
+        own_bbs = self.map.own_team_bbs_in_vision_count
+        enemy_bbs = self.map.enemy_team_bbs_in_vision_count
+        meets_fixed_threshold = (
+            own_bbs >= BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION + 1
+        )
+        meets_outnumber_condition = enemy_bbs >= 1 and own_bbs > 2 * enemy_bbs
+        if not (meets_fixed_threshold or meets_outnumber_condition):
             return False
         if current_tile.building.team != enemy_team:
             return False
