@@ -2521,6 +2521,7 @@ class BuilderStrategyMethodsMixin:
         current_tile = self.map.u_get_pos_tile(current_pos)
         tiles_by_index = self.map.tiles_by_index
         harvester_best_supply_idx_by_index: dict[int, int | None] = {}
+        has_other_conveyor_pointing_at_by_index: dict[int, bool] = {}
 
         def clear_pending_harvester_target() -> None:
             if self.pending_harvester_target_resource == resource:
@@ -2590,15 +2591,22 @@ class BuilderStrategyMethodsMixin:
             return empty_adjacent_tiles
 
         def has_other_conveyor_pointing_at(tile_index: int) -> bool:
-            for other_tile in self.map.own_supply_links_in_vision:
-                if other_tile.building.team != own_team:
-                    continue
-                if other_tile.building.entity_type not in CONVEYOR_ENTITY_TYPES:
-                    continue
-                for target in other_tile.building.targets:
-                    if target.index == tile_index:
-                        return True
-            return False
+            cached_result = has_other_conveyor_pointing_at_by_index.get(tile_index)
+            if cached_result is not None:
+                return cached_result
+
+            source_indices = (
+                self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                    tile_index,
+                    (),
+                )
+            )
+            result = any(
+                tiles_by_index[source_idx].building.entity_type in CONVEYOR_ENTITY_TYPES
+                for source_idx in source_indices
+            )
+            has_other_conveyor_pointing_at_by_index[tile_index] = result
+            return result
 
         def get_harvester_safety_build_plan(
             harvester_tile,
