@@ -376,6 +376,9 @@ class Map:
         self.vision_action_reachable_turn_by_index = (
             array("I", [0]) * self.INITIAL_MAP_SIZE
         )
+        self.was_vision_action_reachable_by_index = bytearray(
+            self.INITIAL_MAP_SIZE
+        )
         self.dist_to_self_by_index = array("H", [0]) * self.INITIAL_MAP_SIZE
         self.vision_first_step_by_index = array("h", [-1]) * self.INITIAL_MAP_SIZE
         self.vision_action_goal_idx_by_index = array(
@@ -4225,6 +4228,8 @@ class Map:
         return self.own_core_dist_initialized
 
     def u_get_estimated_own_core_dist_by_index(self, idx: int) -> int:
+        if not self.was_vision_action_reachable_by_index[idx]:
+            return INF_DIST
         center = self.own_core_center_pos
         if center is None:
             return INF_DIST
@@ -4460,6 +4465,7 @@ class Map:
         vision_action_first_step_by_index = self.vision_action_first_step_by_index
         vision_reachable_turn_by_index[source_idx] = current_round
         vision_action_reachable_turn_by_index[source_idx] = current_round
+        self.was_vision_action_reachable_by_index[source_idx] = 1
         self.dist_to_self_by_index[source_idx] = 0
         vision_first_step_by_index[source_idx] = -1
         vision_action_goal_idx_by_index[source_idx] = source_idx
@@ -4510,6 +4516,7 @@ class Map:
                 self.enemy_bot_vision_reachable = True
             if vision_action_reachable_turn_by_index[neighbor_idx] != current_round:
                 vision_action_reachable_turn_by_index[neighbor_idx] = current_round
+                self.was_vision_action_reachable_by_index[neighbor_idx] = 1
                 vision_action_goal_idx_by_index[neighbor_idx] = source_idx
                 vision_action_first_step_by_index[neighbor_idx] = -1
                 if (
@@ -4561,6 +4568,7 @@ class Map:
                     self.enemy_bot_vision_reachable = True
                 if vision_action_reachable_turn_by_index[neighbor_idx] != current_round:
                     vision_action_reachable_turn_by_index[neighbor_idx] = current_round
+                    self.was_vision_action_reachable_by_index[neighbor_idx] = 1
                     vision_action_goal_idx_by_index[neighbor_idx] = current_idx
                     vision_action_first_step_by_index[neighbor_idx] = (
                         current_first_step_idx
@@ -5784,6 +5792,9 @@ class Map:
         own_core_dist_initialized = self.own_core_dist_initialized
         own_core_dist_by_index = self.own_core_dist_by_index
         own_core_dist_exact_by_index = self.own_core_dist_exact_by_index
+        was_vision_action_reachable_by_index = (
+            self.was_vision_action_reachable_by_index
+        )
         own_core_center_pos = self.own_core_center_pos
         if own_core_center_pos is not None:
             own_core_center_x = own_core_center_pos.x
@@ -5797,7 +5808,10 @@ class Map:
                 source_own_core_dist = own_core_dist_by_index[source_idx]
                 if source_own_core_dist >= CORE_DIST_INF:
                     source_own_core_dist = INF_DIST
-            elif own_core_center_pos is not None:
+            elif (
+                own_core_center_pos is not None
+                and was_vision_action_reachable_by_index[source_idx]
+            ):
                 dx = source_x - own_core_center_x
                 if dx < 0:
                     dx = -dx
@@ -5938,7 +5952,10 @@ class Map:
                     own_core_dist = own_core_dist_by_index[adjacent_idx]
                     if own_core_dist >= CORE_DIST_INF:
                         own_core_dist = INF_DIST
-                elif own_core_center_pos is not None:
+                elif (
+                    own_core_center_pos is not None
+                    and was_vision_action_reachable_by_index[adjacent_idx]
+                ):
                     own_core_dx = adjacent_x - own_core_center_x
                     if own_core_dx < 0:
                         own_core_dx = -own_core_dx
