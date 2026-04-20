@@ -2707,6 +2707,27 @@ class BuilderStrategyMethodsMixin:
                     return True
             return False
 
+        def can_use_harvester_target_tile(target_tile) -> bool:
+            building = target_tile.building
+            if building.id is None:
+                return True
+
+            if building.team != own_team:
+                return False
+
+            building_type = building.entity_type
+            if building_type in {EntityType.BARRIER, EntityType.ROAD}:
+                return True
+
+            if building_type in CONVEYOR_ENTITY_TYPES:
+                return any(
+                    output_tile.building.team == own_team
+                    and output_tile.building.entity_type == EntityType.HARVESTER
+                    for output_tile in building.targets
+                )
+
+            return False
+
         def get_discontinued_adjacent_supply_tile(harvester_tile):
             candidate_tile = None
             candidate_key = None
@@ -2866,6 +2887,8 @@ class BuilderStrategyMethodsMixin:
         def is_valid_harvester_target(target_tile) -> bool:
             if target_tile.environment != resource:
                 return False
+            if not can_use_harvester_target_tile(target_tile):
+                return False
             if get_harvester_best_supply_idx(target_tile.index) is None:
                 return False
             if (
@@ -3016,18 +3039,28 @@ class BuilderStrategyMethodsMixin:
             pending_target_idx = self.pending_harvester_target_index
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
-            if (
-                pending_target_tile.last_seen_turn != self.map.current_round
-                or not is_valid_harvester_target(pending_target_tile)
-            ):
-                clear_pending_harvester_target()
-                pending_target_tile = None
+            if pending_target_tile.last_seen_turn == self.map.current_round:
+                if not is_valid_harvester_target(pending_target_tile):
+                    clear_pending_harvester_target()
+                    pending_target_tile = None
+            else:
+                other_vision_reachable_ore_exists = any(
+                    ore_idx != pending_target_idx
+                    and self.map.u_is_vision_reachable_by_index(ore_idx)
+                    and tiles_by_index[ore_idx].environment == resource
+                    for ore_idx in ore_indices
+                )
+                if other_vision_reachable_ore_exists:
+                    clear_pending_harvester_target()
+                    pending_target_tile = None
 
         candidate_tiles: list = []
         for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
             if self.round_stopwatch.check_overtime_interval():
                 return False
             if tile.environment != resource:
+                continue
+            if not can_use_harvester_target_tile(tile):
                 continue
             if get_harvester_best_supply_idx(tile.index) is None:
                 continue
