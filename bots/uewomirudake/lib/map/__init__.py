@@ -1981,6 +1981,33 @@ class Map:
             return None
         return self.tiles_by_index[target_idx].position
 
+    def u_get_visible_marker_request_info(
+        self,
+        owner_id: int,
+        require_explicit_target: bool = True,
+    ) -> tuple[int, int, Position] | None:
+        """
+        Return (owner_mod, absolute_request_round, target_pos) uniquely identifying
+        the visible marker launch request for this owner, or None.
+        `absolute_request_round` is the full game round the marker was placed in
+        (not the 6-bit modulo); together with owner_mod and target it uniquely
+        identifies a launch request even across the 64-round marker cycle.
+        """
+        owner_mod = owner_id & (MARKER_OWNER_MODULO - 1)
+        target_idx = self.visible_marker_target_index_by_owner_mod64[owner_mod]
+        if target_idx < 0:
+            return None
+        if (
+            require_explicit_target
+            and not self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]
+        ):
+            return None
+        age = self.visible_marker_age_by_owner_mod64[owner_mod]
+        if age < 0:
+            return None
+        request_round = self.current_round - age
+        return (owner_mod, request_round, self.tiles_by_index[target_idx].position)
+
     def u_get_attackable_target_indices(
         self,
         source_idx: int,

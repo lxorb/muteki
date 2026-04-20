@@ -6797,7 +6797,7 @@ class BuilderStrategyMethodsMixin:
             current_pos,
             target_pos,
         )
-        has_path = bool(current_path) and len(current_path) >= LAUNCHER_BUILD_MIN_IMPROVEMENT
+        has_path = bool(current_path)
         if ENABLE_PRINTING:
             print(
                 f"[yeet-debug] path len={len(current_path) if current_path else 0} "

@@ -40,6 +40,7 @@ class BuilderAgent(
     marker_has_explicit_target: bool
     marker_placed_already: bool
     awaiting_yeet_from_pos: Position | None
+    awaiting_yeet_rounds_waited: int
     recent_positions: list[Position]
     step_off_core_attempted: bool
     spawn_relative_tile: tuple[int, int] | None
@@ -70,6 +71,7 @@ class BuilderAgent(
         self.marker_has_explicit_target = False
         self.marker_placed_already = False
         self.awaiting_yeet_from_pos = None
+        self.awaiting_yeet_rounds_waited = 0
         self.recent_positions = []
         self.step_off_core_attempted = False
         self.spawn_relative_tile = None
@@ -118,7 +120,16 @@ class BuilderAgent(
         if self.awaiting_yeet_from_pos is not None:
             if fresh_pos != self.awaiting_yeet_from_pos:
                 self.awaiting_yeet_from_pos = None
+                self.awaiting_yeet_rounds_waited = 0
+            elif self.awaiting_yeet_rounds_waited >= 2:
+                print(
+                    f"[yeet] giving up awaiting yeet at {fresh_pos} "
+                    f"after {self.awaiting_yeet_rounds_waited} rounds"
+                )
+                self.awaiting_yeet_from_pos = None
+                self.awaiting_yeet_rounds_waited = 0
             else:
+                self.awaiting_yeet_rounds_waited += 1
                 finished_loading_map = self.map.u_update_map()
                 if finished_loading_map:
                     self.map.map_json_loaded_print_pending = False

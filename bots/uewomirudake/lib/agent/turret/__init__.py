@@ -16,6 +16,7 @@ from lib.map.constants import SUPPLY_LINK_TYPES
 class TurretAgent(BuilderNavigationMixin, Agent):
     def __init__(self):
         super().__init__()
+        self.served_ally_launch_round_by_owner_mod: dict[int, int] = {}
 
     def u_handler(self) -> bool:
         """
@@ -42,6 +43,40 @@ class TurretAgent(BuilderNavigationMixin, Agent):
             lambda tile: tile.bot.id is not None,
         )
 
+        print(
+            f"[launcher-debug] pos={launcher_pos} adj_bots="
+            + str([
+                (t.bot.id, t.bot.id & 63, t.bot.team, t.position)
+                for t in adjacent_bot_tiles
+            ])
+        )
+        stored_markers = []
+        for owner_mod in range(64):
+            target_idx = self.map.visible_marker_target_index_by_owner_mod64[owner_mod]
+            if target_idx < 0:
+                continue
+            stored_markers.append((
+                owner_mod,
+                self.map.tiles_by_index[target_idx].position,
+                self.map.visible_marker_age_by_owner_mod64[owner_mod],
+                bool(self.map.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]),
+            ))
+        print(
+            f"[launcher-debug] stored markers (owner_mod, target, age, explicit): "
+            f"{stored_markers}"
+        )
+        print(
+            f"[launcher-debug] served_ally_launch_round_by_owner_mod="
+            f"{dict(self.served_ally_launch_round_by_owner_mod)}"
+        )
+        mod_to_ids: dict[int, list[int]] = {}
+        for t in adjacent_bot_tiles:
+            if t.bot.team == self.map.own_team:
+                mod_to_ids.setdefault(t.bot.id & 63, []).append(t.bot.id)
+        collisions = {m: ids for m, ids in mod_to_ids.items() if len(ids) > 1}
+        if collisions:
+            print(f"[launcher-debug] owner_mod COLLISIONS among adjacent allies: {collisions}")
+
         enemy_bot_tiles = self.u_prioritize_tiles(
             self.u_filter_tiles(
                 adjacent_bot_tiles,
@@ -65,11 +100,35 @@ class TurretAgent(BuilderNavigationMixin, Agent):
             if bot_tile.bot.team != self.map.own_team:
                 continue
 
-            marker_target_pos = self.map.u_get_visible_marker_target_pos(
-                bot_tile.bot.id,
+            bot_id = bot_tile.bot.id
+            owner_mod_local = bot_id & 63
+            request_info = self.map.u_get_visible_marker_request_info(
+                bot_id,
                 require_explicit_target=True,
             )
-            if marker_target_pos is None:
+            if request_info is None:
+                print(
+                    f"[launcher-debug] ally id={bot_id} mod={owner_mod_local} "
+                    f"pos={bot_tile.position} SKIP: no visible marker request"
+                )
+                continue
+            owner_mod, request_round, marker_target_pos = request_info
+
+            # Only skip the EXACT request we already served. Any marker placed
+            # in a round STRICTLY AFTER last_served is a fresh request and must
+            # be considered — including same-target repeats (a new round_mod
+            # makes the request distinct) and same-round different-target
+            # overrides (map caching surfaces the freshest).
+            last_served = self.served_ally_launch_round_by_owner_mod.get(
+                owner_mod, -1
+            )
+            if request_round <= last_served:
+                print(
+                    f"[launcher-debug] ally id={bot_id} mod={owner_mod} "
+                    f"pos={bot_tile.position} marker_tgt={marker_target_pos} "
+                    f"req_round={request_round} last_served={last_served} "
+                    f"SKIP: already served (no newer marker seen)"
+                )
                 continue
 
             target_pos = self.u_get_launcher_ally_throw_target(
@@ -77,6 +136,14 @@ class TurretAgent(BuilderNavigationMixin, Agent):
                 marker_target_pos,
             )
             if target_pos is None:
+                print(
+                    f"[launcher-debug] ally id={bot_id} mod={owner_mod} "
+                    f"pos={bot_tile.position} marker_tgt={marker_target_pos} "
+                    f"req_round={request_round} SKIP: no legal throw target "
+                    f"(filters: passable, no-bot, >2 away, can_launch, "
+                    f"not in enemy attack range, not in enemy pickup zone, "
+                    f"improvement >= {LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE})"
+                )
                 if self.round_stopwatch.check_overtime():
                     break
                 continue
@@ -87,14 +154,27 @@ class TurretAgent(BuilderNavigationMixin, Agent):
                 target_pos.x,
                 target_pos.y,
             )
+            print(
+                f"[launcher-debug] ally id={bot_id} mod={owner_mod} "
+                f"pos={bot_tile.position} marker_tgt={marker_target_pos} "
+                f"req_round={request_round} CANDIDATE throw_tgt={target_pos} key={key}"
+            )
             if best_ally_entry is None or key < best_ally_entry[0]:
-                best_ally_entry = (key, bot_tile.position, target_pos)
+                best_ally_entry = (
+                    key, bot_tile.position, target_pos, owner_mod, request_round
+                )
 
         if best_ally_entry is None:
+            print("[launcher-debug] no ally throw committed")
             return False
 
-        _, bot_pos, target_pos = best_ally_entry
+        _, bot_pos, target_pos, owner_mod, request_round = best_ally_entry
+        print(
+            f"[launcher-debug] LAUNCHING ally at {bot_pos} -> {target_pos} "
+            f"(owner_mod={owner_mod}, request_round={request_round})"
+        )
         self.ct.launch(bot_pos, target_pos)
+        self.served_ally_launch_round_by_owner_mod[owner_mod] = request_round
         return True
 
     def u_get_launcher_legal_target_tiles(self, bot_pos: Position):
