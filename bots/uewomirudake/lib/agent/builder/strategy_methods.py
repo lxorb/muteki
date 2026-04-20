@@ -3737,6 +3737,127 @@ class BuilderStrategyMethodsMixin:
             )
         return False
 
+    def s_simple_harvester_build(self, hold: bool = True):
+        """
+        Build a local harvester on the first nearby ore tile that is enclosed
+        by orthogonally adjacent own buildings or walls.
+
+        Considers the current tile first, then the eight neighboring tiles in
+        fixed direction order. Candidate tiles must be ore and either empty or
+        contain an own road. If the chosen tile is the current tile, step off
+        to the movable adjacent tile with the lowest own-core distance and then
+        build the harvester on the old tile.
+        """
+        map = self.map
+        ct = self.ct
+        own_team = map.own_team
+        current_pos = map.current_pos
+        current_idx = map.u_to_index(current_pos)
+        tiles_by_index = map.tiles_by_index
+        current_tile = tiles_by_index[current_idx]
+
+        def is_simple_harvester_candidate(tile) -> bool:
+            if tile.environment not in {
+                Environment.ORE_TITANIUM,
+                Environment.ORE_AXIONITE,
+            }:
+                return False
+            building = tile.building
+            return building.id is None or (
+                building.team == own_team
+                and building.entity_type == EntityType.ROAD
+            )
+
+        def is_orthogonally_enclosed_by_own_or_wall(tile_idx: int) -> bool:
+            for adjacent_idx in map.u_iter_cardinal_neighbor_indices(tile_idx):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if adjacent_tile.environment == Environment.WALL:
+                    continue
+                adjacent_building = adjacent_tile.building
+                if (
+                    adjacent_building.id is None
+                    or adjacent_building.team != own_team
+                ):
+                    return False
+            return True
+
+        target_tile = None
+        if (
+            is_simple_harvester_candidate(current_tile)
+            and is_orthogonally_enclosed_by_own_or_wall(current_idx)
+        ):
+            target_tile = current_tile
+        else:
+            for direction in DIRECTIONS:
+                target_idx = map.u_get_neighbor_index_by_direction(
+                    current_idx,
+                    direction,
+                )
+                if target_idx is None:
+                    continue
+                candidate_tile = tiles_by_index[target_idx]
+                if not is_simple_harvester_candidate(candidate_tile):
+                    continue
+                if not is_orthogonally_enclosed_by_own_or_wall(target_idx):
+                    continue
+                target_tile = candidate_tile
+                break
+
+        if target_tile is None:
+            return False
+
+        titanium_cost, axionite_cost = ct.get_harvester_cost()
+        if map.titanium < titanium_cost or map.axionite < axionite_cost:
+            return hold
+
+        if target_tile.index != current_idx:
+            return bool(
+                self.u_build_at(
+                    target_tile.position,
+                    EntityType.HARVESTER,
+                    hold=hold,
+                    move_towards=False,
+                    attack_enemy_passable=False,
+                )
+            )
+
+        best_step_direction = None
+        best_step_key = None
+        for direction_order, direction in enumerate(DIRECTIONS):
+            if not ct.can_move(direction):
+                continue
+            adjacent_idx = map.u_get_neighbor_index_by_direction(current_idx, direction)
+            if adjacent_idx is None:
+                continue
+            adjacent_tile = tiles_by_index[adjacent_idx]
+            key = (
+                adjacent_tile.own_core_dist,
+                direction_order,
+                adjacent_idx,
+            )
+            if best_step_key is None or key < best_step_key:
+                best_step_key = key
+                best_step_direction = direction
+
+        if best_step_direction is None:
+            return False
+
+        self.u_move_with_target(best_step_direction, current_pos)
+
+        if (
+            current_tile.building.team == own_team
+            and current_tile.building.entity_type == EntityType.ROAD
+            and ct.can_destroy(current_pos)
+        ):
+            ct.destroy(current_pos)
+            current_tile.clear_building()
+
+        if ct.can_build_harvester(current_pos):
+            ct.build_harvester(current_pos)
+            self.last_built_entity_type = EntityType.HARVESTER
+
+        return True
+
     def s_destroy_hijacked_supplier(
         self,
         move_towards: bool = True,

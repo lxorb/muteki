@@ -23,6 +23,7 @@ SCAVENGER_STRATEGY = [
     # (BuilderStrategyMethodsMixin.s_defend_attacked_harvester, True, True),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (BuilderStrategyMethodsMixin.s_fix_harvester, True, True),
+    # (BuilderStrategyMethodsMixin.s_simple_harvester_build, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (
         BuilderStrategyMethodsMixin.s_turret_next_to_enemy_harvester,
@@ -69,6 +70,7 @@ DEFENDER_STRATEGY = [
     # (BuilderStrategyMethodsMixin.s_defend_attacked_harvester, True, False),
     (BuilderStrategyMethodsMixin.s_heal_own_building,),
     (BuilderStrategyMethodsMixin.s_fix_harvester, True, True),
+    (BuilderStrategyMethodsMixin.s_simple_harvester_build, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (
         BuilderStrategyMethodsMixin.s_turret_next_to_enemy_harvester,
