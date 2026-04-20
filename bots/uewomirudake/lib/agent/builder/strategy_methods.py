@@ -4751,14 +4751,14 @@ class BuilderStrategyMethodsMixin:
         """
         Local-only launcher build to annoy an enemy builder that is in vision.
 
-        Scans the BB's 8 neighbors once in the helper order. A base-case
-        neighbor (empty or own-road) is built on only if it lies within
-        Chebyshev distance 3 of the enemy core center and has no own launcher
-        in its full 8-neighborhood. If a neighbor is an enemy harvester, the
-        two "side" tiles around it that are also BB-neighbors are tried as an
-        exception without the core-distance or adjacent-launcher filter. The
-        first valid build in scan order wins. `move_towards` and `hold` are
-        unused; kept for strategy-interface compatibility.
+        Gathers candidate tiles from the BB's 8 neighbors using three rules:
+        core-proximity neighbors that pass the standard local placement
+        checks; plus exceptions that open up any placable neighbor when the
+        builder stands on an active enemy titanium supply-chain tile, or has
+        an orthogonally adjacent enemy harvester. Candidates are
+        deduplicated; the first valid build in scan order wins.
+        `move_towards` and `hold` are unused; kept for strategy-interface
+        compatibility.
         """
         launcher_titanium_cost, launcher_axionite_cost = self.ct.get_launcher_cost()
         if (
@@ -4814,49 +4814,58 @@ class BuilderStrategyMethodsMixin:
             self.last_built_entity_type = EntityType.LAUNCHER
             return True
 
+        candidate_positions: list[Position] = []
+        seen_candidate_indices: set[int] = set()
+
+        def add_candidate(pos: Position) -> None:
+            idx = self.map.u_to_index(pos)
+            if idx in seen_candidate_indices:
+                return
+            seen_candidate_indices.add(idx)
+            candidate_positions.append(pos)
+
+        def is_placable_neighbor(tile) -> bool:
+            return is_empty_or_own_road(tile)
+
         for neighbor_pos in self.map.u_iter_adjacent_all_positions(current_pos):
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
-
-            if (
-                neighbor_tile.building.id is not None
-                and neighbor_tile.building.team == enemy_team
-                and neighbor_tile.building.entity_type == EntityType.HARVESTER
-            ):
-                dx = neighbor_pos.x - current_pos.x
-                dy = neighbor_pos.y - current_pos.y
-                if dx == 0:
-                    side_positions = (
-                        Position(neighbor_pos.x - 1, neighbor_pos.y),
-                        Position(neighbor_pos.x + 1, neighbor_pos.y),
-                    )
-                elif dy == 0:
-                    side_positions = (
-                        Position(neighbor_pos.x, neighbor_pos.y - 1),
-                        Position(neighbor_pos.x, neighbor_pos.y + 1),
-                    )
-                else:
-                    side_positions = (
-                        Position(current_pos.x + dx, current_pos.y),
-                        Position(current_pos.x, current_pos.y + dy),
-                    )
-
-                for side_pos in side_positions:
-                    if not self.map.u_is_in_bounds(side_pos):
-                        continue
-                    side_tile = self.map.u_get_pos_tile(side_pos)
-                    if not is_empty_or_own_road(side_tile):
-                        continue
-                    if try_build_launcher_here(side_pos):
-                        return True
-                continue
-
             if not is_empty_or_own_road(neighbor_tile):
                 continue
             if not within_chebyshev_of_enemy_core(neighbor_pos):
                 continue
             if has_adjacent_own_launcher(neighbor_tile):
                 continue
-            if try_build_launcher_here(neighbor_pos):
+            add_candidate(neighbor_pos)
+
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if (
+            current_tile.building.id is not None
+            and current_tile.building.team == enemy_team
+            and current_tile.building.entity_type in SUPPLY_LINK_TYPES
+            and self._u_supply_tile_transports_titanium(current_tile)
+            and self.map.u_supply_chain_is_continuable(current_tile.index, enemy_team)
+        ):
+            for neighbor_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+                if is_placable_neighbor(self.map.u_get_pos_tile(neighbor_pos)):
+                    add_candidate(neighbor_pos)
+
+        has_adjacent_enemy_harvester = False
+        for cardinal_pos in self.map.u_iter_adjacent_cardinal_positions(current_pos):
+            cardinal_tile = self.map.u_get_pos_tile(cardinal_pos)
+            if (
+                cardinal_tile.building.id is not None
+                and cardinal_tile.building.team == enemy_team
+                and cardinal_tile.building.entity_type == EntityType.HARVESTER
+            ):
+                has_adjacent_enemy_harvester = True
+                break
+        if has_adjacent_enemy_harvester:
+            for neighbor_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+                if is_placable_neighbor(self.map.u_get_pos_tile(neighbor_pos)):
+                    add_candidate(neighbor_pos)
+
+        for candidate_pos in candidate_positions:
+            if try_build_launcher_here(candidate_pos):
                 return True
 
         return False
