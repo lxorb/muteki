@@ -145,7 +145,7 @@ HARASSMENT_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_attack_key_enemy_supply_chain, True, True),
     (False, BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
     (False, BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
-    # (False, BuilderStrategyMethodsMixin.s_annoy_with_yeeter, True, True),
+    (False, BuilderStrategyMethodsMixin.s_annoy_with_yeeter, True, True),
     (False, BuilderStrategyMethodsMixin.s_patrol_enemy_supply_chains),
     (False, BuilderStrategyMethodsMixin.s_move_toward_enemy_core, True),
     (False, BuilderStrategyMethodsMixin.s_patrol_enemy_core),
