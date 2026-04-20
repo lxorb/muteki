@@ -442,6 +442,7 @@ class Map:
             MARKER_OWNER_MODULO
         )
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
+        self.tile_in_vision_order_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.locked_in_titanium_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.all_own_supply_link_target_indices_in_vision = _TouchedIndexMembership(
             self.INITIAL_MAP_SIZE
@@ -1633,7 +1634,9 @@ class Map:
         enemy_supply_links_in_vision = self.enemy_supply_links_in_vision
         own_harvesters_in_vision = self.own_harvesters_in_vision
         enemy_harvesters_in_vision = self.enemy_harvesters_in_vision
-        for tile in self.tiles_in_vision:
+        tile_in_vision_order_by_index = self.tile_in_vision_order_by_index
+        for encounter_order, tile in enumerate(self.tiles_in_vision):
+            tile_in_vision_order_by_index[tile.index] = encounter_order
             tile.update_attributes()
             processed_tiles_in_vision.append(tile)
             building = tile.building
@@ -3252,17 +3255,20 @@ class Map:
         enemy_missing_append = enemy_missing_supply_links.append
         own_core_source_by_index = self.own_core_source_by_index
         enemy_core_source_by_index = self.enemy_core_source_by_index
+        tiles_by_index = self.tiles_by_index
+        tile_in_vision_order_by_index = self.tile_in_vision_order_by_index
+        current_round = self.current_round
 
-        for tile in self.tiles_in_vision:
-            if tile.in_enemy_resource_range > 0:
-                enemy_supply_targets_append(tile)
-
-            tile_idx = tile.index
+        own_missing_indices: list[int] = []
+        for tile_idx in own_target_indices.touched_indices:
+            tile = tiles_by_index[tile_idx]
+            if tile.last_seen_turn != current_round:
+                continue
             building = tile.building
             building_entity_type = building.entity_type
             building_team = building.team
 
-            if tile_idx in own_target_indices and not (
+            if not (
                 (
                     building.id is not None
                     and building_team == own_team
@@ -3279,9 +3285,25 @@ class Map:
                     and building_entity_type in supply_chain_sink_types
                 )
             ):
-                own_missing_append(tile)
+                own_missing_indices.append(tile_idx)
 
-            if tile_idx in enemy_target_indices and not (
+            if check_overtime_interval():
+                break
+
+        own_missing_indices.sort(key=tile_in_vision_order_by_index.__getitem__)
+        for tile_idx in own_missing_indices:
+            own_missing_append(tiles_by_index[tile_idx])
+
+        enemy_missing_indices: list[int] = []
+        for tile_idx in enemy_target_indices.touched_indices:
+            tile = tiles_by_index[tile_idx]
+            if tile.last_seen_turn != current_round:
+                continue
+            building = tile.building
+            building_entity_type = building.entity_type
+            building_team = building.team
+
+            if not (
                 (
                     building.id is not None
                     and building_team == enemy_team
@@ -3298,10 +3320,38 @@ class Map:
                     and building_entity_type in supply_chain_sink_types
                 )
             ):
-                enemy_missing_append(tile)
+                enemy_missing_indices.append(tile_idx)
 
             if check_overtime_interval():
                 break
+
+        enemy_missing_indices.sort(key=tile_in_vision_order_by_index.__getitem__)
+        for tile_idx in enemy_missing_indices:
+            enemy_missing_append(tiles_by_index[tile_idx])
+
+        enemy_supply_target_indices: set[int] = set()
+        for supply_tile in self.enemy_supply_links_in_vision:
+            for target_tile in supply_tile.building.targets:
+                if target_tile.last_seen_turn != current_round:
+                    continue
+                enemy_supply_target_indices.add(target_tile.index)
+            if check_overtime_interval():
+                break
+
+        for harvester_tile in self.enemy_harvesters_in_vision:
+            for target_tile in harvester_tile.building.targets:
+                if target_tile.last_seen_turn != current_round:
+                    continue
+                enemy_supply_target_indices.add(target_tile.index)
+            if check_overtime_interval():
+                break
+
+        enemy_supply_target_ordered_indices = list(enemy_supply_target_indices)
+        enemy_supply_target_ordered_indices.sort(
+            key=tile_in_vision_order_by_index.__getitem__
+        )
+        for tile_idx in enemy_supply_target_ordered_indices:
+            enemy_supply_targets_append(tiles_by_index[tile_idx])
 
     def _u_update_supply_chain_labels_for_team_fast(self, team: Team) -> None:
         check_overtime_interval = self.round_stopwatch.check_overtime_interval
