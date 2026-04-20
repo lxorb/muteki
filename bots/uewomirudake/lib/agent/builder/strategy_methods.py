@@ -25,6 +25,7 @@ from lib.agent.constants import (
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
+    TLE_SAVER_CANDIDATE_DIST_SQ,
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
@@ -1169,6 +1170,8 @@ class BuilderStrategyMethodsMixin:
         if candidate_radius < 0:
             candidate_radius = 0
         candidate_radius_sq = candidate_radius * candidate_radius
+        if self.is_tle_saver_mode and candidate_radius_sq > TLE_SAVER_CANDIDATE_DIST_SQ:
+            candidate_radius_sq = TLE_SAVER_CANDIDATE_DIST_SQ
 
         candidate_entries: list[
             tuple[
@@ -4335,12 +4338,19 @@ class BuilderStrategyMethodsMixin:
                     tile_kind_by_pos[pos] = None
             return tile_kind_by_pos[pos]
 
+        saver_mode = self.is_tle_saver_mode
         candidate_tiles = []
         for harvester_tile in enemy_harvesters:
             harvester_pos = harvester_tile.position
             for candidate_pos in self.map.u_iter_adjacent_cardinal_positions(
                 harvester_pos,
             ):
+                if (
+                    saver_mode
+                    and current_pos.distance_squared(candidate_pos)
+                    > TLE_SAVER_CANDIDATE_DIST_SQ
+                ):
+                    continue
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
             if self.round_stopwatch.check_overtime():
@@ -4667,8 +4677,9 @@ class BuilderStrategyMethodsMixin:
 
         return best_tile
 
-    def _u_get_enemy_supply_target_tile(self):
+    def _u_get_enemy_supply_target_tile(self, max_dist_sq: int | None = None):
         own_team = self.map.own_team
+        current_pos = self.map.current_pos
 
         target_tile = None
         target_key = None
@@ -4679,6 +4690,11 @@ class BuilderStrategyMethodsMixin:
                     tile.building.entity_type == EntityType.ROAD
                     and tile.building.team == own_team
                 )
+            ):
+                continue
+            if (
+                max_dist_sq is not None
+                and current_pos.distance_squared(tile.position) > max_dist_sq
             ):
                 continue
             key = (tile.dist_to_self, 0 if tile.building.id is None else 1)
@@ -4700,7 +4716,10 @@ class BuilderStrategyMethodsMixin:
         `s_hijack_enemy_supply_chain`, but once the tile qualifies it builds a
         barrier directly instead of considering allied supply-link builds.
         """
-        target_tile = self._u_get_enemy_supply_target_tile()
+        max_dist_sq = (
+            TLE_SAVER_CANDIDATE_DIST_SQ if self.is_tle_saver_mode else None
+        )
+        target_tile = self._u_get_enemy_supply_target_tile(max_dist_sq=max_dist_sq)
         if target_tile is None:
             return False
 
@@ -4760,8 +4779,16 @@ class BuilderStrategyMethodsMixin:
                     return True
             return False
 
+        saver_mode = self.is_tle_saver_mode
+
         def remember_candidate(candidate_pos: Position, category_rank: int) -> None:
             if not self.map.u_is_in_bounds(candidate_pos):
+                return
+            if (
+                saver_mode
+                and current_pos.distance_squared(candidate_pos)
+                > TLE_SAVER_CANDIDATE_DIST_SQ
+            ):
                 return
 
             candidate_tile = self.map.u_get_pos_tile(candidate_pos)
@@ -5334,6 +5361,7 @@ class BuilderStrategyMethodsMixin:
 
         current_pos = self.map.current_pos
         own_team = self.map.own_team
+        saver_mode = self.is_tle_saver_mode
 
         candidate_tiles = []
         for harvester_tile in self.map.enemy_harvesters_in_vision:
@@ -5341,6 +5369,12 @@ class BuilderStrategyMethodsMixin:
             for candidate_pos in self.map.u_iter_adjacent_cardinal_positions(
                 harvester_pos,
             ):
+                if (
+                    saver_mode
+                    and current_pos.distance_squared(candidate_pos)
+                    > TLE_SAVER_CANDIDATE_DIST_SQ
+                ):
+                    continue
                 candidate_tiles.append(self.map.u_get_pos_tile(candidate_pos))
 
             if self.round_stopwatch.check_overtime():
@@ -6322,6 +6356,8 @@ class BuilderStrategyMethodsMixin:
         if candidate_radius < 0:
             candidate_radius = 0
         candidate_radius_sq = candidate_radius * candidate_radius
+        if self.is_tle_saver_mode and candidate_radius_sq > TLE_SAVER_CANDIDATE_DIST_SQ:
+            candidate_radius_sq = TLE_SAVER_CANDIDATE_DIST_SQ
 
         def is_targeted_by_titanium_supply_chain(tile_idx: int) -> bool:
             for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(

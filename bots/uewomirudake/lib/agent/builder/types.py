@@ -9,9 +9,7 @@ from lib.map.types import SupplyChainLabel
 
 BuilderActionResult: TypeAlias = bool | None
 BuilderStrategyMethod: TypeAlias = Callable[..., BuilderActionResult] | str
-StrategyEntry: TypeAlias = (
-    BuilderStrategyMethod | tuple[BuilderStrategyMethod, *tuple[object, ...]]
-)
+StrategyEntry: TypeAlias = tuple[bool, BuilderStrategyMethod, *tuple[object, ...]]
 TilePredicate: TypeAlias = Callable[[Tile], bool]
 TileCriterion: TypeAlias = Callable[[Tile], object]
 SupplierBuildPlan: TypeAlias = tuple[EntityType | None, Direction | Position | None]
@@ -23,6 +21,9 @@ class BuilderCommonSelf(Protocol):
     strategy: list[StrategyEntry]
     last_strategy_index: int
     last_turn_completed: bool
+    tle_count: int
+    turn_count: int
+    is_tle_saver_mode: bool
     enemy_supply_patrol_index: int
     pending_missing_supply_link_index: int | None
     pending_missing_supply_link_resource: Environment | None
@@ -60,7 +61,7 @@ class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
     def u_get_bound_method_and_args(
         self,
         strategy_entry: StrategyEntry,
-    ) -> tuple[BuilderStrategyMethod, tuple[object, ...]]: ...
+    ) -> tuple[bool, BuilderStrategyMethod, tuple[object, ...]]: ...
 
     def u_execute_strategy(self) -> bool: ...
 

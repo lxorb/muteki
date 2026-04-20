@@ -5,6 +5,7 @@ from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
 from lib.agent.constants import (
     CORE_DEFENDER_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
+    SAVER_TLE_RATIO,
     YEET_STUCK_OSCILLATION_ROUNDS,
 )
 from lib.map import Map
@@ -49,6 +50,9 @@ class BuilderAgent(
     step_off_core_attempted: bool
     spawn_relative_tile: tuple[int, int] | None
     close_patrol_step: int
+    tle_count: int
+    turn_count: int
+    is_tle_saver_mode: bool
     _d_star_lite_states_by_builder_id: dict[int, object]
     _lpa_star_states_by_builder_id: dict[int, object]
 
@@ -81,6 +85,9 @@ class BuilderAgent(
         self.step_off_core_attempted = False
         self.spawn_relative_tile = None
         self.close_patrol_step = 0
+        self.tle_count = 0
+        self.turn_count = 0
+        self.is_tle_saver_mode = False
         self._d_star_lite_states_by_builder_id = {}
         self._lpa_star_states_by_builder_id = {}
 
@@ -131,8 +138,26 @@ class BuilderAgent(
             return False
         return len(set(self.recent_positions[-window:])) <= 2
 
+    def u_update_tle_tracking(self) -> None:
+        """
+        Detect TLE of the previous turn, update counters, and recompute the
+        saver-mode flag. `last_turn_completed` is set to False at the start of
+        strategy execution and back to True only after a strategy returns or
+        the full list is scanned without overtime. If it is still False at the
+        start of a new turn, the previous turn hit overtime / TLE.
+        """
+        self.turn_count += 1
+        if not self.last_turn_completed:
+            self.tle_count += 1
+        if self.turn_count <= 0:
+            self.is_tle_saver_mode = False
+            return
+        tle_ratio = self.tle_count / self.turn_count
+        self.is_tle_saver_mode = tle_ratio >= SAVER_TLE_RATIO
+
     @override
     def u_handler(self):
+        self.u_update_tle_tracking()
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
         self.marker_target_pos = None

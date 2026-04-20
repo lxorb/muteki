@@ -59,14 +59,10 @@ class Agent:
 
     def u_get_bound_method_and_args(
         self,
-        strategy_entry: Callable[..., object] | str | tuple[object, ...],
-    ) -> tuple[Callable[..., object], tuple[object, ...]]:
-        if isinstance(strategy_entry, tuple):
-            method, *args = strategy_entry
-        else:
-            method = strategy_entry
-            args = []
-        return self.u_get_bound_method(method), tuple(args)
+        strategy_entry: tuple[bool, Callable[..., object] | str, *tuple[object, ...]],
+    ) -> tuple[bool, Callable[..., object], tuple[object, ...]]:
+        skip_on_tle, method, *args = strategy_entry
+        return bool(skip_on_tle), self.u_get_bound_method(method), tuple(args)
 
     def u_filter_tiles(
         self,
