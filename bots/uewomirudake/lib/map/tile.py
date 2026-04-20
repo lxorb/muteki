@@ -264,34 +264,33 @@ class Tile:
         self.map.intrinsic_passable_by_index[self.index] = intrinsic_passable
 
     def clear_bot(self) -> None:
-        self.bot = TileBot(None, None, None, [], None)
+        self.bot.id = None
+        self.bot.entity_type = None
+        self.bot.team = None
+        self.bot.targets.clear()
+        self.bot.hp = None
         self.map.bot_present_by_index[self.index] = 0
 
     def clear_building(self) -> None:
-        if self.building.entity_type is not None:
+        building = self.building
+        if building.entity_type is not None:
             self.update_target_zones_building_by(
-                self.building.targets,
-                self.building.entity_type,
-                self.building.team,
+                building.targets,
+                building.entity_type,
+                building.team,
                 -1,
             )
         self.map.conveyor_targets_harvester_by_index[self.index] = 0
-        self.building = TileBuilding(
-            None,
-            None,
-            None,
-            None,
-            None,
-            [],
-            [],
-            None,
-            None,
-            None,
-            self.building.last_resource_onit_turn,
-            self.building.last_titanium_onit_turn,
-            self.building.last_raw_axionite_onit_turn,
-            self.building.last_refined_axionite_onit_turn,
-        )
+        building.id = None
+        building.entity_type = None
+        building.prev_entity_type = None
+        building.team = None
+        building.prev_team = None
+        building.targets.clear()
+        building.prev_targets.clear()
+        building.hp = None
+        building.direction = None
+        building.vision_radius_sq = None
         self.u_refresh_core_distance_passability()
         self.u_refresh_intrinsic_passability()
 
