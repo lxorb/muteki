@@ -54,6 +54,12 @@ PARSED_TILE_TYPE_CORE = 5
 
 MAP_UPDATE_MIN_REMAINING_MUS = 100
 PRELOADED_MAP_INDEX_STRIDE = 50
+_NEXT_TURN_RESET_PREP_PHASE_NONE = 0
+_NEXT_TURN_RESET_PREP_PHASE_OWN_SUPPLY = 1
+_NEXT_TURN_RESET_PREP_PHASE_ENEMY_SUPPLY = 2
+_NEXT_TURN_RESET_PREP_PHASE_LISTS = 3
+_NEXT_TURN_RESET_PREP_PHASE_COMPLETE = 4
+_NEXT_TURN_RESET_PREP_CHECK_INTERVAL = 16
 STALE_BUILDER_BOT_PASSABILITY_THRESHOLD = 10
 MARKER_OWNER_MODULO = 64
 MARKER_ROUND_MODULO = 64
@@ -631,15 +637,13 @@ class Map:
         self.known_own_supply_link_indices: set[int] = set()
         self.known_enemy_supply_link_indices: set[int] = set()
         self.closest_enemy_builder_bot_in_vision_pos: Position | None = None
+        self._next_turn_reset_prep_phase = _NEXT_TURN_RESET_PREP_PHASE_NONE
+        self._next_turn_reset_prep_own_supply_head = 0
+        self._next_turn_reset_prep_enemy_supply_head = 0
 
         self.stopwatch = Stopwatch("Map")
 
-    def _reset_turn_state(self) -> None:
-        if self.ct is None:
-            raise RuntimeError(
-                "Map controller must be set before resetting turn state."
-            )
-
+    def _u_reset_turn_state_simple(self) -> None:
         self.current_path = []
         self.visible_builder_bot_ids_in_vision.clear()
         for marker_owner_mod in range(MARKER_OWNER_MODULO):
@@ -648,34 +652,145 @@ class Map:
         self.visible_marker_has_explicit_target_by_owner_mod64[:] = bytes(
             MARKER_OWNER_MODULO
         )
-        self._reset_supply_chain_union_find_arrays(
-            self.own_supply_chain_touched_indices,
-            self.own_supply_chain_parent_by_index,
-            self.own_supply_chain_size_by_index,
-            self.own_supply_chain_active_by_index,
-            self.own_supply_chain_tile_count_by_index,
-            self.own_supply_chain_harvester_count_by_index,
-            self.own_supply_chain_resource_item_count_by_index,
-            self.own_supply_chain_max_euclidean_dist_to_self_by_index,
-            self.own_supply_chain_has_titanium_by_index,
-            self.own_supply_chain_has_raw_axionite_by_index,
-            self.own_supply_chain_has_refined_axionite_by_index,
-            self.own_supply_chain_feeds_own_turret_by_index,
-        )
-        self._reset_supply_chain_union_find_arrays(
-            self.enemy_supply_chain_touched_indices,
-            self.enemy_supply_chain_parent_by_index,
-            self.enemy_supply_chain_size_by_index,
-            self.enemy_supply_chain_active_by_index,
-            self.enemy_supply_chain_tile_count_by_index,
-            self.enemy_supply_chain_harvester_count_by_index,
-            self.enemy_supply_chain_resource_item_count_by_index,
-            self.enemy_supply_chain_max_euclidean_dist_to_self_by_index,
-            self.enemy_supply_chain_has_titanium_by_index,
-            self.enemy_supply_chain_has_raw_axionite_by_index,
-            self.enemy_supply_chain_has_refined_axionite_by_index,
-            self.enemy_supply_chain_feeds_own_turret_by_index,
-        )
+
+    def _u_reset_turn_state_lists(self) -> None:
+        self.has_enemy_bot_in_vision = False
+        self.closest_enemy_builder_bot_in_vision_pos = None
+        self.tiles_in_vision = []
+        self.newly_seen_tiles_in_vision = []
+        self.own_harvesters_in_vision = []
+        self.enemy_harvesters_in_vision = []
+        self.enemy_supply_targets_in_vision = []
+        self.own_supply_links_in_vision = []
+        self.enemy_supply_links_in_vision = []
+        self.own_buildings_in_vision = []
+        self.enemy_buildings_in_vision = []
+        self.own_buildings_healable_in_action_range = []
+        self.own_buildings_needing_heal = []
+        self.own_missing_supply_links = []
+        self.enemy_missing_supply_links = []
+        self.own_titanium_harvester_adjacent_candidate_indices = []
+        self.frontier_expand_newly_seen_indices = []
+
+    def _u_continue_reset_supply_chain_union_find_arrays(
+        self,
+        touched_indices: list[int],
+        parent_by_index,
+        size_by_index,
+        active_by_index: bytearray,
+        tile_count_by_index,
+        harvester_count_by_index,
+        resource_item_count_by_index,
+        max_euclidean_dist_to_self_by_index,
+        has_titanium_by_index: bytearray,
+        has_raw_axionite_by_index: bytearray,
+        has_refined_axionite_by_index: bytearray,
+        feeds_own_turret_by_index: bytearray | None,
+        head_attribute_name: str,
+        next_phase: int,
+        check_overtime: bool,
+    ) -> bool:
+        touched_count = len(touched_indices)
+        head = getattr(self, head_attribute_name)
+        overtime_check_countdown = _NEXT_TURN_RESET_PREP_CHECK_INTERVAL
+
+        while head < touched_count:
+            idx = touched_indices[head]
+            parent_by_index[idx] = idx
+            size_by_index[idx] = 1
+            active_by_index[idx] = 0
+            tile_count_by_index[idx] = 0
+            harvester_count_by_index[idx] = 0
+            resource_item_count_by_index[idx] = 0
+            max_euclidean_dist_to_self_by_index[idx] = 0.0
+            has_titanium_by_index[idx] = 0
+            has_raw_axionite_by_index[idx] = 0
+            has_refined_axionite_by_index[idx] = 0
+            if feeds_own_turret_by_index is not None:
+                feeds_own_turret_by_index[idx] = 0
+
+            head += 1
+            if not check_overtime:
+                continue
+
+            overtime_check_countdown -= 1
+            if overtime_check_countdown != 0:
+                continue
+
+            setattr(self, head_attribute_name, head)
+            if self.round_stopwatch.check_overtime_interval():
+                return False
+            overtime_check_countdown = _NEXT_TURN_RESET_PREP_CHECK_INTERVAL
+
+        touched_indices.clear()
+        setattr(self, head_attribute_name, 0)
+        self._next_turn_reset_prep_phase = next_phase
+        return True
+
+    def _u_continue_next_turn_reset_prep(self, check_overtime: bool) -> bool:
+        while True:
+            phase = self._next_turn_reset_prep_phase
+
+            if phase == _NEXT_TURN_RESET_PREP_PHASE_COMPLETE:
+                return True
+
+            if phase == _NEXT_TURN_RESET_PREP_PHASE_NONE:
+                self._u_reset_turn_state_simple()
+                self._next_turn_reset_prep_phase = (
+                    _NEXT_TURN_RESET_PREP_PHASE_OWN_SUPPLY
+                )
+                continue
+
+            if phase == _NEXT_TURN_RESET_PREP_PHASE_OWN_SUPPLY:
+                if not self._u_continue_reset_supply_chain_union_find_arrays(
+                    self.own_supply_chain_touched_indices,
+                    self.own_supply_chain_parent_by_index,
+                    self.own_supply_chain_size_by_index,
+                    self.own_supply_chain_active_by_index,
+                    self.own_supply_chain_tile_count_by_index,
+                    self.own_supply_chain_harvester_count_by_index,
+                    self.own_supply_chain_resource_item_count_by_index,
+                    self.own_supply_chain_max_euclidean_dist_to_self_by_index,
+                    self.own_supply_chain_has_titanium_by_index,
+                    self.own_supply_chain_has_raw_axionite_by_index,
+                    self.own_supply_chain_has_refined_axionite_by_index,
+                    self.own_supply_chain_feeds_own_turret_by_index,
+                    "_next_turn_reset_prep_own_supply_head",
+                    _NEXT_TURN_RESET_PREP_PHASE_ENEMY_SUPPLY,
+                    check_overtime,
+                ):
+                    return False
+                continue
+
+            if phase == _NEXT_TURN_RESET_PREP_PHASE_ENEMY_SUPPLY:
+                if not self._u_continue_reset_supply_chain_union_find_arrays(
+                    self.enemy_supply_chain_touched_indices,
+                    self.enemy_supply_chain_parent_by_index,
+                    self.enemy_supply_chain_size_by_index,
+                    self.enemy_supply_chain_active_by_index,
+                    self.enemy_supply_chain_tile_count_by_index,
+                    self.enemy_supply_chain_harvester_count_by_index,
+                    self.enemy_supply_chain_resource_item_count_by_index,
+                    self.enemy_supply_chain_max_euclidean_dist_to_self_by_index,
+                    self.enemy_supply_chain_has_titanium_by_index,
+                    self.enemy_supply_chain_has_raw_axionite_by_index,
+                    self.enemy_supply_chain_has_refined_axionite_by_index,
+                    self.enemy_supply_chain_feeds_own_turret_by_index,
+                    "_next_turn_reset_prep_enemy_supply_head",
+                    _NEXT_TURN_RESET_PREP_PHASE_LISTS,
+                    check_overtime,
+                ):
+                    return False
+                continue
+
+            self._u_reset_turn_state_lists()
+            self._next_turn_reset_prep_phase = _NEXT_TURN_RESET_PREP_PHASE_COMPLETE
+
+    def _u_refresh_turn_state_from_controller(self) -> None:
+        if self.ct is None:
+            raise RuntimeError(
+                "Map controller must be set before refreshing turn state."
+            )
 
         next_round = self.ct.get_current_round()
         next_pos = self.ct.get_position()
@@ -717,23 +832,13 @@ class Map:
                 )
             self.stale_builder_passability_touched_indices.clear()
 
-        self.has_enemy_bot_in_vision = False
-        self.closest_enemy_builder_bot_in_vision_pos = None
-        self.tiles_in_vision: list[Tile] = []
-        self.newly_seen_tiles_in_vision: list[Tile] = []
-        self.own_harvesters_in_vision: list[Tile] = []
-        self.enemy_harvesters_in_vision: list[Tile] = []
-        self.enemy_supply_targets_in_vision: list[Tile] = []
-        self.own_supply_links_in_vision: list[Tile] = []
-        self.enemy_supply_links_in_vision: list[Tile] = []
-        self.own_buildings_in_vision: list[Tile] = []
-        self.enemy_buildings_in_vision: list[Tile] = []
-        self.own_buildings_healable_in_action_range: list[Tile] = []
-        self.own_buildings_needing_heal: list[Tile] = []
-        self.own_missing_supply_links: list[Tile] = []
-        self.enemy_missing_supply_links: list[Tile] = []
-        self.own_titanium_harvester_adjacent_candidate_indices: list[int] = []
-        self.frontier_expand_newly_seen_indices = []
+    def _reset_turn_state(self) -> None:
+        self._u_continue_next_turn_reset_prep(check_overtime=False)
+        self._next_turn_reset_prep_phase = _NEXT_TURN_RESET_PREP_PHASE_NONE
+        self._u_refresh_turn_state_from_controller()
+
+    def u_prepare_next_turn_reset(self) -> bool:
+        return self._u_continue_next_turn_reset_prep(check_overtime=True)
 
     def u_mark_core_distance_dirty_index(self, idx: int) -> None:
         if self.core_distance_dirty_mark_by_index[idx]:
@@ -1556,7 +1661,10 @@ class Map:
 
         self.stopwatch.start()
 
-        self._reset_turn_state()
+        self._u_continue_next_turn_reset_prep(check_overtime=False)
+        self.stopwatch.lap("Pure reset")
+        self._next_turn_reset_prep_phase = _NEXT_TURN_RESET_PREP_PHASE_NONE
+        self._u_refresh_turn_state_from_controller()
         self.tiles_in_vision = [
             self.u_get_pos_tile(pos) for pos in self.ct.get_nearby_tiles()
         ]
@@ -1587,7 +1695,7 @@ class Map:
                 self.visible_building_seen_turn_by_index[idx] = (
                     self.current_round_stamp
                 )
-        self.stopwatch.lap("Reset + nearby queries")
+        self.stopwatch.lap("Nearby queries")
 
         processed_tiles_in_vision = []
         known_accessible_titanium_indices = set(self.known_accessible_titanium_indices)

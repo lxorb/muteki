@@ -40,6 +40,7 @@ class Agent:
         self.round_stopwatch.start_bot()
 
         self.u_handler()
+        self.map.u_prepare_next_turn_reset()
         self.stopwatch.lap("Handle agent")
 
         self.stopwatch.log()
