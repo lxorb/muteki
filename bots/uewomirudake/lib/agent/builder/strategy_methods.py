@@ -2883,6 +2883,18 @@ class BuilderStrategyMethodsMixin:
                 and target_tile.own_core_dist > max_core_ore_direct_dist
             )
 
+        def should_prefer_cached_harvester_target(
+            cached_target_tile,
+            candidate_tiles: list,
+        ) -> bool:
+            if self.map.u_is_vision_action_reachable_by_index(cached_target_tile.index):
+                return True
+            return not any(
+                tile.index != cached_target_tile.index
+                and self.map.u_is_vision_action_reachable_by_index(tile.index)
+                for tile in candidate_tiles
+            )
+
         def try_progress_harvester_target(
             target_tile,
             require_surround: bool,
@@ -2998,22 +3010,17 @@ class BuilderStrategyMethodsMixin:
             return False
 
         pending_target_idx: int | None = None
+        pending_target_tile = None
         if self.pending_harvester_target_resource == resource:
             pending_target_idx = self.pending_harvester_target_index
         if pending_target_idx is not None:
             pending_target_tile = tiles_by_index[pending_target_idx]
             if (
-                pending_target_tile.last_seen_turn == self.map.current_round
-                and is_valid_harvester_target(pending_target_tile)
+                pending_target_tile.last_seen_turn != self.map.current_round
+                or not is_valid_harvester_target(pending_target_tile)
             ):
-                return finish_with_harvester_target(
-                    try_progress_harvester_target(
-                        pending_target_tile,
-                        require_surround=True,
-                    ),
-                    pending_target_tile,
-                )
-            clear_pending_harvester_target()
+                clear_pending_harvester_target()
+                pending_target_tile = None
 
         candidate_tiles: list = []
         for tile in dict.fromkeys(tiles_by_index[idx] for idx in ore_indices):
@@ -3042,16 +3049,42 @@ class BuilderStrategyMethodsMixin:
 
             candidate_tiles.append(tile)
 
+        if (
+            pending_target_tile is not None
+            and all(tile.index != pending_target_tile.index for tile in candidate_tiles)
+        ):
+            candidate_tiles.append(pending_target_tile)
+
+        if (
+            pending_target_tile is not None
+            and should_prefer_cached_harvester_target(
+                pending_target_tile,
+                candidate_tiles,
+            )
+        ):
+            return finish_with_harvester_target(
+                try_progress_harvester_target(
+                    pending_target_tile,
+                    require_surround=True,
+                ),
+                pending_target_tile,
+            )
+
         target_tile = None
         if resource == Environment.ORE_TITANIUM:
             locked_in_tiles = [
                 tile for tile in candidate_tiles if tile.is_locked_in_titanium
             ]
-            if locked_in_tiles:
-                if len(locked_in_tiles) == 1:
-                    target_tile = locked_in_tiles[0]
+            preferred_locked_in_tiles = [
+                tile
+                for tile in locked_in_tiles
+                if should_prefer_cached_harvester_target(tile, candidate_tiles)
+            ]
+            if preferred_locked_in_tiles:
+                if len(preferred_locked_in_tiles) == 1:
+                    target_tile = preferred_locked_in_tiles[0]
                 else:
-                    candidate_tiles = locked_in_tiles
+                    candidate_tiles = preferred_locked_in_tiles
 
         if target_tile is None:
             own_barrier_tiles = [
