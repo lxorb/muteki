@@ -4748,183 +4748,117 @@ class BuilderStrategyMethodsMixin:
         move_towards: bool = True,
         hold: bool = True,
     ):
-        current_round = self.map.current_round
-        current_pos = self.map.current_pos
-        own_team = self.map.own_team
-        enemy_team = self.map.enemy_team
-        enemy_core_center_pos = self.map.enemy_core_center_pos
+        """
+        Local-only launcher build to annoy an enemy builder that is in vision.
+
+        Scans the BB's 8 neighbors once in the helper order. A base-case
+        neighbor (empty or own-road) is built on only if it lies within
+        Chebyshev distance 3 of the enemy core center and has no own launcher
+        in its full 8-neighborhood. If a neighbor is an enemy harvester, the
+        two "side" tiles around it that are also BB-neighbors are tried as an
+        exception without the core-distance or adjacent-launcher filter. The
+        first valid build in scan order wins. `move_towards` and `hold` are
+        unused; kept for strategy-interface compatibility.
+        """
         launcher_titanium_cost, launcher_axionite_cost = self.ct.get_launcher_cost()
         if (
             self.map.titanium < launcher_titanium_cost
             or self.map.axionite < launcher_axionite_cost
         ):
-            if ENABLE_PRINTING:
-                print(
-                    f"[annoy-debug] abort: titanium={self.map.titanium}/{launcher_titanium_cost} "
-                    f"axionite={self.map.axionite}/{launcher_axionite_cost}"
-                )
+            return False
+        if not self.u_can_spend_titanium_without_falling_below_reserve(
+            launcher_titanium_cost
+        ):
+            return False
+        if self.map.closest_enemy_builder_bot_in_vision_pos is None:
+            return False
+        enemy_core_center_pos = self.map.enemy_core_center_pos
+        if enemy_core_center_pos is None:
             return False
 
-        tiles_by_index = self.map.tiles_by_index
-        candidate_keys_by_index: dict[int, tuple[int, int, int, int]] = {}
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+        current_pos = self.map.current_pos
 
-        def is_orthogonally_adjacent_to_own_launcher(tile_index: int) -> bool:
-            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(tile_index):
-                adjacent_tile = tiles_by_index[adjacent_idx]
+        def is_empty_or_own_road(tile) -> bool:
+            if tile.building.id is None:
+                return True
+            return (
+                tile.building.team == own_team
+                and tile.building.entity_type == EntityType.ROAD
+            )
+
+        def has_adjacent_own_launcher(tile) -> bool:
+            for adjacent_pos in self.map.u_iter_adjacent_all_positions(tile.position):
+                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
                 if (
-                    adjacent_tile.last_seen_turn == current_round
-                    and adjacent_tile.building.team == own_team
+                    adjacent_tile.building.team == own_team
                     and adjacent_tile.building.entity_type == EntityType.LAUNCHER
                 ):
                     return True
             return False
 
-        saver_mode = self.is_tle_saver_mode
-
-        def remember_candidate(candidate_pos: Position, category_rank: int) -> None:
-            if not self.map.u_is_in_bounds(candidate_pos):
-                return
-            if (
-                saver_mode
-                and current_pos.distance_squared(candidate_pos)
-                > TLE_SAVER_CANDIDATE_DIST_SQ
-            ):
-                return
-
-            candidate_tile = self.map.u_get_pos_tile(candidate_pos)
-            if candidate_tile.last_seen_turn != current_round:
-                return
-            if candidate_tile.is_core_of(enemy_team):
-                return
-            if candidate_tile.bot.id is not None:
-                return
-            if is_orthogonally_adjacent_to_own_launcher(candidate_tile.index):
-                return
-            if not self.u_can_place_marker_or_launcher_here(candidate_tile):
-                return
-
-            candidate_key = (
-                category_rank,
-                candidate_tile.dist_to_self,
-                candidate_tile.own_core_dist,
-                candidate_tile.index,
+        def within_chebyshev_of_enemy_core(pos: Position) -> bool:
+            return (
+                max(
+                    abs(pos.x - enemy_core_center_pos.x),
+                    abs(pos.y - enemy_core_center_pos.y),
+                )
+                <= 3
             )
-            existing_key = candidate_keys_by_index.get(candidate_tile.index)
-            if existing_key is None or candidate_key < existing_key:
-                candidate_keys_by_index[candidate_tile.index] = candidate_key
 
-        enemy_core_adjacent_indices: set[int] = set()
-        enemy_core_tile_indices: set[int] = set()
-        enemy_core_center_positions: list[Position] = []
-        if enemy_core_center_pos is not None:
-            enemy_core_center_positions.append(enemy_core_center_pos)
-        else:
-            seen_enemy_core_centers: set[Position] = set()
-            for _, candidate_center_pos in self.map.enemy_core_center_pos_candidates:
-                if candidate_center_pos in seen_enemy_core_centers:
-                    continue
-                seen_enemy_core_centers.add(candidate_center_pos)
-                enemy_core_center_positions.append(candidate_center_pos)
+        def try_build_launcher_here(pos: Position) -> bool:
+            if not self.ct.can_build_launcher(pos):
+                return False
+            self.ct.build_launcher(pos)
+            self.last_built_entity_type = EntityType.LAUNCHER
+            return True
 
-        for candidate_center_pos in enemy_core_center_positions:
-            for core_tile in self.map.u_get_core_footprint_positions(candidate_center_pos):
-                enemy_core_tile_indices.add(core_tile.index)
+        for neighbor_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+            neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
 
-        for core_idx in enemy_core_tile_indices:
-            core_tile = tiles_by_index[core_idx]
-            for adjacent_pos in self.map.u_iter_adjacent_all_positions(core_tile.position):
-                adjacent_idx = self.map.u_to_index(adjacent_pos)
-                if adjacent_idx in enemy_core_tile_indices:
-                    continue
-                enemy_core_adjacent_indices.add(adjacent_idx)
-
-        for adjacent_idx in enemy_core_adjacent_indices:
-            remember_candidate(tiles_by_index[adjacent_idx].position, 0)
-            if self.round_stopwatch.check_overtime():
-                break
-
-        for harvester_tile in self.map.enemy_harvesters_in_vision:
             if (
-                harvester_tile.last_seen_turn != current_round
-                or harvester_tile.building.team != enemy_team
-                or harvester_tile.building.entity_type != EntityType.HARVESTER
-                or harvester_tile.environment != Environment.ORE_TITANIUM
+                neighbor_tile.building.id is not None
+                and neighbor_tile.building.team == enemy_team
+                and neighbor_tile.building.entity_type == EntityType.HARVESTER
             ):
-                continue
-
-            harvester_pos = harvester_tile.position
-            remember_candidate(Position(harvester_pos.x - 2, harvester_pos.y), 1)
-            remember_candidate(Position(harvester_pos.x + 2, harvester_pos.y), 1)
-            remember_candidate(Position(harvester_pos.x, harvester_pos.y - 2), 1)
-            remember_candidate(Position(harvester_pos.x, harvester_pos.y + 2), 1)
-
-            if self.round_stopwatch.check_overtime():
-                break
-
-        if enemy_core_center_pos is not None:
-            for supplier_tile in dict.fromkeys(self.map.enemy_supply_links_in_vision):
-                if (
-                    supplier_tile.last_seen_turn != current_round
-                    or supplier_tile.building.team != enemy_team
-                    or supplier_tile.building.entity_type not in SUPPLY_LINK_TYPES
-                    or supplier_tile.position.distance_squared(enemy_core_center_pos) > 25
-                ):
-                    continue
-
-                for adjacent_pos in self.map.u_iter_adjacent_all_positions(
-                    supplier_tile.position
-                ):
-                    remember_candidate(adjacent_pos, 2)
-
-                if self.round_stopwatch.check_overtime():
-                    break
-
-        if not candidate_keys_by_index:
-            if ENABLE_PRINTING:
-                print("[annoy-debug] no candidates found")
-            return False
-
-        target_indices = sorted(
-            candidate_keys_by_index,
-            key=lambda idx: candidate_keys_by_index[idx],
-        )
-        if ENABLE_PRINTING:
-            print(
-                f"[annoy-debug] examining {len(target_indices)} candidates "
-                f"(first key={candidate_keys_by_index[target_indices[0]]})"
-            )
-        in_range_count = 0
-        cannot_build_count = 0
-        for target_idx in target_indices:
-            target_tile = tiles_by_index[target_idx]
-            if current_pos.distance_squared(target_tile.position) <= BUILDER_ACTION_RADIUS_SQ:
-                in_range_count += 1
-                if not self.ct.can_build_launcher(target_tile.position):
-                    cannot_build_count += 1
-                    continue
-                if ENABLE_PRINTING:
-                    print(
-                        f"[launcher-build] building launcher at {target_tile.position} "
-                        f"to annoy near enemy core / supply chain "
-                        f"(s_annoy_with_yeeter, category_rank={candidate_keys_by_index[target_idx][0]})"
+                dx = neighbor_pos.x - current_pos.x
+                dy = neighbor_pos.y - current_pos.y
+                if dx == 0:
+                    side_positions = (
+                        Position(neighbor_pos.x - 1, neighbor_pos.y),
+                        Position(neighbor_pos.x + 1, neighbor_pos.y),
                     )
-                self.ct.build_launcher(target_tile.position)
-                self.last_built_entity_type = EntityType.LAUNCHER
+                elif dy == 0:
+                    side_positions = (
+                        Position(neighbor_pos.x, neighbor_pos.y - 1),
+                        Position(neighbor_pos.x, neighbor_pos.y + 1),
+                    )
+                else:
+                    side_positions = (
+                        Position(current_pos.x + dx, current_pos.y),
+                        Position(current_pos.x, current_pos.y + dy),
+                    )
+
+                for side_pos in side_positions:
+                    if not self.map.u_is_in_bounds(side_pos):
+                        continue
+                    side_tile = self.map.u_get_pos_tile(side_pos)
+                    if not is_empty_or_own_road(side_tile):
+                        continue
+                    if try_build_launcher_here(side_pos):
+                        return True
+                continue
+
+            if not is_empty_or_own_road(neighbor_tile):
+                continue
+            if not within_chebyshev_of_enemy_core(neighbor_pos):
+                continue
+            if has_adjacent_own_launcher(neighbor_tile):
+                continue
+            if try_build_launcher_here(neighbor_pos):
                 return True
 
-            if not move_towards:
-                continue
-            if self.u_move_to(target_tile.position):
-                return True
-            if hold:
-                continue
-
-        if ENABLE_PRINTING:
-            print(
-                f"[annoy-debug] no build executed: in_range={in_range_count} "
-                f"cannot_build_at_them={cannot_build_count} "
-                f"(other candidates were out of range)"
-            )
         return False
 
     def s_hijack_enemy_supply_chain(
