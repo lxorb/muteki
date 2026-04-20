@@ -1,4 +1,3 @@
-from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -643,11 +642,20 @@ class Tile:
                             or target.in_enemy_launcher_pickup_zone > 0
                         )
 
-    def update_target_zones_building( self
-    ) -> None:
+    def u_building_targets_match_by_index(self) -> bool:
+        prev_targets = self.building.prev_targets
+        targets = self.building.targets
+        if len(prev_targets) != len(targets):
+            return False
+        for idx in range(len(targets)):
+            if prev_targets[idx].index != targets[idx].index:
+                return False
+        return True
+
+    def update_target_zones_building(self) -> None:
         if (
             self.building.entity_type == self.building.prev_entity_type
-            and Counter(self.building.prev_targets) == Counter(self.building.targets)
+            and self.u_building_targets_match_by_index()
             and self.building.team == self.building.prev_team
         ):
             return
