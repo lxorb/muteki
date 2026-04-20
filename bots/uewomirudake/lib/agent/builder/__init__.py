@@ -48,6 +48,7 @@ class BuilderAgent(
     recent_positions: list[Position]
     step_off_core_attempted: bool
     spawn_relative_tile: tuple[int, int] | None
+    close_patrol_step: int
     _d_star_lite_states_by_builder_id: dict[int, object]
     _lpa_star_states_by_builder_id: dict[int, object]
 
@@ -79,6 +80,7 @@ class BuilderAgent(
         self.recent_positions = []
         self.step_off_core_attempted = False
         self.spawn_relative_tile = None
+        self.close_patrol_step = 0
         self._d_star_lite_states_by_builder_id = {}
         self._lpa_star_states_by_builder_id = {}
 

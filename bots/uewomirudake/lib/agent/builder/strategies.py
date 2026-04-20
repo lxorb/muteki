@@ -111,7 +111,7 @@ CORE_DEFENDER_STRATEGY = [
     (BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
     (BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
     (BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
-    (BuilderStrategyMethodsMixin.s_return_to_core_center,),
+    (BuilderStrategyMethodsMixin.s_close_patrol_own_core,),
 ]
 
 HARASSMENT_STRATEGY = [
@@ -166,7 +166,7 @@ INITIAL_BB_ORDER: list[str] = [
     SCAVENGER_STRATEGY_ID,
     # SCAVENGER_STRATEGY_ID,
     # SCAVENGER_STRATEGY_ID,
-    HARASSMENT_STRATEGY_ID,
+    CORE_DEFENDER_STRATEGY_ID,
     # HARASSMENT_STRATEGY_ID,
 ]
 FUTHER_BB_ROTATION: list[str] = [

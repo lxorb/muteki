@@ -47,6 +47,16 @@ _ENEMY_CORE_PATROL_OFFSETS = (
     (-2, 0),
     (-2, -1),
 )
+_CLOSE_CORE_PATROL_OFFSETS = (
+    (-1, -1),
+    (0, 0),
+    (1, 1),
+    (0, 0),
+    (-1, 1),
+    (0, 0),
+    (1, -1),
+    (0, 0),
+)
 _BRIDGE_R = int(GameConstants.BRIDGE_TARGET_RADIUS_SQ**0.5) + 1
 _HIJACK_BRIDGE_TARGET_OFFSETS: tuple[tuple[int, int], ...] = tuple(
     (dx, dy)
@@ -285,14 +295,33 @@ class BuilderStrategyMethodsMixin:
             target_tile.clear_building()
         return False
 
-    def s_return_to_core_center(self):
+    def s_close_patrol_own_core(self):
         own_core_center_pos = self.map.own_core_center_pos
         if own_core_center_pos is None:
             self.map.u_calc_core_center_positions()
             own_core_center_pos = self.map.own_core_center_pos
         if own_core_center_pos is None:
             return False
-        return bool(self.u_move_to(own_core_center_pos))
+
+        offsets = _CLOSE_CORE_PATROL_OFFSETS
+        step = self.close_patrol_step % len(offsets)
+        offset_x, offset_y = offsets[step]
+        target_pos = Position(
+            own_core_center_pos.x + offset_x,
+            own_core_center_pos.y + offset_y,
+        )
+
+        if self.map.current_pos == target_pos:
+            step = (step + 1) % len(offsets)
+            self.close_patrol_step = step
+            offset_x, offset_y = offsets[step]
+            target_pos = Position(
+                own_core_center_pos.x + offset_x,
+                own_core_center_pos.y + offset_y,
+            )
+
+        self.u_move_to(target_pos)
+        return True
 
     def s_step_off_core(self):
         own_core_center_pos = self.map.own_core_center_pos
