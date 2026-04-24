@@ -310,40 +310,63 @@ class BuilderStrategyMethodsMixin:
     def s_proceed_follow_enemy_bb(self):
         followed_enemy_builder_bot_id = self.follow_enemy_builder_bot_id
         if followed_enemy_builder_bot_id is None:
+            print("[follow-enemy-bb] proceed: no followed enemy builder bot")
             return False
 
         target_idx = self.map.cached_followed_enemy_builder_index
         if target_idx < 0:
             self.follow_enemy_builder_bot_id = None
             self.u_set_follow_enemy_builder_marker(None)
+            print(
+                "[follow-enemy-bb] proceed: stopped following because target is not "
+                "currently cached as action-reachable"
+            )
             return False
 
         action_distance = self.map.u_get_vision_action_distance_by_index(target_idx)
         if action_distance is None:
             self.follow_enemy_builder_bot_id = None
             self.u_set_follow_enemy_builder_marker(None)
+            print(
+                "[follow-enemy-bb] proceed: stopped following because target has no "
+                "vision action distance"
+            )
             return False
         if action_distance <= FOLLOW_ENEMY_BB_MAX_ACTION_DISTANCE:
+            print(
+                f"[follow-enemy-bb] proceed: already within follow distance "
+                f"{action_distance} <= {FOLLOW_ENEMY_BB_MAX_ACTION_DISTANCE}"
+            )
             return False
 
         next_tile = self.map.u_get_next_step_towards_vision_action_reachable_by_index(
             target_idx
         )
         if next_tile is None:
+            print(
+                "[follow-enemy-bb] proceed: no cached next step toward followed "
+                "enemy builder bot"
+            )
             return False
 
         next_direction = self.map.u_get_direction_between(
             self.map.current_pos,
             next_tile.position,
         )
-        return self.u_try_progress_move_step(
+        moved = self.u_try_progress_move_step(
             next_tile,
             next_direction,
             self.map.tiles_by_index[target_idx].position,
-            build_new_roads=False,
+            build_new_roads=True,
             allow_conveyor_building=False,
             respect_titanium_reserve_for_road_build=False,
         )
+        if not moved:
+            print(
+                f"[follow-enemy-bb] proceed: move step toward {next_tile.position} "
+                "failed"
+            )
+        return moved
 
     def s_delete_pending_tile(self):
         pending_tile_idx = self.pending_delete_tile_index
