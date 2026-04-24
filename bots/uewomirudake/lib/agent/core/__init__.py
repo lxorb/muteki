@@ -105,7 +105,6 @@ class CoreAgent(Agent):
         if spawned_builder_id is None:
             return False
 
-        self.core_defender_bot_id = spawned_builder_id
         return True
 
     def u_convert_axionite_if_low_on_titanium(self) -> bool:
@@ -231,6 +230,8 @@ class CoreAgent(Agent):
         )
         spawn_pos = core_center_pos.add(spawn_direction)
         spawned_builder_id = self.ct.spawn_builder(spawn_pos)
+        if builder_bot_strategy == CORE_DEFENDER_STRATEGY_ID:
+            self.core_defender_bot_id = spawned_builder_id
         self.spawn_bb_count += 1
         self.spawn_tile_counts[spawn_direction] += 1
         return spawned_builder_id
