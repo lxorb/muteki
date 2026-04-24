@@ -699,8 +699,6 @@ class BuilderNavigationMixin:
         if self.u_move_target_reached(current_pos, pos, reach_builder_action_range):
             return False
 
-        print("Move to target:", pos)
-
         respect_titanium_reserve_for_road_build = (
             self.u_should_respect_titanium_reserve_for_road_build(
                 respect_titanium_reserve_for_road_build
@@ -868,14 +866,6 @@ class BuilderNavigationMixin:
         direction: Direction,
         target_pos: Position,
     ) -> None:
-        print(
-            "Move target:",
-            target_pos,
-            "via",
-            direction,
-            "to",
-            self.map.current_pos.add(direction),
-        )
         self.ct.move(direction)
 
     def u_get_supply_chain_progress_key_to_target(
@@ -2270,8 +2260,6 @@ class BuilderNavigationMixin:
                 respect_titanium_reserve_for_road_build
             )
         )
-
-        print("Move to target:", pos)
 
         if reach_builder_action_range:
             next_tile = self.map.u_get_next_step_to_builder_action_range_astar(

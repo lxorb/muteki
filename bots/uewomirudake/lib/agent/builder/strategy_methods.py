@@ -6585,25 +6585,16 @@ class BuilderStrategyMethodsMixin:
     def _get_buildable_launcher_positions(self):
         current_pos = self.map.current_pos
         if self.map.titanium < LAUNCHER_BUILD_MIN_TITANIUM:
-            if ENABLE_PRINTING:
-                print(
-                    f"[yeet-debug] buildable: skipped — titanium {self.map.titanium} "
-                    f"< {LAUNCHER_BUILD_MIN_TITANIUM}"
-                )
             return []
 
         results: list[tuple[Position, Position, Direction | None]] = []
         seen: set[Position] = set()
-        reject_pickup_zone = 0
-        reject_not_placeable = 0
 
         for build_pos in self.map.u_iter_adjacent_all_positions(current_pos):
             tile = self.map.u_get_pos_tile(build_pos)
             if tile.in_own_launcher_pickup_zone != 0:
-                reject_pickup_zone += 1
                 continue
             if not self.u_can_place_marker_or_launcher_here(tile):
-                reject_not_placeable += 1
                 continue
             if build_pos in seen:
                 continue
@@ -6621,20 +6612,12 @@ class BuilderStrategyMethodsMixin:
                     continue
                 tile = self.map.u_get_pos_tile(build_pos)
                 if tile.in_own_launcher_pickup_zone != 0:
-                    reject_pickup_zone += 1
                     continue
                 if not self.u_can_place_marker_or_launcher_here(tile):
-                    reject_not_placeable += 1
                     continue
                 seen.add(build_pos)
                 results.append((build_pos, step_pos, direction))
 
-        if ENABLE_PRINTING:
-            print(
-                f"[yeet-debug] buildable: found={len(results)} "
-                f"rejected_in_own_pickup_zone={reject_pickup_zone} "
-                f"rejected_not_placeable={reject_not_placeable}"
-            )
         return results
 
     def _make_build_launcher_marker_plan(
@@ -6646,11 +6629,6 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         can_place_marker = getattr(self.ct, "can_place_marker", None)
         if can_place_marker is None or self.map.MARKER_ENTITY_TYPE is None:
-            if ENABLE_PRINTING:
-                print(
-                    f"[yeet-debug] marker-plan({build_pos}): missing ct.can_place_marker "
-                    "or MARKER_ENTITY_TYPE"
-                )
             return None
 
         good_cur = self._good_marker_positions(current_pos)
@@ -6661,12 +6639,6 @@ class BuilderStrategyMethodsMixin:
                 if not can_place_marker(marker_pos):
                     continue
                 return (marker_pos, "no_move")
-            if ENABLE_PRINTING:
-                print(
-                    f"[yeet-debug] marker-plan({build_pos}) no_move FAILED: "
-                    f"good_marker_pos_cnt={len(good_cur)} "
-                    "(either all collide with build_pos or can_place_marker False)"
-                )
             return None
 
         step_pos = launch_pos
@@ -6683,12 +6655,6 @@ class BuilderStrategyMethodsMixin:
                 continue
             return (marker_pos, "after_move")
 
-        if ENABLE_PRINTING:
-            print(
-                f"[yeet-debug] marker-plan({build_pos}) 1-move FAILED: "
-                f"good_at_cur={len(good_cur)} good_at_step={len(good_step)} "
-                f"step={step_pos}"
-            )
         return None
 
     def _execute_existing_launcher_plan(
@@ -6847,52 +6813,28 @@ class BuilderStrategyMethodsMixin:
         target_idx = self.map.u_to_index(target_pos)
         tiles_by_index = self.map.tiles_by_index
         allow_walkable_landings = self.u_is_stuck_oscillating()
-        if ENABLE_PRINTING:
-            print(
-                f"[yeet-debug] entry tgt={target_pos} cur={current_pos} "
-                f"stuck={allow_walkable_landings} "
-                f"titanium={self.map.titanium} "
-                f"one_move_launchers={len(self.map.one_move_action_reachable_launcher_indices)}"
-            )
 
         valid_existing_plans: dict[int, tuple] = {}
-        existing_reject_no_plan = 0
         for launcher_idx in self.map.one_move_action_reachable_launcher_indices:
             plan = self._make_existing_launcher_plan(launcher_idx)
             if plan is None:
-                existing_reject_no_plan += 1
                 continue
             valid_existing_plans[launcher_idx] = plan
-        if ENABLE_PRINTING:
-            print(
-                f"[yeet-debug] existing-plan: valid={len(valid_existing_plans)} "
-                f"rejected_no_plan={existing_reject_no_plan}"
-            )
 
         raw_buildable = self._get_buildable_launcher_positions()
         valid_buildable_plans: list[tuple] = []
-        build_reject_no_marker = 0
         for build_pos, launch_pos, move_direction in raw_buildable:
             marker_plan = self._make_build_launcher_marker_plan(
                 build_pos, launch_pos, move_direction
             )
             if marker_plan is None:
-                build_reject_no_marker += 1
                 continue
             marker_pos, marker_order = marker_plan
             valid_buildable_plans.append(
                 (build_pos, launch_pos, move_direction, marker_pos, marker_order)
             )
-        if ENABLE_PRINTING:
-            print(
-                f"[yeet-debug] build-plan: raw={len(raw_buildable)} "
-                f"valid={len(valid_buildable_plans)} "
-                f"rejected_no_marker={build_reject_no_marker}"
-            )
 
         if not valid_existing_plans and not valid_buildable_plans:
-            if ENABLE_PRINTING:
-                print("[yeet-debug] abort: no valid existing or build plans")
             return False
 
         target_walkable = (
@@ -6901,12 +6843,6 @@ class BuilderStrategyMethodsMixin:
             < LAUNCHER_BUILD_MIN_IMPROVEMENT
         )
         if target_walkable:
-            if ENABLE_PRINTING:
-                print(
-                    f"[yeet-debug] abort: target {target_pos} already vision-reachable "
-                    f"at dist {self.map.dist_to_self_by_index[target_idx]} < "
-                    f"{LAUNCHER_BUILD_MIN_IMPROVEMENT}"
-                )
             return False
 
         current_path = self.map.u_calculate_shortest_path_via_vision_join(
@@ -6914,11 +6850,6 @@ class BuilderStrategyMethodsMixin:
             target_pos,
         )
         has_path = bool(current_path)
-        if ENABLE_PRINTING:
-            print(
-                f"[yeet-debug] path len={len(current_path) if current_path else 0} "
-                f"has_path_for_scoring={has_path}"
-            )
         path_index_by_tile_index: dict[int, int] = {}
         if has_path:
             for path_idx, tile in enumerate(current_path):
@@ -6926,25 +6857,17 @@ class BuilderStrategyMethodsMixin:
                 for neighbor_idx in self.map.u_iter_neighbor_indices(tile.index):
                     path_index_by_tile_index.setdefault(neighbor_idx, path_idx)
 
-        score_reject_reasons = {"no_path_idx": 0, "below_improvement": 0}
-
         def _score_landing(landing_tile) -> tuple | None:
             if has_path:
                 path_idx = path_index_by_tile_index.get(landing_tile.index)
                 if path_idx is None:
-                    score_reject_reasons["no_path_idx"] += 1
                     return None
                 if path_idx < LAUNCHER_BUILD_MIN_IMPROVEMENT:
-                    score_reject_reasons["below_improvement"] += 1
                     return None
                 return (path_idx,)
             dist_sq = landing_tile.position.distance_squared(target_pos)
             return (-dist_sq,)
 
-        existing_landing_stats = {
-            "total": 0, "too_close_launcher": 0, "invalid_landing": 0,
-            "score_rejected": 0, "accepted": 0,
-        }
         best_existing = None
         for launcher_idx, plan in valid_existing_plans.items():
             launch_pos, move_direction, marker_pos, marker_order = plan
@@ -6955,21 +6878,16 @@ class BuilderStrategyMethodsMixin:
                 EntityType.LAUNCHER,
                 Direction.NORTH,
             ):
-                existing_landing_stats["total"] += 1
                 landing_tile = tiles_by_index[landing_idx]
                 if launcher_tile.position.distance_squared(landing_tile.position) <= 2:
-                    existing_landing_stats["too_close_launcher"] += 1
                     continue
                 if not self.u_is_valid_yeet_landing_tile(
                     landing_tile, allow_walkable_landings=allow_walkable_landings
                 ):
-                    existing_landing_stats["invalid_landing"] += 1
                     continue
                 score = _score_landing(landing_tile)
                 if score is None:
-                    existing_landing_stats["score_rejected"] += 1
                     continue
-                existing_landing_stats["accepted"] += 1
                 key = score + (
                     -action_dist,
                     -launcher_tile.position.x,
@@ -6981,13 +6899,6 @@ class BuilderStrategyMethodsMixin:
                     best_existing = (
                         key, landing_tile.position, plan, launcher_tile.position
                     )
-        if ENABLE_PRINTING:
-            print(f"[yeet-debug] existing landings: {existing_landing_stats}")
-
-        build_landing_stats = {
-            "total": 0, "too_close_build": 0, "invalid_landing": 0,
-            "score_rejected": 0, "accepted": 0,
-        }
         best_build = None
         for build_pos, launch_pos, move_direction, marker_pos, marker_order in valid_buildable_plans:
             action_dist = 0 if move_direction is None else 1
@@ -6997,21 +6908,16 @@ class BuilderStrategyMethodsMixin:
                 EntityType.LAUNCHER,
                 Direction.NORTH,
             ):
-                build_landing_stats["total"] += 1
                 landing_tile = tiles_by_index[landing_idx]
                 if build_pos.distance_squared(landing_tile.position) <= 2:
-                    build_landing_stats["too_close_build"] += 1
                     continue
                 if not self.u_is_valid_yeet_landing_tile(
                     landing_tile, allow_walkable_landings=allow_walkable_landings
                 ):
-                    build_landing_stats["invalid_landing"] += 1
                     continue
                 score = _score_landing(landing_tile)
                 if score is None:
-                    build_landing_stats["score_rejected"] += 1
                     continue
-                build_landing_stats["accepted"] += 1
                 key = score + (
                     -action_dist,
                     -build_pos.x,
@@ -7027,13 +6933,6 @@ class BuilderStrategyMethodsMixin:
                         marker_pos,
                         marker_order,
                     )
-        if ENABLE_PRINTING:
-            print(f"[yeet-debug] build landings: {build_landing_stats}")
-            print(
-                f"[yeet-debug] score-reject breakdown: {score_reject_reasons} "
-                f"best_existing={best_existing is not None} "
-                f"best_build={best_build is not None}"
-            )
 
         def _try_execute_existing() -> bool:
             if best_existing is None:
@@ -7056,32 +6955,15 @@ class BuilderStrategyMethodsMixin:
                 or best_existing[0][0] >= best_build[0][0]
             )
         ):
-            if ENABLE_PRINTING:
-                print(
-                    f"[yeet-debug] picking best_existing (score={best_existing[0][0]}, "
-                    f"best_build_score={best_build[0][0] if best_build else None})"
-                )
             if _try_execute_existing():
                 return True
 
         current_tile = self.map.u_get_pos_tile(current_pos)
         if current_tile.in_own_launcher_pickup_zone != 0:
-            if ENABLE_PRINTING:
-                print(
-                    "[yeet-debug] current tile is in own-launcher pickup zone; "
-                    "forbid build, fall back to existing"
-                )
             return _try_execute_existing()
         if best_build is None:
-            if ENABLE_PRINTING:
-                print("[yeet-debug] no best_build; fall back to existing")
             return _try_execute_existing()
         if len(valid_buildable_plans) < 2:
-            if ENABLE_PRINTING:
-                print(
-                    f"[yeet-debug] only {len(valid_buildable_plans)} valid buildable plan(s) "
-                    "(<2); fall back to existing"
-                )
             return _try_execute_existing()
 
         (
@@ -7093,12 +6975,6 @@ class BuilderStrategyMethodsMixin:
             marker_pos,
             marker_order,
         ) = best_build
-        if ENABLE_PRINTING:
-            print(
-                f"[yeet-debug] committing to BUILD at {build_pos} "
-                f"land={landing_pos} marker={marker_pos}({marker_order}) "
-                f"launch={launch_pos} move={move_direction}"
-            )
         return self._execute_build_launcher_plan(
             landing_pos,
             build_pos,

@@ -202,8 +202,6 @@ class BuilderAgent(
                 f"Map updating took {self.map.map_update_time_ns / 1_000_000:.2f} ms."
             )
             self.map.map_json_loaded_print_pending = False
-        print(f"Builder strategy: {self.u_get_strategy_name()}")
-
         self.follow_enemy_builder_bot_id = self.map.u_refresh_follow_enemy_builder_tracking(
             self.ct.get_id(),
             self.follow_enemy_builder_bot_id,

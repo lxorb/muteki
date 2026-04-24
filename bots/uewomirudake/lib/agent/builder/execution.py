@@ -63,7 +63,6 @@ class BuilderExecutionMixin:
 
             if acted:
                 self.last_turn_completed = True
-                print(f"Executed strategy: {strategy_method.__name__}")
                 stopwatch.log()
                 self.after_strategy()
                 return True
