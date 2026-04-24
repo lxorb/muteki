@@ -2469,7 +2469,7 @@ class BuilderNavigationMixin:
             EntityType.ROAD,
         }
 
-        if avoid_enemy_turrets and target_tile.is_enemy_turret_target_tile:
+        if avoid_enemy_turrets and target_tile.in_enemy_attack_range:
             return finish(False, "reject enemy turret tile")
 
         titanium_cost, axionite_cost = getattr(
