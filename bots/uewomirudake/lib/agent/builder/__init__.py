@@ -42,8 +42,9 @@ class BuilderAgent(
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
     marker_target_pos: Position | None
-    marker_has_explicit_target: bool
+    marker_follow_enemy_builder_bot_id: int | None
     marker_placed_already: bool
+    follow_enemy_builder_bot_id: int | None
     awaiting_yeet_from_pos: Position | None
     awaiting_yeet_rounds_waited: int
     recent_positions: list[Position]
@@ -77,8 +78,9 @@ class BuilderAgent(
         self.enemy_core_proxy_target_pos = None
         self.enemy_core_proxy_base_target_pos = None
         self.marker_target_pos = None
-        self.marker_has_explicit_target = False
+        self.marker_follow_enemy_builder_bot_id = None
         self.marker_placed_already = False
+        self.follow_enemy_builder_bot_id = None
         self.awaiting_yeet_from_pos = None
         self.awaiting_yeet_rounds_waited = 0
         self.recent_positions = []
@@ -161,7 +163,7 @@ class BuilderAgent(
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
         self.marker_target_pos = None
-        self.marker_has_explicit_target = False
+        self.marker_follow_enemy_builder_bot_id = None
         self.marker_placed_already = False
 
         fresh_pos = self.ct.get_position()
@@ -201,6 +203,15 @@ class BuilderAgent(
             )
             self.map.map_json_loaded_print_pending = False
         print(f"Builder strategy: {self.u_get_strategy_name()}")
+
+        self.follow_enemy_builder_bot_id = self.map.u_refresh_follow_enemy_builder_tracking(
+            self.ct.get_id(),
+            self.follow_enemy_builder_bot_id,
+        )
+        if self.follow_enemy_builder_bot_id is not None:
+            self.u_set_follow_enemy_builder_marker(
+                self.follow_enemy_builder_bot_id,
+            )
 
         handled = self.u_execute_strategy()
         finished_loading_map = self.map.u_update_map()

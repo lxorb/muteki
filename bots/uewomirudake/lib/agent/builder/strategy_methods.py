@@ -15,6 +15,7 @@ from lib.agent.constants import (
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     ENABLE_PRINTING,
     FOUNDRY_CAN_REPLACE_BRIDGE,
+    FOLLOW_ENEMY_BB_MAX_ACTION_DISTANCE,
     HARASSMENT_STRATEGY_ID,
     HARASSMENT_ENEMY_CORE_MOVER,
     HARVESTERS_BUILT_BEFORE_CONVERT_TO_DEFENDER,
@@ -222,10 +223,16 @@ class BuilderStrategyMethodsMixin:
     def u_set_marker_target(
         self,
         target_pos: Position | None,
-        has_explicit_target: bool = True,
     ) -> None:
         self.marker_target_pos = target_pos
-        self.marker_has_explicit_target = has_explicit_target and target_pos is not None
+        self.marker_follow_enemy_builder_bot_id = None
+
+    def u_set_follow_enemy_builder_marker(
+        self,
+        enemy_builder_bot_id: int | None,
+    ) -> None:
+        self.marker_target_pos = None
+        self.marker_follow_enemy_builder_bot_id = enemy_builder_bot_id
 
     def u_place_marker_if_possible(self) -> bool:
         if self.marker_placed_already:
@@ -241,11 +248,17 @@ class BuilderStrategyMethodsMixin:
         ):
             return False
 
-        marker_value = self.map.u_encode_marker_value(
-            self.ct.get_id(),
-            self.marker_target_pos,
-            self.marker_has_explicit_target,
-        )
+        marker_value = None
+        if self.marker_target_pos is not None:
+            marker_value = self.map.u_encode_launch_request_marker_value(
+                self.ct.get_id(),
+                self.marker_target_pos,
+            )
+        elif self.marker_follow_enemy_builder_bot_id is not None:
+            marker_value = self.map.u_encode_follow_claim_marker_value(
+                self.ct.get_id(),
+                self.marker_follow_enemy_builder_bot_id,
+            )
         if marker_value is None:
             return False
 
@@ -278,6 +291,59 @@ class BuilderStrategyMethodsMixin:
             place_marker(oldest_marker_pos, marker_value)
             return True
         return False
+
+    def s_target_follow_enemy_bb(self):
+        if self.follow_enemy_builder_bot_id is not None:
+            return False
+
+        target_enemy_builder_bot_id = self.map.cached_follow_enemy_builder_candidate_id
+        if target_enemy_builder_bot_id < 0:
+            return False
+
+        self.follow_enemy_builder_bot_id = target_enemy_builder_bot_id
+        self.map.cached_followed_enemy_builder_index = (
+            self.map.cached_follow_enemy_builder_candidate_index
+        )
+        self.u_set_follow_enemy_builder_marker(target_enemy_builder_bot_id)
+        return False
+
+    def s_proceed_follow_enemy_bb(self):
+        followed_enemy_builder_bot_id = self.follow_enemy_builder_bot_id
+        if followed_enemy_builder_bot_id is None:
+            return False
+
+        target_idx = self.map.cached_followed_enemy_builder_index
+        if target_idx < 0:
+            self.follow_enemy_builder_bot_id = None
+            self.u_set_follow_enemy_builder_marker(None)
+            return False
+
+        action_distance = self.map.u_get_vision_action_distance_by_index(target_idx)
+        if action_distance is None:
+            self.follow_enemy_builder_bot_id = None
+            self.u_set_follow_enemy_builder_marker(None)
+            return False
+        if action_distance <= FOLLOW_ENEMY_BB_MAX_ACTION_DISTANCE:
+            return False
+
+        next_tile = self.map.u_get_next_step_towards_vision_action_reachable_by_index(
+            target_idx
+        )
+        if next_tile is None:
+            return False
+
+        next_direction = self.map.u_get_direction_between(
+            self.map.current_pos,
+            next_tile.position,
+        )
+        return self.u_try_progress_move_step(
+            next_tile,
+            next_direction,
+            self.map.tiles_by_index[target_idx].position,
+            build_new_roads=False,
+            allow_conveyor_building=False,
+            respect_titanium_reserve_for_road_build=False,
+        )
 
     def s_delete_pending_tile(self):
         pending_tile_idx = self.pending_delete_tile_index
@@ -6611,8 +6677,9 @@ class BuilderStrategyMethodsMixin:
         marker_pos: Position,
         marker_order: str,
     ) -> bool:
-        marker_value = self.map.u_encode_marker_value(
-            self.ct.get_id(), landing_pos, True
+        marker_value = self.map.u_encode_launch_request_marker_value(
+            self.ct.get_id(),
+            landing_pos,
         )
         if marker_value is None:
             return False
@@ -6688,8 +6755,9 @@ class BuilderStrategyMethodsMixin:
     ) -> bool:
         if not self.ct.can_build_launcher(build_pos):
             return False
-        marker_value = self.map.u_encode_marker_value(
-            self.ct.get_id(), landing_pos, True
+        marker_value = self.map.u_encode_launch_request_marker_value(
+            self.ct.get_id(),
+            landing_pos,
         )
         if marker_value is None:
             return False

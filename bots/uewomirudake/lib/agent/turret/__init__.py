@@ -52,17 +52,23 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         )
         stored_markers = []
         for owner_mod in range(64):
-            target_idx = self.map.visible_marker_target_index_by_owner_mod64[owner_mod]
-            if target_idx < 0:
+            marker_payload = self.map.visible_marker_payload_by_owner_mod64[owner_mod]
+            if marker_payload < 0:
                 continue
+            marker_action_type = self.map.visible_marker_action_type_by_owner_mod64[
+                owner_mod
+            ]
+            marker_payload_value: Position | int = marker_payload
+            if marker_action_type:
+                marker_payload_value = self.map.tiles_by_index[marker_payload].position
             stored_markers.append((
                 owner_mod,
-                self.map.tiles_by_index[target_idx].position,
+                marker_payload_value,
                 self.map.visible_marker_age_by_owner_mod64[owner_mod],
-                bool(self.map.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]),
+                marker_action_type,
             ))
         print(
-            f"[launcher-debug] stored markers (owner_mod, target, age, explicit): "
+            f"[launcher-debug] stored markers (owner_mod, payload, age, action): "
             f"{stored_markers}"
         )
         print(
@@ -102,10 +108,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
 
             bot_id = bot_tile.bot.id
             owner_mod_local = bot_id & 63
-            request_info = self.map.u_get_visible_marker_request_info(
-                bot_id,
-                require_explicit_target=True,
-            )
+            request_info = self.map.u_get_visible_marker_request_info(bot_id)
             if request_info is None:
                 print(
                     f"[launcher-debug] ally id={bot_id} mod={owner_mod_local} "

@@ -16,6 +16,7 @@ from .types import StrategyEntry
 # skip_on_tle=True (s_split_supply_sentinel, s_turret_next_to_enemy_harvester,
 # s_swap_with_splitter).
 SCAVENGER_STRATEGY = [
+    (False, BuilderStrategyMethodsMixin.s_target_follow_enemy_bb),
     (False, BuilderStrategyMethodsMixin.s_delete_pending_tile),
     (False, BuilderStrategyMethodsMixin.s_step_off_core),
     (False, BuilderStrategyMethodsMixin.s_move_out_of_gunner_range),
@@ -38,6 +39,7 @@ SCAVENGER_STRATEGY = [
         False,
         False,
     ),
+    (False, BuilderStrategyMethodsMixin.s_proceed_follow_enemy_bb),
     # (False, BuilderStrategyMethodsMixin.s_convert_to_defender),
     (True, BuilderStrategyMethodsMixin.s_swap_with_splitter, True, True),
     (
@@ -67,6 +69,7 @@ SCAVENGER_STRATEGY = [
 ]
 
 DEFENDER_STRATEGY = [
+    (False, BuilderStrategyMethodsMixin.s_target_follow_enemy_bb),
     (False, BuilderStrategyMethodsMixin.s_delete_pending_tile),
     (False, BuilderStrategyMethodsMixin.s_step_off_core),
     (False, BuilderStrategyMethodsMixin.s_move_out_of_gunner_range),
@@ -91,6 +94,7 @@ DEFENDER_STRATEGY = [
     (True, BuilderStrategyMethodsMixin.s_swap_with_splitter, True, True),
     (False, BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
     (False, BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
+    (False, BuilderStrategyMethodsMixin.s_proceed_follow_enemy_bb),
     (
         False,
         BuilderStrategyMethodsMixin.s_build_harvester,
@@ -145,7 +149,7 @@ HARASSMENT_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_attack_key_enemy_supply_chain, True, True),
     (False, BuilderStrategyMethodsMixin.s_attack_enemy_harvester_supply_link, True),
     (False, BuilderStrategyMethodsMixin.s_block_enemy_supply_chain, True, True),
-    (False, BuilderStrategyMethodsMixin.s_annoy_with_yeeter, True, True),
+    # (False, BuilderStrategyMethodsMixin.s_annoy_with_yeeter, True, True),
     (False, BuilderStrategyMethodsMixin.s_patrol_enemy_supply_chains),
     (False, BuilderStrategyMethodsMixin.s_move_toward_enemy_core, True),
     (False, BuilderStrategyMethodsMixin.s_patrol_enemy_core),
@@ -179,13 +183,11 @@ INITIAL_BB_ORDER: list[str] = [
     SCAVENGER_STRATEGY_ID,
     # SCAVENGER_STRATEGY_ID,
     # SCAVENGER_STRATEGY_ID,
-    CORE_DEFENDER_STRATEGY_ID,
+    # CORE_DEFENDER_STRATEGY_ID,
     # HARASSMENT_STRATEGY_ID,
 ]
 
 FUTHER_BB_ROTATION: list[str] = [
-    HARASSMENT_STRATEGY_ID,
-    DEFENDER_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
     SCAVENGER_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,

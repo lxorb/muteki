@@ -34,6 +34,7 @@ class BuilderCommonSelf(Protocol):
     enemy_core_patrol_index: int
     enemy_core_checkpoint_index: int
     harvesters_built: int
+    follow_enemy_builder_bot_id: int | None
     last_built_entity_type: EntityType | None
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
@@ -238,6 +239,10 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
 
 
 class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
+    def s_target_follow_enemy_bb(self) -> BuilderActionResult: ...
+
+    def s_proceed_follow_enemy_bb(self) -> BuilderActionResult: ...
+
     def s_turn_to_harassment(self) -> BuilderActionResult: ...
 
     def s_split_supply_sentinel(self) -> BuilderActionResult: ...

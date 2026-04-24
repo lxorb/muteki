@@ -64,6 +64,11 @@ STALE_BUILDER_BOT_PASSABILITY_THRESHOLD = 10
 MARKER_OWNER_MODULO = 64
 MARKER_ROUND_MODULO = 64
 MARKER_MAXIMUM_AGE = 4
+MARKER_PAYLOAD_BITS = 12
+MARKER_PAYLOAD_MODULO = 1 << MARKER_PAYLOAD_BITS
+MARKER_ACTION_FOLLOW_ENEMY_BUILDER = 0
+MARKER_ACTION_LAUNCH_REQUEST = 1
+MARKER_FOLLOW_CLAIM_MAX_AGE = 1
 
 MAP_ENVIRONMENT_OTHER = 0
 MAP_ENVIRONMENT_WALL = 1
@@ -508,19 +513,26 @@ class Map:
             "I", [0]
         ) * self.INITIAL_MAP_SIZE
         self.visible_builder_bot_ids_in_vision: set[int] = set()
+        self.visible_builder_bot_index_by_id: dict[int, int] = {}
         self.visible_building_ids_by_index = array("i", [-1]) * self.INITIAL_MAP_SIZE
         self.visible_building_seen_turn_by_index = array(
             "I", [0]
         ) * self.INITIAL_MAP_SIZE
-        self.visible_marker_target_index_by_owner_mod64 = (
+        self.visible_marker_payload_by_owner_mod64 = (
             array("h", [-1]) * MARKER_OWNER_MODULO
         )
         self.visible_marker_age_by_owner_mod64 = array(
             "b", [-1]
         ) * MARKER_OWNER_MODULO
-        self.visible_marker_has_explicit_target_by_owner_mod64 = bytearray(
+        self.visible_marker_action_type_by_owner_mod64 = bytearray(
             MARKER_OWNER_MODULO
         )
+        self.other_followed_enemy_builder_by_id_mod4096 = bytearray(
+            MARKER_PAYLOAD_MODULO
+        )
+        self.cached_follow_enemy_builder_candidate_id = -1
+        self.cached_follow_enemy_builder_candidate_index = -1
+        self.cached_followed_enemy_builder_index = -1
         self.conveyor_targets_harvester_by_index = bytearray(self.INITIAL_MAP_SIZE)
         self.tile_in_vision_order_by_index = array("I", [0]) * self.INITIAL_MAP_SIZE
         self.locked_in_titanium_by_index = bytearray(self.INITIAL_MAP_SIZE)
@@ -710,12 +722,16 @@ class Map:
     def _u_reset_turn_state_simple(self) -> None:
         self.current_path = []
         self.visible_builder_bot_ids_in_vision.clear()
+        self.visible_builder_bot_index_by_id.clear()
         for marker_owner_mod in range(MARKER_OWNER_MODULO):
-            self.visible_marker_target_index_by_owner_mod64[marker_owner_mod] = -1
+            self.visible_marker_payload_by_owner_mod64[marker_owner_mod] = -1
             self.visible_marker_age_by_owner_mod64[marker_owner_mod] = -1
-        self.visible_marker_has_explicit_target_by_owner_mod64[:] = bytes(
+        self.visible_marker_action_type_by_owner_mod64[:] = bytes(
             MARKER_OWNER_MODULO
         )
+        self.cached_follow_enemy_builder_candidate_id = -1
+        self.cached_follow_enemy_builder_candidate_index = -1
+        self.cached_followed_enemy_builder_index = -1
 
     def _u_reset_turn_state_lists(self) -> None:
         self.has_enemy_bot_in_vision = False
@@ -1742,6 +1758,7 @@ class Map:
             pos = self.ct.get_position(unit_id)
             if self.u_is_in_bounds(pos):
                 idx = self.u_to_index(pos)
+                self.visible_builder_bot_index_by_id[unit_id] = idx
                 self.visible_builder_bot_ids_by_index[idx] = unit_id
                 self.visible_builder_bot_seen_turn_by_index[idx] = (
                     self.current_round_stamp
@@ -1931,41 +1948,65 @@ class Map:
     def u_encode_marker_value(
         self,
         owner_id: int,
-        target_pos: Position | None,
-        has_explicit_target: bool,
+        payload: int | None,
+        action_type: int,
     ) -> int | None:
-        written_pos = target_pos if has_explicit_target else self.own_core_center_pos
-        if written_pos is None or not self.u_is_in_bounds(written_pos):
+        if payload is None:
             return None
 
         symmetry_slot = _MARKER_SYMMETRY_SLOTS.get(self.symmetry_mode, 3)
         owner_mod = owner_id & (MARKER_OWNER_MODULO - 1)
         round_mod = self.current_round & (MARKER_ROUND_MODULO - 1)
-        target_idx = self.u_to_index(written_pos)
 
         value = 0
         value |= symmetry_slot
         value |= owner_mod << 2
         value |= round_mod << 8
-        value |= target_idx << 14
-        value |= int(has_explicit_target) << 26
+        value |= (payload & (MARKER_PAYLOAD_MODULO - 1)) << 14
+        value |= (int(action_type) & 0b1) << 26
         return value
+
+    def u_encode_launch_request_marker_value(
+        self,
+        owner_id: int,
+        target_pos: Position | None,
+    ) -> int | None:
+        if target_pos is None or not self.u_is_in_bounds(target_pos):
+            return None
+        return self.u_encode_marker_value(
+            owner_id,
+            self.u_to_index(target_pos),
+            MARKER_ACTION_LAUNCH_REQUEST,
+        )
+
+    def u_encode_follow_claim_marker_value(
+        self,
+        owner_id: int,
+        enemy_builder_bot_id: int | None,
+    ) -> int | None:
+        if enemy_builder_bot_id is None:
+            return None
+        return self.u_encode_marker_value(
+            owner_id,
+            enemy_builder_bot_id & (MARKER_PAYLOAD_MODULO - 1),
+            MARKER_ACTION_FOLLOW_ENEMY_BUILDER,
+        )
 
     def u_decode_marker_value(
         self,
         value: int,
-    ) -> tuple[SymmetryMode | None, int, int, int, bool]:
+    ) -> tuple[SymmetryMode | None, int, int, int, int]:
         symmetry_slot = value & 0b11
         owner_mod = (value >> 2) & 0b111111
         round_mod = (value >> 8) & 0b111111
-        target_idx = (value >> 14) & 0b111111111111
-        has_explicit_target = bool((value >> 26) & 0b1)
+        payload = (value >> 14) & (MARKER_PAYLOAD_MODULO - 1)
+        action_type = (value >> 26) & 0b1
         return (
             _MARKER_SYMMETRY_BY_SLOT[symmetry_slot],
             owner_mod,
             round_mod,
-            target_idx,
-            has_explicit_target,
+            payload,
+            action_type,
         )
 
     def u_apply_marker_symmetry_hint(self, symmetry_mode: SymmetryMode) -> None:
@@ -1993,8 +2034,8 @@ class Map:
             symmetry_mode,
             owner_mod,
             round_mod,
-            target_idx,
-            has_explicit_target,
+            payload,
+            action_type,
         ) = self.u_decode_marker_value(self.ct.get_marker_value(building_id))
 
         if symmetry_mode is not None and self.symmetry_mode is None:
@@ -2003,40 +2044,40 @@ class Map:
         marker_age = (
             (self.current_round & (MARKER_ROUND_MODULO - 1)) - round_mod
         ) & (MARKER_ROUND_MODULO - 1)
-        if marker_age > MARKER_MAXIMUM_AGE or not self.u_is_index_active(target_idx):
+        if marker_age > MARKER_MAXIMUM_AGE:
+            return
+        if (
+            action_type == MARKER_ACTION_LAUNCH_REQUEST
+            and not self.u_is_index_active(payload)
+        ):
             return
 
         cached_age = self.visible_marker_age_by_owner_mod64[owner_mod]
         if cached_age >= 0:
-            cached_has_explicit_target = bool(
-                self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]
-            )
+            cached_action_type = self.visible_marker_action_type_by_owner_mod64[owner_mod]
             if marker_age > cached_age:
                 return
             if (
                 marker_age == cached_age
-                and cached_has_explicit_target >= has_explicit_target
+                and cached_action_type >= action_type
             ):
                 return
 
-        self.visible_marker_target_index_by_owner_mod64[owner_mod] = target_idx
+        self.visible_marker_payload_by_owner_mod64[owner_mod] = payload
         self.visible_marker_age_by_owner_mod64[owner_mod] = marker_age
-        self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod] = int(
-            has_explicit_target
-        )
+        self.visible_marker_action_type_by_owner_mod64[owner_mod] = action_type
 
     def u_get_visible_marker_target_pos(
         self,
         owner_id: int,
-        require_explicit_target: bool = True,
     ) -> Position | None:
         owner_mod = owner_id & (MARKER_OWNER_MODULO - 1)
-        target_idx = self.visible_marker_target_index_by_owner_mod64[owner_mod]
+        target_idx = self.visible_marker_payload_by_owner_mod64[owner_mod]
         if target_idx < 0:
             return None
         if (
-            require_explicit_target
-            and not self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]
+            self.visible_marker_action_type_by_owner_mod64[owner_mod]
+            != MARKER_ACTION_LAUNCH_REQUEST
         ):
             return None
         return self.tiles_by_index[target_idx].position
@@ -2044,7 +2085,6 @@ class Map:
     def u_get_visible_marker_request_info(
         self,
         owner_id: int,
-        require_explicit_target: bool = True,
     ) -> tuple[int, int, Position] | None:
         """
         Return (owner_mod, absolute_request_round, target_pos) uniquely identifying
@@ -2054,12 +2094,12 @@ class Map:
         identifies a launch request even across the 64-round marker cycle.
         """
         owner_mod = owner_id & (MARKER_OWNER_MODULO - 1)
-        target_idx = self.visible_marker_target_index_by_owner_mod64[owner_mod]
+        target_idx = self.visible_marker_payload_by_owner_mod64[owner_mod]
         if target_idx < 0:
             return None
         if (
-            require_explicit_target
-            and not self.visible_marker_has_explicit_target_by_owner_mod64[owner_mod]
+            self.visible_marker_action_type_by_owner_mod64[owner_mod]
+            != MARKER_ACTION_LAUNCH_REQUEST
         ):
             return None
         age = self.visible_marker_age_by_owner_mod64[owner_mod]
@@ -2067,6 +2107,86 @@ class Map:
             return None
         request_round = self.current_round - age
         return (owner_mod, request_round, self.tiles_by_index[target_idx].position)
+
+    def u_refresh_follow_enemy_builder_tracking(
+        self,
+        own_builder_id: int,
+        followed_enemy_builder_bot_id: int | None,
+    ) -> int | None:
+        other_followed_enemy_builder_by_id_mod4096 = (
+            self.other_followed_enemy_builder_by_id_mod4096
+        )
+        other_followed_enemy_builder_by_id_mod4096[:] = bytes(MARKER_PAYLOAD_MODULO)
+        self.cached_follow_enemy_builder_candidate_id = -1
+        self.cached_follow_enemy_builder_candidate_index = -1
+        self.cached_followed_enemy_builder_index = -1
+
+        own_owner_mod = own_builder_id & (MARKER_OWNER_MODULO - 1)
+        followed_enemy_builder_payload = -1
+        if followed_enemy_builder_bot_id is not None:
+            followed_enemy_builder_payload = (
+                followed_enemy_builder_bot_id & (MARKER_PAYLOAD_MODULO - 1)
+            )
+
+        for owner_mod in range(MARKER_OWNER_MODULO):
+            marker_age = self.visible_marker_age_by_owner_mod64[owner_mod]
+            if marker_age < 0 or marker_age > MARKER_FOLLOW_CLAIM_MAX_AGE:
+                continue
+            if (
+                self.visible_marker_action_type_by_owner_mod64[owner_mod]
+                != MARKER_ACTION_FOLLOW_ENEMY_BUILDER
+            ):
+                continue
+
+            followed_payload = self.visible_marker_payload_by_owner_mod64[owner_mod]
+            if followed_payload < 0:
+                continue
+            if owner_mod == own_owner_mod:
+                continue
+
+            other_followed_enemy_builder_by_id_mod4096[followed_payload] = 1
+            if followed_payload == followed_enemy_builder_payload:
+                followed_enemy_builder_bot_id = None
+                followed_enemy_builder_payload = -1
+
+        if followed_enemy_builder_bot_id is not None:
+            followed_enemy_builder_index = self.visible_builder_bot_index_by_id.get(
+                followed_enemy_builder_bot_id,
+                -1,
+            )
+            if (
+                followed_enemy_builder_index < 0
+                or not self.u_is_vision_action_reachable_by_index(
+                    followed_enemy_builder_index
+                )
+            ):
+                followed_enemy_builder_bot_id = None
+            else:
+                self.cached_followed_enemy_builder_index = followed_enemy_builder_index
+
+        if followed_enemy_builder_bot_id is not None:
+            return followed_enemy_builder_bot_id
+
+        current_pos = self.current_pos
+        for tile in self.tiles_in_vision:
+            if (
+                tile.bot.id is None
+                or tile.bot.team == self.own_team
+                or tile.bot.entity_type != EntityType.BUILDER_BOT
+                or current_pos.distance_squared(tile.position) > 9
+                or not self.u_is_vision_action_reachable_by_index(tile.index)
+            ):
+                continue
+            if other_followed_enemy_builder_by_id_mod4096[
+                tile.bot.id & (MARKER_PAYLOAD_MODULO - 1)
+            ]:
+                continue
+
+            self.cached_follow_enemy_builder_candidate_id = tile.bot.id
+            self.cached_follow_enemy_builder_candidate_index = tile.index
+            break
+
+        return None
 
     def u_get_attackable_target_indices(
         self,
