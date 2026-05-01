@@ -4900,15 +4900,22 @@ class BuilderStrategyMethodsMixin:
             self.last_built_entity_type = EntityType.LAUNCHER
             return True
 
-        candidate_positions: list[Position] = []
+        candidate_entries: list[tuple[tuple[int, int], Position]] = []
+        candidate_order = 0
         seen_candidate_indices: set[int] = set()
 
         def add_candidate(pos: Position) -> None:
+            nonlocal candidate_order
             idx = self.map.u_to_index(pos)
             if idx in seen_candidate_indices:
                 return
             seen_candidate_indices.add(idx)
-            candidate_positions.append(pos)
+
+            dx = abs(pos.x - current_pos.x)
+            dy = abs(pos.y - current_pos.y)
+            adjacency_rank = 0 if dx + dy == 1 else 1
+            candidate_entries.append(((adjacency_rank, candidate_order), pos))
+            candidate_order += 1
 
         def is_placable_neighbor(tile) -> bool:
             return is_empty_or_own_road(tile)
@@ -4948,7 +4955,7 @@ class BuilderStrategyMethodsMixin:
                 if is_placable_neighbor(self.map.u_get_pos_tile(neighbor_pos)):
                     add_candidate(neighbor_pos)
 
-        for candidate_pos in candidate_positions:
+        for _, candidate_pos in sorted(candidate_entries):
             if try_build_launcher_here(candidate_pos):
                 return True
 
