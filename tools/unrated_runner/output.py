@@ -124,19 +124,30 @@ def render_table_to_image(
     path: Path,
     cell_times: list[list[int | None]] | None = None,
     map_win_pcts: list[float | None] | None = None,
+    empty_message: str = "No results to display.",
 ) -> None:
     import matplotlib.pyplot as plt
     import matplotlib
 
     matplotlib.use("Agg")
 
-    n_rows = len(rows)
+    display_rows = rows
+    display_cell_times = cell_times
+    display_map_win_pcts = map_win_pcts
+    if not display_rows:
+        display_rows = [[empty_message] + [""] * (len(headers) - 1)]
+        if display_cell_times is not None:
+            display_cell_times = [[None] * len(headers)]
+        if display_map_win_pcts is not None:
+            display_map_win_pcts = [None]
+
+    n_rows = len(display_rows)
 
     # Measure max content length per column to size widths
     col_widths = []
     for c in range(len(headers)):
         max_len = len(headers[c])
-        for row in rows:
+        for row in display_rows:
             max_len = max(max_len, len(row[c]))
         col_widths.append(max_len)
     # Convert char lengths to inches: short columns (<=2 chars) get narrow width
@@ -155,7 +166,7 @@ def render_table_to_image(
     ax.set_axis_off()
 
     table = ax.table(
-        cellText=rows,
+        cellText=display_rows,
         colLabels=headers,
         cellLoc="center",
         loc="center",
@@ -173,8 +184,8 @@ def render_table_to_image(
             cell.set_text_props(color="white", fontweight="bold")
         elif text in ("\u2705", "\u274c"):
             factor = 1.0
-            if cell_times is not None and r > 0:
-                ts = cell_times[r - 1][c]
+            if display_cell_times is not None and r > 0:
+                ts = display_cell_times[r - 1][c]
                 if ts is not None:
                     days = (now_ts - ts) / 86400
                     factor = math.exp(-DECAY_LAMBDA * max(0, days))
@@ -186,8 +197,8 @@ def render_table_to_image(
                 cell.set_facecolor(blend_to_white("#FFABB5", factor))
                 cell.set_text_props(color="#9C0006", fontweight="bold")
                 cell.get_text().set_text("L")
-        elif c == 0 and r > 0 and map_win_pcts is not None:
-            bg = map_win_color(map_win_pcts[r - 1])
+        elif c == 0 and r > 0 and display_map_win_pcts is not None:
+            bg = map_win_color(display_map_win_pcts[r - 1])
             cell.set_facecolor(bg if bg else "white")
         elif r % 2 == 0:
             cell.set_facecolor("#D9E2F3")
@@ -202,8 +213,8 @@ def render_table_to_image(
 
 def main():
     team_names = load_team_names()
-    combined = load_results()
-    combined = filter_by_cutoff(combined, CUTOFF_HOURS)
+    raw_combined = load_results()
+    combined = filter_by_cutoff(raw_combined, CUTOFF_HOURS)
     now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     # Compute per-map totals (across all teams)
@@ -286,12 +297,21 @@ def main():
         rows.append(row)
         cell_times.append(row_times)
 
+    empty_message = "No results yet. Run main.py until at least one match completes."
+    if raw_combined and not rows and CUTOFF_HOURS and CUTOFF_HOURS > 0:
+        empty_message = (
+            f"No results within the current {CUTOFF_HOURS:g}-hour cutoff."
+        )
+
     lines: list[str] = []
     lines.append(f"# Unrated runner output from {now}")
     lines.append("")
     lines.append("## Results by map and team")
     lines.append("")
-    lines.append(make_table(headers, rows))
+    if rows:
+        lines.append(make_table(headers, rows))
+    else:
+        lines.append(empty_message)
     lines.append("")
 
     output_path = OUTPUT_DIR / f"output_{now}.md"
@@ -305,6 +325,7 @@ def main():
             OUTPUT_DIR / f"output_{now}.jpg",
             cell_times=cell_times,
             map_win_pcts=map_win_pcts,
+            empty_message=empty_message,
         )
 
 
