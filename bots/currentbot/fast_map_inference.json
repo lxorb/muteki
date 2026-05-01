@@ -2,10 +2,14 @@
   "(20, 20, (1, 1))": [
     "maps/default_small1.map26"
   ],
+  "(20, 20, (11, 7))": [
+    "maps/showdown.map26"
+  ],
   "(20, 20, (14, 7))": [
     "maps/face.map26"
   ],
   "(20, 20, (16, 3))": [
+    "maps/raindrop.map26",
     "maps/thread_of_connection.map26"
   ],
   "(20, 20, (17, 17))": [
@@ -20,8 +24,20 @@
   "(20, 20, (3, 16))": [
     "maps/thread_of_connection.map26"
   ],
+  "(20, 20, (3, 3))": [
+    "maps/raindrop.map26"
+  ],
   "(20, 20, (5, 7))": [
     "maps/face.map26"
+  ],
+  "(20, 20, (8, 12))": [
+    "maps/showdown.map26"
+  ],
+  "(20, 30, (14, 8))": [
+    "maps/s.map26"
+  ],
+  "(20, 30, (5, 21))": [
+    "maps/s.map26"
   ],
   "(20, 50, (1, 48))": [
     "maps/climbing_wall.map26"
@@ -77,11 +93,35 @@
   "(25, 25, (8, 10))": [
     "maps/arena.map26"
   ],
+  "(25, 40, (2, 2))": [
+    "maps/lightning.map26"
+  ],
+  "(25, 40, (21, 3))": [
+    "maps/fan.map26"
+  ],
+  "(25, 40, (22, 37))": [
+    "maps/lightning.map26"
+  ],
+  "(25, 40, (3, 36))": [
+    "maps/fan.map26"
+  ],
+  "(26, 26, (2, 23))": [
+    "maps/mark_of_the_sun_god.map26"
+  ],
+  "(26, 26, (23, 2))": [
+    "maps/mark_of_the_sun_god.map26"
+  ],
   "(27, 45, (13, 1))": [
     "maps/hourglass.map26"
   ],
   "(27, 45, (13, 43))": [
     "maps/hourglass.map26"
+  ],
+  "(30, 20, (2, 17))": [
+    "maps/mugs.map26"
+  ],
+  "(30, 20, (27, 17))": [
+    "maps/mugs.map26"
   ],
   "(30, 30, (10, 19))": [
     "maps/default_medium1.map26"
@@ -97,6 +137,12 @@
   ],
   "(30, 30, (20, 24))": [
     "maps/shrub.map26"
+  ],
+  "(30, 30, (22, 11))": [
+    "maps/orbit.map26"
+  ],
+  "(30, 30, (25, 2))": [
+    "maps/stairs.map26"
   ],
   "(30, 30, (26, 3))": [
     "maps/default_medium2.map26"
@@ -122,8 +168,20 @@
   "(30, 30, (3, 5))": [
     "maps/perch_point.map26"
   ],
+  "(30, 30, (4, 27))": [
+    "maps/stairs.map26"
+  ],
+  "(30, 30, (7, 18))": [
+    "maps/orbit.map26"
+  ],
   "(30, 30, (9, 24))": [
     "maps/shrub.map26"
+  ],
+  "(30, 40, (23, 36))": [
+    "maps/far_lands.map26"
+  ],
+  "(30, 40, (6, 36))": [
+    "maps/far_lands.map26"
   ],
   "(31, 31, (22, 24))": [
     "maps/butterfly.map26"
@@ -167,6 +225,18 @@
   "(35, 20, (24, 17))": [
     "maps/gaussian.map26"
   ],
+  "(35, 25, (1, 11))": [
+    "maps/sunset.map26"
+  ],
+  "(35, 25, (33, 11))": [
+    "maps/sunset.map26"
+  ],
+  "(35, 27, (2, 15))": [
+    "maps/merchant_ship.map26"
+  ],
+  "(35, 27, (32, 15))": [
+    "maps/merchant_ship.map26"
+  ],
   "(35, 35, (13, 16))": [
     "maps/donut.map26"
   ],
@@ -185,6 +255,12 @@
   "(35, 35, (21, 3))": [
     "maps/strings.map26"
   ],
+  "(35, 35, (3, 2))": [
+    "maps/blackhole.map26"
+  ],
+  "(35, 35, (31, 32))": [
+    "maps/blackhole.map26"
+  ],
   "(35, 40, (3, 36))": [
     "maps/vase.map26"
   ],
@@ -196,6 +272,12 @@
   ],
   "(35, 40, (9, 29))": [
     "maps/bar_chart.map26"
+  ],
+  "(35, 50, (10, 40))": [
+    "maps/skyscraper.map26"
+  ],
+  "(35, 50, (24, 40))": [
+    "maps/skyscraper.map26"
   ],
   "(37, 37, (12, 14))": [
     "maps/cold.map26"
@@ -209,8 +291,14 @@
   "(39, 30, (4, 22))": [
     "maps/tree_of_life.map26"
   ],
+  "(40, 20, (1, 3))": [
+    "maps/beats.map26"
+  ],
   "(40, 20, (1, 6))": [
     "maps/flappy_bird.map26"
+  ],
+  "(40, 20, (38, 3))": [
+    "maps/beats.map26"
   ],
   "(40, 20, (38, 6))": [
     "maps/flappy_bird.map26"
@@ -227,11 +315,20 @@
   "(40, 30, (1, 28))": [
     "maps/tiles.map26"
   ],
+  "(40, 30, (34, 3))": [
+    "maps/pointing.map26"
+  ],
+  "(40, 30, (5, 26))": [
+    "maps/pointing.map26"
+  ],
   "(40, 40, (11, 25))": [
     "maps/default_large1.map26"
   ],
   "(40, 40, (14, 23))": [
     "maps/chemistry_class.map26"
+  ],
+  "(40, 40, (2, 37))": [
+    "maps/strangecurves.map26"
   ],
   "(40, 40, (25, 23))": [
     "maps/chemistry_class.map26"
@@ -242,8 +339,14 @@
   "(40, 40, (3, 36))": [
     "maps/wasteland.map26"
   ],
+  "(40, 40, (3, 4))": [
+    "maps/ancient_tile.map26"
+  ],
   "(40, 40, (31, 33))": [
     "maps/wasteland_oasis.map26"
+  ],
+  "(40, 40, (32, 26))": [
+    "maps/beanstalk.map26"
   ],
   "(40, 40, (35, 4))": [
     "maps/galaxy.map26"
@@ -251,11 +354,26 @@
   "(40, 40, (36, 3))": [
     "maps/wasteland.map26"
   ],
+  "(40, 40, (36, 35))": [
+    "maps/ancient_tile.map26"
+  ],
+  "(40, 40, (37, 2))": [
+    "maps/strangecurves.map26"
+  ],
   "(40, 40, (4, 35))": [
     "maps/galaxy.map26"
   ],
+  "(40, 40, (7, 13))": [
+    "maps/beanstalk.map26"
+  ],
   "(40, 40, (8, 6))": [
     "maps/wasteland_oasis.map26"
+  ],
+  "(40, 50, (18, 4))": [
+    "maps/wormhole.map26"
+  ],
+  "(40, 50, (21, 45))": [
+    "maps/wormhole.map26"
   ],
   "(41, 20, (2, 2))": [
     "maps/we_love_tetris.map26"
@@ -269,11 +387,29 @@
   "(41, 30, (30, 16))": [
     "maps/binary_tree.map26"
   ],
+  "(41, 40, (1, 1))": [
+    "maps/not_a_blank_white_page.map26"
+  ],
+  "(41, 40, (39, 1))": [
+    "maps/not_a_blank_white_page.map26"
+  ],
   "(42, 20, (1, 18))": [
     "maps/window_shopping.map26"
   ],
   "(42, 20, (40, 18))": [
     "maps/window_shopping.map26"
+  ],
+  "(42, 30, (14, 14))": [
+    "maps/handbag.map26"
+  ],
+  "(42, 30, (27, 14))": [
+    "maps/handbag.map26"
+  ],
+  "(42, 32, (12, 1))": [
+    "maps/fish.map26"
+  ],
+  "(42, 32, (12, 30))": [
+    "maps/fish.map26"
   ],
   "(43, 43, (3, 8))": [
     "maps/flowers.map26"
@@ -281,11 +417,23 @@
   "(43, 43, (39, 34))": [
     "maps/flowers.map26"
   ],
+  "(44, 44, (19, 24))": [
+    "maps/squares.map26"
+  ],
+  "(44, 44, (24, 19))": [
+    "maps/squares.map26"
+  ],
   "(45, 25, (3, 11))": [
     "maps/pixel_forest.map26"
   ],
   "(45, 25, (41, 13))": [
     "maps/pixel_forest.map26"
+  ],
+  "(45, 45, (11, 16))": [
+    "maps/crab_nebula.map26"
+  ],
+  "(45, 45, (33, 28))": [
+    "maps/crab_nebula.map26"
   ],
   "(49, 49, (13, 17))": [
     "maps/pls_buy_cucats_merch.map26"
@@ -308,14 +456,36 @@
   "(49, 49, (35, 31))": [
     "maps/pls_buy_cucats_merch.map26"
   ],
+  "(49, 49, (42, 45))": [
+    "maps/squiggles.map26"
+  ],
   "(49, 49, (46, 28))": [
     "maps/castle_keep.map26"
+  ],
+  "(49, 49, (6, 3))": [
+    "maps/squiggles.map26"
+  ],
+  "(50, 20, (1, 1))": [
+    "maps/e5_series_shinkansen.map26"
+  ],
+  "(50, 20, (1, 18))": [
+    "maps/blob.map26"
   ],
   "(50, 20, (3, 1))": [
     "maps/socket.map26"
   ],
   "(50, 20, (3, 18))": [
     "maps/socket.map26"
+  ],
+  "(50, 20, (48, 1))": [
+    "maps/blob.map26",
+    "maps/e5_series_shinkansen.map26"
+  ],
+  "(50, 21, (10, 10))": [
+    "maps/maimai.map26"
+  ],
+  "(50, 21, (39, 10))": [
+    "maps/maimai.map26"
   ],
   "(50, 30, (12, 15))": [
     "maps/craters.map26"
@@ -353,6 +523,18 @@
   "(50, 38, (46, 24))": [
     "maps/settlement.map26"
   ],
+  "(50, 40, (15, 16))": [
+    "maps/impossible_knot.map26"
+  ],
+  "(50, 40, (16, 38))": [
+    "maps/gosper_glider_gun.map26"
+  ],
+  "(50, 40, (33, 1))": [
+    "maps/gosper_glider_gun.map26"
+  ],
+  "(50, 40, (34, 23))": [
+    "maps/impossible_knot.map26"
+  ],
   "(50, 41, (20, 24))": [
     "maps/starry_night.map26"
   ],
@@ -364,6 +546,12 @@
   ],
   "(50, 41, (3, 39))": [
     "maps/mandelbrot.map26"
+  ],
+  "(50, 46, (3, 42))": [
+    "maps/chrysanthemum.map26"
+  ],
+  "(50, 46, (46, 3))": [
+    "maps/chrysanthemum.map26"
   ],
   "(50, 50, (1, 48))": [
     "maps/metropolitan_dystopia.map26"
@@ -379,6 +567,15 @@
   ],
   "(50, 50, (18, 6))": [
     "maps/coffee.map26"
+  ],
+  "(50, 50, (2, 23))": [
+    "maps/parchment.map26"
+  ],
+  "(50, 50, (23, 26))": [
+    "maps/maze_runner.map26"
+  ],
+  "(50, 50, (26, 23))": [
+    "maps/maze_runner.map26"
   ],
   "(50, 50, (31, 43))": [
     "maps/coffee.map26"
@@ -398,8 +595,23 @@
   "(50, 50, (42, 17))": [
     "maps/separated.map26"
   ],
+  "(50, 50, (44, 44))": [
+    "maps/teleporter.map26"
+  ],
+  "(50, 50, (44, 46))": [
+    "maps/bubbles.map26"
+  ],
+  "(50, 50, (47, 23))": [
+    "maps/parchment.map26"
+  ],
   "(50, 50, (48, 1))": [
     "maps/metropolitan_dystopia.map26"
+  ],
+  "(50, 50, (5, 3))": [
+    "maps/bubbles.map26"
+  ],
+  "(50, 50, (5, 5))": [
+    "maps/teleporter.map26"
   ],
   "(50, 50, (7, 32))": [
     "maps/separated.map26"
