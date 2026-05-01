@@ -31,6 +31,8 @@ from lib.agent.constants import (
 from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
+SYMMETRY_HINT_FAKE_ENEMY_BUILDER_ID = 1
+
 _ENEMY_CORE_PATROL_OFFSETS = (
     (-2, -2),
     (-1, -2),
@@ -258,6 +260,11 @@ class BuilderStrategyMethodsMixin:
             marker_value = self.map.u_encode_follow_claim_marker_value(
                 self.ct.get_id(),
                 self.marker_follow_enemy_builder_bot_id,
+            )
+        elif self.map.symmetry_mode is not None:
+            marker_value = self.map.u_encode_follow_claim_marker_value(
+                self.ct.get_id(),
+                SYMMETRY_HINT_FAKE_ENEMY_BUILDER_ID,
             )
         if marker_value is None:
             return False
