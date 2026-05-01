@@ -32,6 +32,7 @@ from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_
 from lib.map.types import SupplyChainLabel
 
 SYMMETRY_HINT_FAKE_ENEMY_BUILDER_ID = 1
+ATTACK_INN_YEETER_ESCAPE_TILE_THRESHOLD = 4
 
 _ENEMY_CORE_PATROL_OFFSETS = (
     (-2, -2),
@@ -5462,6 +5463,75 @@ class BuilderStrategyMethodsMixin:
             return False
         if not self.map.u_supply_chain_is_continuable(current_tile.index, enemy_team):
             return False
+
+        return bool(
+            self.u_attack_passable(
+                current_pos,
+                move_towards=False,
+                destroy_condition=lambda _: True,
+                avoid_enemy_turrets=False,
+                ignore_conveyor_reserve_if_target_damaged=True,
+            )
+        )
+
+    def s_attack_inn_yeeter(self):
+        current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        current_building = current_tile.building
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+
+        if current_building.id is None or current_building.team != enemy_team:
+            return False
+        if not current_tile.is_passable:
+            return False
+        if not self.ct.can_fire(current_pos):
+            return False
+
+        def is_targeted_by_titanium_supply_chain(tile_idx: int) -> bool:
+            for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                tile_idx,
+                (),
+            ):
+                if self.map.u_supply_chain_has_titanium(source_idx, own_team):
+                    return True
+
+            for source_idx in self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
+                tile_idx,
+                (),
+            ):
+                if self.map.u_supply_chain_has_titanium(source_idx, enemy_team):
+                    return True
+
+            return False
+
+        if not is_targeted_by_titanium_supply_chain(current_tile.index):
+            return False
+
+        if (
+            current_building.hp is not None
+            and current_building.hp >= self.ct.get_max_hp(current_building.id)
+        ):
+            for adjacent_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+                if (
+                    adjacent_tile.bot.id is not None
+                    and adjacent_tile.bot.team == enemy_team
+                    and adjacent_tile.bot.entity_type == EntityType.BUILDER_BOT
+                ):
+                    return False
+
+        escape_tile_count = 0
+        intrinsic_passable_by_index = self.map.intrinsic_passable_by_index
+        for adjacent_pos in self.map.u_iter_adjacent_all_positions(current_pos):
+            adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
+            if not intrinsic_passable_by_index[adjacent_tile.index]:
+                continue
+            if adjacent_tile.in_own_launcher_pickup_zone != 0:
+                continue
+            escape_tile_count += 1
+            if escape_tile_count >= ATTACK_INN_YEETER_ESCAPE_TILE_THRESHOLD:
+                return False
 
         return bool(
             self.u_attack_passable(

@@ -395,6 +395,8 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
 
     def s_berserk(self) -> BuilderActionResult: ...
 
+    def s_attack_inn_yeeter(self) -> BuilderActionResult: ...
+
     def s_attack_key_enemy_supply_chain(
         self,
         move_towards: bool = True,
