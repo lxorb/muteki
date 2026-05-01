@@ -4848,11 +4848,11 @@ class BuilderStrategyMethodsMixin:
         Local-only launcher build to annoy an enemy builder that is in vision.
 
         Gathers candidate tiles from the BB's 8 neighbors using three rules:
-        core-proximity neighbors that pass the standard local placement
-        checks; plus exceptions that open up any placable neighbor when the
-        builder stands on an active enemy titanium supply-chain tile, or has
-        an orthogonally adjacent enemy harvester. Candidates are
-        deduplicated; the first valid build in scan order wins.
+        neighbors that pass the standard local placement checks; plus
+        exceptions that open up any placable neighbor when the builder stands
+        on an active enemy titanium supply-chain tile, or has an orthogonally
+        adjacent enemy harvester. Candidates are deduplicated; the first valid
+        build in scan order wins.
         `move_towards` and `hold` are unused; kept for strategy-interface
         compatibility.
         """
@@ -4867,9 +4867,6 @@ class BuilderStrategyMethodsMixin:
         ):
             return False
         if self.map.closest_enemy_builder_bot_in_vision_pos is None:
-            return False
-        enemy_core_center_pos = self.map.enemy_core_center_pos
-        if enemy_core_center_pos is None:
             return False
 
         own_team = self.map.own_team
@@ -4894,15 +4891,6 @@ class BuilderStrategyMethodsMixin:
                     return True
             return False
 
-        def within_chebyshev_of_enemy_core(pos: Position) -> bool:
-            return (
-                max(
-                    abs(pos.x - enemy_core_center_pos.x),
-                    abs(pos.y - enemy_core_center_pos.y),
-                )
-                <= 3
-            )
-
         def try_build_launcher_here(pos: Position) -> bool:
             if not self.ct.can_build_launcher(pos):
                 return False
@@ -4926,8 +4914,6 @@ class BuilderStrategyMethodsMixin:
         for neighbor_pos in self.map.u_iter_adjacent_all_positions(current_pos):
             neighbor_tile = self.map.u_get_pos_tile(neighbor_pos)
             if not is_empty_or_own_road(neighbor_tile):
-                continue
-            if not within_chebyshev_of_enemy_core(neighbor_pos):
                 continue
             if has_adjacent_own_launcher(neighbor_tile):
                 continue
