@@ -26,12 +26,130 @@ class TurretAgent(BuilderNavigationMixin, Agent):
             case EntityType.LAUNCHER:
                 return self.u_launcher_run()
             case EntityType.GUNNER:
-                return self.u_gunner_attack()
+                if self.useful_gunner():
+                    return self.u_gunner_attack()
+                else:
+                    if self.safe_destruction_possible():
+                        return self.self_destruction()
             case EntityType.SENTINEL:
-                return self.u_sentinel_attack()
+                if self.useful_sentinel():
+                    return self.u_sentinel_attack()
+                else:
+                    if self.safe_destruction_possible():
+                        return self.self_destruction()
             case EntityType.BREACH:
                 return self.u_turret_attack()
         return False
+    
+
+    def useful_gunner(self) -> bool:
+        # Only consider self-destruction when fed by an own supply chain.
+        # Otherwise (enemy-fed or unfed) the turret is always useful.
+        if not self._u_turret_fed_by_non_harvester_own_supply():
+            return True
+
+        # Any enemy bot in vision radius keeps us useful (mobile threat).
+        if self.map.enemy_team_bbs_in_vision_count > 0:
+            return True
+
+        # Gunners can rotate — useful iff some rotation has an attackable
+        # enemy in its ray.
+        current_pos = self.map.current_pos
+        current_round = self.ct.get_current_round()
+        vision_radius_sq = self._u_turret_vision_radius_sq()
+        for direction in Direction:
+            if direction == Direction.CENTRE:
+                continue
+            for tile in self.map.u_get_gunner_shootable_tiles(
+                current_pos,
+                direction,
+                vision_radius_sq,
+            ):
+                if self.u_is_nontrivial_enemy_gunner_rotation_target(
+                    tile,
+                    current_round,
+                ):
+                    return True
+        return False
+
+    def useful_sentinel(self) -> bool:
+        # Only consider self-destruction when fed by an own supply chain.
+        # Otherwise (enemy-fed or unfed) the turret is always useful.
+        if not self._u_turret_fed_by_non_harvester_own_supply():
+            return True
+
+        # Any enemy bot in vision radius keeps us useful (mobile threat).
+        if self.map.enemy_team_bbs_in_vision_count > 0:
+            return True
+
+        # Sentinels are fixed-direction once built — useful iff any tile
+        # they can currently fire at is a valid sentinel target.
+        current_round = self.ct.get_current_round()
+        enemy_chain_roots = (
+            self.u_get_enemy_supply_chain_roots_feeding_enemy_turret(current_round)
+        )
+        for pos in self.ct.get_attackable_tiles():
+            target_tile = self.map.u_get_pos_tile(pos)
+            if self.u_get_sentinel_target_priority_key(
+                target_tile,
+                current_round,
+                enemy_chain_roots,
+            ) is not None:
+                return True
+        return False
+
+    def safe_destruction_possible(self) -> bool:
+        # return true IFF:
+            # there is BFS-via-vision-field-reachable bot
+            # meaning: a bot can get here without any problems very easily (e.g. no walls in the way)
+        current_pos = self.map.current_pos
+        vision_radius_sq = self._u_turret_vision_radius_sq()
+        current_round = self.ct.get_current_round()
+        tiles_by_index = self.map.tiles_by_index
+        intrinsic_passable_by_index = self.map.intrinsic_passable_by_index
+        current_idx = self.map.u_to_index(current_pos)
+
+        visited = {current_idx}
+        stack = [current_idx]
+        while stack:
+            idx = stack.pop()
+            tile = tiles_by_index[idx]
+            if (
+                tile.last_seen_turn == current_round
+                and tile.bot.id is not None
+                and tile.bot.team == self.map.own_team
+                and idx != current_idx
+            ):
+                return True
+            for neighbor_idx in self.map.u_iter_cardinal_neighbor_indices(idx):
+                if neighbor_idx in visited:
+                    continue
+                neighbor_tile = tiles_by_index[neighbor_idx]
+                if current_pos.distance_squared(neighbor_tile.position) > vision_radius_sq:
+                    continue
+                if not intrinsic_passable_by_index[neighbor_idx]:
+                    continue
+                visited.add(neighbor_idx)
+                stack.append(neighbor_idx)
+        return False
+
+    def self_destruction(self) -> bool:
+        # be creative: make python throw a funny runtime error :) (like a really stupid one hehe)
+        raise RuntimeError(
+            f"turret at {self.map.current_pos} self-destructed on turn "
+            f"{self.ct.get_current_round()} (no useful targets in sight)"
+        )
+
+    def _u_turret_fed_by_non_harvester_own_supply(self) -> bool:
+        current_idx = self.map.u_to_index(self.map.current_pos)
+        return current_idx in self.map.own_supply_link_target_indices_in_vision
+
+    def _u_turret_vision_radius_sq(self) -> int:
+        current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        vision_radius_sq = current_tile.building.vision_radius_sq
+        if vision_radius_sq is None:
+            vision_radius_sq = self.ct.get_vision_radius_sq()
+        return vision_radius_sq
 
     def u_launcher_run(self) -> bool:
         launcher_pos = self.map.current_pos
