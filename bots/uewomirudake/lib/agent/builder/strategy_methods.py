@@ -1571,6 +1571,8 @@ class BuilderStrategyMethodsMixin:
         Heal this builder when its HP drops to the low-health threshold.
         """
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
+        if current_tile.in_enemy_attack_range:
+            return False
         if current_tile.bot.id is None or current_tile.bot.hp is None:
             return False
         if current_tile.bot.hp > 16:
