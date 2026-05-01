@@ -4874,6 +4874,9 @@ class BuilderStrategyMethodsMixin:
         own_team = self.map.own_team
         enemy_team = self.map.enemy_team
         current_pos = self.map.current_pos
+        current_tile = self.map.u_get_pos_tile(current_pos)
+        if current_tile.building.team != enemy_team:
+            return False
 
         def is_empty_or_own_road(tile) -> bool:
             if tile.building.id is None:
@@ -4928,7 +4931,6 @@ class BuilderStrategyMethodsMixin:
                 continue
             add_candidate(neighbor_pos)
 
-        current_tile = self.map.u_get_pos_tile(current_pos)
         if (
             current_tile.building.id is not None
             and current_tile.building.team == enemy_team
