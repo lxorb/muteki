@@ -7147,10 +7147,7 @@ class BuilderStrategyMethodsMixin:
             return False
         if tile.building.entity_type == EntityType.ROAD:
             return True
-        return (
-            tile.building.entity_type in CONVEYOR_ENTITY_TYPES
-            and tile.conveyor_targets_harvester
-        )
+        return False
 
     def u_is_valid_yeet_landing_tile(
         self, tile, allow_walkable_landings: bool = False
