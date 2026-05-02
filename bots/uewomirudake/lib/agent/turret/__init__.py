@@ -161,15 +161,18 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if self._u_turret_fed_by_non_harvester_own_supply():
             return True
         current_idx = self.map.u_to_index(self.map.current_pos)
+        if current_idx in self.map.enemy_supply_link_target_indices_in_vision:
+            return True
         own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
         current_round = self.map.current_round
         tiles_by_index = self.map.tiles_by_index
         for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(current_idx):
             adjacent_tile = tiles_by_index[adjacent_idx]
             if (
                 adjacent_tile.last_seen_turn == current_round
-                and adjacent_tile.building.team == own_team
                 and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                and adjacent_tile.building.team in (own_team, enemy_team)
             ):
                 return True
         return False
