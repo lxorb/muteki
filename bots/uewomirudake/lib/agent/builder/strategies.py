@@ -69,7 +69,6 @@ SCAVENGER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_information_gain_scout, 0),
     (False, BuilderStrategyMethodsMixin.s_frontier_expand, 0),
     (False, BuilderStrategyMethodsMixin.s_move_toward_enemy_core),
-    (False, BuilderStrategyMethodsMixin.s_patrol_supply_chains, True),
     (False, BuilderStrategyMethodsMixin.s_patrol_supply_chains),
 ]
 
@@ -100,6 +99,7 @@ DEFENDER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_integrate_foundry_passing_splitter, True, True),
     (False, BuilderStrategyMethodsMixin.s_integrate_foundry, True, True),
     (False, BuilderStrategyMethodsMixin.s_proceed_follow_enemy_bb),
+    (False, BuilderStrategyMethodsMixin.s_patrol_supply_chains),
     (
         False,
         BuilderStrategyMethodsMixin.s_build_harvester,
@@ -120,7 +120,6 @@ DEFENDER_STRATEGY = [
         False,
         True,
     ),
-    (False, BuilderStrategyMethodsMixin.s_patrol_supply_chains),
 ]
 
 CORE_DEFENDER_STRATEGY = [

@@ -1675,14 +1675,14 @@ class BuilderStrategyMethodsMixin:
         if not self.u_is_initial_scavenger():
             return False
 
-        builder_id = self.ct.get_id()
-        if builder_id in self.self_patrol_defender_builder_ids:
+        if self.u_only_patrol_self_built_supply_links():
             return False
 
         if not self.u_initial_scavenger_has_connected_self_built_supply_to_core():
             return False
 
-        self.self_patrol_defender_builder_ids.add(builder_id)
+        self.strategy = DEFENDER_STRATEGY_ID
+        self.only_patrol_self_built_builder_ids.add(self.ct.get_id())
         self.last_strategy_index = -1
         self.last_turn_completed = True
         return True
@@ -4013,6 +4013,9 @@ class BuilderStrategyMethodsMixin:
         to the movable adjacent tile with the lowest own-core distance and then
         build the harvester on the old tile.
         """
+        if self.u_is_self_patrol_defender():
+            return False
+
         map = self.map
         ct = self.ct
         own_team = map.own_team
@@ -5287,7 +5290,7 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
-    def s_patrol_supply_chains(self, only_patrol_self_built: bool = False):
+    def s_patrol_supply_chains(self):
         """
         Patrol known allied supply links.
 
@@ -5303,13 +5306,10 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         current_idx = self.map.u_to_index(current_pos)
         tiles_by_index = self.map.tiles_by_index
+        only_patrol_self_built = self.u_only_patrol_self_built_supply_links()
         if only_patrol_self_built:
-            if not self.u_is_self_patrol_defender():
-                return False
             patrol_supply_link_indices = self.u_get_self_built_supply_link_indices()
         else:
-            if self.u_is_self_patrol_defender():
-                return False
             patrol_supply_link_indices = self.map.known_own_supply_link_indices
         get_own_core_dist = self.map.u_get_own_core_dist_by_index
 

@@ -57,7 +57,7 @@ class BuilderAgent(
     is_tle_saver_mode: bool
     spawn_round_by_builder_id: dict[int, int]
     self_built_supply_link_indices_by_builder_id: dict[int, set[int]]
-    self_patrol_defender_builder_ids: set[int]
+    only_patrol_self_built_builder_ids: set[int]
     _d_star_lite_states_by_builder_id: dict[int, object]
     _lpa_star_states_by_builder_id: dict[int, object]
 
@@ -96,7 +96,7 @@ class BuilderAgent(
         self.is_tle_saver_mode = False
         self.spawn_round_by_builder_id = {}
         self.self_built_supply_link_indices_by_builder_id = {}
-        self.self_patrol_defender_builder_ids = set()
+        self.only_patrol_self_built_builder_ids = set()
         self._d_star_lite_states_by_builder_id = {}
         self._lpa_star_states_by_builder_id = {}
 
@@ -125,8 +125,11 @@ class BuilderAgent(
         spawn_round = self.spawn_round_by_builder_id.get(self.ct.get_id())
         return spawn_round is not None and spawn_round < FURTHER_BB_MIN_TURN
 
+    def u_only_patrol_self_built_supply_links(self) -> bool:
+        return self.ct.get_id() in self.only_patrol_self_built_builder_ids
+
     def u_is_self_patrol_defender(self) -> bool:
-        return self.ct.get_id() in self.self_patrol_defender_builder_ids
+        return self.u_only_patrol_self_built_supply_links()
 
     @override
     def u_before_vision_update(self) -> None:
@@ -182,6 +185,7 @@ class BuilderAgent(
         self.u_update_tle_tracking()
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()
+        print(f"Builder strategy: {self.u_get_strategy_name()}")
         self.marker_target_pos = None
         self.marker_follow_enemy_builder_bot_id = None
         self.marker_placed_already = False

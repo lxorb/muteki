@@ -42,7 +42,7 @@ class BuilderCommonSelf(Protocol):
     spawn_relative_tile: tuple[int, int] | None
     spawn_round_by_builder_id: dict[int, int]
     self_built_supply_link_indices_by_builder_id: dict[int, set[int]]
-    self_patrol_defender_builder_ids: set[int]
+    only_patrol_self_built_builder_ids: set[int]
 
     def u_filter_tiles(
         self,
@@ -57,6 +57,8 @@ class BuilderCommonSelf(Protocol):
     ) -> list[Tile]: ...
 
     def u_is_initial_scavenger(self) -> bool: ...
+
+    def u_only_patrol_self_built_supply_links(self) -> bool: ...
 
     def u_is_self_patrol_defender(self) -> bool: ...
 
@@ -451,10 +453,7 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         wait_if_enemy_builder_bots_in_range: bool = True,
     ) -> BuilderActionResult: ...
 
-    def s_patrol_supply_chains(
-        self,
-        only_patrol_self_built: bool = False,
-    ) -> BuilderActionResult: ...
+    def s_patrol_supply_chains(self) -> BuilderActionResult: ...
 
     def s_patrol_enemy_supply_chains(self) -> BuilderActionResult: ...
 
