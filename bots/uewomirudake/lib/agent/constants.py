@@ -99,6 +99,8 @@ DESTROYABLE_FOR_OBLITERATING: list[EntityType] = [
     EntityType.BREACH,
     EntityType.LAUNCHER,
 ]
+OBLITERATE_SKIP_TARGETS_ALREADY_COVERED: bool = True
+OBLITERATE_PROTECT_USEFUL_TURRETS: bool = True
 TURRET_TARGET_PRIORITY = (
     EntityType.SENTINEL,
     EntityType.GUNNER,
@@ -247,6 +249,16 @@ try:
             exclude,
             "DESTROYABLE_FOR_OBLITERATING",
             DESTROYABLE_FOR_OBLITERATING,
+        )
+        OBLITERATE_SKIP_TARGETS_ALREADY_COVERED = getattr(
+            exclude,
+            "OBLITERATE_SKIP_TARGETS_ALREADY_COVERED",
+            OBLITERATE_SKIP_TARGETS_ALREADY_COVERED,
+        )
+        OBLITERATE_PROTECT_USEFUL_TURRETS = getattr(
+            exclude,
+            "OBLITERATE_PROTECT_USEFUL_TURRETS",
+            OBLITERATE_PROTECT_USEFUL_TURRETS,
         )
 except Exception:
     pass

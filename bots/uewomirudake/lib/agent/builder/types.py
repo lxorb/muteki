@@ -304,6 +304,8 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         hold: bool = True,
+        skip_targets_already_covered: bool = True,
+        protect_useful_turrets: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_integrate_foundry_passing_splitter(

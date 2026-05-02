@@ -23,6 +23,8 @@ from lib.agent.constants import (
     LAUNCHER_BUILD_MIN_IMPROVEMENT,
     LAUNCHER_BUILD_MIN_TITANIUM,
     MAX_CORE_ORE_DIRECT_DIST,
+    OBLITERATE_PROTECT_USEFUL_TURRETS,
+    OBLITERATE_SKIP_TARGETS_ALREADY_COVERED,
     PREVENT_SUPPLY_LINKS_TILL_HARVESTER,
     REPLACE_ATTACKED_CONVEYOR_MAX_HP,
     SCAVENGER_STRATEGY_ID,
@@ -1264,6 +1266,8 @@ class BuilderStrategyMethodsMixin:
         self,
         move_towards: bool = True,
         hold: bool = True,
+        skip_targets_already_covered: bool = OBLITERATE_SKIP_TARGETS_ALREADY_COVERED,
+        protect_useful_turrets: bool = OBLITERATE_PROTECT_USEFUL_TURRETS,
     ):
         """
         Replace nearby own infrastructure with a fed turret against urgent enemies.
@@ -1312,6 +1316,9 @@ class BuilderStrategyMethodsMixin:
                 building.entity_type in ATTACK_TURRET_TYPES
                 and not target_has_enemy_titanium_feed(target_tile)
             ):
+                return None
+
+            if skip_targets_already_covered and target_tile.in_own_attack_range > 0:
                 return None
 
             return target_rank
@@ -1364,10 +1371,24 @@ class BuilderStrategyMethodsMixin:
             building = candidate_tile.building
             if building.id is None:
                 return True
-            return (
+            if not (
                 building.team == own_team
                 and building.entity_type in DESTROYABLE_FOR_OBLITERATING
-            )
+            ):
+                return False
+            if (
+                protect_useful_turrets
+                and building.entity_type in ATTACK_TURRET_TYPES
+            ):
+                for covered_tile in building.targets:
+                    covered_building = covered_tile.building
+                    if (
+                        covered_building.id is not None
+                        and covered_building.team == enemy_team
+                        and covered_building.entity_type in urgent_target_rank_by_type
+                    ):
+                        return False
+            return True
 
         def candidate_tile_has_own_titanium_feed(candidate_tile) -> bool:
             for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
