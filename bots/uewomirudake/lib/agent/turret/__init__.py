@@ -29,13 +29,13 @@ class TurretAgent(BuilderNavigationMixin, Agent):
                 if self.useful_gunner():
                     return self.u_gunner_attack()
                 else:
-                    if self.safe_destruction_possible():
+                    if self.safe_destruction_possible() and self._u_self_destruct_titanium_ok():
                         return self.self_destruction()
             case EntityType.SENTINEL:
                 if self.useful_sentinel():
                     return self.u_sentinel_attack()
                 else:
-                    if self.safe_destruction_possible():
+                    if self.safe_destruction_possible() and self._u_self_destruct_titanium_ok():
                         return self.self_destruction()
             case EntityType.BREACH:
                 return self.u_turret_attack()
@@ -132,6 +132,10 @@ class TurretAgent(BuilderNavigationMixin, Agent):
                 visited.add(neighbor_idx)
                 stack.append(neighbor_idx)
         return False
+
+    def _u_self_destruct_titanium_ok(self) -> bool:
+        conveyor_titanium_cost, _ = self.ct.get_conveyor_cost()
+        return self.map.titanium >= 1.5 * conveyor_titanium_cost
 
     def self_destruction(self) -> bool:
         # be creative: make python throw a funny runtime error :) (like a really stupid one hehe)
