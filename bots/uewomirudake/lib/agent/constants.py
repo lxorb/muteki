@@ -87,16 +87,13 @@ URGENT_TARGETS: list[EntityType] = [
     EntityType.LAUNCHER,
 ]
 DESTROYABLE_FOR_OBLITERATING: list[EntityType] = [
+    EntityType.ROAD,
     EntityType.CONVEYOR,
     EntityType.ARMOURED_CONVEYOR,
-    EntityType.BRIDGE,
+    # EntityType.BRIDGE,
     EntityType.SPLITTER,
-    EntityType.ROAD,
     EntityType.BARRIER,
     EntityType.HARVESTER,
-    EntityType.GUNNER,
-    EntityType.SENTINEL,
-    EntityType.BREACH,
     EntityType.LAUNCHER,
 ]
 OBLITERATE_SKIP_TARGETS_ALREADY_COVERED: bool = True
