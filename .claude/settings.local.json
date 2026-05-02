@@ -12,7 +12,9 @@
       "Bash(Get-ChildItem 'C:\\\\Users\\\\ninag\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-ninag-PycharmProjects-cbc-muteki\\\\77125c8d-0997-4f2e-84bf-175da8d4cb82\\\\tasks\\\\')",
       "Bash(Sort-Object LastWriteTime -Descending)",
       "Bash(Select-Object -First 5)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "PowerShell($f = Get-Item \"C:\\\\Users\\\\ninag\\\\PycharmProjects\\\\cbc-muteki\\\\tools\\\\parsed_replay26.json\"; Write-Output \"Size: $\\([math]::Round\\($f.Length/1MB, 2\\)\\) MB\")",
+      "PowerShell(node tools/replay_parser/parse_replay.js replay.replay26 --out tools/parsed_replay26_fresh.json 2>&1 | Select-Object -Last 5)"
     ]
   }
 }

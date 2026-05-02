@@ -5376,6 +5376,23 @@ class BuilderStrategyMethodsMixin:
         if current_tile.building.team != enemy_team:
             return False
 
+        if current_tile.building.entity_type == EntityType.ROAD:
+            tiles_by_index = self.map.tiles_by_index
+            has_adjacent_enemy_titanium_harvester = False
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                current_tile.index
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.building.team == enemy_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    and adjacent_tile.environment == Environment.ORE_TITANIUM
+                ):
+                    has_adjacent_enemy_titanium_harvester = True
+                    break
+            if not has_adjacent_enemy_titanium_harvester:
+                return False
+
         def is_empty_or_own_road(tile) -> bool:
             if tile.building.id is None:
                 return True
