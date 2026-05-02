@@ -6,6 +6,7 @@ from cambc import Direction, EntityType, Environment, GameConstants, Position
 
 from lib.agent.constants import (
     ATTACK_TURRET_TYPES,
+    BOTS_ARE_URGENT,
     AXIONITE_HARVESTER_MIN_TITANIUM,
     AXIONITE_HARVESTER_MIN_TURN,
     BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION,
@@ -1345,6 +1346,29 @@ class BuilderStrategyMethodsMixin:
 
             if self.round_stopwatch.check_overtime():
                 break
+
+        if BOTS_ARE_URGENT:
+            bot_rank = len(URGENT_TARGETS)
+            for target_tile in self.map.tiles_in_vision:
+                if target_tile.last_seen_turn != current_round:
+                    continue
+                bot = target_tile.bot
+                if bot.id is None or bot.team != enemy_team:
+                    continue
+                if skip_targets_already_covered and target_tile.in_own_attack_range > 0:
+                    continue
+                target_hp = bot.hp if bot.hp is not None else INF_DIST
+                urgent_target_entries.append(
+                    (
+                        bot_rank,
+                        target_hp,
+                        current_pos.distance_squared(target_tile.position),
+                        target_tile.index,
+                        target_tile,
+                    )
+                )
+                if self.round_stopwatch.check_overtime():
+                    break
 
         if not urgent_target_entries:
             return False
