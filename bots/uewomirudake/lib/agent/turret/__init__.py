@@ -155,7 +155,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
 
     def _u_turret_fed_by_non_harvester_own_supply(self) -> bool:
         current_idx = self.map.u_to_index(self.map.current_pos)
-        return current_idx in self.map.own_supply_link_target_indices_in_vision
+        return current_idx in self.map.all_own_supply_link_target_indices_in_vision
 
     def _u_turret_is_fed(self) -> bool:
         if self._u_turret_fed_by_non_harvester_own_supply():
