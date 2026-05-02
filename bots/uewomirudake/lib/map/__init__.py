@@ -4112,6 +4112,13 @@ class Map:
                             has_titanium_by_index,
                             has_raw_axionite_by_index,
                         )
+                if (
+                    not feeds_own_turret
+                    and target_tile.last_seen_turn == current_round
+                    and target_building.team == turret_team
+                    and target_building.entity_type in own_turret_types
+                ):
+                    feeds_own_turret = True
 
             # Harvesters feed any orthogonally adjacent supplier, even when the
             # supplier does not target the harvester itself, such as a splitter
@@ -4134,14 +4141,6 @@ class Map:
                             has_titanium_by_index,
                             has_raw_axionite_by_index,
                         )
-
-                if (
-                    not feeds_own_turret
-                    and target_tile.last_seen_turn == current_round
-                    and target_building.team == turret_team
-                    and target_building.entity_type in own_turret_types
-                ):
-                    feeds_own_turret = True
 
             if feeds_own_turret:
                 feeds_own_turret_by_index[root] = 1

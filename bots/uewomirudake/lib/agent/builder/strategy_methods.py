@@ -1443,19 +1443,158 @@ class BuilderStrategyMethodsMixin:
                         return False
             return True
 
-        def candidate_tile_has_own_titanium_feed(candidate_tile) -> bool:
+        source_can_provide_titanium_cache: dict[tuple[int, int], bool] = {}
+
+        def is_visible_own_supply_link(tile) -> bool:
+            return (
+                tile.last_seen_turn == current_round
+                and tile.building.team == own_team
+                and tile.building.entity_type in SUPPLY_LINK_TYPES
+            )
+
+        def supply_link_accepts_input_from(target_tile, source_tile) -> bool:
+            if source_tile.building.entity_type == EntityType.BRIDGE:
+                return True
+            if target_tile.building.entity_type == EntityType.BRIDGE:
+                return True
+
+            target_direction = target_tile.building.direction
+            if target_direction is None or target_direction == Direction.CENTRE:
+                return False
+
+            input_direction = self.map.u_get_direction_between(
+                target_tile.position,
+                source_tile.position,
+            )
+            if input_direction is None or input_direction == Direction.CENTRE:
+                return False
+            if target_tile.position.distance_squared(source_tile.position) != 1:
+                return False
+
+            if target_tile.building.entity_type in {
+                EntityType.CONVEYOR,
+                EntityType.ARMOURED_CONVEYOR,
+            }:
+                return input_direction != target_direction
+            if target_tile.building.entity_type == EntityType.SPLITTER:
+                return input_direction == target_direction.opposite()
+            return False
+
+        def turret_accepts_input_from_source(
+            turret_tile,
+            turret_direction: Direction,
+            source_tile,
+        ) -> bool:
+            if source_tile.building.entity_type == EntityType.BRIDGE:
+                return True
+
+            input_direction = self.map.u_get_direction_between(
+                turret_tile.position,
+                source_tile.position,
+            )
+            if input_direction is None or input_direction == Direction.CENTRE:
+                return False
+            if turret_tile.position.distance_squared(source_tile.position) != 1:
+                return False
+            return (
+                turret_direction not in CARDINAL_DIRECTIONS
+                or input_direction != turret_direction
+            )
+
+        def source_can_provide_titanium(
+            source_idx: int,
+            excluded_idx: int,
+        ) -> bool:
+            if source_idx == excluded_idx:
+                return False
+
+            cache_key = (source_idx, excluded_idx)
+            cached = source_can_provide_titanium_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            if not self.map.u_supply_chain_has_titanium(source_idx, own_team):
+                source_can_provide_titanium_cache[cache_key] = False
+                return False
+
+            pending_indices = [source_idx]
+            seen_indices: set[int] = set()
+            while pending_indices:
+                current_idx = pending_indices.pop()
+                if current_idx == excluded_idx or current_idx in seen_indices:
+                    continue
+                seen_indices.add(current_idx)
+
+                current_tile = tiles_by_index[current_idx]
+                if not is_visible_own_supply_link(current_tile):
+                    continue
+
+                if current_tile.building.last_titanium_onit_turn == current_round:
+                    source_can_provide_titanium_cache[cache_key] = True
+                    return True
+
+                for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                    current_idx
+                ):
+                    adjacent_tile = tiles_by_index[adjacent_idx]
+                    if (
+                        adjacent_tile.last_seen_turn == current_round
+                        and adjacent_tile.building.team == own_team
+                        and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                        and adjacent_tile.environment == Environment.ORE_TITANIUM
+                        and supply_link_accepts_input_from(
+                            current_tile,
+                            adjacent_tile,
+                        )
+                    ):
+                        source_can_provide_titanium_cache[cache_key] = True
+                        return True
+
+                for upstream_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                    current_idx,
+                    (),
+                ):
+                    if upstream_idx == excluded_idx or upstream_idx in seen_indices:
+                        continue
+                    upstream_tile = tiles_by_index[upstream_idx]
+                    if not is_visible_own_supply_link(upstream_tile):
+                        continue
+                    if not supply_link_accepts_input_from(
+                        current_tile,
+                        upstream_tile,
+                    ):
+                        continue
+                    pending_indices.append(upstream_idx)
+
+                if self.round_stopwatch.check_overtime_interval():
+                    break
+
+            source_can_provide_titanium_cache[cache_key] = False
+            return False
+
+        def candidate_tile_has_own_titanium_feed(
+            candidate_tile,
+            turret_direction: Direction,
+        ) -> bool:
             if candidate_tile.in_own_resource_range == 0:
                 return False
+
             for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
                 candidate_tile.index,
                 (),
             ):
                 source_tile = tiles_by_index[source_idx]
                 if (
-                    source_tile.last_seen_turn == current_round
-                    and source_tile.building.team == own_team
-                    and source_tile.building.entity_type in SUPPLY_LINK_TYPES
-                    and self.map.u_supply_chain_has_titanium(source_idx, own_team)
+                    is_visible_own_supply_link(source_tile)
+                    and turret_accepts_input_from_source(
+                        candidate_tile,
+                        turret_direction,
+                        source_tile,
+                    )
+                    and source_can_provide_titanium(
+                        source_idx,
+                        candidate_tile.index,
+                    )
                 ):
                     return True
 
@@ -1468,6 +1607,11 @@ class BuilderStrategyMethodsMixin:
                     and adjacent_tile.building.team == own_team
                     and adjacent_tile.building.entity_type == EntityType.HARVESTER
                     and adjacent_tile.environment == Environment.ORE_TITANIUM
+                    and turret_accepts_input_from_source(
+                        candidate_tile,
+                        turret_direction,
+                        adjacent_tile,
+                    )
                 ):
                     return True
 
@@ -1525,8 +1669,6 @@ class BuilderStrategyMethodsMixin:
                 candidate_tile = self.map.u_get_pos_tile(candidate_pos)
                 if not can_host_obliterating_turret(candidate_tile):
                     continue
-                if not candidate_tile_has_own_titanium_feed(candidate_tile):
-                    continue
 
                 turret_type, preferred_direction = self.u_get_turret_build_plan(
                     candidate_pos,
@@ -1565,6 +1707,11 @@ class BuilderStrategyMethodsMixin:
                         turret_direction = direction
                         break
                 if turret_direction is None:
+                    continue
+                if not candidate_tile_has_own_titanium_feed(
+                    candidate_tile,
+                    turret_direction,
+                ):
                     continue
                 in_action_range = (
                     candidate_tile.in_own_bot_action_range_turn == current_round
