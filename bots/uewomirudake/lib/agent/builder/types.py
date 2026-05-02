@@ -104,6 +104,7 @@ class BuilderNavigationSelf(BuilderCommonSelf, Protocol):
     def u_get_turret_build_plan(
         self,
         pos: Position,
+        gunner_only: bool = False,
     ) -> tuple[EntityType, Direction]: ...
 
     def u_build_turret(
@@ -297,6 +298,12 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         move_towards: bool = True,
         hold: bool = True,
         candidate_radius: float | None = None,
+    ) -> BuilderActionResult: ...
+
+    def s_obliterate_target(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
     ) -> BuilderActionResult: ...
 
     def s_integrate_foundry_passing_splitter(

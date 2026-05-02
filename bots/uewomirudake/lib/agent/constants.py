@@ -80,6 +80,25 @@ ATTACK_TURRET_TYPES: set[EntityType] = {
     EntityType.SENTINEL,
     EntityType.BREACH,
 }
+URGENT_TARGETS: list[EntityType] = [
+    EntityType.SENTINEL,
+    EntityType.GUNNER,
+    EntityType.BREACH,
+    EntityType.LAUNCHER,
+]
+DESTROYABLE_FOR_OBLITERATING: list[EntityType] = [
+    EntityType.CONVEYOR,
+    EntityType.ARMOURED_CONVEYOR,
+    EntityType.BRIDGE,
+    EntityType.SPLITTER,
+    EntityType.ROAD,
+    EntityType.BARRIER,
+    EntityType.HARVESTER,
+    EntityType.GUNNER,
+    EntityType.SENTINEL,
+    EntityType.BREACH,
+    EntityType.LAUNCHER,
+]
 TURRET_TARGET_PRIORITY = (
     EntityType.SENTINEL,
     EntityType.GUNNER,
@@ -218,6 +237,16 @@ try:
             exclude,
             "ENABLE_SENTINEL_INTEGRATE_OWN_TURRET",
             ENABLE_SENTINEL_INTEGRATE_OWN_TURRET,
+        )
+        URGENT_TARGETS = getattr(
+            exclude,
+            "URGENT_TARGETS",
+            URGENT_TARGETS,
+        )
+        DESTROYABLE_FOR_OBLITERATING = getattr(
+            exclude,
+            "DESTROYABLE_FOR_OBLITERATING",
+            DESTROYABLE_FOR_OBLITERATING,
         )
 except Exception:
     pass

@@ -12,6 +12,7 @@ from lib.agent.constants import (
     BUILDER_ACTION_RADIUS_SQ,
     CONVEYOR_ENTITY_TYPES,
     DEFENDER_STRATEGY_ID,
+    DESTROYABLE_FOR_OBLITERATING,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
     ENABLE_PRINTING,
     FOUNDRY_CAN_REPLACE_BRIDGE,
@@ -27,12 +28,14 @@ from lib.agent.constants import (
     SCAVENGER_STRATEGY_ID,
     SURROUND_HARVESTER_ENTITY_TYPE,
     TLE_SAVER_CANDIDATE_DIST_SQ,
+    URGENT_TARGETS,
 )
 from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_LINK_TYPES
 from lib.map.types import SupplyChainLabel
 
 SYMMETRY_HINT_FAKE_ENEMY_BUILDER_ID = 1
 ATTACK_INN_YEETER_ESCAPE_TILE_THRESHOLD = 4
+OBLITERATE_TARGET_RADIUS_SQ = 4
 
 _ENEMY_CORE_PATROL_OFFSETS = (
     (-2, -2),
@@ -1250,6 +1253,376 @@ class BuilderStrategyMethodsMixin:
                 return False
 
             if move_towards and self.u_move_to(target_pos):
+                return True
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        return False
+
+    def s_obliterate_target(
+        self,
+        move_towards: bool = True,
+        hold: bool = True,
+    ):
+        """
+        Replace nearby own infrastructure with a fed turret against urgent enemies.
+        """
+        current_pos = self.map.current_pos
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+        tiles_by_index = self.map.tiles_by_index
+        urgent_target_rank_by_type = {
+            entity_type: rank for rank, entity_type in enumerate(URGENT_TARGETS)
+        }
+
+        def target_has_enemy_titanium_feed(target_tile) -> bool:
+            if self.map.u_enemy_tile_is_targeted_by_titanium_supply_chain(
+                target_tile.index
+            ):
+                return True
+
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                target_tile.index
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.last_seen_turn == current_round
+                    and adjacent_tile.building.team == enemy_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    and adjacent_tile.environment == Environment.ORE_TITANIUM
+                ):
+                    return True
+            return False
+
+        def get_urgent_target_rank(target_tile) -> int | None:
+            if target_tile.last_seen_turn != current_round:
+                return None
+
+            building = target_tile.building
+            if building.team != enemy_team:
+                return None
+
+            target_rank = urgent_target_rank_by_type.get(building.entity_type)
+            if target_rank is None:
+                return None
+
+            if (
+                building.entity_type in ATTACK_TURRET_TYPES
+                and not target_has_enemy_titanium_feed(target_tile)
+            ):
+                return None
+
+            return target_rank
+
+        urgent_target_entries = []
+        for target_tile in self.map.enemy_buildings_in_vision:
+            target_rank = get_urgent_target_rank(target_tile)
+            if target_rank is None:
+                continue
+
+            target_hp = (
+                target_tile.building.hp
+                if target_tile.building.hp is not None
+                else INF_DIST
+            )
+            urgent_target_entries.append(
+                (
+                    target_rank,
+                    target_hp,
+                    current_pos.distance_squared(target_tile.position),
+                    target_tile.index,
+                    target_tile,
+                )
+            )
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not urgent_target_entries:
+            return False
+
+        urgent_target_entries.sort(key=lambda entry: entry[:4])
+
+        def can_host_obliterating_turret(candidate_tile) -> bool:
+            if candidate_tile.last_seen_turn != current_round:
+                return False
+            if candidate_tile.environment == Environment.WALL:
+                return False
+            if (
+                candidate_tile.is_core_of(own_team)
+                or candidate_tile.is_core_of(enemy_team)
+            ):
+                return False
+            if (
+                candidate_tile.bot.id is not None
+                and candidate_tile.position != current_pos
+            ):
+                return False
+
+            building = candidate_tile.building
+            if building.id is None:
+                return True
+            return (
+                building.team == own_team
+                and building.entity_type in DESTROYABLE_FOR_OBLITERATING
+            )
+
+        def candidate_tile_has_own_titanium_feed(candidate_tile) -> bool:
+            for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
+                candidate_tile.index,
+                (),
+            ):
+                source_tile = tiles_by_index[source_idx]
+                if (
+                    source_tile.last_seen_turn == current_round
+                    and source_tile.building.team == own_team
+                    and source_tile.building.entity_type in SUPPLY_LINK_TYPES
+                    and self.map.u_supply_chain_has_titanium(source_idx, own_team)
+                ):
+                    return True
+
+            for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(
+                candidate_tile.index
+            ):
+                adjacent_tile = tiles_by_index[adjacent_idx]
+                if (
+                    adjacent_tile.last_seen_turn == current_round
+                    and adjacent_tile.building.team == own_team
+                    and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                    and adjacent_tile.environment == Environment.ORE_TITANIUM
+                ):
+                    return True
+
+            return False
+
+        def turret_covers_target(
+            turret_type: EntityType,
+            turret_pos: Position,
+            direction: Direction,
+            target_pos: Position,
+        ) -> bool:
+            if direction is None or direction == Direction.CENTRE:
+                return False
+            if turret_type == EntityType.GUNNER:
+                return self.map.u_gunner_covers_target(
+                    turret_pos,
+                    direction,
+                    target_pos,
+                    GameConstants.GUNNER_VISION_RADIUS_SQ,
+                )
+            if turret_type == EntityType.SENTINEL:
+                return self.map.u_sentinel_covers_target(
+                    turret_pos,
+                    direction,
+                    target_pos,
+                    GameConstants.SENTINEL_VISION_RADIUS_SQ,
+                )
+            if turret_type == EntityType.BREACH:
+                return self.map.u_breach_covers_target(
+                    turret_pos,
+                    direction,
+                    target_pos,
+                )
+            return False
+
+        def get_obliterating_turret_plan(
+            candidate_pos: Position,
+            target_pos: Position,
+        ) -> tuple[EntityType, Direction] | None:
+            turret_type, preferred_direction = self.u_get_turret_build_plan(
+                candidate_pos,
+                gunner_only=True,
+            )
+            candidate_directions: list[Direction] = []
+            if (
+                preferred_direction is not None
+                and preferred_direction != Direction.CENTRE
+            ):
+                candidate_directions.append(preferred_direction)
+            candidate_directions.extend(
+                direction
+                for direction in Direction
+                if direction != Direction.CENTRE
+                and direction not in candidate_directions
+            )
+
+            for direction in candidate_directions:
+                if turret_covers_target(
+                    turret_type,
+                    candidate_pos,
+                    direction,
+                    target_pos,
+                ):
+                    return (turret_type, direction)
+            return None
+
+        def can_afford_turret(turret_type: EntityType) -> bool:
+            titanium_cost, axionite_cost = getattr(
+                self.ct,
+                f"get_{turret_type.value}_cost",
+            )()
+            return (
+                self.map.titanium >= titanium_cost
+                and self.map.axionite >= axionite_cost
+            )
+
+        candidate_tiles = []
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                if dx * dx + dy * dy > OBLITERATE_TARGET_RADIUS_SQ:
+                    continue
+                candidate_pos = Position(current_pos.x + dx, current_pos.y + dy)
+                if not self.map.u_is_in_bounds(candidate_pos):
+                    continue
+
+                candidate_tile = self.map.u_get_pos_tile(candidate_pos)
+                if not can_host_obliterating_turret(candidate_tile):
+                    continue
+                if not candidate_tile_has_own_titanium_feed(candidate_tile):
+                    continue
+
+                candidate_tiles.append(candidate_tile)
+
+        if not candidate_tiles:
+            return False
+
+        candidate_entries = []
+        for target_rank, target_hp, target_dist_sq, target_idx, target_tile in (
+            urgent_target_entries
+        ):
+            for candidate_tile in candidate_tiles:
+                turret_plan = get_obliterating_turret_plan(
+                    candidate_tile.position,
+                    target_tile.position,
+                )
+                if turret_plan is None:
+                    continue
+
+                turret_type, turret_direction = turret_plan
+                candidate_dist_sq = current_pos.distance_squared(
+                    candidate_tile.position
+                )
+                in_action_range = candidate_dist_sq <= BUILDER_ACTION_RADIUS_SQ
+                action_rank = (
+                    0
+                    if in_action_range and candidate_tile.position != current_pos
+                    else 1
+                    if in_action_range
+                    else 2
+                )
+                destroy_rank = 0 if candidate_tile.building.id is None else 1
+                affordable_rank = 0 if can_afford_turret(turret_type) else 1
+                candidate_entries.append(
+                    (
+                        (
+                            target_rank,
+                            affordable_rank,
+                            action_rank,
+                            candidate_dist_sq,
+                            destroy_rank,
+                            target_hp,
+                            target_dist_sq,
+                            target_idx,
+                            candidate_tile.index,
+                        ),
+                        candidate_tile,
+                        target_tile,
+                        turret_type,
+                        turret_direction,
+                        affordable_rank == 0,
+                    )
+                )
+
+                if self.round_stopwatch.check_overtime():
+                    break
+
+            if self.round_stopwatch.check_overtime():
+                break
+
+        if not candidate_entries:
+            return False
+
+        for (
+            _candidate_key,
+            candidate_tile,
+            target_tile,
+            turret_type,
+            turret_direction,
+            can_afford_now,
+        ) in sorted(candidate_entries, key=lambda entry: entry[0]):
+            candidate_pos = candidate_tile.position
+            candidate_dist_sq = current_pos.distance_squared(candidate_pos)
+            in_action_range = candidate_dist_sq <= BUILDER_ACTION_RADIUS_SQ
+            has_destroyable_own_building = (
+                candidate_tile.building.id is not None
+                and candidate_tile.building.team == own_team
+                and candidate_tile.building.entity_type in DESTROYABLE_FOR_OBLITERATING
+            )
+
+            if not can_afford_now:
+                if hold and in_action_range:
+                    print(
+                        "Obliterate target: hold for",
+                        turret_type.value,
+                        "at",
+                        candidate_pos,
+                        "against",
+                        target_tile.position,
+                    )
+                    return True
+                if hold and move_towards and not in_action_range:
+                    if self.u_move_to(
+                        candidate_pos,
+                        avoid_enemy_turrets=False,
+                        reach_builder_action_range=True,
+                    ):
+                        return True
+                continue
+
+            if (
+                in_action_range
+                and candidate_pos != current_pos
+                and has_destroyable_own_building
+            ):
+                if self.ct.get_action_cooldown() != 0:
+                    if hold:
+                        return True
+                    continue
+                if not self.ct.can_destroy(candidate_pos):
+                    continue
+                self.ct.destroy(candidate_pos)
+                candidate_tile.clear_building()
+                build_result = self.u_build_at(
+                    candidate_pos,
+                    turret_type,
+                    hold=False,
+                    move_towards=False,
+                    attack_enemy_passable=False,
+                    facing_direction=turret_direction,
+                    avoid_enemy_turrets=False,
+                )
+                print(
+                    "Obliterate target:",
+                    "built" if build_result else "destroyed for",
+                    turret_type.value,
+                    "at",
+                    candidate_pos,
+                    "against",
+                    target_tile.position,
+                )
+                return True
+
+            if self.u_build_at(
+                candidate_pos,
+                turret_type,
+                hold=hold,
+                move_towards=move_towards,
+                attack_enemy_passable=False,
+                facing_direction=turret_direction,
+                avoid_enemy_turrets=False,
+            ):
                 return True
 
             if self.round_stopwatch.check_overtime():

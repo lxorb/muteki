@@ -23,6 +23,7 @@ SCAVENGER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_turn_to_harassment),
     (False, BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
     (False, BuilderStrategyMethodsMixin.s_heal_self),
+    (False, BuilderStrategyMethodsMixin.s_obliterate_target, True, True),
     (False, BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
     (False, BuilderStrategyMethodsMixin.s_replace_damaged_conveyor, True, True),
     (True, BuilderStrategyMethodsMixin.s_split_supply_sentinel),
@@ -79,6 +80,7 @@ DEFENDER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_move_out_of_gunner_range),
     (False, BuilderStrategyMethodsMixin.s_heal_self),
     (False, BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
+    (False, BuilderStrategyMethodsMixin.s_obliterate_target, True, True),
     (False, BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
     (False, BuilderStrategyMethodsMixin.s_replace_damaged_conveyor, True, True),
     (True, BuilderStrategyMethodsMixin.s_split_supply_sentinel),
@@ -125,6 +127,7 @@ DEFENDER_STRATEGY = [
 CORE_DEFENDER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_heal_self),
     (False, BuilderStrategyMethodsMixin.s_destroy_hijacked_supplier, True),
+    (False, BuilderStrategyMethodsMixin.s_obliterate_target, True, True),
     (False, BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
     (False, BuilderStrategyMethodsMixin.s_replace_damaged_conveyor, True, True),
     (False, BuilderStrategyMethodsMixin.s_heal_own_building),

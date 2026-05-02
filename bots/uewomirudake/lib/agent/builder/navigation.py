@@ -1584,10 +1584,14 @@ class BuilderNavigationMixin:
     def u_get_turret_build_plan(
         self,
         pos: Position,
+        gunner_only: bool = False,
     ) -> tuple[EntityType, Direction]:
         gunner_direction = self._u_get_adjacent_enemy_turret_gunner_direction(pos)
         if gunner_direction is not None:
             return (EntityType.GUNNER, gunner_direction)
+
+        if gunner_only:
+            return (EntityType.GUNNER, self.u_get_gunner_orientation(pos))
 
         current_round = self.map.current_round
         enemy_team = self.map.enemy_team
