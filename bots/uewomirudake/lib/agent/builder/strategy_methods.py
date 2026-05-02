@@ -6009,6 +6009,8 @@ class BuilderStrategyMethodsMixin:
                 continue
             if not tile.is_passable:
                 continue
+            if tile.is_enemy_turret_target_tile:
+                continue
             if target_dist is None or tile.dist_to_self < target_dist:
                 target_dist = tile.dist_to_self
                 target_tile = tile
