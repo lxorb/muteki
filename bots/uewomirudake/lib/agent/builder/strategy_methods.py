@@ -1501,10 +1501,12 @@ class BuilderStrategyMethodsMixin:
                     continue
 
                 turret_type, turret_direction = turret_plan
+                in_action_range = (
+                    candidate_tile.in_own_bot_action_range_turn == current_round
+                )
                 candidate_dist_sq = current_pos.distance_squared(
                     candidate_tile.position
                 )
-                in_action_range = candidate_dist_sq <= BUILDER_ACTION_RADIUS_SQ
                 action_rank = (
                     0
                     if in_action_range and candidate_tile.position != current_pos
@@ -1513,12 +1515,12 @@ class BuilderStrategyMethodsMixin:
                     else 2
                 )
                 destroy_rank = 0 if candidate_tile.building.id is None else 1
-                affordable_rank = 0 if can_afford_turret(turret_type) else 1
+                can_afford = can_afford_turret(turret_type)
                 candidate_entries.append(
                     (
                         (
                             target_rank,
-                            affordable_rank,
+                            not can_afford,
                             action_rank,
                             candidate_dist_sq,
                             destroy_rank,
@@ -1531,7 +1533,7 @@ class BuilderStrategyMethodsMixin:
                         target_tile,
                         turret_type,
                         turret_direction,
-                        affordable_rank == 0,
+                        can_afford,
                     )
                 )
 
@@ -1553,8 +1555,9 @@ class BuilderStrategyMethodsMixin:
             can_afford_now,
         ) in sorted(candidate_entries, key=lambda entry: entry[0]):
             candidate_pos = candidate_tile.position
-            candidate_dist_sq = current_pos.distance_squared(candidate_pos)
-            in_action_range = candidate_dist_sq <= BUILDER_ACTION_RADIUS_SQ
+            in_action_range = (
+                candidate_tile.in_own_bot_action_range_turn == current_round
+            )
             has_destroyable_own_building = (
                 candidate_tile.building.id is not None
                 and candidate_tile.building.team == own_team
