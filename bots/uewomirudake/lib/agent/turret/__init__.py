@@ -314,17 +314,24 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if not candidate_tiles:
             return None
 
-        yeet_from_pos = self.map.own_core_center_pos
+        own_core_center_pos = self.map.own_core_center_pos
         enemy_core_center_pos = self.map.enemy_core_center_pos
-        if (
-            yeet_from_pos is not None
-            and enemy_core_center_pos is not None
-            and enemy_core_center_pos.distance_squared(self.map.current_pos) < 15
-            and yeet_from_pos.distance_squared(self.map.current_pos) > 15
-        ):
+        launcher_pos = self.map.current_pos
+
+        if own_core_center_pos is not None and enemy_core_center_pos is not None:
+            if (
+                enemy_core_center_pos.distance_squared(launcher_pos) < 15
+                and own_core_center_pos.distance_squared(launcher_pos) > 15
+            ):
+                yeet_from_pos = enemy_core_center_pos
+            else:
+                yeet_from_pos = own_core_center_pos
+        elif own_core_center_pos is not None:
+            yeet_from_pos = own_core_center_pos
+        elif enemy_core_center_pos is not None:
             yeet_from_pos = enemy_core_center_pos
-        if yeet_from_pos is None:
-            return None
+        else:
+            yeet_from_pos = launcher_pos
 
         best_covered_entry = None
         for tile in candidate_tiles:
@@ -351,11 +358,21 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         )
         target_tile = candidate_tiles[0]
 
-        if (
-            target_tile.position.distance_squared(yeet_from_pos)
-            - bot_tile.position.distance_squared(yeet_from_pos)
-            < LAUNCHER_YEET_AWAY_MIN_DISTANCE
-        ):
+        target_dist = target_tile.position.distance_squared(yeet_from_pos)
+        bot_dist = bot_tile.position.distance_squared(yeet_from_pos)
+        if target_dist - bot_dist < LAUNCHER_YEET_AWAY_MIN_DISTANCE:
+            print(
+                "Launcher enemy throw skipped: bot",
+                bot_tile.position,
+                "ref",
+                yeet_from_pos,
+                "bot_dist",
+                bot_dist,
+                "target_dist",
+                target_dist,
+                "threshold",
+                LAUNCHER_YEET_AWAY_MIN_DISTANCE,
+            )
             return None
         return target_tile.position
 
