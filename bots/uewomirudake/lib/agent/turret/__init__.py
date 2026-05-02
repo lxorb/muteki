@@ -9,6 +9,7 @@ from lib.agent.constants import (
     LAUNCHER_YEET_AWAY_MIN_DISTANCE,
     LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE,
     TURRET_TARGET_PRIORITY_RANK,
+    TURRET_UNFED_SELF_DESTRUCT_ROUNDS,
 )
 from lib.map.constants import SUPPLY_LINK_TYPES
 
@@ -17,11 +18,19 @@ class TurretAgent(BuilderNavigationMixin, Agent):
     def __init__(self):
         super().__init__()
         self.served_ally_launch_round_by_owner_mod: dict[int, int] = {}
+        self.unfed_rounds: int = 0
 
     def u_handler(self) -> bool:
         """
         Dispatch turret behavior by turret type.
         """
+        if self._u_turret_is_fed():
+            self.unfed_rounds = 0
+        else:
+            self.unfed_rounds += 1
+        if self.unfed_rounds >= TURRET_UNFED_SELF_DESTRUCT_ROUNDS:
+            return self.self_destruction()
+
         match self.ct.get_entity_type():
             case EntityType.LAUNCHER:
                 return self.u_launcher_run()
@@ -147,6 +156,23 @@ class TurretAgent(BuilderNavigationMixin, Agent):
     def _u_turret_fed_by_non_harvester_own_supply(self) -> bool:
         current_idx = self.map.u_to_index(self.map.current_pos)
         return current_idx in self.map.own_supply_link_target_indices_in_vision
+
+    def _u_turret_is_fed(self) -> bool:
+        if self._u_turret_fed_by_non_harvester_own_supply():
+            return True
+        current_idx = self.map.u_to_index(self.map.current_pos)
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        tiles_by_index = self.map.tiles_by_index
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(current_idx):
+            adjacent_tile = tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.team == own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+            ):
+                return True
+        return False
 
     def _u_turret_vision_radius_sq(self) -> int:
         current_tile = self.map.u_get_pos_tile(self.map.current_pos)
