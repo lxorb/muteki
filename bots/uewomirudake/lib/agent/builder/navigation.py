@@ -2721,6 +2721,8 @@ class BuilderNavigationMixin:
                     log_step("can_build directional")
                     build_method(pos, actual_facing_direction)
                     self.last_built_entity_type = actual_building_type
+                    if actual_building_type == EntityType.GUNNER:
+                        self.partner_turret_position = pos
                     self.u_record_self_built_supply_link(pos, actual_building_type)
                     log_step("build directional")
                     if actual_building_type in CONVEYOR_ENTITY_TYPES:
@@ -2930,3 +2932,22 @@ class BuilderNavigationMixin:
             pos,
             avoid_enemy_turrets=avoid_enemy_turrets,
         )
+
+    def _u_turret_tile_is_fed(self, turret_tile) -> bool:
+        idx = turret_tile.index
+        if idx in self.map.own_supply_link_target_indices_in_vision:
+            return True
+        if idx in self.map.enemy_supply_link_target_indices_in_vision:
+            return True
+        current_round = self.map.current_round
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(idx):
+            adjacent_tile = self.map.tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+                and adjacent_tile.building.team in (own_team, enemy_team)
+            ):
+                return True
+        return False

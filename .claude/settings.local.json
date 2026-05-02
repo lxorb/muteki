@@ -15,7 +15,8 @@
       "Bash(python3 *)",
       "PowerShell($f = Get-Item \"C:\\\\Users\\\\ninag\\\\PycharmProjects\\\\cbc-muteki\\\\tools\\\\parsed_replay26.json\"; Write-Output \"Size: $\\([math]::Round\\($f.Length/1MB, 2\\)\\) MB\")",
       "PowerShell(node tools/replay_parser/parse_replay.js replay.replay26 --out tools/parsed_replay26_fresh.json 2>&1 | Select-Object -Last 5)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(awk END{print NR} *)"
     ]
   }
 }

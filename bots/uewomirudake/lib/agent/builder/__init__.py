@@ -40,6 +40,7 @@ class BuilderAgent(
     enemy_core_checkpoint_index: int
     harvesters_built: int
     last_built_entity_type: EntityType | None
+    partner_turret_position: Position | None
     enemy_core_proxy_target_pos: Position | None
     enemy_core_proxy_base_target_pos: Position | None
     marker_target_pos: Position | None
@@ -79,6 +80,7 @@ class BuilderAgent(
         self.enemy_core_checkpoint_index = -1
         self.harvesters_built = 0
         self.last_built_entity_type = None
+        self.partner_turret_position = None
         self.enemy_core_proxy_target_pos = None
         self.enemy_core_proxy_base_target_pos = None
         self.marker_target_pos = None

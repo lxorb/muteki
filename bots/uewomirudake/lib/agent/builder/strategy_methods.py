@@ -382,6 +382,35 @@ class BuilderStrategyMethodsMixin:
             )
         return moved
 
+    def s_standing_next_to_you(self):
+        partner_pos = self.partner_turret_position
+        if partner_pos is None:
+            return False
+
+        current_round = self.map.current_round
+        partner_tile = self.map.u_get_pos_tile(partner_pos)
+        if (
+            partner_tile.last_seen_turn != current_round
+            or partner_tile.building.id is None
+            or partner_tile.building.team != self.map.own_team
+            or partner_tile.building.entity_type != EntityType.GUNNER
+            or not self._u_turret_tile_is_fed(partner_tile)
+        ):
+            self.partner_turret_position = None
+            return False
+
+        current_pos = self.map.current_pos
+        if (
+            max(
+                abs(current_pos.x - partner_pos.x),
+                abs(current_pos.y - partner_pos.y),
+            )
+            <= 1
+        ):
+            return True
+
+        return self.u_move_to(partner_pos, reach_builder_action_range=True)
+
     def s_delete_pending_tile(self):
         pending_tile_idx = self.pending_delete_tile_index
         if pending_tile_idx is None:
