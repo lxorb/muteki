@@ -12,6 +12,7 @@ from lib.agent.constants import (
     BERSERK_MIN_OTHER_OWN_TEAM_BBS_IN_VISION,
     BUILDER_ACTION_RADIUS_SQ,
     CONVEYOR_ENTITY_TYPES,
+    CORE_DEFENDER_STRATEGY_ID,
     DEFENDER_STRATEGY_ID,
     DESTROYABLE_FOR_OBLITERATING,
     DISABLE_CONVEYORS_POINTING_AT_HARVESTERS,
@@ -2713,9 +2714,15 @@ class BuilderStrategyMethodsMixin:
         to choose whether the tile should become a conveyor or a bridge plus
         its optimal target for the inferred resource.
         """
+        is_defender = self.strategy in (
+            DEFENDER_STRATEGY_ID,
+            CORE_DEFENDER_STRATEGY_ID,
+        )
+        restrict_to_close_to_core = False
         if PREVENT_SUPPLY_LINKS_TILL_HARVESTER and self.harvesters_built == 0:
-            return False
-
+            if not is_defender:
+                return False
+            restrict_to_close_to_core = True
         own_team = self.map.own_team
         current_pos = self.map.current_pos
         current_idx = self.map.u_to_index(current_pos)
@@ -2736,6 +2743,11 @@ class BuilderStrategyMethodsMixin:
             if target_tile.environment == Environment.WALL:
                 return False
             if target_tile.building.entity_type == EntityType.CORE:
+                return False
+            if (
+                restrict_to_close_to_core
+                and get_own_core_dist(target_tile.index) > 5
+            ):
                 return False
             if target_tile.building.id is None:
                 return True
