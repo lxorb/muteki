@@ -40,8 +40,8 @@ def merge_list(existing: list, incoming: list) -> list:
 
 def merge_results(inputs: list[Path]) -> dict:
     merged: dict = {
-        "schema_version": 2,
-        "mode": "version_compare_batches",
+        "schema_version": 3,
+        "mode": "version_compare_five_map_batches",
         "created_at": None,
         "updated_at": None,
         "merged_at": int(datetime.datetime.now().timestamp()),

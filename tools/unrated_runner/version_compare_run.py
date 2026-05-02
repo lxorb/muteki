@@ -12,9 +12,9 @@ from pathlib import Path
 TEAM_NAME = "muteki"
 DEFAULT_VERSIONS = ("v213", "v211", "v204", "v191")
 DEFAULT_MAP_POOL = ("cold", "cubes", "default_medium2", "pointing", "rush_bait")
-DEFAULT_BATCHES = 3
-BATCH_DELAY = 300
+BATCH_DELAY = 600
 CHECK_DELAY = 60
+RESULT_MODE = "version_compare_five_map_batches"
 
 SCRIPT_DIR = Path(__file__).parent
 MAPS_DIR = SCRIPT_DIR.parent.parent / "maps"
@@ -34,14 +34,22 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Compare muteki submissions with unrated batches. Each batch queues one "
-            "unrated match per version on the same randomly selected map, then waits "
-            "five minutes before the next batch."
+            "unrated match per version on the same five-map set, then waits ten "
+            "minutes before the next batch."
         )
     )
     parser.add_argument(
         "--results",
         type=Path,
-        help="Result JSON to write or resume. Defaults to a timestamped file.",
+        help=(
+            "Result JSON to write or resume. Defaults to the latest compatible "
+            "result file, or a new timestamped file if none exists."
+        ),
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Start a new timestamped result file instead of auto-resuming latest.",
     )
     parser.add_argument(
         "--versions",
@@ -49,24 +57,25 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated submission versions. Default: %(default)s",
     )
     parser.add_argument(
+        "--max-batches",
         "--batches",
         type=int,
-        default=DEFAULT_BATCHES,
+        default=None,
+        dest="max_batches",
         help=(
-            "Comparison batches to queue on this runner. Each owned batch queues "
-            "one match for every version. Ignored with --continuous."
+            "Optional safety limit for local batches. Omit this for start/stop usage."
         ),
     )
     parser.add_argument(
         "--continuous",
         action="store_true",
-        help="Keep queueing owned comparison batches until interrupted.",
+        help="Deprecated; continuous start/stop mode is now the default.",
     )
     parser.add_argument(
         "--delay",
         type=int,
         default=BATCH_DELAY,
-        help="Seconds between global batch slots. Keep at 300 for the unrated cap.",
+        help="Seconds between global batch slots. Keep at 600 for the unrated cap.",
     )
     parser.add_argument(
         "--initial-delay",
@@ -90,7 +99,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help=(
-            "Split global five-minute batch slots across this many runners. Use "
+            "Split global ten-minute batch slots across this many runners. Use "
             "the same value on every machine."
         ),
     )
@@ -109,12 +118,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    if not args.continuous and args.batches <= 0:
-        raise SystemExit("--batches must be positive unless --continuous is used")
+    if args.results and args.fresh:
+        raise SystemExit("Use either --results or --fresh, not both")
+    if args.max_batches is not None and args.max_batches <= 0:
+        raise SystemExit("--max-batches must be positive")
     if args.delay < BATCH_DELAY:
         raise SystemExit(
             f"--delay must be at least {BATCH_DELAY} seconds to stay under the "
-            "four-unrated-games-per-five-minutes schedule."
+            "four-unrated-matches-per-ten-minutes schedule."
         )
     if args.initial_delay < 0:
         raise SystemExit("--initial-delay must not be negative")
@@ -184,8 +195,8 @@ def load_maps() -> list[str]:
             + ", ".join(missing)
             + f"\nEdit {MAPS_FILE} or add matching .map26 files."
         )
-    if not maps:
-        raise SystemExit(f"No maps configured. Fill {MAPS_FILE}.")
+    if len(maps) < 5:
+        raise SystemExit(f"Expected at least 5 maps in {MAPS_FILE}, got {len(maps)}.")
     return maps
 
 
@@ -221,6 +232,34 @@ def default_results_path(runner_id: str) -> Path:
     return RESULTS_DIR / f"version_compare_{now}_{runner_id}.json"
 
 
+def latest_compatible_results_path() -> Path | None:
+    latest_path: Path | None = None
+    latest_mtime = -1.0
+    for path in RESULTS_DIR.glob("version_compare_*.json"):
+        try:
+            data = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data.get("mode") != RESULT_MODE:
+            continue
+        mtime = path.stat().st_mtime
+        if mtime > latest_mtime:
+            latest_path = path
+            latest_mtime = mtime
+    return latest_path
+
+
+def choose_results_path(args: argparse.Namespace, runner_id: str) -> Path:
+    if args.results:
+        return args.results
+    if not args.fresh:
+        latest_path = latest_compatible_results_path()
+        if latest_path is not None:
+            print(f"Auto-resuming latest result file: {latest_path}")
+            return latest_path
+    return default_results_path(runner_id)
+
+
 def activate_submission(version: str) -> None:
     print(f"Activating {version}...")
     result = subprocess.run(
@@ -234,9 +273,12 @@ def activate_submission(version: str) -> None:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip())
 
 
-def queue_match(opponent_id: str, map_name: str) -> tuple[str | None, str | None]:
+def queue_match(opponent_id: str, maps: list[str]) -> tuple[str | None, str | None]:
+    cmd = ["cambc", "match", "unrated", opponent_id]
+    for map_name in maps:
+        cmd += ["--map", map_name]
     result = subprocess.run(
-        ["cambc", "match", "unrated", opponent_id, "--map", map_name],
+        cmd,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -304,8 +346,8 @@ def initial_results(
     args: argparse.Namespace,
 ) -> dict:
     return {
-        "schema_version": 2,
-        "mode": "version_compare_batches",
+        "schema_version": 3,
+        "mode": RESULT_MODE,
         "created_at": int(time.time()),
         "updated_at": int(time.time()),
         "runner_id": runner_id,
@@ -336,7 +378,7 @@ def restore_run_settings(
     opponents = results.get("opponents", opponents)
     args.shard_count = results.get("shard_count", args.shard_count)
     args.shard_index = results.get("shard_index", args.shard_index)
-    args.delay = results.get("batch_delay_seconds", args.delay)
+    args.delay = max(int(results.get("batch_delay_seconds", args.delay)), BATCH_DELAY)
     args.check_delay = results.get("check_delay_seconds", args.check_delay)
     return versions, maps, opponents
 
@@ -350,9 +392,10 @@ def match_key(
     global_batch_index: int,
     version: str,
     opponent_id: str,
-    map_name: str,
+    maps: list[str],
 ) -> str:
-    return f"{runner_id}:batch:{global_batch_index}:{version}:{opponent_id}:{map_name}"
+    map_slug = "-".join(maps)
+    return f"{runner_id}:batch:{global_batch_index}:{version}:{opponent_id}:{map_slug}"
 
 
 def owns_batch(global_batch_index: int, shard_count: int, shard_index: int) -> bool:
@@ -367,10 +410,13 @@ def choose_opponent(
     return items[global_batch_index % len(items)]
 
 
+def choose_batch_maps(maps: list[str], rng: random.Random) -> list[str]:
+    if len(maps) == 5:
+        return list(maps)
+    return rng.sample(maps, 5)
+
+
 def local_batches_queued(results: dict, runner_id: str) -> int:
-    saved = results.get("local_batches_queued")
-    if isinstance(saved, int):
-        return saved
     return sum(
         1
         for batch in results.get("batches", {}).values()
@@ -392,8 +438,8 @@ def update_batch_statuses(results: dict) -> None:
                 for key in match_keys
                 if key in matches
             )
-        elif any(status == "queue_failed" for status in statuses):
-            batch["status"] = "partial_failed"
+        elif any(status in {"pending_queue", "queue_failed"} for status in statuses):
+            batch["status"] = "pending_queue"
         else:
             batch["status"] = "queued"
 
@@ -421,7 +467,38 @@ def check_pending(results_path: Path, results: dict) -> None:
         save_json(results_path, results)
 
 
-def queue_batch(
+def queue_pending_match(
+    results_path: Path,
+    results: dict,
+    entry: dict,
+) -> bool:
+    activate_submission(entry["version"])
+    print(
+        f"  Queuing {entry['version']} vs {entry['opponent_name']} "
+        f"on {entry['maps']}..."
+    )
+    match_id, error = queue_match(entry["opponent_id"], entry["maps"])
+    entry["queue_attempts"] = int(entry.get("queue_attempts", 0)) + 1
+    entry["last_queue_attempt_at"] = int(time.time())
+    if match_id:
+        entry["match_id"] = match_id
+        entry["status"] = "queued"
+        entry["error"] = None
+        entry["queued_at"] = int(time.time())
+        print(f"    Queued: {match_id}")
+        update_batch_statuses(results)
+        save_json(results_path, results)
+        return True
+
+    entry["match_id"] = None
+    entry["status"] = "pending_queue"
+    entry["error"] = error
+    update_batch_statuses(results)
+    save_json(results_path, results)
+    return False
+
+
+def create_batch(
     results_path: Path,
     results: dict,
     runner_id: str,
@@ -430,49 +507,42 @@ def queue_batch(
     opponents: dict[str, str],
     rng: random.Random,
     global_batch_index: int,
-) -> None:
-    map_name = rng.choice(maps)
+) -> dict:
+    batch_maps = choose_batch_maps(maps, rng)
     opponent_id, opponent_name = choose_opponent(opponents, global_batch_index)
     key = batch_key(runner_id, global_batch_index)
     batches = results.setdefault("batches", {})
     matches = results.setdefault("matches", {})
 
-    if key in batches:
-        print(f"Batch {global_batch_index} is already present; skipping queue.")
-        return
-
     batch = {
         "batch_key": key,
         "runner_id": runner_id,
         "global_batch_index": global_batch_index,
-        "map": map_name,
+        "maps": batch_maps,
         "opponent_id": opponent_id,
         "opponent_name": opponent_name,
         "versions": versions,
-        "status": "queued",
-        "queued_at": int(time.time()),
+        "status": "pending_queue",
+        "created_at": int(time.time()),
+        "queued_at": None,
         "completed_at": None,
         "matches": {},
     }
     batches[key] = batch
     print(
-        f"Queueing batch {global_batch_index}: map={map_name}, "
+        f"Created batch {global_batch_index}: maps={batch_maps}, "
         f"opponent={opponent_name}, versions={', '.join(versions)}"
     )
-    save_json(results_path, results)
 
     for version in versions:
-        activate_submission(version)
         key_for_match = match_key(
             runner_id,
             global_batch_index,
             version,
             opponent_id,
-            map_name,
+            batch_maps,
         )
-        print(f"  Queuing {version} vs {opponent_name} on {map_name}...")
-        match_id, error = queue_match(opponent_id, map_name)
-        entry = {
+        matches[key_for_match] = {
             "task_key": key_for_match,
             "batch_key": key,
             "runner_id": runner_id,
@@ -481,30 +551,69 @@ def queue_batch(
             "version_number": version_number(version),
             "opponent_id": opponent_id,
             "opponent_name": opponent_name,
-            "map": map_name,
-            "maps": [map_name],
-            "match_id": match_id,
-            "status": "queued" if match_id else "queue_failed",
-            "error": error,
-            "queued_at": int(time.time()),
+            "maps": batch_maps,
+            "match_id": None,
+            "status": "pending_queue",
+            "error": None,
+            "queue_attempts": 0,
+            "last_queue_attempt_at": None,
+            "queued_at": None,
             "completed_at": None,
             "games": [],
         }
-        matches[key_for_match] = entry
         batch["matches"][version] = key_for_match
-        if match_id:
-            print(f"    Queued: {match_id}")
-        save_json(results_path, results)
 
-    update_batch_statuses(results)
     save_json(results_path, results)
+    return batch
+
+
+def sorted_local_batches(results: dict, runner_id: str) -> list[dict]:
+    return sorted(
+        (
+            batch
+            for batch in results.get("batches", {}).values()
+            if batch.get("runner_id") == runner_id
+        ),
+        key=lambda batch: int(batch.get("global_batch_index", 0)),
+    )
+
+
+def next_pending_queue_match(results: dict, runner_id: str) -> dict | None:
+    matches = results.setdefault("matches", {})
+    for batch in sorted_local_batches(results, runner_id):
+        version_to_key = batch.get("matches", {})
+        for version in batch.get("versions", []):
+            entry = matches.get(version_to_key.get(version))
+            if not entry:
+                continue
+            if entry.get("match_id"):
+                continue
+            if entry.get("status") in {"pending_queue", "queue_failed"}:
+                return entry
+    return None
+
+
+def queue_pending_matches_until_blocked(
+    results_path: Path,
+    results: dict,
+    runner_id: str,
+) -> bool:
+    queued_any = False
+    while True:
+        entry = next_pending_queue_match(results, runner_id)
+        if entry is None:
+            return queued_any
+        if not queue_pending_match(results_path, results, entry):
+            return queued_any
+        queued_any = True
 
 
 def local_incomplete_count(results: dict, runner_id: str) -> int:
     return sum(
         1
         for key, entry in results.get("matches", {}).items()
-        if key.startswith(f"{runner_id}:") and entry.get("status") == "queued"
+        if key.startswith(f"{runner_id}:")
+        and entry.get("status") in {"pending_queue", "queue_failed", "queued"}
     )
 
 
@@ -517,7 +626,7 @@ def run() -> None:
     opponents = load_opponents()
 
     runner_id = make_runner_id()
-    results_path = args.results or default_results_path(runner_id)
+    results_path = choose_results_path(args, runner_id)
     results = load_json(results_path)
     if results:
         runner_id = results.get("runner_id") or runner_id
@@ -535,17 +644,20 @@ def run() -> None:
     else:
         results = initial_results(runner_id, versions, maps, opponents, args)
 
+    validate_args(args)
+    results["batch_delay_seconds"] = args.delay
+    results["check_delay_seconds"] = args.check_delay
     rng = random.Random(args.seed)
     save_json(results_path, results)
 
     print(f"Writing results to {results_path}")
     print(
-        f"Batch plan: {len(versions)} games every {args.delay}s, "
+        f"Batch plan: {len(versions)} five-map matches every {args.delay}s, "
         f"versions={', '.join(versions)}, map_pool={maps}"
     )
     print(
         f"Shard: {args.shard_index}/{args.shard_count}; "
-        f"local target={'continuous' if args.continuous else args.batches}"
+        f"local target={args.max_batches if args.max_batches is not None else 'start/stop'}"
     )
 
     if args.initial_delay:
@@ -557,13 +669,37 @@ def run() -> None:
             check_pending(results_path, results)
 
             queued_count = local_batches_queued(results, runner_id)
-            if not args.continuous and queued_count >= args.batches:
+            if args.max_batches is not None and queued_count >= args.max_batches:
                 incomplete = local_incomplete_count(results, runner_id)
                 if incomplete == 0:
                     print("All local version comparison batches are complete.")
                     break
-                print(f"Waiting on {incomplete} queued local match(es).")
-                time.sleep(args.check_delay)
+                pending_queue = next_pending_queue_match(results, runner_id)
+                if pending_queue is not None:
+                    print(
+                        "Retrying unqueued match before checking completed games."
+                    )
+                    queue_pending_matches_until_blocked(
+                        results_path,
+                        results,
+                        runner_id,
+                    )
+                    time.sleep(args.delay)
+                else:
+                    print(f"Waiting on {incomplete} queued local match(es).")
+                    time.sleep(args.check_delay)
+                continue
+
+            pending_queue = next_pending_queue_match(results, runner_id)
+            if pending_queue is not None:
+                print("Continuing pending queue work before creating a new batch.")
+                queue_pending_matches_until_blocked(
+                    results_path,
+                    results,
+                    runner_id,
+                )
+                print(f"Sleeping {args.delay}s before the next queue attempt.")
+                time.sleep(args.delay)
                 continue
 
             global_batch_index = int(results.get("next_global_batch_index", 0))
@@ -578,7 +714,7 @@ def run() -> None:
                 time.sleep(args.delay)
                 continue
 
-            queue_batch(
+            create_batch(
                 results_path,
                 results,
                 runner_id,
@@ -590,8 +726,13 @@ def run() -> None:
             )
             next_queued_count = queued_count + 1
             results["local_batches_queued"] = next_queued_count
+            queue_pending_matches_until_blocked(
+                results_path,
+                results,
+                runner_id,
+            )
             save_json(results_path, results)
-            if not args.continuous and next_queued_count >= args.batches:
+            if args.max_batches is not None and next_queued_count >= args.max_batches:
                 print(
                     f"Queued local target; checking pending matches every "
                     f"{args.check_delay}s."
@@ -601,7 +742,7 @@ def run() -> None:
                 print(f"Sleeping {args.delay}s before the next global batch slot.")
                 time.sleep(args.delay)
     except KeyboardInterrupt:
-        print("\nStopped. Re-run with --results to resume this file.")
+        print("\nStopped. Re-run the same command to auto-resume this file.")
         save_json(results_path, results)
     finally:
         if not args.no_restore_active and versions:
