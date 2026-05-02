@@ -1391,6 +1391,8 @@ class BuilderStrategyMethodsMixin:
             return True
 
         def candidate_tile_has_own_titanium_feed(candidate_tile) -> bool:
+            if candidate_tile.in_own_resource_range == 0:
+                return False
             for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
                 candidate_tile.index,
                 (),
