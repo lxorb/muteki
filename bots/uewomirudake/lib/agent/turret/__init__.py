@@ -14,6 +14,7 @@ from lib.agent.constants import (
     URGENT_TARGETS,
 )
 from lib.map.constants import SUPPLY_LINK_TYPES
+from lib.map.types import SupplyChainLabel
 
 
 class TurretAgent(BuilderNavigationMixin, Agent):
@@ -54,10 +55,14 @@ class TurretAgent(BuilderNavigationMixin, Agent):
     
 
     def useful_gunner(self) -> bool:
-        # Only consider self-destruction when fed by an own supply chain.
-        # Otherwise (enemy-fed or unfed) the turret is always useful.
+        # Only consider self-destruction when fed by own supply chain or when
+        # the position would be better used as a conveyor into the supply chain.
         if not self._u_turret_fed_by_non_harvester_own_supply():
-            return True
+            if not (
+                self._u_gunner_is_adjacent_to_own_harvester()
+                and self._u_gunner_could_be_replaced_by_conveyor()
+            ):
+                return True
 
         # Any enemy bot in vision radius keeps us useful (mobile threat).
         if self.map.enemy_team_bbs_in_vision_count > 0:
@@ -175,6 +180,37 @@ class TurretAgent(BuilderNavigationMixin, Agent):
                 adjacent_tile.last_seen_turn == current_round
                 and adjacent_tile.building.entity_type == EntityType.HARVESTER
                 and adjacent_tile.building.team in (own_team, enemy_team)
+            ):
+                return True
+        return False
+
+    def _u_gunner_is_adjacent_to_own_harvester(self) -> bool:
+        current_idx = self.map.u_to_index(self.map.current_pos)
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        tiles_by_index = self.map.tiles_by_index
+        for adjacent_idx in self.map.u_iter_cardinal_neighbor_indices(current_idx):
+            adjacent_tile = tiles_by_index[adjacent_idx]
+            if (
+                adjacent_tile.last_seen_turn == current_round
+                and adjacent_tile.building.team == own_team
+                and adjacent_tile.building.entity_type == EntityType.HARVESTER
+            ):
+                return True
+        return False
+
+    def _u_gunner_could_be_replaced_by_conveyor(self) -> bool:
+        current_idx = self.map.u_to_index(self.map.current_pos)
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        tiles_by_index = self.map.tiles_by_index
+        for neighbor_idx in self.map.u_iter_cardinal_neighbor_indices(current_idx):
+            neighbor_tile = tiles_by_index[neighbor_idx]
+            if (
+                neighbor_tile.last_seen_turn == current_round
+                and neighbor_tile.building.team == own_team
+                and neighbor_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and neighbor_tile.own_supply_chain_label != SupplyChainLabel.NONE
             ):
                 return True
         return False
