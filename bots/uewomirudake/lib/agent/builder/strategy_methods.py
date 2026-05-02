@@ -39,6 +39,7 @@ from lib.map.types import SupplyChainLabel
 
 SYMMETRY_HINT_FAKE_ENEMY_BUILDER_ID = 1
 OBLITERATE_TARGET_RADIUS_SQ = 4
+CORE_VISION_RADIUS = math.isqrt(GameConstants.CORE_VISION_RADIUS_SQ)
 
 _ENEMY_CORE_PATROL_OFFSETS = (
     (-2, -2),
@@ -2922,7 +2923,7 @@ class BuilderStrategyMethodsMixin:
                 return False
             if (
                 restrict_to_close_to_core
-                and get_own_core_dist(target_tile.index) > 5
+                and get_own_core_dist(target_tile.index) > CORE_VISION_RADIUS
             ):
                 return False
             if target_tile.building.id is None:
