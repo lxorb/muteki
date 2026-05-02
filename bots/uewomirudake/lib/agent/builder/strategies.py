@@ -25,6 +25,7 @@ SCAVENGER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_heal_self),
     (False, BuilderStrategyMethodsMixin.s_obliterate_target, True, True),
     (False, BuilderStrategyMethodsMixin.s_protect_own_harvester, True, True),
+    (False, BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
     (False, BuilderStrategyMethodsMixin.s_replace_damaged_conveyor, True, True),
     # (True, BuilderStrategyMethodsMixin.s_split_supply_sentinel),
     (False, BuilderStrategyMethodsMixin.s_integrate_own_turret, True, True),
@@ -32,7 +33,7 @@ SCAVENGER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_heal_own_building),
     (False, BuilderStrategyMethodsMixin.s_fix_harvester, True, True),
     # (False, BuilderStrategyMethodsMixin.s_simple_harvester_build, True),
-    (False, BuilderStrategyMethodsMixin.s_build_missing_supply_link, True, True, True),
+    (False, BuilderStrategyMethodsMixin.s_standing_next_to_you),
     (
         True,
         BuilderStrategyMethodsMixin.s_turret_next_to_enemy_harvester,
