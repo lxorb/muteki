@@ -4693,6 +4693,8 @@ class BuilderStrategyMethodsMixin:
                 hold=False,
                 move_towards=False,
                 attack_enemy_passable=False,
+                avoid_enemy_turrets=False,
+                allow_sentinel_next_to_harvester_instead_conveyor=False,
             )
 
         enemy_turret_bucket = []
@@ -4759,8 +4761,11 @@ class BuilderStrategyMethodsMixin:
                         move_towards=False,
                         attack_enemy_passable=False,
                         facing_direction=supplier_target,
+                        avoid_enemy_turrets=False,
+                        allow_sentinel_next_to_harvester_instead_conveyor=False,
                     ):
                         return True
+                    return try_build_barrier_fallback(target_pos)
                 elif supplier_type == EntityType.BRIDGE:
                     bridge_titanium_cost, bridge_axionite_cost = self.ct.get_bridge_cost()
                     if (
@@ -4775,8 +4780,11 @@ class BuilderStrategyMethodsMixin:
                         move_towards=False,
                         attack_enemy_passable=False,
                         target_pos=supplier_target,
+                        avoid_enemy_turrets=False,
+                        allow_sentinel_next_to_harvester_instead_conveyor=False,
                     ):
                         return True
+                    return try_build_barrier_fallback(target_pos)
                 else:
                     return try_build_barrier_fallback(target_pos)
 
