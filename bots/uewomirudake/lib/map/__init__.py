@@ -20,7 +20,7 @@ from cambc import (
     Team,
 )
 
-from lib.agent.constants import CONVEYOR_ENTITY_TYPES
+from lib.agent.constants import BUILDER_ACTION_RADIUS_SQ, CONVEYOR_ENTITY_TYPES
 from lib.agent.time import ALLOCATED_MAP_AND_BOT_TIME_MUS, RoundStopwatch
 
 from lib.map.constants import (
@@ -716,6 +716,8 @@ class Map:
         self._next_turn_reset_prep_phase = _NEXT_TURN_RESET_PREP_PHASE_NONE
         self._next_turn_reset_prep_own_supply_head = 0
         self._next_turn_reset_prep_enemy_supply_head = 0
+        self.attack_inn_yeeter_target_tiles: list[Tile] = []
+        self.enemy_builder_bot_positions_in_vision: list[Position] = []
 
         self.stopwatch = Stopwatch("Map")
 
@@ -753,6 +755,8 @@ class Map:
         self.enemy_missing_supply_links = []
         self.own_titanium_harvester_adjacent_candidate_indices = []
         self.frontier_expand_newly_seen_indices = []
+        self.attack_inn_yeeter_target_tiles = []
+        self.enemy_builder_bot_positions_in_vision = []
 
     def _u_continue_reset_supply_chain_union_find_arrays(
         self,
@@ -1822,6 +1826,7 @@ class Map:
                         tile.position.x,
                         tile.position.y,
                     )
+                    self.enemy_builder_bot_positions_in_vision.append(tile.position)
                     if (
                         closest_enemy_builder_key is None
                         or key < closest_enemy_builder_key
@@ -1921,6 +1926,7 @@ class Map:
         self.stopwatch.lap("Tile attributes")
 
         self.u_update_visible_map_caches()
+        self.u_update_attack_inn_yeeter_cache()
 
         if self.own_core_center_pos is None:
             self.u_calc_core_center_positions()
@@ -2240,6 +2246,37 @@ class Map:
         self.stopwatch.lap("Visible caches: accessible ore")
         self.u_update_frontier_expand_cache()
         self.stopwatch.lap("Visible caches: frontier")
+
+    def u_update_attack_inn_yeeter_cache(self) -> None:
+        target_tiles = self.attack_inn_yeeter_target_tiles
+        enemy_team = self.enemy_team
+        current_round = self.current_round
+        current_pos = self.current_pos
+        intrinsic_passable_by_index = self.intrinsic_passable_by_index
+        enemy_builder_positions = self.enemy_builder_bot_positions_in_vision
+
+        for tile in self.tiles_in_vision:
+            if tile.last_seen_turn != current_round:
+                continue
+            building = tile.building
+            if building.id is None:
+                continue
+            if building.team != enemy_team:
+                continue
+            if building.entity_type == EntityType.ROAD:
+                continue
+            if not intrinsic_passable_by_index[tile.index]:
+                continue
+            if tile.in_own_launcher_pickup_zone == 0:
+                continue
+            if tile.in_enemy_attack_range or tile.in_enemy_launcher_pickup_zone:
+                continue
+            if current_pos.distance_squared(tile.position) > 9:
+                continue
+            for enemy_pos in enemy_builder_positions:
+                if enemy_pos.distance_squared(tile.position) <= BUILDER_ACTION_RADIUS_SQ:
+                    target_tiles.append(tile)
+                    break
 
     def u_update_own_titanium_harvester_adjacent_candidate_cache(self) -> None:
         current_round = self.current_round

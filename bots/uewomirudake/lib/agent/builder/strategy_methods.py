@@ -36,7 +36,6 @@ from lib.map.constants import CARDINAL_DIRECTIONS, DIRECTIONS, INF_DIST, SUPPLY_
 from lib.map.types import SupplyChainLabel
 
 SYMMETRY_HINT_FAKE_ENEMY_BUILDER_ID = 1
-ATTACK_INN_YEETER_ESCAPE_TILE_THRESHOLD = 4
 OBLITERATE_TARGET_RADIUS_SQ = 4
 
 _ENEMY_CORE_PATROL_OFFSETS = (
@@ -1450,37 +1449,6 @@ class BuilderStrategyMethodsMixin:
                 )
             return False
 
-        def get_obliterating_turret_plan(
-            candidate_pos: Position,
-            target_pos: Position,
-        ) -> tuple[EntityType, Direction] | None:
-            turret_type, preferred_direction = self.u_get_turret_build_plan(
-                candidate_pos,
-                gunner_only=True,
-            )
-            candidate_directions: list[Direction] = []
-            if (
-                preferred_direction is not None
-                and preferred_direction != Direction.CENTRE
-            ):
-                candidate_directions.append(preferred_direction)
-            candidate_directions.extend(
-                direction
-                for direction in Direction
-                if direction != Direction.CENTRE
-                and direction not in candidate_directions
-            )
-
-            for direction in candidate_directions:
-                if turret_covers_target(
-                    turret_type,
-                    candidate_pos,
-                    direction,
-                    target_pos,
-                ):
-                    return (turret_type, direction)
-            return None
-
         def can_afford_turret(turret_type: EntityType) -> bool:
             titanium_cost, axionite_cost = getattr(
                 self.ct,
@@ -1506,7 +1474,23 @@ class BuilderStrategyMethodsMixin:
                 if not candidate_tile_has_own_titanium_feed(candidate_tile):
                     continue
 
-                candidate_tiles.append(candidate_tile)
+                turret_type, preferred_direction = self.u_get_turret_build_plan(
+                    candidate_pos,
+                    gunner_only=True,
+                )
+                candidate_directions: list[Direction] = []
+                if (
+                    preferred_direction is not None
+                    and preferred_direction != Direction.CENTRE
+                ):
+                    candidate_directions.append(preferred_direction)
+                candidate_directions.extend(
+                    direction
+                    for direction in Direction
+                    if direction != Direction.CENTRE
+                    and direction not in candidate_directions
+                )
+                candidate_tiles.append((candidate_tile, turret_type, candidate_directions))
 
         if not candidate_tiles:
             return False
@@ -1515,15 +1499,19 @@ class BuilderStrategyMethodsMixin:
         for target_rank, target_hp, target_dist_sq, target_idx, target_tile in (
             urgent_target_entries
         ):
-            for candidate_tile in candidate_tiles:
-                turret_plan = get_obliterating_turret_plan(
-                    candidate_tile.position,
-                    target_tile.position,
-                )
-                if turret_plan is None:
+            for candidate_tile, turret_type, candidate_directions in candidate_tiles:
+                turret_direction = None
+                for direction in candidate_directions:
+                    if turret_covers_target(
+                        turret_type,
+                        candidate_tile.position,
+                        direction,
+                        target_tile.position,
+                    ):
+                        turret_direction = direction
+                        break
+                if turret_direction is None:
                     continue
-
-                turret_type, turret_direction = turret_plan
                 in_action_range = (
                     candidate_tile.in_own_bot_action_range_turn == current_round
                 )
@@ -6005,65 +5993,55 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         current_tile = self.map.u_get_pos_tile(current_pos)
         current_building = current_tile.building
-        own_team = self.map.own_team
         enemy_team = self.map.enemy_team
-
-        if current_building.id is None or current_building.team != enemy_team:
-            return False
-        if not current_tile.is_passable:
-            return False
-        if not self.ct.can_fire(current_pos):
-            return False
-
-        def is_targeted_by_titanium_supply_chain(tile_idx: int) -> bool:
-            for source_idx in self.map.own_supply_link_source_indices_by_target_index_in_vision.get(
-                tile_idx,
-                (),
-            ):
-                if self.map.u_supply_chain_has_titanium(source_idx, own_team):
-                    return True
-
-            for source_idx in self.map.enemy_supply_link_source_indices_by_target_index_in_vision.get(
-                tile_idx,
-                (),
-            ):
-                if self.map.u_supply_chain_has_titanium(source_idx, enemy_team):
-                    return True
-
-            return False
-
-        if not is_targeted_by_titanium_supply_chain(current_tile.index):
-            return False
-
-        if (
-            current_building.hp is not None
-            and current_building.hp >= self.ct.get_max_hp(current_building.id)
-        ):
-            for adjacent_pos in self.map.u_iter_adjacent_all_positions(current_pos):
-                adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-                if (
-                    adjacent_tile.bot.id is not None
-                    and adjacent_tile.bot.team == enemy_team
-                    and adjacent_tile.bot.entity_type == EntityType.BUILDER_BOT
-                ):
-                    return False
-
-        escape_tile_count = 0
         intrinsic_passable_by_index = self.map.intrinsic_passable_by_index
-        for adjacent_pos in self.map.u_iter_adjacent_all_positions(current_pos):
-            adjacent_tile = self.map.u_get_pos_tile(adjacent_pos)
-            if not intrinsic_passable_by_index[adjacent_tile.index]:
-                continue
-            if adjacent_tile.in_own_launcher_pickup_zone != 0:
-                continue
-            escape_tile_count += 1
-            if escape_tile_count >= ATTACK_INN_YEETER_ESCAPE_TILE_THRESHOLD:
-                return False
+
+        # Short-circuit: attack current tile even if in enemy-turret danger if damaged enough
+        if (
+            current_building.id is not None
+            and current_building.team == enemy_team
+            and current_building.entity_type != EntityType.ROAD
+            and intrinsic_passable_by_index[current_tile.index]
+            and current_tile.in_own_launcher_pickup_zone != 0
+        ):
+            max_hp = self.ct.get_max_hp(current_building.id)
+            if current_building.hp is not None and current_building.hp <= max_hp - 3:
+                enemy_builder_positions = self.map.enemy_builder_bot_positions_in_vision
+                if any(
+                    ep.distance_squared(current_tile.position) <= BUILDER_ACTION_RADIUS_SQ
+                    for ep in enemy_builder_positions
+                ):
+                    return bool(
+                        self.u_attack_passable(
+                            current_pos,
+                            move_towards=False,
+                            destroy_condition=lambda _: True,
+                            avoid_enemy_turrets=False,
+                            ignore_conveyor_reserve_if_target_damaged=True,
+                        )
+                    )
+
+        candidates = self.map.attack_inn_yeeter_target_tiles
+        if not candidates:
+            return False
+
+        target = min(candidates, key=lambda t: (t.dist_to_self, t.index))
+
+        if target is current_tile:
+            return bool(
+                self.u_attack_passable(
+                    current_pos,
+                    move_towards=False,
+                    destroy_condition=lambda _: True,
+                    avoid_enemy_turrets=False,
+                    ignore_conveyor_reserve_if_target_damaged=True,
+                )
+            )
 
         return bool(
             self.u_attack_passable(
-                current_pos,
-                move_towards=False,
+                target.position,
+                move_towards=True,
                 destroy_condition=lambda _: True,
                 avoid_enemy_turrets=False,
                 ignore_conveyor_reserve_if_target_damaged=True,

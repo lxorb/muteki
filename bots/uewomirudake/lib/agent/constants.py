@@ -93,7 +93,7 @@ DESTROYABLE_FOR_OBLITERATING: list[EntityType] = [
     # EntityType.BRIDGE,
     EntityType.SPLITTER,
     EntityType.BARRIER,
-    EntityType.HARVESTER,
+    # EntityType.HARVESTER,
     EntityType.LAUNCHER,
 ]
 OBLITERATE_SKIP_TARGETS_ALREADY_COVERED: bool = True
