@@ -6,7 +6,9 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git -C /c/Users/ninag/PycharmProjects/cbc-muteki status --short)",
-      "Bash(git -C /c/Users/ninag/PycharmProjects/cbc-muteki diff --stat -- bots/uewomirudake/lib/agent/builder/)"
+      "Bash(git -C /c/Users/ninag/PycharmProjects/cbc-muteki diff --stat -- bots/uewomirudake/lib/agent/builder/)",
+      "Bash(node tools/replay_parser/parse_replay.js replay.replay26 --out tools/parsed_replay26.json)",
+      "Bash(powershell *)"
     ]
   }
 }
