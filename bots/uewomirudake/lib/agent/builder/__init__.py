@@ -1,10 +1,11 @@
 from cambc import Controller, EntityType, Environment, Position
 
 from lib.agent import Agent
-from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE
+from lib.agent.builder.strategies import BUILDER_STRATEGY_BY_TILE, FURTHER_BB_MIN_TURN
 from lib.agent.constants import (
     CORE_DEFENDER_STRATEGY_ID,
     HARASSMENT_STRATEGY_ID,
+    SCAVENGER_STRATEGY_ID,
     SAVER_TLE_RATIO,
     YEET_STUCK_OSCILLATION_ROUNDS,
 )
@@ -54,6 +55,9 @@ class BuilderAgent(
     tle_count: int
     turn_count: int
     is_tle_saver_mode: bool
+    spawn_round_by_builder_id: dict[int, int]
+    self_built_supply_link_indices_by_builder_id: dict[int, set[int]]
+    self_patrol_defender_builder_ids: set[int]
     _d_star_lite_states_by_builder_id: dict[int, object]
     _lpa_star_states_by_builder_id: dict[int, object]
 
@@ -90,6 +94,9 @@ class BuilderAgent(
         self.tle_count = 0
         self.turn_count = 0
         self.is_tle_saver_mode = False
+        self.spawn_round_by_builder_id = {}
+        self.self_built_supply_link_indices_by_builder_id = {}
+        self.self_patrol_defender_builder_ids = set()
         self._d_star_lite_states_by_builder_id = {}
         self._lpa_star_states_by_builder_id = {}
 
@@ -111,6 +118,15 @@ class BuilderAgent(
 
     def u_get_strategy_name(self) -> str:
         return self.strategy or "unknown"
+
+    def u_is_initial_scavenger(self) -> bool:
+        if self.strategy != SCAVENGER_STRATEGY_ID:
+            return False
+        spawn_round = self.spawn_round_by_builder_id.get(self.ct.get_id())
+        return spawn_round is not None and spawn_round < FURTHER_BB_MIN_TURN
+
+    def u_is_self_patrol_defender(self) -> bool:
+        return self.ct.get_id() in self.self_patrol_defender_builder_ids
 
     @override
     def u_before_vision_update(self) -> None:
@@ -159,6 +175,10 @@ class BuilderAgent(
 
     @override
     def u_handler(self):
+        self.spawn_round_by_builder_id.setdefault(
+            self.ct.get_id(),
+            self.map.current_round,
+        )
         self.u_update_tle_tracking()
         if not self.strategy:
             self.u_infer_strategy_by_spawning_tile()

@@ -2701,6 +2701,7 @@ class BuilderNavigationMixin:
                     log_step("can_build directional")
                     build_method(pos, actual_facing_direction)
                     self.last_built_entity_type = actual_building_type
+                    self.u_record_self_built_supply_link(pos, actual_building_type)
                     log_step("build directional")
                     if actual_building_type in CONVEYOR_ENTITY_TYPES:
                         next_direction = self.map.u_get_direction_between(
@@ -2745,6 +2746,7 @@ class BuilderNavigationMixin:
                     log_step("can_build bridge")
                     build_method(pos, target_pos)
                     self.last_built_entity_type = building_type
+                    self.u_record_self_built_supply_link(pos, building_type)
                     log_step("build bridge")
                     return finish(True, "return bridge build")
 
@@ -2767,6 +2769,7 @@ class BuilderNavigationMixin:
                     log_step("can_build nondirectional")
                     build_method(pos)
                     self.last_built_entity_type = building_type
+                    self.u_record_self_built_supply_link(pos, building_type)
                     log_step("build nondirectional")
                     return finish(True, "return nondirectional build")
 
@@ -2889,6 +2892,10 @@ class BuilderNavigationMixin:
                     if can_build_method(pos, replacement_facing_direction):
                         build_method(pos, replacement_facing_direction)
                         self.last_built_entity_type = replacement_entity_type
+                        self.u_record_self_built_supply_link(
+                            pos,
+                            replacement_entity_type,
+                        )
                         return True
                     return False
 

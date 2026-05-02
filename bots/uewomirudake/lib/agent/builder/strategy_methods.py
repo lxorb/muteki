@@ -640,11 +640,13 @@ class BuilderStrategyMethodsMixin:
                     return False
                 self.ct.build_splitter(target_pos, facing_direction)
                 self.last_built_entity_type = EntityType.SPLITTER
+                self.u_record_self_built_supply_link(target_pos, EntityType.SPLITTER)
                 return True
             if not self.ct.can_build_conveyor(target_pos, facing_direction):
                 return False
             self.ct.build_conveyor(target_pos, facing_direction)
             self.last_built_entity_type = EntityType.CONVEYOR
+            self.u_record_self_built_supply_link(target_pos, EntityType.CONVEYOR)
             return True
 
         return bool(self.u_move_to(target_pos))
@@ -979,6 +981,7 @@ class BuilderStrategyMethodsMixin:
             if self.ct.can_build_splitter(target_pos, facing_direction):
                 self.ct.build_splitter(target_pos, facing_direction)
                 self.last_built_entity_type = EntityType.SPLITTER
+                self.u_record_self_built_supply_link(target_pos, EntityType.SPLITTER)
                 return True
             return False
 
@@ -1081,6 +1084,10 @@ class BuilderStrategyMethodsMixin:
                 if self.ct.can_build_splitter(target_pos, facing_direction):
                     self.ct.build_splitter(target_pos, facing_direction)
                     self.last_built_entity_type = EntityType.SPLITTER
+                    self.u_record_self_built_supply_link(
+                        target_pos,
+                        EntityType.SPLITTER,
+                    )
                     return True
                 return False
 
@@ -1588,6 +1595,94 @@ class BuilderStrategyMethodsMixin:
             return False
 
         self.strategy = DEFENDER_STRATEGY_ID
+        self.last_strategy_index = -1
+        self.last_turn_completed = True
+        return True
+
+    def u_record_self_built_supply_link(
+        self,
+        pos: Position,
+        building_type: EntityType,
+    ) -> None:
+        if building_type not in SUPPLY_LINK_TYPES:
+            return
+        if not self.u_is_initial_scavenger():
+            return
+        self.self_built_supply_link_indices_by_builder_id.setdefault(
+            self.ct.get_id(),
+            set(),
+        ).add(self.map.u_to_index(pos))
+
+    def u_get_self_built_supply_link_indices(self) -> set[int]:
+        builder_id = self.ct.get_id()
+        indices = self.self_built_supply_link_indices_by_builder_id.setdefault(
+            builder_id,
+            set(),
+        )
+        if not indices:
+            return indices
+
+        own_team = self.map.own_team
+        current_round = self.map.current_round
+        tiles_by_index = self.map.tiles_by_index
+        for idx in tuple(indices):
+            tile = tiles_by_index[idx]
+            if tile.last_seen_turn != current_round:
+                continue
+            if (
+                tile.building.team == own_team
+                and tile.building.entity_type in SUPPLY_LINK_TYPES
+            ):
+                continue
+            indices.discard(idx)
+        return indices
+
+    def u_initial_scavenger_has_connected_self_built_supply_to_core(self) -> bool:
+        if not self.u_is_initial_scavenger():
+            return False
+
+        own_team = self.map.own_team
+        tiles_by_index = self.map.tiles_by_index
+        checked_indices: set[int] = set()
+        pending_indices = list(self.u_get_self_built_supply_link_indices())
+
+        while pending_indices:
+            idx = pending_indices.pop()
+            if idx in checked_indices:
+                continue
+            checked_indices.add(idx)
+
+            tile = tiles_by_index[idx]
+            if (
+                tile.building.team != own_team
+                or tile.building.entity_type not in SUPPLY_LINK_TYPES
+            ):
+                continue
+
+            for target_tile in tile.building.targets:
+                if target_tile.is_core_of(own_team):
+                    return True
+                if (
+                    target_tile.building.team == own_team
+                    and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                    and target_tile.index not in checked_indices
+                ):
+                    pending_indices.append(target_tile.index)
+
+        return False
+
+    def s_convert_initial_scavenger_to_self_patrol_defender(self):
+        if not self.u_is_initial_scavenger():
+            return False
+
+        builder_id = self.ct.get_id()
+        if builder_id in self.self_patrol_defender_builder_ids:
+            return False
+
+        if not self.u_initial_scavenger_has_connected_self_built_supply_to_core():
+            return False
+
+        self.self_patrol_defender_builder_ids.add(builder_id)
         self.last_strategy_index = -1
         self.last_turn_completed = True
         return True
@@ -2627,6 +2722,8 @@ class BuilderStrategyMethodsMixin:
         `require_connected=True`, only ore tiles that already have at least one
         orthogonally adjacent own supply-link tile are considered.
         """
+        if self.u_is_self_patrol_defender():
+            return False
 
         current_pos = self.map.current_pos
         if (
@@ -5190,7 +5287,7 @@ class BuilderStrategyMethodsMixin:
             )
         )
 
-    def s_patrol_supply_chains(self):
+    def s_patrol_supply_chains(self, only_patrol_self_built: bool = False):
         """
         Patrol known allied supply links.
 
@@ -5206,33 +5303,47 @@ class BuilderStrategyMethodsMixin:
         current_pos = self.map.current_pos
         current_idx = self.map.u_to_index(current_pos)
         tiles_by_index = self.map.tiles_by_index
-        known_own_supply_link_indices = self.map.known_own_supply_link_indices
+        if only_patrol_self_built:
+            if not self.u_is_self_patrol_defender():
+                return False
+            patrol_supply_link_indices = self.u_get_self_built_supply_link_indices()
+        else:
+            if self.u_is_self_patrol_defender():
+                return False
+            patrol_supply_link_indices = self.map.known_own_supply_link_indices
         get_own_core_dist = self.map.u_get_own_core_dist_by_index
 
+        def is_patrol_supply_link(idx: int) -> bool:
+            tile = tiles_by_index[idx]
+            return (
+                tile.building.team == own_team
+                and tile.building.entity_type in SUPPLY_LINK_TYPES
+                and (
+                    not only_patrol_self_built
+                    or idx in patrol_supply_link_indices
+                )
+            )
+
         def stamp_local_patrol_coverage() -> None:
-            current_tile = tiles_by_index[current_idx]
-            if (
-                current_tile.building.team == own_team
-                and current_tile.building.entity_type in SUPPLY_LINK_TYPES
-            ):
+            if is_patrol_supply_link(current_idx):
+                current_tile = tiles_by_index[current_idx]
                 current_tile.last_patrolled_index = self.supply_patrol_index
 
             for adjacent_idx in self.map.u_iter_neighbor_indices(current_idx):
-                adjacent_tile = tiles_by_index[adjacent_idx]
-                if (
-                    adjacent_tile.building.team == own_team
-                    and adjacent_tile.building.entity_type in SUPPLY_LINK_TYPES
-                ):
+                if is_patrol_supply_link(adjacent_idx):
+                    adjacent_tile = tiles_by_index[adjacent_idx]
                     adjacent_tile.last_patrolled_index = self.supply_patrol_index
 
         def get_unpatrolled_target_indices() -> list[int]:
             supply_patrol_index = self.supply_patrol_index
             candidate_entries: list[tuple[int, int, int, int]] = []
 
-            for idx in known_own_supply_link_indices:
+            for idx in patrol_supply_link_indices:
                 if self.round_stopwatch.check_overtime():
                     break
                 target_tile = tiles_by_index[idx]
+                if not is_patrol_supply_link(idx):
+                    continue
                 last_patrolled_index = target_tile.last_patrolled_index
                 if last_patrolled_index >= supply_patrol_index:
                     continue

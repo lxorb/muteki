@@ -40,6 +40,9 @@ class BuilderCommonSelf(Protocol):
     enemy_core_proxy_base_target_pos: Position | None
     step_off_core_attempted: bool
     spawn_relative_tile: tuple[int, int] | None
+    spawn_round_by_builder_id: dict[int, int]
+    self_built_supply_link_indices_by_builder_id: dict[int, set[int]]
+    self_patrol_defender_builder_ids: set[int]
 
     def u_filter_tiles(
         self,
@@ -52,6 +55,10 @@ class BuilderCommonSelf(Protocol):
         tiles: list[Tile],
         *criteria: TileCriterion,
     ) -> list[Tile]: ...
+
+    def u_is_initial_scavenger(self) -> bool: ...
+
+    def u_is_self_patrol_defender(self) -> bool: ...
 
 
 class BuilderExecutionSelf(BuilderCommonSelf, Protocol):
@@ -261,6 +268,22 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
 
     def s_convert_to_defender(self) -> BuilderActionResult: ...
 
+    def s_convert_initial_scavenger_to_self_patrol_defender(
+        self,
+    ) -> BuilderActionResult: ...
+
+    def u_record_self_built_supply_link(
+        self,
+        pos: Position,
+        building_type: EntityType,
+    ) -> None: ...
+
+    def u_get_self_built_supply_link_indices(self) -> set[int]: ...
+
+    def u_initial_scavenger_has_connected_self_built_supply_to_core(
+        self,
+    ) -> bool: ...
+
     def s_integrate_foundry(
         self,
         move_towards: bool = True,
@@ -426,6 +449,11 @@ class BuilderStrategyMethodsSelf(BuilderNavigationSelf, Protocol):
         self,
         move_towards: bool = True,
         wait_if_enemy_builder_bots_in_range: bool = True,
+    ) -> BuilderActionResult: ...
+
+    def s_patrol_supply_chains(
+        self,
+        only_patrol_self_built: bool = False,
     ) -> BuilderActionResult: ...
 
     def s_patrol_enemy_supply_chains(self) -> BuilderActionResult: ...

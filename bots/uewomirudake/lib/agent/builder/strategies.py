@@ -44,6 +44,10 @@ SCAVENGER_STRATEGY = [
     (True, BuilderStrategyMethodsMixin.s_swap_with_splitter, True, True),
     (
         False,
+        BuilderStrategyMethodsMixin.s_convert_initial_scavenger_to_self_patrol_defender,
+    ),
+    (
+        False,
         BuilderStrategyMethodsMixin.s_build_harvester,
         True,
         True,
@@ -65,6 +69,7 @@ SCAVENGER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_information_gain_scout, 0),
     (False, BuilderStrategyMethodsMixin.s_frontier_expand, 0),
     (False, BuilderStrategyMethodsMixin.s_move_toward_enemy_core),
+    (False, BuilderStrategyMethodsMixin.s_patrol_supply_chains, True),
     (False, BuilderStrategyMethodsMixin.s_patrol_supply_chains),
 ]
 
