@@ -33,7 +33,7 @@ SCAVENGER_STRATEGY = [
     (False, BuilderStrategyMethodsMixin.s_heal_own_building),
     (False, BuilderStrategyMethodsMixin.s_fix_harvester, True, True),
     # (False, BuilderStrategyMethodsMixin.s_simple_harvester_build, True),
-    (False, BuilderStrategyMethodsMixin.s_standing_next_to_you),
+    # (False, BuilderStrategyMethodsMixin.s_standing_next_to_you),
     (
         True,
         BuilderStrategyMethodsMixin.s_turret_next_to_enemy_harvester,

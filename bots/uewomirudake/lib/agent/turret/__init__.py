@@ -5,11 +5,13 @@ from lib.agent.builder.navigation import BuilderNavigationMixin
 from lib.agent.constants import (
     ATTACK_TURRET_TYPES,
     CONVEYOR_ENTITY_TYPES,
+    DESTROYABLE_FOR_OBLITERATING,
     LAUNCHER_THROWABLE_PRIORITY_RANK,
     LAUNCHER_YEET_AWAY_MIN_DISTANCE,
     LAUNCHER_YEET_TO_TARGET_MIN_DISTANCE,
     TURRET_TARGET_PRIORITY_RANK,
     TURRET_UNFED_SELF_DESTRUCT_ROUNDS,
+    URGENT_TARGETS,
 )
 from lib.map.constants import SUPPLY_LINK_TYPES
 
@@ -534,6 +536,31 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         vision_radius_sq = current_tile.building.vision_radius_sq
         if vision_radius_sq is None:
             vision_radius_sq = self.ct.get_vision_radius_sq()
+
+        ray_tiles = self.map.u_get_gunner_ray_tiles(
+            current_pos,
+            direction,
+            vision_radius_sq,
+        )
+        obliterate_plan = self.u_gunner_obliterate_ray_target(
+            ray_tiles,
+            current_round,
+        )
+        if obliterate_plan is not None:
+            urgent_tile, first_blocker = obliterate_plan
+            fire_tile = first_blocker if first_blocker is not None else urgent_tile
+            if self.ct.can_fire(fire_tile.position):
+                print(
+                    "Gunner obliterate fire:",
+                    fire_tile.position,
+                    "vs urgent",
+                    urgent_tile.building.entity_type,
+                    "at",
+                    urgent_tile.position,
+                )
+                self.ct.fire(fire_tile.position)
+                return True
+
         current_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
             current_pos,
             direction,
@@ -548,11 +575,6 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         ):
             return True
 
-        ray_tiles = self.map.u_get_gunner_ray_tiles(
-            current_pos,
-            direction,
-            vision_radius_sq,
-        )
         target_tile = self.u_get_gunner_target_tile(ray_tiles, current_round)
         print(
             "Gunner next target:",
@@ -822,6 +844,47 @@ class TurretAgent(BuilderNavigationMixin, Agent):
                 continue
             if tile.bot.id is not None or tile.building.id is not None:
                 return tile
+
+        return None
+
+    def u_gunner_obliterate_ray_target(
+        self,
+        ray_tiles,
+        current_round: int,
+    ):
+        own_team = self.map.own_team
+        enemy_team = self.map.enemy_team
+        first_blocker = None
+        for tile in ray_tiles:
+            if tile.environment == Environment.WALL:
+                return None
+            if tile.last_seen_turn != current_round:
+                return None
+            if tile.bot.id is not None and tile.bot.team == own_team:
+                return None
+
+            building = tile.building
+            if (
+                building.id is not None
+                and building.team == enemy_team
+                and building.entity_type in URGENT_TARGETS
+            ):
+                return (tile, first_blocker)
+
+            if tile.bot.id is not None and tile.bot.team == enemy_team:
+                if first_blocker is None:
+                    first_blocker = tile
+                continue
+
+            if building.id is None:
+                continue
+
+            if building.entity_type in DESTROYABLE_FOR_OBLITERATING:
+                if first_blocker is None:
+                    first_blocker = tile
+                continue
+
+            return None
 
         return None
 
