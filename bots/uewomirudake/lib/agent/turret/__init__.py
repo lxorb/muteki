@@ -622,7 +622,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
         if not should_try_rotate and not enemy_turret_in_current_direction:
             best_direction = self.u_get_gunner_orientation(current_pos)
             if best_direction != current_direction:
-                best_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+                best_shootable_tiles = self.map.u_get_gunner_rotation_target_tiles(
                     current_pos,
                     best_direction,
                     vision_radius_sq,
@@ -646,7 +646,7 @@ class TurretAgent(BuilderNavigationMixin, Agent):
             return False
 
         if best_shootable_tiles is None:
-            best_shootable_tiles = self.map.u_get_gunner_shootable_tiles(
+            best_shootable_tiles = self.map.u_get_gunner_rotation_target_tiles(
                 current_pos,
                 best_direction,
                 vision_radius_sq,

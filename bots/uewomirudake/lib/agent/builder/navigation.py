@@ -1307,11 +1307,25 @@ class BuilderNavigationMixin:
             if filtered_entries:
                 candidate_entries = filtered_entries
 
+        def has_static_enemy_target(candidate_entry) -> bool:
+            return any(
+                target_tile.is_core_of(enemy_team)
+                or (
+                    target_tile.last_seen_turn == current_round
+                    and target_tile.building.id is not None
+                    and target_tile.building.team == enemy_team
+                )
+                for target_tile in candidate_entry["shootable_tiles"]
+            )
+
         for direction in Direction:
             if direction == Direction.CENTRE:
                 continue
 
-            shootable_tiles = self.map.u_get_gunner_shootable_tiles(pos, direction)
+            shootable_tiles = self.map.u_get_gunner_rotation_target_tiles(
+                pos,
+                direction,
+            )
             if not shootable_tiles:
                 continue
 
@@ -1351,6 +1365,8 @@ class BuilderNavigationMixin:
 
         if not candidate_entries:
             return self.u_get_direction_toward_enemy_core_center(pos)
+
+        filter_candidates(has_static_enemy_target)
 
         filter_candidates(
             lambda candidate_entry: (

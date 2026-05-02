@@ -3249,6 +3249,62 @@ class Map:
                 break
         return shootable_tiles
 
+    def u_get_gunner_rotation_target_tiles(
+        self,
+        source_pos: Position,
+        direction: Direction,
+        radius_sq: int = GameConstants.GUNNER_VISION_RADIUS_SQ,
+        enemy_supply_chain_feeding_own_turret_blocks: bool = True,
+    ) -> list[Tile]:
+        rotation_tiles: list[Tile] = []
+        current_round = self.current_round
+        enemy_team = self.enemy_team
+        for target_tile in self.u_get_gunner_ray_tiles(
+            source_pos,
+            direction,
+            radius_sq,
+        ):
+            if target_tile.environment == Environment.WALL:
+                break
+
+            if (
+                target_tile.building.entity_type == EntityType.HARVESTER
+                and (
+                    source_pos.distance_squared(target_tile.position) <= 2
+                    or self.u_enemy_titanium_harvester_has_adjacent_own_turret(
+                        target_tile
+                    )
+                )
+            ):
+                break
+
+            if (
+                target_tile.building.id is not None
+                and target_tile.building.team == self.own_team
+                and target_tile.building.entity_type != EntityType.ROAD
+            ):
+                if (
+                    target_tile.last_seen_turn == current_round
+                    and target_tile.bot.id is not None
+                    and target_tile.bot.team == enemy_team
+                ):
+                    rotation_tiles.append(target_tile)
+                break
+
+            if (
+                enemy_supply_chain_feeding_own_turret_blocks
+                and target_tile.last_seen_turn == current_round
+                and target_tile.building.team == self.enemy_team
+                and target_tile.building.entity_type in SUPPLY_LINK_TYPES
+                and self.u_enemy_supply_chain_feeds_own_turret(target_tile.index)
+            ):
+                break
+
+            rotation_tiles.append(target_tile)
+            if self.round_stopwatch.check_overtime_interval():
+                break
+        return rotation_tiles
+
     def u_sentinel_covers_target(
         self,
         turret_pos: Position,
