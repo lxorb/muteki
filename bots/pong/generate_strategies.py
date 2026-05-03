@@ -426,10 +426,10 @@ def target_phase(
         phase = 1000 + flow_distance
     elif kind == "bridge":
         phase = 1100 + core_distance
+    elif kind == "foundry":
+        phase = 1800 + core_distance
     elif kind == "harvester":
         phase = 2000 + core_distance
-    elif kind == "foundry":
-        phase = 2100 + core_distance
     else:
         phase = 3000 + core_distance
     return phase, flow_distance, pos[1], pos[0]
