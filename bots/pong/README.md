@@ -62,9 +62,11 @@ or objects:
 
 ## Strategy Optimizer
 
-`optimize.py` searches over builder spawn schedules, builder ownership regions,
-target ordering phases, movement target scoring, cleanup mode, and builder
-count. It does not edit `plan.json`; every candidate is passed through
+`pong_optimizer.py` searches over builder spawn schedules, builder ownership
+regions, target ordering phases, movement target scoring, cleanup mode, builder
+count, and constrained layout mutations, including flow-aware bridge/conveyor
+reroutes. Candidate plans are materialized only inside temporary worker bots;
+every candidate is passed through
 `generate_strategies.py`, so impossible strategy JSONs are rejected before a
 game is simulated.
 
@@ -84,7 +86,8 @@ python tools\pong_optimizer.py --max-trials 0 --no-validate-improvements
 The optimizer evaluates only TEAM_B axionite. It creates temporary worker bots
 named `pong_opt_worker_*` and writes ignored run logs under
 `tools/pong_optimizer_runs/`. On each improvement it writes the winning
-`strategy_config.json`, regenerates `spawns.json` and `strategies/*.json`, and
-commits when `--commit-improvements` is set.
+`plan.json` and `strategy_config.json`, regenerates `spawns.json` and
+`strategies/*.json`, and commits when `--commit-improvements` is set.
 
 Use `--workers 0` to saturate the machine with one cambc worker per logical CPU.
+Use `--layout-mutation-rate 0` for strategy-only search.

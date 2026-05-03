@@ -276,8 +276,11 @@
     "47,4": null,
     "48,4": null,
     "49,4": {
-      "type": "conveyor",
-      "direction": "south"
+      "type": "bridge",
+      "target": [
+        49,
+        5
+      ]
     },
     "0,5": null,
     "1,5": null,

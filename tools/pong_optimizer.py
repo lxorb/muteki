@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 import copy
 from dataclasses import dataclass, field
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -79,16 +80,29 @@ SCORING_RANGES = {
     "core_distance_weight": (-5, 10),
 }
 
+ORTHOGONAL_STEPS = ((0, -1), (1, 0), (0, 1), (-1, 0))
+DIR_BY_DELTA = {
+    (0, -1): "north",
+    (1, 0): "east",
+    (0, 1): "south",
+    (-1, 0): "west",
+}
+WALKABLE_PLAN_TYPES = {"conveyor", "bridge", "road", "armoured_conveyor"}
+BUILDABLE_PLAN_TYPES = {"conveyor", "bridge", "road", "harvester", "foundry", "barrier"}
+ORE_TERRAIN = {2, 3}
+CORE_TILES = {(x, y) for x in range(40, 43) for y in range(7, 10)}
+
 
 @dataclass(frozen=True)
 class Candidate:
     config: dict[str, Any]
+    plan: dict[str, Any]
     source: str
     generation: int = 0
     fingerprint: str = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "fingerprint", fingerprint_config(self.config))
+        object.__setattr__(self, "fingerprint", fingerprint_candidate(self))
 
 
 @dataclass
@@ -125,6 +139,23 @@ def fingerprint_config(config: dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def fingerprint_plan(plan: dict[str, Any]) -> str:
+    payload = json.dumps(plan.get("tiles", {}), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def fingerprint_candidate(candidate: Candidate) -> str:
+    payload = json.dumps(
+        {
+            "config": clean_json_config(candidate.config),
+            "plan": candidate.plan.get("tiles", {}),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def load_seed_config() -> dict[str, Any]:
     if generator.CONFIG_PATH.exists():
         raw = read_json(generator.CONFIG_PATH)
@@ -133,8 +164,183 @@ def load_seed_config() -> dict[str, Any]:
     return clean_json_config(generator.normalize_config(raw))
 
 
+def load_seed_plan() -> dict[str, Any]:
+    return read_json(BOT_ROOT / "plan.json")
+
+
 def clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
+
+
+def tile_key(pos: tuple[int, int]) -> str:
+    return f"{pos[0]},{pos[1]}"
+
+
+def parse_tile_key(raw: str) -> tuple[int, int]:
+    x, y = raw.split(",", 1)
+    return int(x), int(y)
+
+
+def spec_kind(spec: Any) -> str | None:
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        return spec
+    return spec.get("type")
+
+
+def copy_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    return copy.deepcopy(plan)
+
+
+@lru_cache(maxsize=1)
+def map_rows() -> list[list[int]]:
+    return read_json(BOT_ROOT / "pong_map.json")["rows"]
+
+
+def right_side_final_tiles(plan: dict[str, Any]) -> dict[tuple[int, int], Any]:
+    final_tiles: dict[tuple[int, int], Any] = {}
+    for raw_key, spec in plan["tiles"].items():
+        if spec is None:
+            continue
+        pos = parse_tile_key(raw_key)
+        if pos[0] < generator.RIGHT_MIN_X or pos in CORE_TILES:
+            continue
+        final_tiles[pos] = spec
+    return final_tiles
+
+
+def plan_stats(plan: dict[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for pos, spec in right_side_final_tiles(plan).items():
+        kind = spec_kind(spec)
+        if kind is not None:
+            counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
+def plan_diff_stats(base_plan: dict[str, Any], plan: dict[str, Any]) -> dict[str, int]:
+    changed = added = removed = 0
+    keys = set(base_plan["tiles"]) | set(plan["tiles"])
+    for key in keys:
+        old = base_plan["tiles"].get(key)
+        new = plan["tiles"].get(key)
+        if old == new:
+            continue
+        changed += 1
+        if old is None and new is not None:
+            added += 1
+        elif old is not None and new is None:
+            removed += 1
+    return {"changed": changed, "added": added, "removed": removed}
+
+
+def is_empty_buildable(rows: list[list[int]], pos: tuple[int, int]) -> bool:
+    x, y = pos
+    return (
+        generator.RIGHT_MIN_X <= x < len(rows[0])
+        and 0 <= y < len(rows)
+        and rows[y][x] == 0
+        and pos not in CORE_TILES
+    )
+
+
+def in_map(rows: list[list[int]], pos: tuple[int, int]) -> bool:
+    x, y = pos
+    return generator.RIGHT_MIN_X <= x < len(rows[0]) and 0 <= y < len(rows)
+
+
+def direction_between(source: tuple[int, int], target: tuple[int, int]) -> str | None:
+    dx = target[0] - source[0]
+    dy = target[1] - source[1]
+    return DIR_BY_DELTA.get((dx, dy))
+
+
+def set_plan_tile(plan: dict[str, Any], pos: tuple[int, int], spec: Any) -> None:
+    plan["tiles"][tile_key(pos)] = copy.deepcopy(spec)
+
+
+def get_plan_tile(plan: dict[str, Any], pos: tuple[int, int]) -> Any:
+    return plan["tiles"].get(tile_key(pos))
+
+
+def validate_plan_static(plan: dict[str, Any]) -> tuple[bool, str]:
+    rows = map_rows()
+    width = len(rows[0])
+    height = len(rows)
+    final_tiles = right_side_final_tiles(plan)
+    foundries = {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"}
+    core_or_foundry_distances = compute_flow_distances_to_sinks(final_tiles, set(CORE_TILES) | foundries)
+
+    for pos, spec in final_tiles.items():
+        x, y = pos
+        if not (0 <= x < width and 0 <= y < height):
+            return False, f"{pos} is outside map"
+        if rows[y][x] == 1:
+            return False, f"{pos} is a wall"
+        if pos in CORE_TILES:
+            return False, f"{pos} overlaps core"
+
+        kind = spec_kind(spec)
+        if kind not in BUILDABLE_PLAN_TYPES:
+            return False, f"{pos} has unsupported building {kind}"
+        terrain = rows[y][x]
+        if kind == "harvester":
+            if terrain not in ORE_TERRAIN:
+                return False, f"harvester at {pos} is not on ore"
+        elif terrain != 0:
+            return False, f"{kind} at {pos} is not on empty terrain"
+
+        if kind == "conveyor":
+            if not isinstance(spec, dict) or spec.get("direction") not in DIR_BY_DELTA.values():
+                return False, f"conveyor at {pos} has invalid direction"
+            target = generator.flow_target(pos, spec)
+            if target is None or not in_map(rows, target):
+                return False, f"conveyor at {pos} targets outside map"
+            if rows[target[1]][target[0]] == 1:
+                return False, f"conveyor at {pos} targets wall"
+        elif kind == "bridge":
+            if not isinstance(spec, dict) or "target" not in spec:
+                return False, f"bridge at {pos} has no target"
+            target = tuple(int(value) for value in spec["target"])
+            if generator.distance_sq(pos, target) > 9:
+                return False, f"bridge at {pos} target {target} is too far"
+            if not in_map(rows, target):
+                return False, f"bridge at {pos} targets outside map"
+            if rows[target[1]][target[0]] == 1:
+                return False, f"bridge at {pos} targets wall"
+
+    for pos, spec in final_tiles.items():
+        kind = spec_kind(spec)
+        if kind in WALKABLE_PLAN_TYPES and pos not in core_or_foundry_distances:
+            # Isolated walkables are allowed only when adjacent to a harvester,
+            # because some candidate mutations add secondary harvester outputs.
+            if not any(
+                spec_kind(final_tiles.get((pos[0] + dx, pos[1] + dy))) == "harvester"
+                for dx, dy in ORTHOGONAL_STEPS
+            ):
+                return False, f"walkable {pos} does not flow to a core or foundry"
+
+    return True, "ok"
+
+
+def compute_flow_distances_to_sinks(
+    final_tiles: dict[tuple[int, int], Any],
+    sinks: set[tuple[int, int]],
+) -> dict[tuple[int, int], int]:
+    distances = {sink: 0 for sink in sinks}
+    changed = True
+    while changed:
+        changed = False
+        for pos, spec in final_tiles.items():
+            target = generator.flow_target(pos, spec)
+            if target is None or target not in distances:
+                continue
+            distance = distances[target] + 1
+            if distance < distances.get(pos, 1_000_000):
+                distances[pos] = distance
+                changed = True
+    return distances
 
 
 def repair_config(config: dict[str, Any], rng: random.Random) -> dict[str, Any]:
@@ -322,8 +528,266 @@ def mutate_misc(config: dict[str, Any], rng: random.Random) -> str:
     return choice
 
 
-def mutate_candidate(parent: Candidate, rng: random.Random, generation: int) -> Candidate:
+def mutate_remove_harvester(plan: dict[str, Any], rng: random.Random) -> str:
+    rows = map_rows()
+    harvesters = [
+        (pos, rows[pos[1]][pos[0]])
+        for pos, spec in right_side_final_tiles(plan).items()
+        if spec_kind(spec) == "harvester"
+    ]
+    if not harvesters:
+        return "layout:no_harvester"
+    # Prefer titanium removals because late surplus titanium is common, but
+    # occasionally test axionite pruning too.
+    titanium = [item for item in harvesters if item[1] == 2]
+    pool = titanium if titanium and rng.random() < 0.75 else harvesters
+    pos, terrain = rng.choice(pool)
+    set_plan_tile(plan, pos, None)
+    return f"layout:remove_harvester:{pos[0]},{pos[1]}:{terrain}"
+
+
+def mutate_restore_base_tile(
+    plan: dict[str, Any],
+    base_plan: dict[str, Any],
+    rng: random.Random,
+) -> str:
+    changed = []
+    for key, base_spec in base_plan["tiles"].items():
+        if plan["tiles"].get(key) != base_spec:
+            pos = parse_tile_key(key)
+            if pos[0] >= generator.RIGHT_MIN_X:
+                changed.append((pos, base_spec))
+    if not changed:
+        return "layout:no_restore"
+    pos, base_spec = rng.choice(changed)
+    set_plan_tile(plan, pos, base_spec)
+    return f"layout:restore:{pos[0]},{pos[1]}"
+
+
+def downstream_targets(
+    final_tiles: dict[tuple[int, int], Any],
+    source: tuple[int, int],
+    max_steps: int,
+) -> list[tuple[int, int]]:
+    result = []
+    seen = {source}
+    current = source
+    for _ in range(max_steps):
+        spec = final_tiles.get(current)
+        target = generator.flow_target(current, spec) if spec is not None else None
+        if target is None or target in seen:
+            break
+        result.append(target)
+        seen.add(target)
+        current = target
+    return result
+
+
+def mutate_bridge_shortcut(plan: dict[str, Any], rng: random.Random) -> str:
+    final_tiles = right_side_final_tiles(plan)
+    candidates = []
+    for pos, spec in final_tiles.items():
+        if spec_kind(spec) != "conveyor":
+            continue
+        for target in downstream_targets(final_tiles, pos, 4):
+            if target == pos or generator.distance_sq(pos, target) > 9:
+                continue
+            if target in CORE_TILES or spec_kind(final_tiles.get(target)) in WALKABLE_PLAN_TYPES | {"foundry"}:
+                candidates.append((pos, target))
+    if not candidates:
+        return "layout:no_bridge_shortcut"
+    pos, target = rng.choice(candidates)
+    set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
+    return f"layout:bridge_shortcut:{pos[0]},{pos[1]}->{target[0]},{target[1]}"
+
+
+def mutate_downgrade_bridge(plan: dict[str, Any], rng: random.Random) -> str:
+    candidates = []
+    for pos, spec in right_side_final_tiles(plan).items():
+        if spec_kind(spec) != "bridge" or not isinstance(spec, dict):
+            continue
+        target = tuple(int(value) for value in spec["target"])
+        direction = direction_between(pos, target)
+        if direction is not None:
+            candidates.append((pos, direction))
+    if not candidates:
+        return "layout:no_bridge_downgrade"
+    pos, direction = rng.choice(candidates)
+    set_plan_tile(plan, pos, {"type": "conveyor", "direction": direction})
+    return f"layout:downgrade_bridge:{pos[0]},{pos[1]}:{direction}"
+
+
+def mutate_add_harvester_output(plan: dict[str, Any], rng: random.Random) -> str:
+    rows = map_rows()
+    final_tiles = right_side_final_tiles(plan)
+    core_flow = generator.compute_flow_distances(final_tiles)
+    foundries = {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"}
+    foundry_flow = compute_flow_distances_to_sinks(final_tiles, foundries)
+    candidates = []
+
+    for harvester, spec in final_tiles.items():
+        if spec_kind(spec) != "harvester":
+            continue
+        terrain = rows[harvester[1]][harvester[0]]
+        flow = core_flow if terrain == 2 else foundry_flow
+        for dx, dy in ORTHOGONAL_STEPS:
+            output = (harvester[0] + dx, harvester[1] + dy)
+            if get_plan_tile(plan, output) is not None or not is_empty_buildable(rows, output):
+                continue
+            best_target = None
+            best_distance = 1_000_000
+            for tx, ty in ORTHOGONAL_STEPS:
+                target = (output[0] + tx, output[1] + ty)
+                if target == harvester:
+                    continue
+                if target in CORE_TILES:
+                    distance = 0
+                else:
+                    distance = flow.get(target, 1_000_000)
+                direction = direction_between(output, target)
+                if direction is not None and distance < best_distance:
+                    best_target = (target, direction)
+                    best_distance = distance
+            if best_target is not None and best_distance < 1_000_000:
+                candidates.append((harvester, output, best_target[1], terrain, best_distance))
+
+    if not candidates:
+        return "layout:no_output_port"
+    candidates.sort(key=lambda item: (item[4], item[0][1], item[0][0]))
+    pool = candidates[: max(1, min(16, len(candidates)))]
+    harvester, output, direction, terrain, _ = rng.choice(pool)
+    set_plan_tile(plan, output, {"type": "conveyor", "direction": direction})
+    return (
+        f"layout:add_output:{harvester[0]},{harvester[1]}:"
+        f"{output[0]},{output[1]}:{direction}:{terrain}"
+    )
+
+
+def mutate_retarget_bridge(plan: dict[str, Any], rng: random.Random) -> str:
+    rows = map_rows()
+    final_tiles = right_side_final_tiles(plan)
+    core_or_foundry = compute_flow_distances_to_sinks(
+        final_tiles,
+        set(CORE_TILES) | {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"},
+    )
+    candidates = []
+    for pos, spec in final_tiles.items():
+        if spec_kind(spec) != "bridge":
+            continue
+        current_target = tuple(int(value) for value in spec["target"])
+        current_distance = core_or_foundry.get(current_target, 1_000_000)
+        for x in range(pos[0] - 3, pos[0] + 4):
+            for y in range(pos[1] - 3, pos[1] + 4):
+                target = (x, y)
+                if target == current_target or generator.distance_sq(pos, target) > 9:
+                    continue
+                if not in_map(rows, target) or rows[y][x] == 1:
+                    continue
+                kind = spec_kind(final_tiles.get(target))
+                if target not in CORE_TILES and kind not in WALKABLE_PLAN_TYPES | {"foundry"}:
+                    continue
+                distance = core_or_foundry.get(target, 1_000_000)
+                if distance <= current_distance:
+                    candidates.append((pos, target, distance))
+    if not candidates:
+        return "layout:no_bridge_retarget"
+    candidates.sort(key=lambda item: item[2])
+    pos, target, _ = rng.choice(candidates[: max(1, min(24, len(candidates)))])
+    set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
+    return f"layout:retarget_bridge:{pos[0]},{pos[1]}->{target[0]},{target[1]}"
+
+
+def flow_candidate_targets(
+    rows: list[list[int]],
+    final_tiles: dict[tuple[int, int], Any],
+    source: tuple[int, int],
+    distances: dict[tuple[int, int], int],
+    max_distance_sq: int,
+) -> list[tuple[tuple[int, int], int]]:
+    targets = []
+    for x in range(source[0] - 3, source[0] + 4):
+        for y in range(source[1] - 3, source[1] + 4):
+            target = (x, y)
+            if target == source or generator.distance_sq(source, target) > max_distance_sq:
+                continue
+            if not in_map(rows, target) or rows[y][x] == 1:
+                continue
+            target_kind = spec_kind(final_tiles.get(target))
+            if target not in CORE_TILES and target_kind not in WALKABLE_PLAN_TYPES | {"foundry"}:
+                continue
+            distance = distances.get(target)
+            if distance is not None:
+                targets.append((target, distance))
+    return targets
+
+
+def mutate_reroute_flow(plan: dict[str, Any], rng: random.Random) -> str:
+    rows = map_rows()
+    final_tiles = right_side_final_tiles(plan)
+    distances = compute_flow_distances_to_sinks(
+        final_tiles,
+        set(CORE_TILES) | {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"},
+    )
+    candidates = []
+    for pos, spec in final_tiles.items():
+        if spec_kind(spec) not in {"conveyor", "bridge"}:
+            continue
+        current_target = generator.flow_target(pos, spec)
+        current_distance = distances.get(current_target, 1_000_000) if current_target else 1_000_000
+        for target, distance in flow_candidate_targets(rows, final_tiles, pos, distances, max_distance_sq=9):
+            if target == current_target or distance >= current_distance:
+                continue
+            candidates.append((current_distance - distance, pos, target))
+
+    if not candidates:
+        return "layout:no_flow_reroute"
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    _, pos, target = rng.choice(candidates[: max(1, min(24, len(candidates)))])
+    direction = direction_between(pos, target)
+    if direction is None:
+        set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
+    else:
+        set_plan_tile(plan, pos, {"type": "conveyor", "direction": direction})
+    return f"layout:reroute_flow:{pos[0]},{pos[1]}->{target[0]},{target[1]}"
+
+
+def mutate_plan(
+    plan: dict[str, Any],
+    base_plan: dict[str, Any],
+    rng: random.Random,
+) -> str:
+    operations = [
+        mutate_bridge_shortcut,
+        mutate_bridge_shortcut,
+        mutate_reroute_flow,
+        mutate_reroute_flow,
+        mutate_add_harvester_output,
+        mutate_retarget_bridge,
+        mutate_downgrade_bridge,
+        mutate_remove_harvester,
+    ]
+    if plan_diff_stats(base_plan, plan)["changed"] > 0:
+        operations.append(lambda candidate_plan, local_rng: mutate_restore_base_tile(candidate_plan, base_plan, local_rng))
+
+    before = copy_plan(plan)
+    source = rng.choice(operations)(plan, rng)
+    ok, reason = validate_plan_static(plan)
+    if not ok:
+        plan.clear()
+        plan.update(before)
+        return f"{source}:invalid:{reason}"
+    return source
+
+
+def mutate_candidate(
+    parent: Candidate,
+    base_plan: dict[str, Any],
+    rng: random.Random,
+    generation: int,
+    layout_rate: float,
+) -> Candidate:
     config = copy.deepcopy(parent.config)
+    plan = copy_plan(parent.plan)
     operations = [
         mutate_phase,
         mutate_phase,
@@ -339,13 +803,18 @@ def mutate_candidate(parent: Candidate, rng: random.Random, generation: int) -> 
     for _ in range(count):
         operation = rng.choice(operations)
         sources.append(operation(config, rng))
+    if rng.random() < layout_rate:
+        layout_mutation_count = 1 if rng.random() < 0.82 else 2
+        for _ in range(layout_mutation_count):
+            sources.append(mutate_plan(plan, base_plan, rng))
     config = repair_config(config, rng)
-    return Candidate(config=config, source="+".join(sources), generation=generation)
+    return Candidate(config=config, plan=plan, source="+".join(sources), generation=generation)
 
 
 def crossover_candidate(
     left: Candidate,
     right: Candidate,
+    base_plan: dict[str, Any],
     rng: random.Random,
     generation: int,
 ) -> Candidate:
@@ -356,8 +825,36 @@ def crossover_candidate(
             config[section] = copy.deepcopy(donor[section])
     if rng.random() < 0.35:
         config["spawns"] = copy.deepcopy(donor["spawns"])
+    plan = crossover_plan(left.plan, right.plan, rng)
+    if rng.random() < 0.35:
+        mutate_plan(plan, base_plan, rng)
     config = repair_config(config, rng)
-    return Candidate(config=config, source=f"crossover:{left.fingerprint}:{right.fingerprint}", generation=generation)
+    return Candidate(
+        config=config,
+        plan=plan,
+        source=f"crossover:{left.fingerprint}:{right.fingerprint}",
+        generation=generation,
+    )
+
+
+def crossover_plan(
+    left_plan: dict[str, Any],
+    right_plan: dict[str, Any],
+    rng: random.Random,
+) -> dict[str, Any]:
+    plan = copy_plan(left_plan)
+    if rng.random() >= 0.5:
+        return plan
+    min_x = rng.randint(generator.RIGHT_MIN_X, 44)
+    max_x = rng.randint(min_x, 49)
+    min_y = rng.randint(3, 18)
+    max_y = rng.randint(min_y, 22)
+    for raw_key, spec in right_plan["tiles"].items():
+        pos = parse_tile_key(raw_key)
+        if min_x <= pos[0] <= max_x and min_y <= pos[1] <= max_y:
+            plan["tiles"][raw_key] = copy.deepcopy(spec)
+    ok, _ = validate_plan_static(plan)
+    return plan if ok else copy_plan(left_plan)
 
 
 def prepare_worker(worker_name: str) -> Path:
@@ -404,6 +901,17 @@ def evaluate_candidate(
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        ok, reason = validate_plan_static(candidate.plan)
+        if not ok:
+            return EvalResult(
+                trial=trial,
+                candidate=candidate,
+                feasible=False,
+                reason=f"static plan validation failed: {reason}",
+                worker_name=worker_name,
+                elapsed_s=time.monotonic() - started,
+            )
+        write_json(worker_root / "plan.json", candidate.plan)
         summary = generator.generate(
             raw_config=candidate.config,
             plan_path=worker_root / "plan.json",
@@ -516,7 +1024,7 @@ def evaluate_candidate(
     )
 
 
-def validate_replay(replay_path: Path, run_dir: Path) -> dict[str, Any]:
+def validate_replay(replay_path: Path, run_dir: Path, plan_path: Path) -> dict[str, Any]:
     parsed_dir = run_dir / "validation" / replay_path.stem
     if parsed_dir.exists():
         shutil.rmtree(parsed_dir)
@@ -543,7 +1051,7 @@ def validate_replay(replay_path: Path, run_dir: Path) -> dict[str, Any]:
     if completed.returncode != 0:
         return {"ok": False, "reason": completed.stdout[-1200:]}
 
-    plan = read_json(BOT_ROOT / "plan.json")
+    plan = read_json(plan_path)
     final_entities = read_json(parsed_dir / "final_entities.json")
     plan_tiles = {}
     for raw_key, spec in plan["tiles"].items():
@@ -625,6 +1133,7 @@ def copy_tree_contents(source: Path, destination: Path) -> None:
 def publish_best(result: EvalResult, commit: bool) -> None:
     worker_root = BOTS_ROOT / result.worker_name
     write_json(BOT_ROOT / "strategy_config.json", clean_json_config(result.candidate.config))
+    shutil.copy2(worker_root / "plan.json", BOT_ROOT / "plan.json")
     shutil.copy2(worker_root / "spawns.json", BOT_ROOT / "spawns.json")
     copy_tree_contents(worker_root / "strategies", BOT_ROOT / "strategies")
     subprocess.run(
@@ -637,6 +1146,7 @@ def publish_best(result: EvalResult, commit: bool) -> None:
             [
                 "git",
                 "add",
+                str(BOT_ROOT / "plan.json"),
                 str(BOT_ROOT / "strategy_config.json"),
                 str(BOT_ROOT / "spawns.json"),
                 str(BOT_ROOT / "strategies"),
@@ -676,6 +1186,8 @@ def append_history(path: Path, result: EvalResult, best_score: int) -> None:
         "elapsed_s": round(result.elapsed_s, 3),
         "worker": result.worker_name,
         "validation": result.validation,
+        "plan_fingerprint": fingerprint_plan(result.candidate.plan),
+        "plan_stats": plan_stats(result.candidate.plan),
         "config": clean_json_config(result.candidate.config),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -692,23 +1204,30 @@ def choose_parent(population: list[EvalResult], rng: random.Random) -> EvalResul
 def make_candidate(
     population: list[EvalResult],
     seen: set[str],
+    base_plan: dict[str, Any],
     rng: random.Random,
     generation: int,
+    layout_rate: float,
 ) -> Candidate:
     for _ in range(200):
         if len(population) >= 2 and rng.random() < 0.22:
             left = choose_parent(population, rng)
             right = choose_parent(population, rng)
-            candidate = crossover_candidate(left.candidate, right.candidate, rng, generation)
+            candidate = crossover_candidate(left.candidate, right.candidate, base_plan, rng, generation)
         else:
             parent = choose_parent(population, rng)
-            candidate = mutate_candidate(parent.candidate, rng, generation)
+            candidate = mutate_candidate(parent.candidate, base_plan, rng, generation, layout_rate)
         if candidate.fingerprint not in seen:
             seen.add(candidate.fingerprint)
             return candidate
 
     config = repair_config(copy.deepcopy(generator.DEFAULT_CONFIG), rng)
-    candidate = Candidate(config=config, source="random_restart", generation=generation)
+    candidate = Candidate(
+        config=config,
+        plan=copy_plan(base_plan),
+        source="random_restart",
+        generation=generation,
+    )
     seen.add(candidate.fingerprint)
     return candidate
 
@@ -731,14 +1250,14 @@ def run(args: argparse.Namespace) -> int:
     run_dir = RUN_ROOT / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     history_path = run_dir / "trials.jsonl"
-    initial_plan_hash = plan_hash()
+    seed_plan = load_seed_plan()
 
     worker_names = [f"pong_opt_worker_{index}" for index in range(args.workers)]
     for worker_name in worker_names:
         prepare_worker(worker_name)
 
     seed_config = repair_config(load_seed_config(), rng)
-    baseline = Candidate(config=seed_config, source="baseline", generation=0)
+    baseline = Candidate(config=seed_config, plan=copy_plan(seed_plan), source="baseline", generation=0)
     seen = {baseline.fingerprint}
     print(f"[optimizer] run={run_id} workers={args.workers} seed={args.seed}")
     print("[optimizer] evaluating baseline")
@@ -747,7 +1266,16 @@ def run(args: argparse.Namespace) -> int:
         raise RuntimeError(f"baseline is not feasible: {best.reason}")
     population = [best]
     append_history(history_path, best, best.score_b)
-    write_json(run_dir / "best.json", {"score_b": best.score_b, "config": best.candidate.config})
+    write_json(
+        run_dir / "best.json",
+        {
+            "score_b": best.score_b,
+            "config": clean_json_config(best.candidate.config),
+            "plan_fingerprint": fingerprint_plan(best.candidate.plan),
+            "plan_stats": plan_stats(best.candidate.plan),
+        },
+    )
+    write_json(run_dir / "best_plan.json", best.candidate.plan)
     print(f"[optimizer] baseline score_b={best.score_b} score_a={best.score_a}")
 
     trial = 1
@@ -762,7 +1290,14 @@ def run(args: argparse.Namespace) -> int:
             for worker_name in worker_names:
                 if trial > args.max_trials:
                     break
-                candidate = make_candidate(population, seen, rng, generation)
+                candidate = make_candidate(
+                    population,
+                    seen,
+                    seed_plan,
+                    rng,
+                    generation,
+                    args.layout_mutation_rate,
+                )
                 batch.append((trial, candidate, worker_name))
                 trial += 1
                 generation += 1
@@ -783,7 +1318,11 @@ def run(args: argparse.Namespace) -> int:
                     result = future.result()
                     improved = result.feasible and result.score_b > best.score_b
                     if improved and args.validate_improvements and result.replay_path is not None:
-                        result.validation = validate_replay(result.replay_path, run_dir)
+                        result.validation = validate_replay(
+                            result.replay_path,
+                            run_dir,
+                            BOTS_ROOT / result.worker_name / "plan.json",
+                        )
                         if not result.validation.get("ok", False):
                             result.feasible = False
                             result.reason = f"validation failed: {result.validation}"
@@ -807,9 +1346,12 @@ def run(args: argparse.Namespace) -> int:
                                 "fingerprint": best.candidate.fingerprint,
                                 "source": best.candidate.source,
                                 "validation": best.validation,
+                                "plan_fingerprint": fingerprint_plan(best.candidate.plan),
+                                "plan_stats": plan_stats(best.candidate.plan),
                                 "config": clean_json_config(best.candidate.config),
                             },
                         )
+                        write_json(run_dir / "best_plan.json", best.candidate.plan)
                         print(
                             f"[optimizer] IMPROVED trial={best.trial} "
                             f"score_b={best.score_b} score_a={best.score_a} "
@@ -826,8 +1368,6 @@ def run(args: argparse.Namespace) -> int:
 
                     append_history(history_path, result, best.score_b)
 
-            if plan_hash() != initial_plan_hash:
-                raise RuntimeError("plan.json changed during optimization; aborting")
     finally:
         if not args.keep_workers:
             cleanup_workers(worker_names)
@@ -839,8 +1379,8 @@ def run(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Replay-guided pong strategy optimizer. It keeps plan.json fixed and "
-            "optimizes only builder spawns, ownership, and action ordering."
+            "Replay-guided pong optimizer for builder strategy and constrained "
+            "layout mutations."
         )
     )
     parser.add_argument("--max-trials", type=int, default=1000)
@@ -854,6 +1394,12 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--population-size", type=int, default=32)
     parser.add_argument("--cambc-timeout", type=int, default=90)
+    parser.add_argument(
+        "--layout-mutation-rate",
+        type=float,
+        default=0.35,
+        help="Probability that a candidate mutates the layout in addition to strategy knobs.",
+    )
     parser.add_argument("--commit-improvements", action="store_true")
     parser.add_argument(
         "--validate-improvements",
@@ -868,6 +1414,7 @@ def main() -> int:
         args.workers = max(1, args.workers)
     args.max_trials = max(0, args.max_trials)
     args.population_size = max(2, args.population_size)
+    args.layout_mutation_rate = max(0.0, min(1.0, args.layout_mutation_rate))
     return run(args)
 
 
