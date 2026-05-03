@@ -52,7 +52,7 @@
       22
     ]
   },
-  "auto_temp_bounds": true,
+  "auto_temp_bounds": false,
   "temp_margin": 2,
   "phase": {
     "titanium_path_base": 0,
@@ -69,7 +69,7 @@
     "other_core_weight": 1
   },
   "target_scoring": {
-    "path_weight": 7,
+    "path_weight": 8,
     "manhattan_weight": 1,
     "flow_weight": 0,
     "core_distance_weight": 0
