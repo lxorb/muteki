@@ -56,11 +56,11 @@
   "temp_margin": 2,
   "phase": {
     "titanium_path_base": 0,
-    "titanium_path_weight": 2,
+    "titanium_path_weight": 4,
     "titanium_harvester_base": -6,
     "titanium_harvester_weight": 2,
     "foundry_base": 900,
-    "foundry_core_weight": 1,
+    "foundry_core_weight": 0,
     "generic_walkable_base": 1000,
     "generic_walkable_flow_weight": 1,
     "axionite_harvester_base": 2000,
@@ -72,7 +72,7 @@
     "path_weight": 10,
     "manhattan_weight": 1,
     "flow_weight": 0,
-    "core_distance_weight": -1
+    "core_distance_weight": 0
   },
   "cleanup": {
     "mode": "nearest"
