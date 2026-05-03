@@ -49,7 +49,7 @@
   "temp_margin": 2,
   "phase": {
     "titanium_path_base": 0,
-    "titanium_path_weight": 2,
+    "titanium_path_weight": 5,
     "titanium_harvester_base": 1,
     "titanium_harvester_weight": 2,
     "foundry_base": 900,
