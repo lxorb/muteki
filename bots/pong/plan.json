@@ -198,10 +198,16 @@
     "40,3": null,
     "41,3": null,
     "42,3": null,
-    "43,3": null,
-    "44,3": null,
-    "45,3": null,
-    "46,3": null,
+    "43,3": {
+      "type": "conveyor",
+      "direction": "south"
+    },
+    "44,3": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "45,3": "harvester",
+    "46,3": "harvester",
     "47,3": null,
     "48,3": null,
     "49,3": null,
@@ -246,15 +252,33 @@
     "38,4": null,
     "39,4": null,
     "40,4": null,
-    "41,4": null,
-    "42,4": null,
-    "43,4": null,
-    "44,4": null,
-    "45,4": null,
-    "46,4": null,
+    "41,4": {
+      "type": "conveyor",
+      "direction": "south"
+    },
+    "42,4": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "43,4": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "44,4": "harvester",
+    "45,4": "harvester",
+    "46,4": {
+      "type": "bridge",
+      "target": [
+        49,
+        4
+      ]
+    },
     "47,4": null,
     "48,4": null,
-    "49,4": null,
+    "49,4": {
+      "type": "conveyor",
+      "direction": "south"
+    },
     "0,5": null,
     "1,5": null,
     "2,5": null,
@@ -296,15 +320,21 @@
     "38,5": null,
     "39,5": null,
     "40,5": null,
-    "41,5": null,
-    "42,5": null,
-    "43,5": null,
+    "41,5": {
+      "type": "conveyor",
+      "direction": "south"
+    },
+    "42,5": "harvester",
+    "43,5": "harvester",
     "44,5": null,
     "45,5": null,
-    "46,5": null,
-    "47,5": null,
+    "46,5": "harvester",
+    "47,5": "harvester",
     "48,5": null,
-    "49,5": null,
+    "49,5": {
+      "type": "conveyor",
+      "direction": "south"
+    },
     "0,6": null,
     "1,6": null,
     "2,6": null,
@@ -344,17 +374,29 @@
     "36,6": null,
     "37,6": null,
     "38,6": null,
-    "39,6": null,
-    "40,6": null,
-    "41,6": null,
+    "39,6": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "40,6": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "41,6": "foundry",
     "42,6": null,
     "43,6": null,
     "44,6": null,
-    "45,6": null,
-    "46,6": null,
-    "47,6": null,
+    "45,6": "harvester",
+    "46,6": "harvester",
+    "47,6": {
+      "type": "conveyor",
+      "direction": "south"
+    },
     "48,6": null,
-    "49,6": null,
+    "49,6": {
+      "type": "conveyor",
+      "direction": "south"
+    },
     "0,7": null,
     "1,7": null,
     "2,7": null,
@@ -388,23 +430,53 @@
     "30,7": null,
     "31,7": null,
     "32,7": null,
-    "33,7": null,
-    "34,7": null,
-    "35,7": null,
-    "36,7": null,
-    "37,7": null,
-    "38,7": null,
-    "39,7": null,
+    "33,7": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "34,7": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "35,7": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "36,7": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "37,7": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "38,7": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "39,7": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "40,7": null,
     "41,7": null,
     "42,7": null,
     "43,7": null,
-    "44,7": null,
-    "45,7": null,
-    "46,7": null,
-    "47,7": null,
+    "44,7": "harvester",
+    "45,7": "harvester",
+    "46,7": {
+      "type": "conveyor",
+      "direction": "south"
+    },
+    "47,7": {
+      "type": "conveyor",
+      "direction": "west"
+    },
     "48,7": null,
-    "49,7": null,
+    "49,7": {
+      "type": "conveyor",
+      "direction": "south"
+    },
     "0,8": null,
     "1,8": null,
     "2,8": null,
@@ -438,23 +510,50 @@
     "30,8": null,
     "31,8": null,
     "32,8": null,
-    "33,8": null,
+    "33,8": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "34,8": null,
     "35,8": null,
     "36,8": null,
     "37,8": null,
-    "38,8": null,
-    "39,8": null,
+    "38,8": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "39,8": {
+      "type": "conveyor",
+      "direction": "east"
+    },
     "40,8": null,
     "41,8": null,
     "42,8": null,
-    "43,8": null,
-    "44,8": null,
-    "45,8": null,
-    "46,8": null,
-    "47,8": null,
-    "48,8": null,
-    "49,8": null,
+    "43,8": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "44,8": "foundry",
+    "45,8": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "46,8": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "47,8": {
+      "type": "conveyor",
+      "direction": "south"
+    },
+    "48,8": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "49,8": {
+      "type": "conveyor",
+      "direction": "west"
+    },
     "0,9": null,
     "1,9": null,
     "2,9": null,
@@ -488,22 +587,55 @@
     "30,9": null,
     "31,9": null,
     "32,9": null,
-    "33,9": null,
+    "33,9": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "34,9": null,
     "35,9": null,
     "36,9": null,
-    "37,9": null,
-    "38,9": null,
-    "39,9": null,
+    "37,9": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "38,9": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "39,9": {
+      "type": "conveyor",
+      "direction": "east"
+    },
     "40,9": null,
     "41,9": null,
     "42,9": null,
-    "43,9": null,
-    "44,9": null,
-    "45,9": null,
+    "43,9": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "44,9": "foundry",
+    "45,9": {
+      "type": "bridge",
+      "target": [
+        42,
+        9
+      ]
+    },
     "46,9": null,
-    "47,9": null,
-    "48,9": null,
+    "47,9": {
+      "type": "bridge",
+      "target": [
+        44,
+        9
+      ]
+    },
+    "48,9": {
+      "type": "bridge",
+      "target": [
+        45,
+        9
+      ]
+    },
     "49,9": null,
     "0,10": null,
     "1,10": null,
@@ -538,21 +670,66 @@
     "30,10": null,
     "31,10": null,
     "32,10": null,
-    "33,10": null,
-    "34,10": null,
-    "35,10": null,
-    "36,10": null,
-    "37,10": null,
-    "38,10": null,
-    "39,10": null,
-    "40,10": null,
-    "41,10": null,
+    "33,10": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "34,10": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "35,10": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "36,10": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "37,10": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "38,10": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "39,10": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "40,10": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "41,10": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "42,10": null,
-    "43,10": null,
-    "44,10": null,
-    "45,10": null,
-    "46,10": null,
-    "47,10": null,
+    "43,10": {
+      "type": "bridge",
+      "target": [
+        44,
+        8
+      ]
+    },
+    "44,10": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "45,10": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "46,10": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "47,10": {
+      "type": "conveyor",
+      "direction": "west"
+    },
     "48,10": null,
     "49,10": null,
     "0,11": null,
@@ -586,25 +763,70 @@
     "28,11": null,
     "29,11": null,
     "30,11": null,
-    "31,11": null,
-    "32,11": null,
-    "33,11": null,
-    "34,11": null,
-    "35,11": null,
-    "36,11": null,
-    "37,11": null,
-    "38,11": null,
-    "39,11": null,
-    "40,11": null,
-    "41,11": null,
+    "31,11": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "32,11": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "33,11": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "34,11": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "35,11": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "36,11": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "37,11": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "38,11": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "39,11": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "40,11": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "41,11": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "42,11": null,
-    "43,11": null,
+    "43,11": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "44,11": null,
     "45,11": null,
     "46,11": null,
-    "47,11": null,
+    "47,11": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "48,11": null,
-    "49,11": null,
+    "49,11": {
+      "type": "bridge",
+      "target": [
+        48,
+        9
+      ]
+    },
     "0,12": null,
     "1,12": null,
     "2,12": null,
@@ -635,25 +857,43 @@
     "27,12": null,
     "28,12": null,
     "29,12": null,
-    "30,12": null,
-    "31,12": null,
-    "32,12": null,
+    "30,12": "harvester",
+    "31,12": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "32,12": "harvester",
     "33,12": null,
-    "34,12": null,
-    "35,12": null,
-    "36,12": null,
-    "37,12": null,
-    "38,12": null,
-    "39,12": null,
-    "40,12": null,
+    "34,12": "harvester",
+    "35,12": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "36,12": "harvester",
+    "37,12": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "38,12": "harvester",
+    "39,12": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "40,12": "harvester",
     "41,12": null,
-    "42,12": null,
-    "43,12": null,
-    "44,12": null,
+    "42,12": "harvester",
+    "43,12": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "44,12": "harvester",
     "45,12": null,
-    "46,12": null,
-    "47,12": null,
-    "48,12": null,
+    "46,12": "harvester",
+    "47,12": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "48,12": "harvester",
     "49,12": null,
     "0,13": null,
     "1,13": null,
@@ -686,23 +926,53 @@
     "28,13": null,
     "29,13": null,
     "30,13": null,
-    "31,13": null,
-    "32,13": null,
-    "33,13": null,
+    "31,13": "harvester",
+    "32,13": {
+      "type": "bridge",
+      "target": [
+        33,
+        11
+      ]
+    },
+    "33,13": "harvester",
     "34,13": null,
-    "35,13": null,
-    "36,13": null,
-    "37,13": null,
+    "35,13": "harvester",
+    "36,13": {
+      "type": "bridge",
+      "target": [
+        34,
+        11
+      ]
+    },
+    "37,13": "harvester",
     "38,13": null,
-    "39,13": null,
-    "40,13": null,
-    "41,13": null,
-    "42,13": null,
-    "43,13": null,
+    "39,13": "harvester",
+    "40,13": {
+      "type": "bridge",
+      "target": [
+        41,
+        11
+      ]
+    },
+    "41,13": "harvester",
+    "42,13": {
+      "type": "bridge",
+      "target": [
+        43,
+        11
+      ]
+    },
+    "43,13": "harvester",
     "44,13": null,
-    "45,13": null,
-    "46,13": null,
-    "47,13": null,
+    "45,13": "harvester",
+    "46,13": {
+      "type": "bridge",
+      "target": [
+        46,
+        10
+      ]
+    },
+    "47,13": "harvester",
     "48,13": null,
     "49,13": null,
     "0,14": null,
@@ -741,7 +1011,10 @@
     "33,14": null,
     "34,14": null,
     "35,14": null,
-    "36,14": null,
+    "36,14": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "37,14": null,
     "38,14": null,
     "39,14": null,
@@ -754,7 +1027,13 @@
     "46,14": null,
     "47,14": null,
     "48,14": null,
-    "49,14": null,
+    "49,14": {
+      "type": "bridge",
+      "target": [
+        49,
+        11
+      ]
+    },
     "0,15": null,
     "1,15": null,
     "2,15": null,
@@ -787,22 +1066,73 @@
     "29,15": null,
     "30,15": null,
     "31,15": null,
-    "32,15": null,
-    "33,15": null,
+    "32,15": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "33,15": {
+      "type": "bridge",
+      "target": [
+        35,
+        15
+      ]
+    },
     "34,15": null,
-    "35,15": null,
-    "36,15": null,
+    "35,15": {
+      "type": "bridge",
+      "target": [
+        38,
+        15
+      ]
+    },
+    "36,15": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "37,15": null,
-    "38,15": null,
-    "39,15": null,
-    "40,15": null,
+    "38,15": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "39,15": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "40,15": {
+      "type": "bridge",
+      "target": [
+        43,
+        15
+      ]
+    },
     "41,15": null,
-    "42,15": null,
-    "43,15": null,
+    "42,15": {
+      "type": "bridge",
+      "target": [
+        40,
+        13
+      ]
+    },
+    "43,15": {
+      "type": "bridge",
+      "target": [
+        46,
+        15
+      ]
+    },
     "44,15": null,
     "45,15": null,
-    "46,15": null,
-    "47,15": null,
+    "46,15": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "47,15": {
+      "type": "bridge",
+      "target": [
+        49,
+        14
+      ]
+    },
     "48,15": null,
     "49,15": null,
     "0,16": null,
@@ -835,25 +1165,43 @@
     "27,16": null,
     "28,16": null,
     "29,16": null,
-    "30,16": null,
-    "31,16": null,
-    "32,16": null,
-    "33,16": null,
-    "34,16": null,
+    "30,16": "harvester",
+    "31,16": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "32,16": "foundry",
+    "33,16": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "34,16": "harvester",
     "35,16": null,
     "36,16": null,
-    "37,16": null,
-    "38,16": null,
-    "39,16": null,
-    "40,16": null,
-    "41,16": null,
+    "37,16": "harvester",
+    "38,16": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "39,16": "foundry",
+    "40,16": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "41,16": "harvester",
     "42,16": null,
     "43,16": null,
-    "44,16": null,
-    "45,16": null,
-    "46,16": null,
-    "47,16": null,
-    "48,16": null,
+    "44,16": "harvester",
+    "45,16": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "46,16": "foundry",
+    "47,16": {
+      "type": "conveyor",
+      "direction": "west"
+    },
+    "48,16": "harvester",
     "49,16": null,
     "0,17": null,
     "1,17": null,
@@ -886,23 +1234,35 @@
     "28,17": null,
     "29,17": null,
     "30,17": null,
-    "31,17": null,
+    "31,17": "harvester",
     "32,17": null,
-    "33,17": null,
+    "33,17": "harvester",
     "34,17": null,
-    "35,17": null,
+    "35,17": {
+      "type": "bridge",
+      "target": [
+        36,
+        15
+      ]
+    },
     "36,17": null,
     "37,17": null,
-    "38,17": null,
+    "38,17": "harvester",
     "39,17": null,
-    "40,17": null,
+    "40,17": "harvester",
     "41,17": null,
     "42,17": null,
-    "43,17": null,
+    "43,17": {
+      "type": "bridge",
+      "target": [
+        42,
+        15
+      ]
+    },
     "44,17": null,
-    "45,17": null,
+    "45,17": "harvester",
     "46,17": null,
-    "47,17": null,
+    "47,17": "harvester",
     "48,17": null,
     "49,17": null,
     "0,18": null,
@@ -940,7 +1300,10 @@
     "32,18": null,
     "33,18": null,
     "34,18": null,
-    "35,18": null,
+    "35,18": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "36,18": null,
     "37,18": null,
     "38,18": null,
@@ -948,7 +1311,10 @@
     "40,18": null,
     "41,18": null,
     "42,18": null,
-    "43,18": null,
+    "43,18": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "44,18": null,
     "45,18": null,
     "46,18": null,
@@ -986,23 +1352,53 @@
     "28,19": null,
     "29,19": null,
     "30,19": null,
-    "31,19": null,
-    "32,19": null,
+    "31,19": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "32,19": {
+      "type": "bridge",
+      "target": [
+        32,
+        16
+      ]
+    },
     "33,19": null,
     "34,19": null,
-    "35,19": null,
+    "35,19": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "36,19": null,
     "37,19": null,
     "38,19": null,
-    "39,19": null,
+    "39,19": {
+      "type": "bridge",
+      "target": [
+        39,
+        16
+      ]
+    },
     "40,19": null,
     "41,19": null,
     "42,19": null,
-    "43,19": null,
+    "43,19": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "44,19": null,
     "45,19": null,
-    "46,19": null,
-    "47,19": null,
+    "46,19": {
+      "type": "bridge",
+      "target": [
+        46,
+        16
+      ]
+    },
+    "47,19": {
+      "type": "conveyor",
+      "direction": "west"
+    },
     "48,19": null,
     "49,19": null,
     "0,20": null,
@@ -1035,25 +1431,40 @@
     "27,20": null,
     "28,20": null,
     "29,20": null,
-    "30,20": null,
-    "31,20": null,
-    "32,20": null,
+    "30,20": "harvester",
+    "31,20": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "32,20": "harvester",
     "33,20": null,
-    "34,20": null,
-    "35,20": null,
-    "36,20": null,
+    "34,20": "harvester",
+    "35,20": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "36,20": "harvester",
     "37,20": null,
-    "38,20": null,
-    "39,20": null,
-    "40,20": null,
+    "38,20": "harvester",
+    "39,20": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "40,20": "harvester",
     "41,20": null,
-    "42,20": null,
-    "43,20": null,
-    "44,20": null,
+    "42,20": "harvester",
+    "43,20": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "44,20": "harvester",
     "45,20": null,
-    "46,20": null,
-    "47,20": null,
-    "48,20": null,
+    "46,20": "harvester",
+    "47,20": {
+      "type": "conveyor",
+      "direction": "north"
+    },
+    "48,20": "harvester",
     "49,20": null,
     "0,21": null,
     "1,21": null,
@@ -1086,23 +1497,41 @@
     "28,21": null,
     "29,21": null,
     "30,21": null,
-    "31,21": null,
-    "32,21": null,
-    "33,21": null,
+    "31,21": "harvester",
+    "32,21": {
+      "type": "bridge",
+      "target": [
+        32,
+        19
+      ]
+    },
+    "33,21": "harvester",
     "34,21": null,
-    "35,21": null,
+    "35,21": "harvester",
     "36,21": null,
-    "37,21": null,
-    "38,21": null,
-    "39,21": null,
+    "37,21": "harvester",
+    "38,21": {
+      "type": "bridge",
+      "target": [
+        39,
+        20
+      ]
+    },
+    "39,21": "harvester",
     "40,21": null,
-    "41,21": null,
-    "42,21": null,
-    "43,21": null,
+    "41,21": "harvester",
+    "42,21": {
+      "type": "bridge",
+      "target": [
+        43,
+        19
+      ]
+    },
+    "43,21": "harvester",
     "44,21": null,
-    "45,21": null,
+    "45,21": "harvester",
     "46,21": null,
-    "47,21": null,
+    "47,21": "harvester",
     "48,21": null,
     "49,21": null,
     "0,22": null,

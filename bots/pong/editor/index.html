@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pong Strategy Editor</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="title-group">
+        <h1>Pong Strategy Editor</h1>
+        <div id="status" class="status">Loading</div>
+      </div>
+
+      <nav class="mode-tabs" aria-label="Editor mode">
+        <button id="layoutModeButton" class="mode-button is-active" type="button">Layout</button>
+        <button id="strategyModeButton" class="mode-button" type="button">Builder Order</button>
+      </nav>
+
+      <div class="top-actions">
+        <button id="savePlanButton" class="command primary" type="button">Save Layout</button>
+        <button id="saveStrategyButton" class="command" type="button">Save Strategy</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="map-area" aria-label="Right half of pong map">
+        <div class="map-heading">
+          <div>
+            <h2>Right Side</h2>
+            <p>Canonical coordinates x=25..49. Left-side runtime is mirrored automatically.</p>
+          </div>
+          <div class="map-tools">
+            <label class="builder-select">
+              Builder
+              <select id="builderSelect"></select>
+            </label>
+            <button id="addBuilderButton" class="icon-command" type="button" title="Create next builder strategy">+</button>
+          </div>
+        </div>
+
+        <div id="mapGrid" class="map-grid" aria-label="Editable map grid"></div>
+      </section>
+
+      <aside class="side-panel" aria-label="Editor controls">
+        <section id="layoutPanel" class="panel-section">
+          <h2>Layout Tile</h2>
+          <div id="selectedTileLabel" class="selected-tile">No tile selected</div>
+
+          <div class="shortcut-grid" aria-label="Tile shortcuts">
+            <button data-shortcut-building="road" type="button"><span>R</span>Road</button>
+            <button data-shortcut-building="conveyor" type="button"><span>C</span>Conveyor / rotate</button>
+            <button data-shortcut-building="bridge" type="button"><span>B</span>Bridge</button>
+            <button data-shortcut-building="harvester" type="button"><span>H</span>Harvester</button>
+            <button data-shortcut-building="foundry" type="button"><span>F</span>Foundry</button>
+            <button data-shortcut-building="barrier" type="button"><span>W</span>Barrier</button>
+            <button data-shortcut-building="clear" type="button"><span>X</span>Clear</button>
+          </div>
+
+          <label class="field">
+            Building
+            <select id="layoutBuildingSelect">
+              <option value="">None</option>
+              <option value="road">Road</option>
+              <option value="conveyor">Conveyor</option>
+              <option value="bridge">Bridge</option>
+              <option value="harvester">Harvester</option>
+              <option value="foundry">Foundry</option>
+              <option value="barrier">Barrier</option>
+            </select>
+          </label>
+
+          <label class="field" id="layoutDirectionField">
+            Direction
+            <select id="layoutDirectionSelect"></select>
+          </label>
+
+          <div class="field" id="layoutBridgeField">
+            <span>Bridge Target</span>
+            <div class="inline-controls">
+              <code id="layoutBridgeTargetLabel">none</code>
+              <button id="pickLayoutBridgeTargetButton" class="command" type="button">Pick Target</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="strategyPanel" class="panel-section is-hidden">
+          <h2>Builder Order</h2>
+          <div class="spawn-config">
+            <h3>Spawn</h3>
+            <div class="spawn-grid">
+              <label class="field">
+                Spawn Turn
+                <input id="spawnTurnNumber" type="number" min="0" value="0" />
+              </label>
+              <div class="field">
+                <span>Spawn Tile</span>
+                <code id="spawnTileLabel">none</code>
+              </div>
+              <div class="field">
+                <span>First Action</span>
+                <code id="firstActionTurnLabel">1</code>
+              </div>
+            </div>
+            <div class="inline-controls">
+              <button id="pickSpawnTileButton" class="command" type="button">Pick Spawn Tile</button>
+              <button id="saveSpawnButton" class="command primary" type="button">Save Spawn</button>
+            </div>
+          </div>
+
+          <div class="turn-row">
+            <label class="field compact">
+              Turn
+              <input id="turnNumber" type="number" min="1" value="1" />
+            </label>
+            <input id="turnSlider" class="turn-slider" type="range" min="1" max="300" value="1" />
+          </div>
+
+          <div class="segmented" aria-label="Click behavior">
+            <button id="appendModeButton" class="is-active" type="button">Append</button>
+            <button id="currentModeButton" type="button">Set Turn</button>
+          </div>
+
+          <div class="strategy-actions">
+            <button id="appendPlanBuildButton" class="command strategy-tool is-active" type="button">Build From Plan</button>
+            <button id="appendOverrideBuildButton" class="command strategy-tool" type="button">Overwrite Build</button>
+            <button id="appendMoveButton" class="command strategy-tool" type="button">Move</button>
+            <button id="appendDestroyButton" class="command strategy-tool" type="button">Destroy</button>
+            <button id="clearFutureButton" class="command danger" type="button">Clear Future Actions</button>
+          </div>
+
+          <label class="field">
+            Overwrite Building
+            <select id="overrideBuildingSelect">
+              <option value="">Use plan</option>
+              <option value="road">Road</option>
+              <option value="conveyor">Conveyor</option>
+              <option value="bridge">Bridge</option>
+              <option value="harvester">Harvester</option>
+              <option value="foundry">Foundry</option>
+              <option value="barrier">Barrier</option>
+            </select>
+          </label>
+
+          <label class="field" id="overrideDirectionField">
+            Overwrite Direction
+            <select id="overrideDirectionSelect"></select>
+          </label>
+
+          <div class="field" id="overrideBridgeField">
+            <span>Overwrite Bridge Target</span>
+            <div class="inline-controls">
+              <code id="overrideBridgeTargetLabel">none</code>
+              <button id="pickOverrideBridgeTargetButton" class="command" type="button">Pick Target</button>
+            </div>
+          </div>
+
+          <div class="current-turn">
+            <h3>Turn Actions</h3>
+            <ol id="turnActionList"></ol>
+          </div>
+
+          <div class="strategy-warnings">
+            <h3>Warnings</h3>
+            <ul id="strategyWarningList"></ul>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>Selection</h2>
+          <dl id="selectionDetails" class="details-list"></dl>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

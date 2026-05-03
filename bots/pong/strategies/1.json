@@ -1,5 +1,544 @@
 {
   "turns": {
-    "0": []
+    "1": [
+      {
+        "action": "build",
+        "at": [
+          40,
+          10
+        ]
+      }
+    ],
+    "2": [
+      {
+        "action": "move_to",
+        "to": [
+          40,
+          10
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          40,
+          11
+        ]
+      }
+    ],
+    "3": [
+      {
+        "action": "move_to",
+        "to": [
+          40,
+          11
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          40,
+          12
+        ]
+      }
+    ],
+    "4": [
+      {
+        "action": "build",
+        "at": [
+          39,
+          11
+        ]
+      }
+    ],
+    "5": [
+      {
+        "action": "build",
+        "at": [
+          39,
+          12
+        ]
+      }
+    ],
+    "6": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          12
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          39,
+          13
+        ]
+      }
+    ],
+    "7": [
+      {
+        "action": "build",
+        "at": [
+          38,
+          12
+        ]
+      }
+    ],
+    "8": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          11
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          39,
+          10
+        ]
+      }
+    ],
+    "9": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          10
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          39,
+          9
+        ]
+      }
+    ],
+    "10": [
+      {
+        "action": "build",
+        "at": [
+          38,
+          10
+        ]
+      }
+    ],
+    "11": [
+      {
+        "action": "build",
+        "at": [
+          38,
+          11
+        ]
+      }
+    ],
+    "12": [
+      {
+        "action": "move_to",
+        "to": [
+          38,
+          11
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          37,
+          11
+        ]
+      }
+    ],
+    "13": [
+      {
+        "action": "build",
+        "at": [
+          37,
+          12
+        ]
+      }
+    ],
+    "14": [
+      {
+        "action": "move_to",
+        "to": [
+          37,
+          12
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          37,
+          13
+        ]
+      }
+    ],
+    "15": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          12
+        ]
+      }
+    ],
+    "16": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          11
+        ]
+      }
+    ],
+    "17": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          11
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          35,
+          11
+        ]
+      }
+    ],
+    "18": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          12
+        ]
+      }
+    ],
+    "19": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          12
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          35,
+          13
+        ]
+      }
+    ],
+    "20": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          12
+        ]
+      }
+    ],
+    "21": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          11
+        ]
+      }
+    ],
+    "22": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          11
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          33,
+          11
+        ]
+      }
+    ],
+    "23": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          11
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          32,
+          11
+        ]
+      }
+    ],
+    "24": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          11
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          31,
+          11
+        ]
+      }
+    ],
+    "25": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          12
+        ]
+      }
+    ],
+    "26": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          12
+        ]
+      }
+    ],
+    "27": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          12
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          31,
+          13
+        ]
+      }
+    ],
+    "28": [
+      {
+        "action": "build",
+        "at": [
+          30,
+          12
+        ]
+      }
+    ],
+    "29": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          11
+        ]
+      }
+    ],
+    "30": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          10
+        ]
+      }
+    ],
+    "31": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          10
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          33,
+          9
+        ]
+      }
+    ],
+    "32": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          9
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          33,
+          8
+        ]
+      }
+    ],
+    "33": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          8
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          33,
+          7
+        ]
+      }
+    ],
+    "34": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          7
+        ]
+      }
+    ],
+    "35": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          35,
+          7
+        ]
+      }
+    ],
+    "36": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          36,
+          7
+        ]
+      }
+    ],
+    "37": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          37,
+          7
+        ]
+      }
+    ],
+    "38": [
+      {
+        "action": "move_to",
+        "to": [
+          37,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          38,
+          7
+        ]
+      }
+    ],
+    "39": [
+      {
+        "action": "move_to",
+        "to": [
+          38,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          39,
+          7
+        ]
+      }
+    ]
   }
 }
