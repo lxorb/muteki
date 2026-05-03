@@ -6,6 +6,7 @@ import copy
 from dataclasses import dataclass, field
 import hashlib
 import json
+import os
 from pathlib import Path
 import random
 import re
@@ -844,7 +845,12 @@ def main() -> int:
     )
     parser.add_argument("--max-trials", type=int, default=1000)
     parser.add_argument("--seconds", type=int, default=10 * 60 * 60)
-    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="Parallel cambc workers. Use 0 to use all logical CPUs.",
+    )
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--population-size", type=int, default=32)
     parser.add_argument("--cambc-timeout", type=int, default=90)
@@ -856,7 +862,10 @@ def main() -> int:
     )
     parser.add_argument("--keep-workers", action="store_true")
     args = parser.parse_args()
-    args.workers = max(1, args.workers)
+    if args.workers <= 0:
+        args.workers = max(1, os.cpu_count() or 1)
+    else:
+        args.workers = max(1, args.workers)
     args.max_trials = max(0, args.max_trials)
     args.population_size = max(2, args.population_size)
     return run(args)

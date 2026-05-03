@@ -71,13 +71,13 @@ game is simulated.
 Run a long optimization pass:
 
 ```powershell
-python tools\pong_optimizer.py --seconds 36000 --workers 4 --commit-improvements
+python tools\pong_optimizer.py --seconds 36000 --workers 0 --commit-improvements
 ```
 
 Useful shorter runs:
 
 ```powershell
-python tools\pong_optimizer.py --max-trials 20 --workers 2
+python tools\pong_optimizer.py --max-trials 20 --workers 0
 python tools\pong_optimizer.py --max-trials 0 --no-validate-improvements
 ```
 
@@ -86,3 +86,5 @@ named `pong_opt_worker_*` and writes ignored run logs under
 `tools/pong_optimizer_runs/`. On each improvement it writes the winning
 `strategy_config.json`, regenerates `spawns.json` and `strategies/*.json`, and
 commits when `--commit-improvements` is set.
+
+Use `--workers 0` to saturate the machine with one cambc worker per logical CPU.
