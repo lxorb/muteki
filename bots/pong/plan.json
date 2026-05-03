@@ -478,8 +478,11 @@
       "direction": "east"
     },
     "38,7": {
-      "type": "conveyor",
-      "direction": "east"
+      "type": "bridge",
+      "target": [
+        40,
+        6
+      ]
     },
     "39,7": {
       "type": "conveyor",
