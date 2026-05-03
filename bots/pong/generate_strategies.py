@@ -338,9 +338,9 @@ def target_phase(pos: tuple[int, int], spec: Any, rows: list[list[int]]) -> tupl
     kind = spec_type(spec)
     terrain = rows[pos[1]][pos[0]]
     core_distance = abs(pos[0] - 41) + abs(pos[1] - 8)
-    if kind == "harvester" and terrain == 2:
+    if kind in WALKABLE_TYPES:
         phase = 0
-    elif kind in WALKABLE_TYPES:
+    elif kind == "harvester" and terrain == 2:
         phase = 1
     elif kind == "bridge":
         phase = 2
