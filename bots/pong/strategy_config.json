@@ -52,7 +52,7 @@
       22
     ]
   },
-  "auto_temp_bounds": false,
+  "auto_temp_bounds": true,
   "temp_margin": 2,
   "phase": {
     "titanium_path_base": 0,
@@ -75,6 +75,6 @@
     "core_distance_weight": 0
   },
   "cleanup": {
-    "mode": "farthest"
+    "mode": "nearest"
   }
 }
