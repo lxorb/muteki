@@ -1,7 +1,7 @@
 {
   "spawns": [
     {
-      "turn": 0,
+      "turn": 2,
       "tile": [
         40,
         9
@@ -13,13 +13,6 @@
         42,
         9
       ]
-    },
-    {
-      "turn": 2,
-      "tile": [
-        42,
-        8
-      ]
     }
   ],
   "owner_policy": {
@@ -29,7 +22,7 @@
     "center_y_min": 10,
     "center_y_max": 13,
     "right_x": 43,
-    "fallback_owner": 3,
+    "fallback_owner": 2,
     "rules": []
   },
   "temp_bounds": {
@@ -52,7 +45,7 @@
       22
     ]
   },
-  "auto_temp_bounds": false,
+  "auto_temp_bounds": true,
   "temp_margin": 2,
   "phase": {
     "titanium_path_base": 0,
