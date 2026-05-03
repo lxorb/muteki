@@ -17,8 +17,8 @@
     {
       "turn": 2,
       "tile": [
-        41,
-        8
+        40,
+        7
       ]
     }
   ],
@@ -62,16 +62,16 @@
     "foundry_base": 900,
     "foundry_core_weight": 0,
     "generic_walkable_base": 1000,
-    "generic_walkable_flow_weight": 0,
+    "generic_walkable_flow_weight": 1,
     "axionite_harvester_base": 2000,
     "axionite_harvester_core_weight": 2,
-    "other_base": 3190,
+    "other_base": 3000,
     "other_core_weight": 1
   },
   "target_scoring": {
     "path_weight": 13,
     "manhattan_weight": 1,
-    "flow_weight": 0,
+    "flow_weight": 2,
     "core_distance_weight": 0
   },
   "cleanup": {
