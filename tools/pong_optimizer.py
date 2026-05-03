@@ -233,49 +233,9 @@ def plan_stats(plan: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
-def plan_diff_stats(base_plan: dict[str, Any], plan: dict[str, Any]) -> dict[str, int]:
-    changed = added = removed = 0
-    keys = set(base_plan["tiles"]) | set(plan["tiles"])
-    for key in keys:
-        old = base_plan["tiles"].get(key)
-        new = plan["tiles"].get(key)
-        if old == new:
-            continue
-        changed += 1
-        if old is None and new is not None:
-            added += 1
-        elif old is not None and new is None:
-            removed += 1
-    return {"changed": changed, "added": added, "removed": removed}
-
-
-def is_empty_buildable(rows: list[list[int]], pos: tuple[int, int]) -> bool:
-    x, y = pos
-    return (
-        generator.RIGHT_MIN_X <= x < len(rows[0])
-        and 0 <= y < len(rows)
-        and rows[y][x] == 0
-        and pos not in CORE_TILES
-    )
-
-
 def in_map(rows: list[list[int]], pos: tuple[int, int]) -> bool:
     x, y = pos
     return generator.RIGHT_MIN_X <= x < len(rows[0]) and 0 <= y < len(rows)
-
-
-def direction_between(source: tuple[int, int], target: tuple[int, int]) -> str | None:
-    dx = target[0] - source[0]
-    dy = target[1] - source[1]
-    return DIR_BY_DELTA.get((dx, dy))
-
-
-def set_plan_tile(plan: dict[str, Any], pos: tuple[int, int], spec: Any) -> None:
-    plan["tiles"][tile_key(pos)] = copy.deepcopy(spec)
-
-
-def get_plan_tile(plan: dict[str, Any], pos: tuple[int, int]) -> Any:
-    return plan["tiles"].get(tile_key(pos))
 
 
 def validate_plan_static(plan: dict[str, Any]) -> tuple[bool, str]:
@@ -327,8 +287,7 @@ def validate_plan_static(plan: dict[str, Any]) -> tuple[bool, str]:
     for pos, spec in final_tiles.items():
         kind = spec_kind(spec)
         if kind in WALKABLE_PLAN_TYPES and pos not in core_or_foundry_distances:
-            # Isolated walkables are allowed only when adjacent to a harvester,
-            # because some candidate mutations add secondary harvester outputs.
+            # Isolated walkables are allowed only when adjacent to a harvester.
             if not any(
                 spec_kind(final_tiles.get((pos[0] + dx, pos[1] + dy))) == "harvester"
                 for dx, dy in ORTHOGONAL_STEPS
@@ -542,175 +501,6 @@ def mutate_misc(config: dict[str, Any], rng: random.Random) -> str:
     return choice
 
 
-def mutate_remove_harvester(plan: dict[str, Any], rng: random.Random) -> str:
-    rows = map_rows()
-    harvesters = [
-        (pos, rows[pos[1]][pos[0]])
-        for pos, spec in right_side_final_tiles(plan).items()
-        if spec_kind(spec) == "harvester"
-    ]
-    if not harvesters:
-        return "layout:no_harvester"
-    # Prefer titanium removals because late surplus titanium is common, but
-    # occasionally test axionite pruning too.
-    titanium = [item for item in harvesters if item[1] == 2]
-    pool = titanium if titanium and rng.random() < 0.75 else harvesters
-    pos, terrain = rng.choice(pool)
-    set_plan_tile(plan, pos, None)
-    return f"layout:remove_harvester:{pos[0]},{pos[1]}:{terrain}"
-
-
-def mutate_restore_base_tile(
-    plan: dict[str, Any],
-    base_plan: dict[str, Any],
-    rng: random.Random,
-) -> str:
-    changed = []
-    for key, base_spec in base_plan["tiles"].items():
-        if plan["tiles"].get(key) != base_spec:
-            pos = parse_tile_key(key)
-            if pos[0] >= generator.RIGHT_MIN_X:
-                changed.append((pos, base_spec))
-    if not changed:
-        return "layout:no_restore"
-    pos, base_spec = rng.choice(changed)
-    set_plan_tile(plan, pos, base_spec)
-    return f"layout:restore:{pos[0]},{pos[1]}"
-
-
-def downstream_targets(
-    final_tiles: dict[tuple[int, int], Any],
-    source: tuple[int, int],
-    max_steps: int,
-) -> list[tuple[int, int]]:
-    result = []
-    seen = {source}
-    current = source
-    for _ in range(max_steps):
-        spec = final_tiles.get(current)
-        target = generator.flow_target(current, spec) if spec is not None else None
-        if target is None or target in seen:
-            break
-        result.append(target)
-        seen.add(target)
-        current = target
-    return result
-
-
-def mutate_bridge_shortcut(plan: dict[str, Any], rng: random.Random) -> str:
-    final_tiles = right_side_final_tiles(plan)
-    candidates = []
-    for pos, spec in final_tiles.items():
-        if spec_kind(spec) != "conveyor":
-            continue
-        for target in downstream_targets(final_tiles, pos, 4):
-            if target == pos or generator.distance_sq(pos, target) > 9:
-                continue
-            if target in CORE_TILES or spec_kind(final_tiles.get(target)) in WALKABLE_PLAN_TYPES | {"foundry"}:
-                candidates.append((pos, target))
-    if not candidates:
-        return "layout:no_bridge_shortcut"
-    pos, target = rng.choice(candidates)
-    set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
-    return f"layout:bridge_shortcut:{pos[0]},{pos[1]}->{target[0]},{target[1]}"
-
-
-def mutate_downgrade_bridge(plan: dict[str, Any], rng: random.Random) -> str:
-    candidates = []
-    for pos, spec in right_side_final_tiles(plan).items():
-        if spec_kind(spec) != "bridge" or not isinstance(spec, dict):
-            continue
-        target = tuple(int(value) for value in spec["target"])
-        direction = direction_between(pos, target)
-        if direction is not None:
-            candidates.append((pos, direction))
-    if not candidates:
-        return "layout:no_bridge_downgrade"
-    pos, direction = rng.choice(candidates)
-    set_plan_tile(plan, pos, {"type": "conveyor", "direction": direction})
-    return f"layout:downgrade_bridge:{pos[0]},{pos[1]}:{direction}"
-
-
-def mutate_add_harvester_output(plan: dict[str, Any], rng: random.Random) -> str:
-    rows = map_rows()
-    final_tiles = right_side_final_tiles(plan)
-    core_flow = generator.compute_flow_distances(final_tiles)
-    foundries = {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"}
-    foundry_flow = compute_flow_distances_to_sinks(final_tiles, foundries)
-    candidates = []
-
-    for harvester, spec in final_tiles.items():
-        if spec_kind(spec) != "harvester":
-            continue
-        terrain = rows[harvester[1]][harvester[0]]
-        flow = core_flow if terrain == 2 else foundry_flow
-        for dx, dy in ORTHOGONAL_STEPS:
-            output = (harvester[0] + dx, harvester[1] + dy)
-            if get_plan_tile(plan, output) is not None or not is_empty_buildable(rows, output):
-                continue
-            best_target = None
-            best_distance = 1_000_000
-            for tx, ty in ORTHOGONAL_STEPS:
-                target = (output[0] + tx, output[1] + ty)
-                if target == harvester:
-                    continue
-                if target in CORE_TILES:
-                    distance = 0
-                else:
-                    distance = flow.get(target, 1_000_000)
-                direction = direction_between(output, target)
-                if direction is not None and distance < best_distance:
-                    best_target = (target, direction)
-                    best_distance = distance
-            if best_target is not None and best_distance < 1_000_000:
-                candidates.append((harvester, output, best_target[1], terrain, best_distance))
-
-    if not candidates:
-        return "layout:no_output_port"
-    candidates.sort(key=lambda item: (item[4], item[0][1], item[0][0]))
-    pool = candidates[: max(1, min(16, len(candidates)))]
-    harvester, output, direction, terrain, _ = rng.choice(pool)
-    set_plan_tile(plan, output, {"type": "conveyor", "direction": direction})
-    return (
-        f"layout:add_output:{harvester[0]},{harvester[1]}:"
-        f"{output[0]},{output[1]}:{direction}:{terrain}"
-    )
-
-
-def mutate_retarget_bridge(plan: dict[str, Any], rng: random.Random) -> str:
-    rows = map_rows()
-    final_tiles = right_side_final_tiles(plan)
-    core_or_foundry = compute_flow_distances_to_sinks(
-        final_tiles,
-        set(CORE_TILES) | {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"},
-    )
-    candidates = []
-    for pos, spec in final_tiles.items():
-        if spec_kind(spec) != "bridge":
-            continue
-        current_target = tuple(int(value) for value in spec["target"])
-        current_distance = core_or_foundry.get(current_target, 1_000_000)
-        for x in range(pos[0] - 3, pos[0] + 4):
-            for y in range(pos[1] - 3, pos[1] + 4):
-                target = (x, y)
-                if target == current_target or generator.distance_sq(pos, target) > 9:
-                    continue
-                if not in_map(rows, target) or rows[y][x] == 1:
-                    continue
-                kind = spec_kind(final_tiles.get(target))
-                if target not in CORE_TILES and kind not in WALKABLE_PLAN_TYPES | {"foundry"}:
-                    continue
-                distance = core_or_foundry.get(target, 1_000_000)
-                if distance <= current_distance:
-                    candidates.append((pos, target, distance))
-    if not candidates:
-        return "layout:no_bridge_retarget"
-    candidates.sort(key=lambda item: item[2])
-    pos, target, _ = rng.choice(candidates[: max(1, min(24, len(candidates)))])
-    set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
-    return f"layout:retarget_bridge:{pos[0]},{pos[1]}->{target[0]},{target[1]}"
-
-
 def candidate_with_config(
     parent: Candidate,
     config: dict[str, Any],
@@ -721,23 +511,6 @@ def candidate_with_config(
     return Candidate(
         config=repair_config(config, rng),
         plan=copy_plan(parent.plan),
-        source=source,
-        generation=generation,
-    )
-
-
-def candidate_with_plan(
-    parent: Candidate,
-    plan: dict[str, Any],
-    source: str,
-    generation: int,
-) -> Candidate | None:
-    ok, _ = validate_plan_static(plan)
-    if not ok:
-        return None
-    return Candidate(
-        config=copy.deepcopy(parent.config),
-        plan=plan,
         source=source,
         generation=generation,
     )
@@ -794,57 +567,6 @@ def local_strategy_candidates(
     return candidates
 
 
-def ranked_layout_candidates(
-    parent: Candidate,
-    rng: random.Random,
-    generation: int,
-    limit: int,
-) -> list[Candidate]:
-    final_tiles = right_side_final_tiles(parent.plan)
-    sinks = set(CORE_TILES) | {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"}
-    distances = compute_flow_distances_to_sinks(final_tiles, sinks)
-    edits: list[tuple[int, str, dict[str, Any]]] = []
-
-    for pos, spec in final_tiles.items():
-        kind = spec_kind(spec)
-        if kind == "conveyor":
-            current_target = generator.flow_target(pos, spec)
-            current_distance = distances.get(current_target, 1_000_000) if current_target else 1_000_000
-            for step_index, target in enumerate(downstream_targets(final_tiles, pos, 5), start=1):
-                if generator.distance_sq(pos, target) > 9:
-                    continue
-                target_kind = spec_kind(final_tiles.get(target))
-                if target not in CORE_TILES and target_kind not in WALKABLE_PLAN_TYPES | {"foundry"}:
-                    continue
-                plan = copy_plan(parent.plan)
-                set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
-                gain = max(0, current_distance - distances.get(target, current_distance))
-                priority = 100 + gain * 25 + step_index * 4
-                if target == current_target:
-                    priority += 8
-                edits.append((priority, f"local:layout:bridge:{pos[0]},{pos[1]}->{target[0]},{target[1]}", plan))
-
-        elif kind == "bridge" and isinstance(spec, dict):
-            target = tuple(int(value) for value in spec["target"])
-            direction = direction_between(pos, target)
-            if direction is not None:
-                plan = copy_plan(parent.plan)
-                set_plan_tile(plan, pos, {"type": "conveyor", "direction": direction})
-                edits.append((30, f"local:layout:downgrade:{pos[0]},{pos[1]}:{direction}", plan))
-
-    rng.shuffle(edits)
-    edits.sort(key=lambda item: item[0], reverse=True)
-
-    candidates = []
-    for _, source, plan in edits:
-        candidate = candidate_with_plan(parent, plan, source, generation)
-        if candidate is not None:
-            candidates.append(candidate)
-        if len(candidates) >= limit:
-            break
-    return candidates
-
-
 def local_search_candidates(
     parent: Candidate,
     rng: random.Random,
@@ -853,111 +575,15 @@ def local_search_candidates(
 ) -> list[Candidate]:
     if limit <= 0:
         return []
-    strategy = local_strategy_candidates(parent, rng, generation)
-    fast_strategy = [
-        candidate
-        for candidate in strategy
-        if candidate.source == "local:cleanup_toggle"
-        or candidate.source.startswith("local:scoring:path_weight:")
-    ]
-    broad_strategy = [candidate for candidate in strategy if candidate not in fast_strategy]
-    layout_limit = max(0, limit - len(fast_strategy))
-    layout = ranked_layout_candidates(parent, rng, generation, layout_limit)
-    return [*fast_strategy, *layout, *broad_strategy][:limit]
-
-
-def flow_candidate_targets(
-    rows: list[list[int]],
-    final_tiles: dict[tuple[int, int], Any],
-    source: tuple[int, int],
-    distances: dict[tuple[int, int], int],
-    max_distance_sq: int,
-) -> list[tuple[tuple[int, int], int]]:
-    targets = []
-    for x in range(source[0] - 3, source[0] + 4):
-        for y in range(source[1] - 3, source[1] + 4):
-            target = (x, y)
-            if target == source or generator.distance_sq(source, target) > max_distance_sq:
-                continue
-            if not in_map(rows, target) or rows[y][x] == 1:
-                continue
-            target_kind = spec_kind(final_tiles.get(target))
-            if target not in CORE_TILES and target_kind not in WALKABLE_PLAN_TYPES | {"foundry"}:
-                continue
-            distance = distances.get(target)
-            if distance is not None:
-                targets.append((target, distance))
-    return targets
-
-
-def mutate_reroute_flow(plan: dict[str, Any], rng: random.Random) -> str:
-    rows = map_rows()
-    final_tiles = right_side_final_tiles(plan)
-    distances = compute_flow_distances_to_sinks(
-        final_tiles,
-        set(CORE_TILES) | {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"},
-    )
-    candidates = []
-    for pos, spec in final_tiles.items():
-        if spec_kind(spec) not in {"conveyor", "bridge"}:
-            continue
-        current_target = generator.flow_target(pos, spec)
-        current_distance = distances.get(current_target, 1_000_000) if current_target else 1_000_000
-        for target, distance in flow_candidate_targets(rows, final_tiles, pos, distances, max_distance_sq=9):
-            if target == current_target or distance >= current_distance:
-                continue
-            candidates.append((current_distance - distance, pos, target))
-
-    if not candidates:
-        return "layout:no_flow_reroute"
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    _, pos, target = rng.choice(candidates[: max(1, min(24, len(candidates)))])
-    direction = direction_between(pos, target)
-    if direction is None:
-        set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
-    else:
-        set_plan_tile(plan, pos, {"type": "conveyor", "direction": direction})
-    return f"layout:reroute_flow:{pos[0]},{pos[1]}->{target[0]},{target[1]}"
-
-
-def mutate_plan(
-    plan: dict[str, Any],
-    base_plan: dict[str, Any],
-    rng: random.Random,
-) -> str:
-    operations = [
-        mutate_bridge_shortcut,
-        mutate_bridge_shortcut,
-        mutate_bridge_shortcut,
-        mutate_bridge_shortcut,
-        mutate_reroute_flow,
-        mutate_add_harvester_output,
-        mutate_downgrade_bridge,
-        mutate_retarget_bridge,
-        mutate_remove_harvester,
-    ]
-    if plan_diff_stats(base_plan, plan)["changed"] > 0:
-        operations.append(lambda candidate_plan, local_rng: mutate_restore_base_tile(candidate_plan, base_plan, local_rng))
-
-    before = copy_plan(plan)
-    source = rng.choice(operations)(plan, rng)
-    ok, reason = validate_plan_static(plan)
-    if not ok:
-        plan.clear()
-        plan.update(before)
-        return f"{source}:invalid:{reason}"
-    return source
+    return local_strategy_candidates(parent, rng, generation)[:limit]
 
 
 def mutate_candidate(
     parent: Candidate,
-    base_plan: dict[str, Any],
     rng: random.Random,
     generation: int,
-    layout_rate: float,
 ) -> Candidate:
     config = copy.deepcopy(parent.config)
-    plan = copy_plan(parent.plan)
     operations = [
         mutate_phase,
         mutate_phase,
@@ -973,18 +599,13 @@ def mutate_candidate(
     for _ in range(count):
         operation = rng.choice(operations)
         sources.append(operation(config, rng))
-    if rng.random() < layout_rate:
-        layout_mutation_count = 1 if rng.random() < 0.82 else 2
-        for _ in range(layout_mutation_count):
-            sources.append(mutate_plan(plan, base_plan, rng))
     config = repair_config(config, rng)
-    return Candidate(config=config, plan=plan, source="+".join(sources), generation=generation)
+    return Candidate(config=config, plan=copy_plan(parent.plan), source="+".join(sources), generation=generation)
 
 
 def crossover_candidate(
     left: Candidate,
     right: Candidate,
-    base_plan: dict[str, Any],
     rng: random.Random,
     generation: int,
 ) -> Candidate:
@@ -995,36 +616,13 @@ def crossover_candidate(
             config[section] = copy.deepcopy(donor[section])
     if rng.random() < 0.35:
         config["spawns"] = copy.deepcopy(donor["spawns"])
-    plan = crossover_plan(left.plan, right.plan, rng)
-    if rng.random() < 0.35:
-        mutate_plan(plan, base_plan, rng)
     config = repair_config(config, rng)
     return Candidate(
         config=config,
-        plan=plan,
+        plan=copy_plan(left.plan),
         source=f"crossover:{left.fingerprint}:{right.fingerprint}",
         generation=generation,
     )
-
-
-def crossover_plan(
-    left_plan: dict[str, Any],
-    right_plan: dict[str, Any],
-    rng: random.Random,
-) -> dict[str, Any]:
-    plan = copy_plan(left_plan)
-    if rng.random() >= 0.5:
-        return plan
-    min_x = rng.randint(generator.RIGHT_MIN_X, 44)
-    max_x = rng.randint(min_x, 49)
-    min_y = rng.randint(3, 18)
-    max_y = rng.randint(min_y, 22)
-    for raw_key, spec in right_plan["tiles"].items():
-        pos = parse_tile_key(raw_key)
-        if min_x <= pos[0] <= max_x and min_y <= pos[1] <= max_y:
-            plan["tiles"][raw_key] = copy.deepcopy(spec)
-    ok, _ = validate_plan_static(plan)
-    return plan if ok else copy_plan(left_plan)
 
 
 def prepare_worker(worker_name: str) -> Path:
@@ -1303,7 +901,6 @@ def copy_tree_contents(source: Path, destination: Path) -> None:
 def publish_best(result: EvalResult, commit: bool) -> None:
     worker_root = BOTS_ROOT / result.worker_name
     write_json(BOT_ROOT / "strategy_config.json", clean_json_config(result.candidate.config))
-    shutil.copy2(worker_root / "plan.json", BOT_ROOT / "plan.json")
     shutil.copy2(worker_root / "spawns.json", BOT_ROOT / "spawns.json")
     copy_tree_contents(worker_root / "strategies", BOT_ROOT / "strategies")
     subprocess.run(
@@ -1316,7 +913,6 @@ def publish_best(result: EvalResult, commit: bool) -> None:
             [
                 "git",
                 "add",
-                str(BOT_ROOT / "plan.json"),
                 str(BOT_ROOT / "strategy_config.json"),
                 str(BOT_ROOT / "spawns.json"),
                 str(BOT_ROOT / "strategies"),
@@ -1377,16 +973,15 @@ def make_candidate(
     base_plan: dict[str, Any],
     rng: random.Random,
     generation: int,
-    layout_rate: float,
 ) -> Candidate:
     for _ in range(200):
         if len(population) >= 2 and rng.random() < 0.22:
             left = choose_parent(population, rng)
             right = choose_parent(population, rng)
-            candidate = crossover_candidate(left.candidate, right.candidate, base_plan, rng, generation)
+            candidate = crossover_candidate(left.candidate, right.candidate, rng, generation)
         else:
             parent = choose_parent(population, rng)
-            candidate = mutate_candidate(parent.candidate, base_plan, rng, generation, layout_rate)
+            candidate = mutate_candidate(parent.candidate, rng, generation)
         if candidate.fingerprint not in seen:
             seen.add(candidate.fingerprint)
             return candidate
@@ -1472,7 +1067,6 @@ def run(args: argparse.Namespace) -> int:
     trial = 1
     generation = 1
     candidate_queue: deque[Candidate] = deque()
-    expanded_plan_neighborhoods = {fingerprint_plan(best.candidate.plan)}
     queue_candidates(
         candidate_queue,
         local_search_candidates(best.candidate, rng, generation, args.local_search_candidates),
@@ -1497,7 +1091,6 @@ def run(args: argparse.Namespace) -> int:
                         seed_plan,
                         rng,
                         generation,
-                        args.layout_mutation_rate,
                     )
                 batch.append((trial, candidate, worker_name))
                 trial += 1
@@ -1536,7 +1129,6 @@ def run(args: argparse.Namespace) -> int:
 
                     if improved:
                         best = result
-                        expanded_plan_neighborhoods.add(fingerprint_plan(best.candidate.plan))
                         publish_best(best, args.commit_improvements)
                         write_json(
                             run_dir / "best.json",
@@ -1569,32 +1161,6 @@ def run(args: argparse.Namespace) -> int:
                                 )
                             )
                         )
-                    else:
-                        result_plan_fingerprint = fingerprint_plan(result.candidate.plan)
-                        should_expand_near_miss = (
-                            result.feasible
-                            and args.near_miss_window > 0
-                            and result.score_b >= best.score_b - args.near_miss_window
-                            and result_plan_fingerprint != fingerprint_plan(best.candidate.plan)
-                            and result_plan_fingerprint not in expanded_plan_neighborhoods
-                            and len(candidate_queue) + args.near_miss_local_candidates
-                            <= args.max_queued_candidates
-                        )
-                    if not improved and should_expand_near_miss:
-                        expanded_plan_neighborhoods.add(result_plan_fingerprint)
-                        queue_candidates(
-                            candidate_queue,
-                            local_search_candidates(
-                                result.candidate,
-                                rng,
-                                generation,
-                                args.near_miss_local_candidates,
-                            ),
-                        )
-                        print(
-                            f"[optimizer] queued near-miss trial={result.trial} "
-                            f"score_b={result.score_b} queue={len(candidate_queue)}"
-                        )
                     elif not improved:
                         status = "score" if result.feasible else "reject"
                         value = result.score_b if result.feasible else result.reason
@@ -1616,10 +1182,7 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description=(
-            "Replay-guided pong optimizer for builder strategy and constrained "
-            "layout mutations."
-        )
+        description="Replay-guided pong optimizer for builder strategy on a fixed layout."
     )
     parser.add_argument("--max-trials", type=int, default=1000)
     parser.add_argument("--seconds", type=int, default=10 * 60 * 60)
@@ -1633,34 +1196,10 @@ def main() -> int:
     parser.add_argument("--population-size", type=int, default=32)
     parser.add_argument("--cambc-timeout", type=int, default=90)
     parser.add_argument(
-        "--layout-mutation-rate",
-        type=float,
-        default=0.35,
-        help="Probability that a candidate mutates the layout in addition to strategy knobs.",
-    )
-    parser.add_argument(
         "--local-search-candidates",
         type=int,
         default=120,
         help="Targeted neighborhood candidates queued around the current best before random search.",
-    )
-    parser.add_argument(
-        "--near-miss-window",
-        type=int,
-        default=350,
-        help="Expand layout candidates within this score distance of the current best.",
-    )
-    parser.add_argument(
-        "--near-miss-local-candidates",
-        type=int,
-        default=48,
-        help="Neighborhood candidates queued for each close non-improving layout candidate.",
-    )
-    parser.add_argument(
-        "--max-queued-candidates",
-        type=int,
-        default=600,
-        help="Upper bound for queued local-search candidates.",
     )
     parser.add_argument("--commit-improvements", action="store_true")
     parser.add_argument(
@@ -1676,11 +1215,7 @@ def main() -> int:
         args.workers = max(1, args.workers)
     args.max_trials = max(0, args.max_trials)
     args.population_size = max(2, args.population_size)
-    args.layout_mutation_rate = max(0.0, min(1.0, args.layout_mutation_rate))
     args.local_search_candidates = max(0, args.local_search_candidates)
-    args.near_miss_window = max(0, args.near_miss_window)
-    args.near_miss_local_candidates = max(0, args.near_miss_local_candidates)
-    args.max_queued_candidates = max(0, args.max_queued_candidates)
     return run(args)
 
 
