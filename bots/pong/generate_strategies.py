@@ -427,7 +427,7 @@ def target_phase(
     elif kind == "bridge":
         phase = 1100 + core_distance
     elif kind == "foundry":
-        phase = 1800 + core_distance
+        phase = 900 + core_distance
     elif kind == "harvester":
         phase = 2000 + core_distance
     else:
