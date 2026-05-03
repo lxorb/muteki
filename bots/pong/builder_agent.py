@@ -57,6 +57,14 @@ _POSITIONAL_BUILDERS = {
     EntityType.LAUNCHER: "build_launcher",
 }
 
+_WALKABLE_BUILDINGS = {
+    EntityType.ARMOURED_CONVEYOR,
+    EntityType.BRIDGE,
+    EntityType.CONVEYOR,
+    EntityType.ROAD,
+    EntityType.SPLITTER,
+}
+
 _ACTION_ALIASES = {
     "destroy": "destroy",
     "destroy_at": "destroy",
@@ -111,6 +119,10 @@ def _canonical_tile_key(pos: Position) -> str:
 
 def _planned_building(pos: Position) -> Any:
     return PLAN_TILES.get(_canonical_tile_key(pos))
+
+
+def _is_walkable_building(entity_type: EntityType) -> bool:
+    return entity_type in _WALKABLE_BUILDINGS
 
 
 def _load_strategy(builder_number: int) -> dict[str, Any]:
@@ -267,27 +279,92 @@ class BuilderAgent:
             return True
 
         direction = current.direction_to(target)
+        prepared_road = False
         if not ct.can_move(direction):
-            if ct.get_move_cooldown() > 0:
+            if not self._prepare_move_target(ct, target):
+                return False
+            prepared_road = True
+            if not ct.can_move(direction):
                 self.last_action_note = (
-                    f"deferred move toward {_format_position(target)}: move cooldown"
+                    f"deferred move toward {_format_position(target)}: "
+                    "target prepared but still blocked"
                 )
                 return False
-            self.last_action_note = (
-                f"skipped move toward {_format_position(target)}: blocked"
-            )
-            return True
 
         try:
             ct.move(direction)
         except GameError as exc:
+            self.last_action_note = f"deferred move toward {_format_position(target)}: {exc}"
+            return False
+        if prepared_road:
             self.last_action_note = (
-                f"skipped move toward {_format_position(target)}: {exc}"
+                f"built road and moved {direction.value} toward {_format_position(target)}"
             )
-            return True
-        self.last_action_note = (
-            f"moved {direction.value} toward {_format_position(target)}"
-        )
+        else:
+            self.last_action_note = (
+                f"moved {direction.value} toward {_format_position(target)}"
+            )
+        return True
+
+    def _prepare_move_target(self, ct: Controller, target: Position) -> bool:
+        if ct.get_move_cooldown() > 0:
+            self.last_action_note = (
+                f"deferred move toward {_format_position(target)}: move cooldown"
+            )
+            return False
+
+        try:
+            building_id = ct.get_tile_building_id(target)
+        except GameError as exc:
+            self.last_action_note = (
+                f"deferred move toward {_format_position(target)}: {exc}"
+            )
+            return False
+
+        if building_id is not None:
+            building_type = ct.get_entity_type(building_id)
+            if _is_walkable_building(building_type):
+                self.last_action_note = (
+                    f"deferred move toward {_format_position(target)}: occupied"
+                )
+                return False
+            self.last_action_note = (
+                f"deferred move toward {_format_position(target)}: "
+                f"blocked by {building_type.value}"
+            )
+            return False
+
+        if ct.get_action_cooldown() > 0:
+            self.last_action_note = (
+                f"deferred move toward {_format_position(target)}: "
+                "needs road but action cooldown"
+            )
+            return False
+
+        if not self._can_afford_build(ct, EntityType.ROAD):
+            titanium, axionite = ct.get_global_resources()
+            titanium_cost, axionite_cost = self._build_cost(ct, EntityType.ROAD)
+            self.last_action_note = (
+                f"deferred move toward {_format_position(target)}: "
+                f"road costs {titanium_cost}/{axionite_cost}, "
+                f"resources {titanium}/{axionite}"
+            )
+            return False
+
+        if not ct.can_build_road(target):
+            self.last_action_note = (
+                f"deferred move toward {_format_position(target)}: cannot build road"
+            )
+            return False
+
+        try:
+            ct.build_road(target)
+        except GameError as exc:
+            self.last_action_note = (
+                f"deferred move toward {_format_position(target)}: "
+                f"road build failed: {exc}"
+            )
+            return False
         return True
 
     def _build_at(self, ct: Controller, action: dict[str, Any]) -> bool:

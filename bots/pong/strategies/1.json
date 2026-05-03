@@ -4,39 +4,35 @@
       {
         "action": "build",
         "at": [
-          40,
+          39,
+          10
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          39,
           10
         ]
       }
     ],
     "2": [
       {
-        "action": "move_to",
-        "to": [
-          40,
-          10
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
         "action": "build",
         "at": [
-          40,
+          39,
+          11
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          39,
           11
         ]
       }
     ],
     "3": [
-      {
-        "action": "move_to",
-        "to": [
-          40,
-          11
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
       {
         "action": "build",
         "at": [
@@ -49,8 +45,8 @@
       {
         "action": "build",
         "at": [
-          39,
-          11
+          38,
+          12
         ]
       }
     ],
@@ -61,18 +57,16 @@
           39,
           12
         ]
-      }
-    ],
-    "6": [
+      },
       {
         "action": "move_to",
         "to": [
           39,
           12
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
+        ]
+      }
+    ],
+    "6": [
       {
         "action": "build",
         "at": [
@@ -86,43 +80,39 @@
         "action": "build",
         "at": [
           38,
-          12
+          11
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          38,
+          11
         ]
       }
     ],
     "8": [
       {
-        "action": "move_to",
-        "to": [
-          39,
-          11
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
         "action": "build",
         "at": [
-          39,
-          10
+          37,
+          11
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          37,
+          11
         ]
       }
     ],
     "9": [
       {
-        "action": "move_to",
-        "to": [
-          39,
-          10
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
         "action": "build",
         "at": [
-          39,
-          9
+          36,
+          12
         ]
       }
     ],
@@ -130,8 +120,15 @@
       {
         "action": "build",
         "at": [
-          38,
-          10
+          37,
+          12
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          37,
+          12
         ]
       }
     ],
@@ -139,26 +136,24 @@
       {
         "action": "build",
         "at": [
-          38,
-          11
+          37,
+          13
         ]
       }
     ],
     "12": [
       {
-        "action": "move_to",
-        "to": [
-          38,
-          11
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
         "action": "build",
         "at": [
-          37,
-          11
+          36,
+          13
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          13
         ]
       }
     ],
@@ -166,26 +161,24 @@
       {
         "action": "build",
         "at": [
-          37,
-          12
+          35,
+          13
         ]
       }
     ],
     "14": [
       {
-        "action": "move_to",
-        "to": [
-          37,
-          12
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
         "action": "build",
         "at": [
-          37,
-          13
+          35,
+          12
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          12
         ]
       }
     ],
@@ -193,62 +186,44 @@
       {
         "action": "build",
         "at": [
-          36,
+          34,
           12
         ]
       }
     ],
     "16": [
       {
-        "action": "build",
-        "at": [
-          36,
-          11
+        "action": "move_to",
+        "to": [
+          34,
+          13
         ]
       }
     ],
     "17": [
       {
-        "action": "move_to",
-        "to": [
-          36,
-          11
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
         "action": "build",
         "at": [
-          35,
-          11
+          33,
+          13
         ]
       }
     ],
     "18": [
       {
-        "action": "build",
-        "at": [
-          35,
+        "action": "move_to",
+        "to": [
+          33,
           12
         ]
       }
     ],
     "19": [
       {
-        "action": "move_to",
-        "to": [
-          35,
-          12
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
         "action": "build",
         "at": [
-          35,
-          13
+          32,
+          12
         ]
       }
     ],
@@ -256,102 +231,19 @@
       {
         "action": "build",
         "at": [
-          34,
-          12
+          32,
+          13
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          13
         ]
       }
     ],
     "21": [
-      {
-        "action": "build",
-        "at": [
-          34,
-          11
-        ]
-      }
-    ],
-    "22": [
-      {
-        "action": "move_to",
-        "to": [
-          34,
-          11
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          33,
-          11
-        ]
-      }
-    ],
-    "23": [
-      {
-        "action": "move_to",
-        "to": [
-          33,
-          11
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          32,
-          11
-        ]
-      }
-    ],
-    "24": [
-      {
-        "action": "move_to",
-        "to": [
-          32,
-          11
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          31,
-          11
-        ]
-      }
-    ],
-    "25": [
-      {
-        "action": "build",
-        "at": [
-          31,
-          12
-        ]
-      }
-    ],
-    "26": [
-      {
-        "action": "build",
-        "at": [
-          32,
-          12
-        ]
-      }
-    ],
-    "27": [
-      {
-        "action": "move_to",
-        "to": [
-          31,
-          12
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
       {
         "action": "build",
         "at": [
@@ -360,7 +252,23 @@
         ]
       }
     ],
-    "28": [
+    "22": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          12
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          12
+        ]
+      }
+    ],
+    "23": [
       {
         "action": "build",
         "at": [
@@ -369,7 +277,1487 @@
         ]
       }
     ],
+    "24": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          13
+        ]
+      }
+    ],
+    "25": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          14
+        ]
+      }
+    ],
+    "26": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          15
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          15
+        ]
+      }
+    ],
+    "27": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          16
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          16
+        ]
+      }
+    ],
+    "28": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          17
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          17
+        ]
+      }
+    ],
     "29": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          18
+        ]
+      }
+    ],
+    "30": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          19
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          19
+        ]
+      }
+    ],
+    "31": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          20
+        ]
+      }
+    ],
+    "32": [
+      {
+        "action": "build",
+        "at": [
+          30,
+          20
+        ]
+      }
+    ],
+    "33": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          20
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          20
+        ]
+      }
+    ],
+    "34": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          21
+        ]
+      }
+    ],
+    "35": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          21
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          21
+        ]
+      }
+    ],
+    "36": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          21
+        ]
+      }
+    ],
+    "37": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          20
+        ]
+      }
+    ],
+    "38": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          20
+        ]
+      }
+    ],
+    "39": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          21
+        ]
+      }
+    ],
+    "40": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          21
+        ]
+      }
+    ],
+    "41": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          20
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          20
+        ]
+      }
+    ],
+    "42": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          20
+        ]
+      }
+    ],
+    "43": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          19
+        ]
+      }
+    ],
+    "44": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          19
+        ]
+      }
+    ],
+    "45": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          18
+        ]
+      }
+    ],
+    "46": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          18
+        ]
+      }
+    ],
+    "47": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          17
+        ]
+      }
+    ],
+    "48": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          17
+        ]
+      }
+    ],
+    "49": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          16
+        ]
+      }
+    ],
+    "50": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          16
+        ]
+      }
+    ],
+    "51": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          15
+        ]
+      }
+    ],
+    "52": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          15
+        ]
+      }
+    ],
+    "53": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          15
+        ]
+      }
+    ],
+    "54": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          14
+        ]
+      }
+    ],
+    "55": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          16
+        ]
+      }
+    ],
+    "56": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          17
+        ]
+      }
+    ],
+    "57": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          16
+        ]
+      }
+    ],
+    "58": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          15
+        ]
+      }
+    ],
+    "59": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          17
+        ]
+      }
+    ],
+    "60": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          18
+        ]
+      }
+    ],
+    "61": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          19
+        ]
+      }
+    ],
+    "62": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          17
+        ]
+      }
+    ],
+    "63": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          16
+        ]
+      }
+    ],
+    "64": [
+      {
+        "action": "move_to",
+        "to": [
+          30,
+          15
+        ]
+      }
+    ],
+    "65": [
+      {
+        "action": "build",
+        "at": [
+          29,
+          15
+        ]
+      }
+    ],
+    "66": [
+      {
+        "action": "move_to",
+        "to": [
+          29,
+          14
+        ]
+      }
+    ],
+    "67": [
+      {
+        "action": "build",
+        "at": [
+          29,
+          13
+        ]
+      }
+    ],
+    "68": [
+      {
+        "action": "move_to",
+        "to": [
+          29,
+          13
+        ]
+      }
+    ],
+    "69": [
+      {
+        "action": "build",
+        "at": [
+          29,
+          12
+        ]
+      }
+    ],
+    "70": [
+      {
+        "action": "move_to",
+        "to": [
+          29,
+          12
+        ]
+      }
+    ],
+    "71": [
+      {
+        "action": "move_to",
+        "to": [
+          29,
+          11
+        ]
+      }
+    ],
+    "72": [
+      {
+        "action": "build",
+        "at": [
+          29,
+          10
+        ]
+      }
+    ],
+    "73": [
+      {
+        "action": "build",
+        "at": [
+          30,
+          10
+        ]
+      }
+    ],
+    "74": [
+      {
+        "action": "move_to",
+        "to": [
+          29,
+          10
+        ]
+      }
+    ],
+    "75": [
+      {
+        "action": "build",
+        "at": [
+          29,
+          9
+        ]
+      }
+    ],
+    "76": [
+      {
+        "action": "move_to",
+        "to": [
+          30,
+          10
+        ]
+      }
+    ],
+    "77": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          11
+        ]
+      }
+    ],
+    "78": [
+      {
+        "action": "move_to",
+        "to": [
+          30,
+          9
+        ]
+      }
+    ],
+    "79": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          8
+        ]
+      }
+    ],
+    "80": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          8
+        ]
+      }
+    ],
+    "81": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          9
+        ]
+      }
+    ],
+    "82": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          9
+        ]
+      }
+    ],
+    "83": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          8
+        ]
+      }
+    ],
+    "84": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          9
+        ]
+      }
+    ],
+    "85": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          10
+        ]
+      }
+    ],
+    "86": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          10
+        ]
+      }
+    ],
+    "87": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          11
+        ]
+      }
+    ],
+    "88": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          10
+        ]
+      }
+    ],
+    "89": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          11
+        ]
+      }
+    ],
+    "90": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          11
+        ]
+      }
+    ],
+    "91": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          10
+        ]
+      }
+    ],
+    "92": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          10
+        ]
+      }
+    ],
+    "93": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          11
+        ]
+      }
+    ],
+    "94": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          9
+        ]
+      }
+    ],
+    "95": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          8
+        ]
+      }
+    ],
+    "96": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          8
+        ]
+      }
+    ],
+    "97": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          7
+        ]
+      }
+    ],
+    "98": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          7
+        ]
+      }
+    ],
+    "99": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          7
+        ]
+      }
+    ],
+    "100": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          7
+        ]
+      }
+    ],
+    "101": [
+      {
+        "action": "build",
+        "at": [
+          35,
+          6
+        ]
+      }
+    ],
+    "102": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          6
+        ]
+      }
+    ],
+    "103": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          7
+        ]
+      }
+    ],
+    "104": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          7
+        ]
+      }
+    ],
+    "105": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          7
+        ]
+      }
+    ],
+    "106": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          6
+        ]
+      }
+    ],
+    "107": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          8
+        ]
+      }
+    ],
+    "108": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          9
+        ]
+      }
+    ],
+    "109": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          10
+        ]
+      }
+    ],
+    "110": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          10
+        ]
+      }
+    ],
+    "111": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          10
+        ]
+      }
+    ],
+    "112": [
+      {
+        "action": "build",
+        "at": [
+          36,
+          11
+        ]
+      }
+    ],
+    "113": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          10
+        ]
+      }
+    ],
+    "114": [
+      {
+        "action": "build",
+        "at": [
+          37,
+          10
+        ]
+      }
+    ],
+    "115": [
+      {
+        "action": "move_to",
+        "to": [
+          37,
+          10
+        ]
+      }
+    ],
+    "116": [
+      {
+        "action": "build",
+        "at": [
+          38,
+          10
+        ]
+      }
+    ],
+    "117": [
+      {
+        "action": "move_to",
+        "to": [
+          38,
+          10
+        ]
+      }
+    ],
+    "118": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          10
+        ]
+      }
+    ],
+    "119": [
+      {
+        "action": "build",
+        "at": [
+          40,
+          10
+        ]
+      }
+    ],
+    "120": [
+      {
+        "action": "build",
+        "at": [
+          40,
+          11
+        ]
+      }
+    ],
+    "121": [
+      {
+        "action": "move_to",
+        "to": [
+          38,
+          11
+        ]
+      }
+    ],
+    "122": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          12
+        ]
+      }
+    ],
+    "123": [
+      {
+        "action": "build",
+        "at": [
+          40,
+          13
+        ]
+      }
+    ],
+    "124": [
+      {
+        "action": "move_to",
+        "to": [
+          38,
+          11
+        ]
+      }
+    ],
+    "125": [
+      {
+        "action": "move_to",
+        "to": [
+          37,
+          12
+        ]
+      }
+    ],
+    "126": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          13
+        ]
+      }
+    ],
+    "127": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          14
+        ]
+      }
+    ],
+    "128": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          15
+        ]
+      }
+    ],
+    "129": [
+      {
+        "action": "build",
+        "at": [
+          34,
+          16
+        ]
+      }
+    ],
+    "130": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          16
+        ]
+      }
+    ],
+    "131": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          17
+        ]
+      }
+    ],
+    "132": [
+      {
+        "action": "build",
+        "at": [
+          33,
+          17
+        ]
+      }
+    ],
+    "133": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          16
+        ]
+      }
+    ],
+    "134": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          17
+        ]
+      }
+    ],
+    "135": [
+      {
+        "action": "build",
+        "at": [
+          31,
+          17
+        ]
+      }
+    ],
+    "136": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          16
+        ]
+      }
+    ],
+    "137": [
+      {
+        "action": "build",
+        "at": [
+          30,
+          16
+        ]
+      }
+    ],
+    "138": [
+      {
+        "action": "build",
+        "at": [
+          32,
+          16
+        ]
+      }
+    ],
+    "139": [
+      {
+        "action": "destroy",
+        "at": [
+          30,
+          15
+        ]
+      }
+    ],
+    "140": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          15
+        ]
+      }
+    ],
+    "141": [
+      {
+        "action": "destroy",
+        "at": [
+          31,
+          14
+        ]
+      }
+    ],
+    "142": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          16
+        ]
+      }
+    ],
+    "143": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          17
+        ]
+      }
+    ],
+    "144": [
+      {
+        "action": "destroy",
+        "at": [
+          31,
+          18
+        ]
+      }
+    ],
+    "145": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          16
+        ]
+      }
+    ],
+    "146": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          17
+        ]
+      }
+    ],
+    "147": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          18
+        ]
+      }
+    ],
+    "148": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          19
+        ]
+      }
+    ],
+    "149": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          20
+        ]
+      }
+    ],
+    "150": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          21
+        ]
+      }
+    ],
+    "151": [
+      {
+        "action": "destroy",
+        "at": [
+          33,
+          20
+        ]
+      }
+    ],
+    "152": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          20
+        ]
+      }
+    ],
+    "153": [
+      {
+        "action": "destroy",
+        "at": [
+          34,
+          21
+        ]
+      }
+    ],
+    "154": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          19
+        ]
+      }
+    ],
+    "155": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          18
+        ]
+      }
+    ],
+    "156": [
+      {
+        "action": "destroy",
+        "at": [
+          34,
+          17
+        ]
+      }
+    ],
+    "157": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          17
+        ]
+      }
+    ],
+    "158": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          16
+        ]
+      }
+    ],
+    "159": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          15
+        ]
+      }
+    ],
+    "160": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          14
+        ]
+      }
+    ],
+    "161": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          13
+        ]
+      }
+    ],
+    "162": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          12
+        ]
+      }
+    ],
+    "163": [
+      {
+        "action": "destroy",
+        "at": [
+          34,
+          13
+        ]
+      }
+    ],
+    "164": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          11
+        ]
+      }
+    ],
+    "165": [
+      {
+        "action": "destroy",
+        "at": [
+          33,
+          12
+        ]
+      }
+    ],
+    "166": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          10
+        ]
+      }
+    ],
+    "167": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          9
+        ]
+      }
+    ],
+    "168": [
+      {
+        "action": "move_to",
+        "to": [
+          31,
+          8
+        ]
+      }
+    ],
+    "169": [
+      {
+        "action": "destroy",
+        "at": [
+          30,
+          9
+        ]
+      }
+    ],
+    "170": [
+      {
+        "action": "move_to",
+        "to": [
+          32,
+          9
+        ]
+      }
+    ],
+    "171": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          10
+        ]
+      }
+    ],
+    "172": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          11
+        ]
+      }
+    ],
+    "173": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          12
+        ]
+      }
+    ],
+    "174": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          13
+        ]
+      }
+    ],
+    "175": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          14
+        ]
+      }
+    ],
+    "176": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          15
+        ]
+      }
+    ],
+    "177": [
+      {
+        "action": "destroy",
+        "at": [
+          35,
+          16
+        ]
+      }
+    ],
+    "178": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          14
+        ]
+      }
+    ],
+    "179": [
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          13
+        ]
+      }
+    ],
+    "180": [
+      {
+        "action": "move_to",
+        "to": [
+          35,
+          12
+        ]
+      }
+    ],
+    "181": [
+      {
+        "action": "move_to",
+        "to": [
+          34,
+          11
+        ]
+      }
+    ],
+    "182": [
+      {
+        "action": "move_to",
+        "to": [
+          33,
+          10
+        ]
+      }
+    ],
+    "183": [
       {
         "action": "move_to",
         "to": [
@@ -378,165 +1766,75 @@
         ]
       }
     ],
-    "30": [
+    "184": [
       {
-        "action": "build",
-        "at": [
-          33,
+        "action": "move_to",
+        "to": [
+          31,
+          11
+        ]
+      }
+    ],
+    "185": [
+      {
+        "action": "move_to",
+        "to": [
+          30,
           10
         ]
       }
     ],
-    "31": [
+    "186": [
       {
         "action": "move_to",
         "to": [
-          33,
-          10
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          33,
-          9
+          29,
+          11
         ]
       }
     ],
-    "32": [
+    "187": [
       {
         "action": "move_to",
         "to": [
-          33,
-          9
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          33,
-          8
+          29,
+          12
         ]
       }
     ],
-    "33": [
+    "188": [
       {
         "action": "move_to",
         "to": [
-          33,
-          8
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          33,
-          7
+          29,
+          13
         ]
       }
     ],
-    "34": [
+    "189": [
       {
-        "action": "build",
+        "action": "destroy",
         "at": [
-          34,
-          7
+          29,
+          14
         ]
       }
     ],
-    "35": [
+    "190": [
       {
         "action": "move_to",
         "to": [
-          34,
-          7
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          35,
-          7
+          29,
+          12
         ]
       }
     ],
-    "36": [
+    "191": [
       {
-        "action": "move_to",
-        "to": [
-          35,
-          7
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
+        "action": "destroy",
         "at": [
-          36,
-          7
-        ]
-      }
-    ],
-    "37": [
-      {
-        "action": "move_to",
-        "to": [
-          36,
-          7
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          37,
-          7
-        ]
-      }
-    ],
-    "38": [
-      {
-        "action": "move_to",
-        "to": [
-          37,
-          7
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          38,
-          7
-        ]
-      }
-    ],
-    "39": [
-      {
-        "action": "move_to",
-        "to": [
-          38,
-          7
-        ],
-        "implicit": true,
-        "reason": "build_range"
-      },
-      {
-        "action": "build",
-        "at": [
-          39,
-          7
+          29,
+          11
         ]
       }
     ]

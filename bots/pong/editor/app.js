@@ -1024,6 +1024,7 @@ function walkableTilesBeforeInsertion(turn, replacingBuild) {
       if (!pos) continue;
       const key = tileKey(pos.x, pos.y);
       if (name === "build" && isWalkableBuildAction(action, pos)) walkable.add(key);
+      if (name === "move_to" && isEmptyMoveTile(pos)) walkable.add(key);
       if (name === "destroy") walkable.delete(key);
     }
   }
@@ -1083,18 +1084,20 @@ function impossibleActionWarnings() {
       }
 
       if (name === "move_to") {
+        const key = tileKey(pos.x, pos.y);
         if (!isSingleMoveStep(current, pos)) {
           warnings.push(
             `Turn ${turn}, action ${index + 1}: move from ${formatPos(current)} to ${formatPos(pos)} is more than one tile`,
           );
           return;
         }
-        if (!walkable.has(tileKey(pos.x, pos.y))) {
+        if (!walkable.has(key) && !isEmptyMoveTile(pos)) {
           warnings.push(
-            `Turn ${turn}, action ${index + 1}: move target ${formatPos(pos)} is not walkable yet`,
+            `Turn ${turn}, action ${index + 1}: move target ${formatPos(pos)} is not walkable and cannot be prepared with a road`,
           );
           return;
         }
+        if (isEmptyMoveTile(pos)) walkable.add(key);
         current = { ...pos };
         return;
       }
@@ -1150,12 +1153,19 @@ function isMapPosition(pos) {
 function isMovableStrategyTile(pos, walkableKeys) {
   return isMapPosition(pos)
     && state.map.rows[pos.y][pos.x] !== 1
-    && walkableKeys.has(tileKey(pos.x, pos.y));
+    && (walkableKeys.has(tileKey(pos.x, pos.y)) || isEmptyMoveTile(pos));
 }
 
 function isWalkableBuildAction(action, pos) {
   const spec = action.building ?? planSpecAt(pos.x, pos.y);
   return WALKABLE_BUILDINGS.has(specType(spec));
+}
+
+function isEmptyMoveTile(pos) {
+  return isMapPosition(pos)
+    && state.map.rows[pos.y][pos.x] === 0
+    && !coreFootprintKeys().has(tileKey(pos.x, pos.y))
+    && !planSpecAt(pos.x, pos.y);
 }
 
 function isValidSpawnTile(pos) {
@@ -1176,10 +1186,11 @@ function describeAction(action) {
     return `build ${spec ? specType(spec) : "plan"} at ${where}`;
   }
   if (name === "move_to") {
+    const emptyRoadHint = pos && isEmptyMoveTile(pos) ? " (road if empty)" : "";
     if (action.implicit === true && action.reason === "build_range") {
-      return `move to ${where} for build range`;
+      return `move to ${where}${emptyRoadHint} for build range`;
     }
-    return `move to ${where}`;
+    return `move to ${where}${emptyRoadHint}`;
   }
   if (name === "destroy") return `destroy at ${where}`;
   return `${action.action} ${where}`;

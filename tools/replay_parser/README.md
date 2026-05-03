@@ -25,6 +25,23 @@ Write parsed output to a file:
 node tools/replay_parser/parse_replay.js replay.replay26 --out profiles/replay_summary.json
 ```
 
+Write parsed output as multiple files:
+
+```powershell
+node tools/replay_parser/parse_replay.js replay.replay26 --out-dir profiles/replay_summary
+```
+
+This writes `index.json`, `map.json`, `initial_entities.json`,
+`final_entities.json`, turn chunks under `turns/`, and per-instance action chunks
+under `instances/`. Use this mode for large replays; it avoids building one huge
+JSON string in Node and is easier to inspect incrementally.
+
+Optional chunk sizes:
+
+```powershell
+node tools/replay_parser/parse_replay.js replay.replay26 --out-dir profiles/replay_summary --turn-chunk-size 25 --action-chunk-size 25
+```
+
 Optional explicit schema path (usually not needed):
 
 ```powershell
@@ -59,5 +76,6 @@ node tools/replay_parser/parse_replay.js replay.replay26 --schema "C:\path\to\si
   - `events`: normalized replay updates in original turn order
 - `map.rows` is intentionally kept separate from `visibleTiles` so static terrain is
   stored once instead of being duplicated for every turn.
-- Large replays can produce large JSON outputs. If disk space is tight, stream stdout
-  into downstream tooling instead of writing a temporary file first.
+- Large replays can produce very large JSON outputs. Prefer `--out-dir` for these.
+  The directory may contain stale files if reused after a shorter replay; trust
+  `index.json` as the manifest of the current parse.

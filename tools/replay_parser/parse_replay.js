@@ -58,12 +58,15 @@ function usage() {
   console.log(
     [
       "Usage:",
-      "  node parse_replay.js <replay_path> [--out <summary.json>] [--schema <visualizer_main.js>] [--top <N>]",
+      "  node parse_replay.js <replay_path> [--out <summary.json>] [--out-dir <dir>] [--schema <visualizer_main.js>] [--top <N>]",
       "",
       "Options:",
       "  --out     Write JSON summary to file instead of stdout.",
+      "  --out-dir Write chunked JSON files to a directory for large replays.",
       "  --schema  Explicit path to cambc visualizer bundle (main-*.js).",
       "  --top     Number of top items for large counters (default: 30).",
+      "  --turn-chunk-size    Turns per turnsDetailed chunk in --out-dir mode (default: 50).",
+      "  --action-chunk-size  Actions per instance chunk in --out-dir mode (default: 50).",
       "",
       "Environment:",
       "  CAMBC_VISUALIZER_JS  Explicit schema JS path (used if --schema is not set).",
@@ -74,8 +77,11 @@ function usage() {
 function parseArgs(argv) {
   let replayPath = null;
   let outPath = null;
+  let outDirPath = null;
   let schemaPath = null;
   let topN = 30;
+  let turnChunkSize = 50;
+  let actionChunkSize = 50;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -85,6 +91,10 @@ function parseArgs(argv) {
     }
     if (arg === "--out") {
       outPath = argv[++i];
+      continue;
+    }
+    if (arg === "--out-dir") {
+      outDirPath = argv[++i];
       continue;
     }
     if (arg === "--schema") {
@@ -97,6 +107,14 @@ function parseArgs(argv) {
         throw new Error("--top must be a positive integer");
       }
       topN = Math.floor(n);
+      continue;
+    }
+    if (arg === "--turn-chunk-size") {
+      turnChunkSize = parsePositiveInteger(argv[++i], "--turn-chunk-size");
+      continue;
+    }
+    if (arg === "--action-chunk-size") {
+      actionChunkSize = parsePositiveInteger(argv[++i], "--action-chunk-size");
       continue;
     }
     if (arg.startsWith("-")) {
@@ -113,13 +131,27 @@ function parseArgs(argv) {
     usage();
     throw new Error("Missing required <replay_path> argument");
   }
+  if (outPath && outDirPath) {
+    throw new Error("Use either --out or --out-dir, not both");
+  }
 
   return {
     replayPath: path.resolve(replayPath),
     outPath: outPath ? path.resolve(outPath) : null,
+    outDirPath: outDirPath ? path.resolve(outDirPath) : null,
     schemaPath: schemaPath ? path.resolve(schemaPath) : null,
     topN,
+    turnChunkSize,
+    actionChunkSize,
   };
+}
+
+function parsePositiveInteger(rawValue, optionName) {
+  const n = Number(rawValue);
+  if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n) {
+    throw new Error(`${optionName} must be a positive integer`);
+  }
+  return n;
 }
 
 function fileExists(p) {
@@ -1286,8 +1318,153 @@ function analyzeReplay(decodedReplay, replayPath, visualizerPath, topN) {
   };
 }
 
+function padNumber(value, width = 4) {
+  return String(value).padStart(width, "0");
+}
+
+function writeJsonFile(outDir, relativePath, payload, writtenFiles) {
+  const fullPath = path.join(outDir, relativePath);
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+  fs.writeFileSync(fullPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
+  if (writtenFiles) {
+    writtenFiles.push({
+      path: relativePath.replaceAll(path.sep, "/"),
+      bytes: fs.statSync(fullPath).size,
+    });
+  }
+}
+
+function writeChunkedOutput(summary, outDir, options) {
+  const turnChunkSize = options.turnChunkSize;
+  const actionChunkSize = options.actionChunkSize;
+  const writtenFiles = [];
+
+  fs.mkdirSync(outDir, { recursive: true });
+
+  writeJsonFile(outDir, "map.json", summary.map, writtenFiles);
+  writeJsonFile(outDir, "initial_entities.json", summary.initialEntities, writtenFiles);
+  writeJsonFile(outDir, "final_entities.json", summary.finalEntities, writtenFiles);
+
+  const turnChunks = [];
+  for (let index = 0; index < summary.turnsDetailed.length; index += turnChunkSize) {
+    const chunk = summary.turnsDetailed.slice(index, index + turnChunkSize);
+    const startTurn = chunk[0]?.turn ?? index + 1;
+    const endTurn = chunk[chunk.length - 1]?.turn ?? startTurn;
+    const relativePath = `turns/turns_${padNumber(startTurn)}_${padNumber(endTurn)}.json`;
+    writeJsonFile(
+      outDir,
+      relativePath,
+      {
+        startTurn,
+        endTurn,
+        count: chunk.length,
+        turnsDetailed: chunk,
+      },
+      writtenFiles
+    );
+    turnChunks.push({
+      path: relativePath,
+      startTurn,
+      endTurn,
+      count: chunk.length,
+    });
+  }
+
+  const instanceIndex = [];
+  for (const instance of summary.instances) {
+    const chunks = [];
+    for (let index = 0; index < instance.actions.length; index += actionChunkSize) {
+      const chunk = instance.actions.slice(index, index + actionChunkSize);
+      const startTurn = chunk[0]?.turn ?? index + 1;
+      const endTurn = chunk[chunk.length - 1]?.turn ?? startTurn;
+      const relativePath =
+        `instances/instance_${padNumber(instance.id)}_actions_` +
+        `${padNumber(startTurn)}_${padNumber(endTurn)}.json`;
+      writeJsonFile(
+        outDir,
+        relativePath,
+        {
+          id: instance.id,
+          team: instance.team,
+          kind: instance.kind,
+          spawnTurn: instance.spawnTurn,
+          despawnTurn: instance.despawnTurn,
+          startTurn,
+          endTurn,
+          count: chunk.length,
+          actions: chunk,
+        },
+        writtenFiles
+      );
+      chunks.push({
+        path: relativePath,
+        startTurn,
+        endTurn,
+        count: chunk.length,
+      });
+    }
+
+    instanceIndex.push({
+      id: instance.id,
+      team: instance.team,
+      kind: instance.kind,
+      spawnTurn: instance.spawnTurn,
+      despawnTurn: instance.despawnTurn,
+      actionCount: instance.actions.length,
+      chunks,
+    });
+  }
+  writeJsonFile(outDir, "instances/index.json", instanceIndex, writtenFiles);
+
+  const index = {
+    schemaVersion: 2,
+    replayPath: summary.replayPath,
+    visualizerSchemaPath: summary.visualizerSchemaPath,
+    generatedAt: summary.generatedAt,
+    sizeBytes: summary.sizeBytes,
+    turns: summary.turns,
+    winner: summary.winner,
+    finalResources: summary.finalResources,
+    firstTitaniumCollectedTurn: summary.firstTitaniumCollectedTurn,
+    eventCounts: summary.eventCounts,
+    builtByKindTeam: summary.builtByKindTeam,
+    removedByKindTeam: summary.removedByKindTeam,
+    botActionCounts: summary.botActionCounts,
+    botTypeCounts: summary.botTypeCounts,
+    unitLogCounts: summary.unitLogCounts,
+    topOutputLines: summary.topOutputLines,
+    files: {
+      map: "map.json",
+      initialEntities: "initial_entities.json",
+      finalEntities: "final_entities.json",
+      instances: "instances/index.json",
+    },
+    turnsDetailed: {
+      chunkSize: turnChunkSize,
+      chunkCount: turnChunks.length,
+      chunks: turnChunks,
+    },
+    instances: {
+      count: instanceIndex.length,
+      actionChunkSize,
+      index: "instances/index.json",
+    },
+    writtenFiles,
+  };
+  writeJsonFile(outDir, "index.json", index, null);
+  return index;
+}
+
 function main() {
-  const { replayPath, outPath, schemaPath, topN } = parseArgs(
+  const {
+    replayPath,
+    outPath,
+    outDirPath,
+    schemaPath,
+    topN,
+    turnChunkSize,
+    actionChunkSize,
+  } = parseArgs(
     process.argv.slice(2)
   );
 
@@ -1300,6 +1477,23 @@ function main() {
   const replayBytes = fs.readFileSync(replayPath);
   const decodedReplay = ReplayType.decode(replayBytes);
   const summary = analyzeReplay(decodedReplay, replayPath, visualizerPath, topN);
+
+  if (outDirPath) {
+    const index = writeChunkedOutput(summary, outDirPath, {
+      turnChunkSize,
+      actionChunkSize,
+    });
+    console.log(
+      [
+        `Wrote chunked replay output to ${outDirPath}`,
+        `Index: ${path.join(outDirPath, "index.json")}`,
+        `Turn chunks: ${index.turnsDetailed.chunkCount}`,
+        `Instances: ${index.instances.count}`,
+      ].join("\n")
+    );
+    return;
+  }
+
   const summaryJson = JSON.stringify(summary, null, 2);
 
   if (outPath) {
