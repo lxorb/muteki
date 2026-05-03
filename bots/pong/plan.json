@@ -260,8 +260,11 @@
       "direction": "south"
     },
     "42,4": {
-      "type": "conveyor",
-      "direction": "west"
+      "type": "bridge",
+      "target": [
+        41,
+        5
+      ]
     },
     "43,4": {
       "type": "conveyor",
