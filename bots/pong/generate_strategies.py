@@ -16,6 +16,13 @@ RIGHT_MIN_X = 25
 CORE_TILES = {(x, y) for x in range(40, 43) for y in range(7, 10)}
 WALKABLE_TYPES = {"conveyor", "road", "bridge", "armoured_conveyor"}
 BUILDER_RANGE_SQ = 2
+ORTHOGONAL_STEPS = ((0, -1), (1, 0), (0, 1), (-1, 0))
+FLOW_DIRECTIONS = {
+    "north": (0, -1),
+    "east": (1, 0),
+    "south": (0, 1),
+    "west": (-1, 0),
+}
 
 SPAWNS = {
     1: {"turn": 0, "tile": (40, 9)},
@@ -57,6 +64,71 @@ def spec_type(spec: Any) -> str:
 
 def is_walkable_spec(spec: Any) -> bool:
     return spec_type(spec) in WALKABLE_TYPES
+
+
+def flow_target(pos: tuple[int, int], spec: Any) -> tuple[int, int] | None:
+    if isinstance(spec, str):
+        return None
+    kind = spec["type"]
+    if kind == "conveyor":
+        dx, dy = FLOW_DIRECTIONS[spec["direction"]]
+        return pos[0] + dx, pos[1] + dy
+    if kind == "bridge":
+        return tuple(spec["target"])
+    return None
+
+
+def compute_flow_distances(
+    final_tiles: dict[tuple[int, int], Any],
+) -> dict[tuple[int, int], int]:
+    distances = {core_tile: 0 for core_tile in CORE_TILES}
+    changed = True
+    while changed:
+        changed = False
+        for pos, spec in final_tiles.items():
+            target = flow_target(pos, spec)
+            if target is None or target not in distances:
+                continue
+            distance = distances[target] + 1
+            if distance < distances.get(pos, 1_000_000):
+                distances[pos] = distance
+                changed = True
+    return distances
+
+
+def compute_titanium_supply_priorities(
+    final_tiles: dict[tuple[int, int], Any],
+    rows: list[list[int]],
+    flow_distances: dict[tuple[int, int], int],
+) -> tuple[set[tuple[int, int]], dict[tuple[int, int], int]]:
+    supply_tiles: set[tuple[int, int]] = set()
+    harvester_distances: dict[tuple[int, int], int] = {}
+
+    for pos, spec in final_tiles.items():
+        if spec_type(spec) != "harvester" or rows[pos[1]][pos[0]] != 2:
+            continue
+
+        adjacent_outputs = []
+        for dx, dy in ORTHOGONAL_STEPS:
+            neighbor = pos[0] + dx, pos[1] + dy
+            if neighbor in flow_distances:
+                adjacent_outputs.append(neighbor)
+
+        if not adjacent_outputs:
+            continue
+
+        best_output = min(adjacent_outputs, key=lambda tile: flow_distances[tile])
+        harvester_distances[pos] = flow_distances[best_output] + 1
+
+        current: tuple[int, int] | None = best_output
+        seen: set[tuple[int, int]] = set()
+        while current is not None and current not in CORE_TILES and current not in seen:
+            seen.add(current)
+            supply_tiles.add(current)
+            current_spec = final_tiles.get(current)
+            current = flow_target(current, current_spec) if current_spec is not None else None
+
+    return supply_tiles, harvester_distances
 
 
 def build_action(pos: tuple[int, int], building: Any | None = None) -> dict[str, Any]:
@@ -334,23 +406,33 @@ def owner_for(pos: tuple[int, int]) -> int:
     return 3
 
 
-def target_phase(pos: tuple[int, int], spec: Any, rows: list[list[int]]) -> tuple[int, int, int, int]:
+def target_phase(
+    pos: tuple[int, int],
+    spec: Any,
+    rows: list[list[int]],
+    flow_distances: dict[tuple[int, int], int],
+    titanium_supply_tiles: set[tuple[int, int]],
+    titanium_harvester_distances: dict[tuple[int, int], int],
+) -> tuple[int, int, int, int]:
     kind = spec_type(spec)
     terrain = rows[pos[1]][pos[0]]
     core_distance = abs(pos[0] - 41) + abs(pos[1] - 8)
-    if kind in WALKABLE_TYPES:
-        phase = 0
+    flow_distance = flow_distances.get(pos, core_distance + 100)
+    if kind in WALKABLE_TYPES and pos in titanium_supply_tiles:
+        phase = flow_distance * 2
     elif kind == "harvester" and terrain == 2:
-        phase = 1
+        phase = titanium_harvester_distances.get(pos, 500) * 2 + 1
+    elif kind in WALKABLE_TYPES:
+        phase = 1000 + flow_distance
     elif kind == "bridge":
-        phase = 2
+        phase = 1100 + core_distance
     elif kind == "harvester":
-        phase = 3
+        phase = 2000 + core_distance
     elif kind == "foundry":
-        phase = 4
+        phase = 2100 + core_distance
     else:
-        phase = 5
-    return phase, core_distance, pos[1], pos[0]
+        phase = 3000 + core_distance
+    return phase, flow_distance, pos[1], pos[0]
 
 
 def choose_next_target(
@@ -385,6 +467,11 @@ def generate() -> dict[str, Any]:
             continue
         final_tiles[pos] = spec
 
+    flow_distances = compute_flow_distances(final_tiles)
+    titanium_supply_tiles, titanium_harvester_distances = (
+        compute_titanium_supply_priorities(final_tiles, rows, flow_distances)
+    )
+
     owner = {pos: owner_for(pos) for pos in final_tiles}
     planners = {
         builder: BuilderPlan(builder, spawn["tile"], rows, final_tiles, owner)
@@ -393,14 +480,43 @@ def generate() -> dict[str, Any]:
 
     for builder, planner in planners.items():
         assigned = [pos for pos in final_tiles if owner[pos] == builder]
-        phases = sorted({target_phase(pos, final_tiles[pos], rows)[0] for pos in assigned})
+        phases = sorted(
+            {
+                target_phase(
+                    pos,
+                    final_tiles[pos],
+                    rows,
+                    flow_distances,
+                    titanium_supply_tiles,
+                    titanium_harvester_distances,
+                )[0]
+                for pos in assigned
+            }
+        )
         for phase in phases:
             phase_targets = [
                 pos
                 for pos in assigned
-                if target_phase(pos, final_tiles[pos], rows)[0] == phase
+                if target_phase(
+                    pos,
+                    final_tiles[pos],
+                    rows,
+                    flow_distances,
+                    titanium_supply_tiles,
+                    titanium_harvester_distances,
+                )[0]
+                == phase
             ]
-            phase_targets.sort(key=lambda pos: target_phase(pos, final_tiles[pos], rows))
+            phase_targets.sort(
+                key=lambda pos: target_phase(
+                    pos,
+                    final_tiles[pos],
+                    rows,
+                    flow_distances,
+                    titanium_supply_tiles,
+                    titanium_harvester_distances,
+                )
+            )
             while phase_targets:
                 target = choose_next_target(planner, phase_targets)
                 planner.build_target(target)
