@@ -75,6 +75,6 @@
     "core_distance_weight": 0
   },
   "cleanup": {
-    "mode": "farthest"
+    "mode": "nearest"
   }
 }
