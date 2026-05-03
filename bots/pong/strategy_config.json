@@ -10,15 +10,15 @@
     {
       "turn": 1,
       "tile": [
-        42,
+        41,
         9
       ]
     },
     {
       "turn": 2,
       "tile": [
-        41,
-        8
+        40,
+        7
       ]
     }
   ],
@@ -27,7 +27,7 @@
     "left_x": 36,
     "center_left_x": 40,
     "center_y_min": 10,
-    "center_y_max": 13,
+    "center_y_max": 15,
     "right_x": 43,
     "fallback_owner": 3,
     "rules": []
@@ -53,26 +53,26 @@
     ]
   },
   "auto_temp_bounds": true,
-  "temp_margin": 3,
+  "temp_margin": 2,
   "phase": {
     "titanium_path_base": 0,
-    "titanium_path_weight": 7,
+    "titanium_path_weight": 2,
     "titanium_harvester_base": -6,
-    "titanium_harvester_weight": 4,
+    "titanium_harvester_weight": 2,
     "foundry_base": 900,
-    "foundry_core_weight": 0,
+    "foundry_core_weight": 1,
     "generic_walkable_base": 1000,
-    "generic_walkable_flow_weight": 1,
+    "generic_walkable_flow_weight": 0,
     "axionite_harvester_base": 2000,
     "axionite_harvester_core_weight": 2,
-    "other_base": 3190,
+    "other_base": 3000,
     "other_core_weight": 1
   },
   "target_scoring": {
-    "path_weight": 13,
+    "path_weight": 10,
     "manhattan_weight": 1,
     "flow_weight": 0,
-    "core_distance_weight": 1
+    "core_distance_weight": 0
   },
   "cleanup": {
     "mode": "nearest"
