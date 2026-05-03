@@ -72,7 +72,7 @@
     "path_weight": 10,
     "manhattan_weight": 1,
     "flow_weight": 0,
-    "core_distance_weight": 0
+    "core_distance_weight": -1
   },
   "cleanup": {
     "mode": "nearest"
