@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import concurrent.futures
 import copy
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Any
+from typing import Any, Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BOT_ROOT = REPO_ROOT / "bots" / "pong"
@@ -78,6 +79,19 @@ SCORING_RANGES = {
     "manhattan_weight": (0, 10),
     "flow_weight": (-5, 10),
     "core_distance_weight": (-5, 10),
+}
+
+LOCAL_SCORING_SWEEPS = {
+    "path_weight": (4, 5, 6, 7, 8, 9, 10, 12, 14),
+    "flow_weight": (-2, -1, 0, 1, 2, 3),
+    "core_distance_weight": (-2, -1, 0, 1, 2),
+}
+
+LOCAL_PHASE_SWEEPS = {
+    "titanium_harvester_base": (-18, -12, -6, 0, 8, 16, 32),
+    "foundry_base": (500, 650, 800, 900, 1050, 1250),
+    "generic_walkable_base": (700, 850, 1000, 1150, 1350),
+    "axionite_harvester_base": (1500, 1750, 2000, 2250, 2500),
 }
 
 ORTHOGONAL_STEPS = ((0, -1), (1, 0), (0, 1), (-1, 0))
@@ -697,6 +711,161 @@ def mutate_retarget_bridge(plan: dict[str, Any], rng: random.Random) -> str:
     return f"layout:retarget_bridge:{pos[0]},{pos[1]}->{target[0]},{target[1]}"
 
 
+def candidate_with_config(
+    parent: Candidate,
+    config: dict[str, Any],
+    rng: random.Random,
+    source: str,
+    generation: int,
+) -> Candidate:
+    return Candidate(
+        config=repair_config(config, rng),
+        plan=copy_plan(parent.plan),
+        source=source,
+        generation=generation,
+    )
+
+
+def candidate_with_plan(
+    parent: Candidate,
+    plan: dict[str, Any],
+    source: str,
+    generation: int,
+) -> Candidate | None:
+    ok, _ = validate_plan_static(plan)
+    if not ok:
+        return None
+    return Candidate(
+        config=copy.deepcopy(parent.config),
+        plan=plan,
+        source=source,
+        generation=generation,
+    )
+
+
+def local_strategy_candidates(
+    parent: Candidate,
+    rng: random.Random,
+    generation: int,
+) -> list[Candidate]:
+    candidates = []
+    base_config = clean_json_config(parent.config)
+
+    cleanup_config = copy.deepcopy(base_config)
+    cleanup_mode = cleanup_config["cleanup"].get("mode", "nearest")
+    cleanup_config["cleanup"]["mode"] = "farthest" if cleanup_mode == "nearest" else "nearest"
+    candidates.append(candidate_with_config(parent, cleanup_config, rng, "local:cleanup_toggle", generation))
+
+    for key, values in LOCAL_SCORING_SWEEPS.items():
+        current = int(base_config["target_scoring"][key])
+        for value in values:
+            if value == current:
+                continue
+            config = copy.deepcopy(base_config)
+            config["target_scoring"][key] = value
+            candidates.append(
+                candidate_with_config(parent, config, rng, f"local:scoring:{key}:{value}", generation)
+            )
+
+    for key, values in LOCAL_PHASE_SWEEPS.items():
+        current = int(base_config["phase"][key])
+        for value in values:
+            if value == current:
+                continue
+            config = copy.deepcopy(base_config)
+            config["phase"][key] = value
+            candidates.append(candidate_with_config(parent, config, rng, f"local:phase:{key}:{value}", generation))
+
+    for index, spawn in enumerate(base_config["spawns"]):
+        current_turn = int(spawn["turn"])
+        for delta in (-2, -1, 1, 2):
+            config = copy.deepcopy(base_config)
+            config["spawns"][index]["turn"] = current_turn + delta
+            candidates.append(
+                candidate_with_config(
+                    parent,
+                    config,
+                    rng,
+                    f"local:spawn_turn:{index + 1}:{current_turn + delta}",
+                    generation,
+                )
+            )
+
+    return candidates
+
+
+def ranked_layout_candidates(
+    parent: Candidate,
+    rng: random.Random,
+    generation: int,
+    limit: int,
+) -> list[Candidate]:
+    final_tiles = right_side_final_tiles(parent.plan)
+    sinks = set(CORE_TILES) | {pos for pos, spec in final_tiles.items() if spec_kind(spec) == "foundry"}
+    distances = compute_flow_distances_to_sinks(final_tiles, sinks)
+    edits: list[tuple[int, str, dict[str, Any]]] = []
+
+    for pos, spec in final_tiles.items():
+        kind = spec_kind(spec)
+        if kind == "conveyor":
+            current_target = generator.flow_target(pos, spec)
+            current_distance = distances.get(current_target, 1_000_000) if current_target else 1_000_000
+            for step_index, target in enumerate(downstream_targets(final_tiles, pos, 5), start=1):
+                if generator.distance_sq(pos, target) > 9:
+                    continue
+                target_kind = spec_kind(final_tiles.get(target))
+                if target not in CORE_TILES and target_kind not in WALKABLE_PLAN_TYPES | {"foundry"}:
+                    continue
+                plan = copy_plan(parent.plan)
+                set_plan_tile(plan, pos, {"type": "bridge", "target": [target[0], target[1]]})
+                gain = max(0, current_distance - distances.get(target, current_distance))
+                priority = 100 + gain * 25 + step_index * 4
+                if target == current_target:
+                    priority += 8
+                edits.append((priority, f"local:layout:bridge:{pos[0]},{pos[1]}->{target[0]},{target[1]}", plan))
+
+        elif kind == "bridge" and isinstance(spec, dict):
+            target = tuple(int(value) for value in spec["target"])
+            direction = direction_between(pos, target)
+            if direction is not None:
+                plan = copy_plan(parent.plan)
+                set_plan_tile(plan, pos, {"type": "conveyor", "direction": direction})
+                edits.append((30, f"local:layout:downgrade:{pos[0]},{pos[1]}:{direction}", plan))
+
+    rng.shuffle(edits)
+    edits.sort(key=lambda item: item[0], reverse=True)
+
+    candidates = []
+    for _, source, plan in edits:
+        candidate = candidate_with_plan(parent, plan, source, generation)
+        if candidate is not None:
+            candidates.append(candidate)
+        if len(candidates) >= limit:
+            break
+    return candidates
+
+
+def local_search_candidates(
+    parent: Candidate,
+    rng: random.Random,
+    generation: int,
+    limit: int,
+) -> list[Candidate]:
+    if limit <= 0:
+        return []
+    strategy = local_strategy_candidates(parent, rng, generation)
+    fast_strategy = [
+        candidate
+        for candidate in strategy
+        if candidate.source == "local:cleanup_toggle"
+        or candidate.source.startswith("local:scoring:path_weight:")
+    ]
+    broad_strategy = [candidate for candidate in strategy if candidate not in fast_strategy]
+    layout_limit = max(0, limit - len(fast_strategy))
+    layout = ranked_layout_candidates(parent, rng, generation, layout_limit)
+    return [*fast_strategy, *layout, *broad_strategy][:limit]
+
+
 def flow_candidate_targets(
     rows: list[list[int]],
     final_tiles: dict[tuple[int, int], Any],
@@ -759,11 +928,12 @@ def mutate_plan(
     operations = [
         mutate_bridge_shortcut,
         mutate_bridge_shortcut,
-        mutate_reroute_flow,
+        mutate_bridge_shortcut,
+        mutate_bridge_shortcut,
         mutate_reroute_flow,
         mutate_add_harvester_output,
-        mutate_retarget_bridge,
         mutate_downgrade_bridge,
+        mutate_retarget_bridge,
         mutate_remove_harvester,
     ]
     if plan_diff_stats(base_plan, plan)["changed"] > 0:
@@ -1232,6 +1402,27 @@ def make_candidate(
     return candidate
 
 
+def queue_candidates(
+    candidate_queue: deque[Candidate],
+    candidates: Iterable[Candidate],
+) -> None:
+    for candidate in candidates:
+        candidate_queue.append(candidate)
+
+
+def pop_queued_candidate(
+    candidate_queue: deque[Candidate],
+    seen: set[str],
+) -> Candidate | None:
+    while candidate_queue:
+        candidate = candidate_queue.popleft()
+        if candidate.fingerprint in seen:
+            continue
+        seen.add(candidate.fingerprint)
+        return candidate
+    return None
+
+
 def plan_hash() -> str:
     payload = (BOT_ROOT / "plan.json").read_bytes()
     return hashlib.sha256(payload).hexdigest()
@@ -1280,6 +1471,14 @@ def run(args: argparse.Namespace) -> int:
 
     trial = 1
     generation = 1
+    candidate_queue: deque[Candidate] = deque()
+    expanded_plan_neighborhoods = {fingerprint_plan(best.candidate.plan)}
+    queue_candidates(
+        candidate_queue,
+        local_search_candidates(best.candidate, rng, generation, args.local_search_candidates),
+    )
+    if candidate_queue:
+        print(f"[optimizer] queued {len(candidate_queue)} local-search candidates")
     deadline = time.monotonic() + args.seconds if args.seconds else None
     try:
         while trial <= args.max_trials:
@@ -1290,14 +1489,16 @@ def run(args: argparse.Namespace) -> int:
             for worker_name in worker_names:
                 if trial > args.max_trials:
                     break
-                candidate = make_candidate(
-                    population,
-                    seen,
-                    seed_plan,
-                    rng,
-                    generation,
-                    args.layout_mutation_rate,
-                )
+                candidate = pop_queued_candidate(candidate_queue, seen)
+                if candidate is None:
+                    candidate = make_candidate(
+                        population,
+                        seen,
+                        seed_plan,
+                        rng,
+                        generation,
+                        args.layout_mutation_rate,
+                    )
                 batch.append((trial, candidate, worker_name))
                 trial += 1
                 generation += 1
@@ -1335,6 +1536,7 @@ def run(args: argparse.Namespace) -> int:
 
                     if improved:
                         best = result
+                        expanded_plan_neighborhoods.add(fingerprint_plan(best.candidate.plan))
                         publish_best(best, args.commit_improvements)
                         write_json(
                             run_dir / "best.json",
@@ -1357,7 +1559,43 @@ def run(args: argparse.Namespace) -> int:
                             f"score_b={best.score_b} score_a={best.score_a} "
                             f"source={best.candidate.source}"
                         )
+                        candidate_queue.extendleft(
+                            reversed(
+                                local_search_candidates(
+                                    best.candidate,
+                                    rng,
+                                    generation,
+                                    args.local_search_candidates,
+                                )
+                            )
+                        )
                     else:
+                        result_plan_fingerprint = fingerprint_plan(result.candidate.plan)
+                        should_expand_near_miss = (
+                            result.feasible
+                            and args.near_miss_window > 0
+                            and result.score_b >= best.score_b - args.near_miss_window
+                            and result_plan_fingerprint != fingerprint_plan(best.candidate.plan)
+                            and result_plan_fingerprint not in expanded_plan_neighborhoods
+                            and len(candidate_queue) + args.near_miss_local_candidates
+                            <= args.max_queued_candidates
+                        )
+                    if not improved and should_expand_near_miss:
+                        expanded_plan_neighborhoods.add(result_plan_fingerprint)
+                        queue_candidates(
+                            candidate_queue,
+                            local_search_candidates(
+                                result.candidate,
+                                rng,
+                                generation,
+                                args.near_miss_local_candidates,
+                            ),
+                        )
+                        print(
+                            f"[optimizer] queued near-miss trial={result.trial} "
+                            f"score_b={result.score_b} queue={len(candidate_queue)}"
+                        )
+                    elif not improved:
                         status = "score" if result.feasible else "reject"
                         value = result.score_b if result.feasible else result.reason
                         print(
@@ -1400,6 +1638,30 @@ def main() -> int:
         default=0.35,
         help="Probability that a candidate mutates the layout in addition to strategy knobs.",
     )
+    parser.add_argument(
+        "--local-search-candidates",
+        type=int,
+        default=120,
+        help="Targeted neighborhood candidates queued around the current best before random search.",
+    )
+    parser.add_argument(
+        "--near-miss-window",
+        type=int,
+        default=350,
+        help="Expand layout candidates within this score distance of the current best.",
+    )
+    parser.add_argument(
+        "--near-miss-local-candidates",
+        type=int,
+        default=48,
+        help="Neighborhood candidates queued for each close non-improving layout candidate.",
+    )
+    parser.add_argument(
+        "--max-queued-candidates",
+        type=int,
+        default=600,
+        help="Upper bound for queued local-search candidates.",
+    )
     parser.add_argument("--commit-improvements", action="store_true")
     parser.add_argument(
         "--validate-improvements",
@@ -1415,6 +1677,10 @@ def main() -> int:
     args.max_trials = max(0, args.max_trials)
     args.population_size = max(2, args.population_size)
     args.layout_mutation_rate = max(0.0, min(1.0, args.layout_mutation_rate))
+    args.local_search_candidates = max(0, args.local_search_candidates)
+    args.near_miss_window = max(0, args.near_miss_window)
+    args.near_miss_local_candidates = max(0, args.near_miss_local_candidates)
+    args.max_queued_candidates = max(0, args.max_queued_candidates)
     return run(args)
 
 

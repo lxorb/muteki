@@ -70,6 +70,13 @@ every candidate is passed through
 `generate_strategies.py`, so impossible strategy JSONs are rejected before a
 game is simulated.
 
+Each run first queues targeted local-search candidates around the current best:
+cleanup mode flips, small scoring/phase sweeps, spawn timing tweaks, and ranked
+flow-preserving bridge edits. Random mutation and crossover then fill the
+remaining trials. Strong near-miss layout candidates also get their own smaller
+neighborhood expansion so useful multi-tile edits can be discovered without
+manual intervention.
+
 Run a long optimization pass:
 
 ```powershell
@@ -91,3 +98,5 @@ named `pong_opt_worker_*` and writes ignored run logs under
 
 Use `--workers 0` to saturate the machine with one cambc worker per logical CPU.
 Use `--layout-mutation-rate 0` for strategy-only search.
+Use `--local-search-candidates 0` to disable the targeted neighborhood queue.
+Use `--near-miss-window 0` to disable beam-style near-miss expansion.
