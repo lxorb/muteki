@@ -48,6 +48,8 @@ replay_*.json
 # local test bot
 /src/bots/test_bot.py
 /bots/test_bot/
+/bots/pong_opt_worker_*/
+/tools/pong_optimizer_runs/
 
 # excluded constants
 /bots/exclude/exclude.py

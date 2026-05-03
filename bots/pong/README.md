@@ -59,3 +59,30 @@ or objects:
 { "type": "conveyor", "direction": "south" }
 { "type": "bridge", "target": [41, 12] }
 ```
+
+## Strategy Optimizer
+
+`optimize.py` searches over builder spawn schedules, builder ownership regions,
+target ordering phases, movement target scoring, cleanup mode, and builder
+count. It does not edit `plan.json`; every candidate is passed through
+`generate_strategies.py`, so impossible strategy JSONs are rejected before a
+game is simulated.
+
+Run a long optimization pass:
+
+```powershell
+python tools\pong_optimizer.py --seconds 36000 --workers 4 --commit-improvements
+```
+
+Useful shorter runs:
+
+```powershell
+python tools\pong_optimizer.py --max-trials 20 --workers 2
+python tools\pong_optimizer.py --max-trials 0 --no-validate-improvements
+```
+
+The optimizer evaluates only TEAM_B axionite. It creates temporary worker bots
+named `pong_opt_worker_*` and writes ignored run logs under
+`tools/pong_optimizer_runs/`. On each improvement it writes the winning
+`strategy_config.json`, regenerates `spawns.json` and `strategies/*.json`, and
+commits when `--commit-improvements` is set.

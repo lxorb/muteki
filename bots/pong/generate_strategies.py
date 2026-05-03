@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import copy
 import heapq
 import json
 from pathlib import Path
@@ -9,6 +11,7 @@ from typing import Any
 BOT_ROOT = Path(__file__).resolve().parent
 PLAN_PATH = BOT_ROOT / "plan.json"
 MAP_PATH = BOT_ROOT / "pong_map.json"
+CONFIG_PATH = BOT_ROOT / "strategy_config.json"
 SPAWNS_PATH = BOT_ROOT / "spawns.json"
 STRATEGY_ROOT = BOT_ROOT / "strategies"
 
@@ -36,6 +39,54 @@ TEMP_BOUNDS = {
     3: (36, 43, 3, 22),
 }
 
+DEFAULT_CONFIG: dict[str, Any] = {
+    "spawns": [
+        {"turn": 0, "tile": [40, 9]},
+        {"turn": 1, "tile": [42, 9]},
+        {"turn": 2, "tile": [40, 7]},
+    ],
+    "owner_policy": {
+        "mode": "thresholds",
+        "left_x": 36,
+        "center_left_x": 40,
+        "center_y_min": 10,
+        "center_y_max": 13,
+        "right_x": 43,
+        "fallback_owner": 3,
+        "rules": [],
+    },
+    "temp_bounds": {
+        "1": [29, 41, 7, 22],
+        "2": [42, 49, 3, 22],
+        "3": [36, 43, 3, 22],
+    },
+    "auto_temp_bounds": False,
+    "temp_margin": 2,
+    "phase": {
+        "titanium_path_base": 0,
+        "titanium_path_weight": 2,
+        "titanium_harvester_base": 1,
+        "titanium_harvester_weight": 2,
+        "foundry_base": 900,
+        "foundry_core_weight": 1,
+        "generic_walkable_base": 1000,
+        "generic_walkable_flow_weight": 1,
+        "axionite_harvester_base": 2000,
+        "axionite_harvester_core_weight": 1,
+        "other_base": 3000,
+        "other_core_weight": 1,
+    },
+    "target_scoring": {
+        "path_weight": 10,
+        "manhattan_weight": 1,
+        "flow_weight": 0,
+        "core_distance_weight": 0,
+    },
+    "cleanup": {
+        "mode": "nearest",
+    },
+}
+
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -44,6 +95,39 @@ def load_json(path: Path) -> Any:
 def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def deep_merge(base: Any, override: Any) -> Any:
+    if isinstance(base, dict) and isinstance(override, dict):
+        merged = copy.deepcopy(base)
+        for key, value in override.items():
+            merged[key] = deep_merge(merged.get(key), value)
+        return merged
+    if override is None:
+        return copy.deepcopy(base)
+    return copy.deepcopy(override)
+
+
+def normalize_config(raw_config: dict[str, Any] | None = None) -> dict[str, Any]:
+    config = deep_merge(DEFAULT_CONFIG, raw_config or {})
+    spawns = {}
+    for index, raw_spawn in enumerate(config["spawns"], start=1):
+        spawns[index] = {
+            "turn": int(raw_spawn["turn"]),
+            "tile": _tuple_position(raw_spawn["tile"]),
+        }
+    config["_spawns_by_builder"] = spawns
+    config["_builder_numbers"] = tuple(sorted(spawns))
+    return config
+
+
+def _tuple_position(raw: Any) -> tuple[int, int]:
+    if isinstance(raw, str):
+        x, y = raw.split(",", 1)
+        return int(x), int(y)
+    if isinstance(raw, dict):
+        return int(raw["x"]), int(raw["y"])
+    return int(raw[0]), int(raw[1])
 
 
 def tile_key(pos: tuple[int, int]) -> str:
@@ -154,12 +238,16 @@ class BuilderPlan:
         rows: list[list[int]],
         final_tiles: dict[tuple[int, int], Any],
         owner: dict[tuple[int, int], int],
+        temp_bounds: tuple[int, int, int, int],
+        cleanup_mode: str,
     ) -> None:
         self.builder = builder
         self.pos = spawn
         self.rows = rows
         self.final_tiles = final_tiles
         self.owner = owner
+        self.temp_bounds = temp_bounds
+        self.cleanup_mode = cleanup_mode
         self.turn = 1
         self.turns: dict[str, list[dict[str, Any]]] = {}
         self.built_final: set[tuple[int, int]] = set()
@@ -179,7 +267,7 @@ class BuilderPlan:
         return RIGHT_MIN_X <= x < len(self.rows[0]) and 0 <= y < len(self.rows)
 
     def in_temp_bounds(self, pos: tuple[int, int]) -> bool:
-        min_x, max_x, min_y, max_y = TEMP_BOUNDS[self.builder]
+        min_x, max_x, min_y, max_y = self.temp_bounds
         return min_x <= pos[0] <= max_x and min_y <= pos[1] <= max_y
 
     def can_step_on(self, pos: tuple[int, int]) -> bool:
@@ -365,7 +453,11 @@ class BuilderPlan:
                 ):
                     continue
                 candidate = (len(path), road, path)
-                if best is None or candidate < best:
+                if self.cleanup_mode == "farthest":
+                    is_better = best is None or candidate > best
+                else:
+                    is_better = best is None or candidate < best
+                if is_better:
                     best = candidate
 
             if best is None:
@@ -397,13 +489,69 @@ class BuilderPlan:
         return True
 
 
-def owner_for(pos: tuple[int, int]) -> int:
+def nearest_owner(
+    pos: tuple[int, int],
+    spawns: dict[int, dict[str, Any]],
+) -> int:
+    return min(
+        spawns,
+        key=lambda builder: (
+            distance_sq(pos, spawns[builder]["tile"]),
+            builder,
+        ),
+    )
+
+
+def owner_for(
+    pos: tuple[int, int],
+    config: dict[str, Any],
+) -> int:
+    spawns: dict[int, dict[str, Any]] = config["_spawns_by_builder"]
+    policy = config["owner_policy"]
+
+    for rule in policy.get("rules", []):
+        min_x = int(rule.get("min_x", RIGHT_MIN_X))
+        max_x = int(rule.get("max_x", 10_000))
+        min_y = int(rule.get("min_y", 0))
+        max_y = int(rule.get("max_y", 10_000))
+        if min_x <= pos[0] <= max_x and min_y <= pos[1] <= max_y:
+            owner = int(rule["owner"])
+            return owner if owner in spawns else nearest_owner(pos, spawns)
+
+    if policy.get("mode") == "nearest":
+        return nearest_owner(pos, spawns)
+
     x, y = pos
-    if x <= 36 or (x <= 40 and 10 <= y <= 13):
-        return 1
-    if x >= 43:
-        return 2
-    return 3
+    if x <= int(policy["left_x"]) or (
+        x <= int(policy["center_left_x"])
+        and int(policy["center_y_min"]) <= y <= int(policy["center_y_max"])
+    ):
+        owner = 1
+    elif x >= int(policy["right_x"]):
+        owner = 2
+    else:
+        owner = int(policy["fallback_owner"])
+    return owner if owner in spawns else nearest_owner(pos, spawns)
+
+
+def temp_bounds_for(
+    builder: int,
+    assigned: list[tuple[int, int]],
+    spawn: tuple[int, int],
+    rows: list[list[int]],
+    config: dict[str, Any],
+) -> tuple[int, int, int, int]:
+    raw_bounds = config.get("temp_bounds", {}).get(str(builder))
+    if raw_bounds is not None and not config.get("auto_temp_bounds", False):
+        return tuple(int(value) for value in raw_bounds)
+
+    margin = int(config.get("temp_margin", 2))
+    points = [spawn, *assigned, *CORE_TILES]
+    min_x = max(RIGHT_MIN_X, min(x for x, _ in points) - margin)
+    max_x = min(len(rows[0]) - 1, max(x for x, _ in points) + margin)
+    min_y = max(0, min(y for _, y in points) - margin)
+    max_y = min(len(rows) - 1, max(y for _, y in points) + margin)
+    return min_x, max_x, min_y, max_y
 
 
 def target_phase(
@@ -413,49 +561,88 @@ def target_phase(
     flow_distances: dict[tuple[int, int], int],
     titanium_supply_tiles: set[tuple[int, int]],
     titanium_harvester_distances: dict[tuple[int, int], int],
+    config: dict[str, Any],
 ) -> tuple[int, int, int, int]:
     kind = spec_type(spec)
     terrain = rows[pos[1]][pos[0]]
     core_distance = abs(pos[0] - 41) + abs(pos[1] - 8)
     flow_distance = flow_distances.get(pos, core_distance + 100)
+    phase_config = config["phase"]
     if kind in WALKABLE_TYPES and pos in titanium_supply_tiles:
-        phase = flow_distance * 2
+        phase = (
+            int(phase_config["titanium_path_base"])
+            + flow_distance * int(phase_config["titanium_path_weight"])
+        )
     elif kind == "harvester" and terrain == 2:
-        phase = titanium_harvester_distances.get(pos, 500) * 2 + 1
+        phase = (
+            int(phase_config["titanium_harvester_base"])
+            + titanium_harvester_distances.get(pos, 500)
+            * int(phase_config["titanium_harvester_weight"])
+        )
     elif kind in WALKABLE_TYPES:
-        phase = 1000 + flow_distance
-    elif kind == "bridge":
-        phase = 1100 + core_distance
+        phase = (
+            int(phase_config["generic_walkable_base"])
+            + flow_distance * int(phase_config["generic_walkable_flow_weight"])
+        )
     elif kind == "foundry":
-        phase = 900 + core_distance
+        phase = (
+            int(phase_config["foundry_base"])
+            + core_distance * int(phase_config["foundry_core_weight"])
+        )
     elif kind == "harvester":
-        phase = 2000 + core_distance
+        phase = (
+            int(phase_config["axionite_harvester_base"])
+            + core_distance * int(phase_config["axionite_harvester_core_weight"])
+        )
     else:
-        phase = 3000 + core_distance
+        phase = (
+            int(phase_config["other_base"])
+            + core_distance * int(phase_config["other_core_weight"])
+        )
     return phase, flow_distance, pos[1], pos[0]
 
 
 def choose_next_target(
     planner: BuilderPlan,
     targets: list[tuple[int, int]],
+    flow_distances: dict[tuple[int, int], int],
+    config: dict[str, Any],
 ) -> tuple[int, int]:
     best_target = targets[0]
-    best_score = 1_000_000
+    best_score = 1_000_000_000
+    scoring = config["target_scoring"]
     for target in targets:
         goals = planner.stand_goals_for(target)
         path = planner.path_to_any(goals)
         if path is None:
             continue
-        score = len(path) * 10 + abs(target[0] - planner.pos[0]) + abs(target[1] - planner.pos[1])
+        manhattan = abs(target[0] - planner.pos[0]) + abs(target[1] - planner.pos[1])
+        core_distance = abs(target[0] - 41) + abs(target[1] - 8)
+        score = (
+            len(path) * int(scoring["path_weight"])
+            + manhattan * int(scoring["manhattan_weight"])
+            + flow_distances.get(target, core_distance + 100)
+            * int(scoring["flow_weight"])
+            + core_distance * int(scoring["core_distance_weight"])
+        )
         if score < best_score:
             best_score = score
             best_target = target
     return best_target
 
 
-def generate() -> dict[str, Any]:
-    plan = load_json(PLAN_PATH)
-    map_data = load_json(MAP_PATH)
+def generate(
+    raw_config: dict[str, Any] | None = None,
+    plan_path: Path = PLAN_PATH,
+    map_path: Path = MAP_PATH,
+    spawns_path: Path = SPAWNS_PATH,
+    strategy_root: Path = STRATEGY_ROOT,
+    cleanup_stale: bool = True,
+) -> dict[str, Any]:
+    config = normalize_config(raw_config)
+    spawns: dict[int, dict[str, Any]] = config["_spawns_by_builder"]
+    plan = load_json(plan_path)
+    map_data = load_json(map_path)
     rows = map_data["rows"]
 
     final_tiles: dict[tuple[int, int], Any] = {}
@@ -472,14 +659,37 @@ def generate() -> dict[str, Any]:
         compute_titanium_supply_priorities(final_tiles, rows, flow_distances)
     )
 
-    owner = {pos: owner_for(pos) for pos in final_tiles}
+    owner = {pos: owner_for(pos, config) for pos in final_tiles}
+
+    assigned_by_builder = {
+        builder: [pos for pos in final_tiles if owner[pos] == builder]
+        for builder in spawns
+    }
+    temp_bounds = {
+        builder: temp_bounds_for(
+            builder,
+            assigned_by_builder[builder],
+            spawn["tile"],
+            rows,
+            config,
+        )
+        for builder, spawn in spawns.items()
+    }
     planners = {
-        builder: BuilderPlan(builder, spawn["tile"], rows, final_tiles, owner)
-        for builder, spawn in SPAWNS.items()
+        builder: BuilderPlan(
+            builder,
+            spawn["tile"],
+            rows,
+            final_tiles,
+            owner,
+            temp_bounds[builder],
+            config["cleanup"].get("mode", "nearest"),
+        )
+        for builder, spawn in spawns.items()
     }
 
     for builder, planner in planners.items():
-        assigned = [pos for pos in final_tiles if owner[pos] == builder]
+        assigned = assigned_by_builder[builder]
         phases = sorted(
             {
                 target_phase(
@@ -489,6 +699,7 @@ def generate() -> dict[str, Any]:
                     flow_distances,
                     titanium_supply_tiles,
                     titanium_harvester_distances,
+                    config,
                 )[0]
                 for pos in assigned
             }
@@ -504,6 +715,7 @@ def generate() -> dict[str, Any]:
                     flow_distances,
                     titanium_supply_tiles,
                     titanium_harvester_distances,
+                    config,
                 )[0]
                 == phase
             ]
@@ -515,43 +727,97 @@ def generate() -> dict[str, Any]:
                     flow_distances,
                     titanium_supply_tiles,
                     titanium_harvester_distances,
+                    config,
                 )
             )
             while phase_targets:
-                target = choose_next_target(planner, phase_targets)
+                target = choose_next_target(
+                    planner,
+                    phase_targets,
+                    flow_distances,
+                    config,
+                )
                 planner.build_target(target)
                 phase_targets.remove(target)
         planner.cleanup_temp_roads()
 
     write_json(
-        SPAWNS_PATH,
+        spawns_path,
         {
             "builders": [
                 {"turn": spawn["turn"], "tile": list(spawn["tile"])}
-                for _, spawn in sorted(SPAWNS.items())
+                for _, spawn in sorted(spawns.items())
             ]
         },
     )
 
-    STRATEGY_ROOT.mkdir(parents=True, exist_ok=True)
+    strategy_root.mkdir(parents=True, exist_ok=True)
+    if cleanup_stale:
+        active_files = {f"{builder}.json" for builder in planners}
+        for path in strategy_root.glob("*.json"):
+            if path.name not in active_files:
+                path.unlink()
+
     summary = {"builders": {}}
     for builder, planner in planners.items():
         payload = {"turns": planner.turns}
-        write_json(STRATEGY_ROOT / f"{builder}.json", payload)
+        write_json(strategy_root / f"{builder}.json", payload)
         summary["builders"][str(builder)] = {
             "turns": max((int(turn) for turn in planner.turns), default=0),
             "actions": sum(len(actions) for actions in planner.turns.values()),
             "final_builds": len(planner.built_final),
             "temp_roads_remaining": len(planner.temp_roads),
+            "assigned_final_builds": len(assigned_by_builder[builder]),
+            "temp_bounds": list(temp_bounds[builder]),
         }
 
     summary["final_tile_count"] = len(final_tiles)
     summary["planned_final_builds"] = sum(len(planner.built_final) for planner in planners.values())
+    summary["config"] = {
+        key: value
+        for key, value in config.items()
+        if not key.startswith("_")
+    }
     return summary
 
 
 def main() -> int:
-    print(json.dumps(generate(), indent=2))
+    parser = argparse.ArgumentParser(
+        description="Generate feasible hardcoded pong builder strategies."
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help=(
+            "Optional strategy config JSON. Defaults to strategy_config.json "
+            "when that file exists."
+        ),
+    )
+    parser.add_argument("--plan", type=Path, default=PLAN_PATH)
+    parser.add_argument("--map", type=Path, default=MAP_PATH)
+    parser.add_argument("--spawns-out", type=Path, default=SPAWNS_PATH)
+    parser.add_argument("--strategy-root", type=Path, default=STRATEGY_ROOT)
+    parser.add_argument("--summary-out", type=Path)
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--no-cleanup-stale", action="store_true")
+    args = parser.parse_args()
+
+    config_path = args.config
+    if config_path is None and CONFIG_PATH.exists():
+        config_path = CONFIG_PATH
+    raw_config = load_json(config_path) if config_path else None
+    summary = generate(
+        raw_config=raw_config,
+        plan_path=args.plan,
+        map_path=args.map,
+        spawns_path=args.spawns_out,
+        strategy_root=args.strategy_root,
+        cleanup_stale=not args.no_cleanup_stale,
+    )
+    if args.summary_out:
+        write_json(args.summary_out, summary)
+    if not args.quiet:
+        print(json.dumps(summary, indent=2))
     return 0
 
 
