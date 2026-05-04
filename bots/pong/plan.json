@@ -380,30 +380,12 @@
     "30,6": null,
     "31,6": null,
     "32,6": null,
-    "33,6": {
-      "type": "conveyor",
-      "direction": "east"
-    },
-    "34,6": {
-      "type": "conveyor",
-      "direction": "east"
-    },
-    "35,6": {
-      "type": "conveyor",
-      "direction": "east"
-    },
-    "36,6": {
-      "type": "conveyor",
-      "direction": "east"
-    },
-    "37,6": {
-      "type": "conveyor",
-      "direction": "east"
-    },
-    "38,6": {
-      "type": "conveyor",
-      "direction": "east"
-    },
+    "33,6": null,
+    "34,6": null,
+    "35,6": null,
+    "36,6": null,
+    "37,6": null,
+    "38,6": null,
     "39,6": {
       "type": "conveyor",
       "direction": "east"
@@ -466,16 +448,16 @@
     "30,7": null,
     "31,7": null,
     "32,7": null,
-    "33,7": {
-      "type": "conveyor",
-      "direction": "north"
-    },
+    "33,7": null,
     "34,7": null,
     "35,7": null,
     "36,7": null,
     "37,7": null,
     "38,7": null,
-    "39,7": null,
+    "39,7": {
+      "type": "conveyor",
+      "direction": "north"
+    },
     "40,7": null,
     "41,7": null,
     "42,7": null,
@@ -531,16 +513,25 @@
     "30,8": null,
     "31,8": null,
     "32,8": null,
-    "33,8": {
+    "33,8": null,
+    "34,8": null,
+    "35,8": null,
+    "36,8": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "37,8": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "38,8": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "39,8": {
       "type": "conveyor",
       "direction": "north"
     },
-    "34,8": null,
-    "35,8": null,
-    "36,8": null,
-    "37,8": null,
-    "38,8": null,
-    "39,8": null,
     "40,8": null,
     "41,8": null,
     "42,8": null,
@@ -593,13 +584,16 @@
     "30,9": null,
     "31,9": null,
     "32,9": null,
-    "33,9": {
+    "33,9": null,
+    "34,9": null,
+    "35,9": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "36,9": {
       "type": "conveyor",
       "direction": "north"
     },
-    "34,9": null,
-    "35,9": null,
-    "36,9": null,
     "37,9": {
       "type": "conveyor",
       "direction": "east"
@@ -684,10 +678,16 @@
     "32,10": null,
     "33,10": {
       "type": "conveyor",
+      "direction": "east"
+    },
+    "34,10": {
+      "type": "conveyor",
+      "direction": "east"
+    },
+    "35,10": {
+      "type": "conveyor",
       "direction": "north"
     },
-    "34,10": null,
-    "35,10": null,
     "36,10": {
       "type": "conveyor",
       "direction": "east"

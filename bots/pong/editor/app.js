@@ -56,6 +56,7 @@ const state = {
   spawnSchedule: [],
   strategies: new Map(),
   selected: null,
+  hovered: null,
   currentBuilder: 1,
   currentTurn: 1,
   strategyClickMode: "append",
@@ -87,6 +88,7 @@ function cacheElements() {
   Object.assign(els, {
     status: document.getElementById("status"),
     mapGrid: document.getElementById("mapGrid"),
+    hoverTileLabel: document.getElementById("hoverTileLabel"),
     layoutModeButton: document.getElementById("layoutModeButton"),
     strategyModeButton: document.getElementById("strategyModeButton"),
     savePlanButton: document.getElementById("savePlanButton"),
@@ -95,6 +97,7 @@ function cacheElements() {
     strategyPanel: document.getElementById("strategyPanel"),
     builderSelect: document.getElementById("builderSelect"),
     addBuilderButton: document.getElementById("addBuilderButton"),
+    removeBuilderSpawnButton: document.getElementById("removeBuilderSpawnButton"),
     selectedTileLabel: document.getElementById("selectedTileLabel"),
     layoutBuildingSelect: document.getElementById("layoutBuildingSelect"),
     layoutDirectionSelect: document.getElementById("layoutDirectionSelect"),
@@ -114,7 +117,6 @@ function cacheElements() {
     appendPlanBuildButton: document.getElementById("appendPlanBuildButton"),
     appendOverrideBuildButton: document.getElementById("appendOverrideBuildButton"),
     appendMoveButton: document.getElementById("appendMoveButton"),
-    appendDestroyButton: document.getElementById("appendDestroyButton"),
     clearFutureButton: document.getElementById("clearFutureButton"),
     overrideBuildingSelect: document.getElementById("overrideBuildingSelect"),
     overrideDirectionSelect: document.getElementById("overrideDirectionSelect"),
@@ -143,16 +145,17 @@ function fillDirectionSelects() {
 function bindEvents() {
   els.layoutModeButton.addEventListener("click", () => setMode("layout"));
   els.strategyModeButton.addEventListener("click", () => setMode("strategy"));
+  els.mapGrid.addEventListener("pointerleave", () => clearHoveredTile());
   els.savePlanButton.addEventListener("click", savePlan);
   els.saveStrategyButton.addEventListener("click", saveCurrentStrategy);
   els.builderSelect.addEventListener("change", () => {
     state.currentBuilder = Number(els.builderSelect.value);
     ensureStrategy(state.currentBuilder);
-    ensureSpawnForBuilder(state.currentBuilder);
     syncTurnBounds();
     render();
   });
   els.addBuilderButton.addEventListener("click", addBuilder);
+  els.removeBuilderSpawnButton.addEventListener("click", removeCurrentBuilderSpawn);
 
   els.layoutBuildingSelect.addEventListener("change", () => {
     applyLayoutBuilding(els.layoutBuildingSelect.value);
@@ -174,7 +177,6 @@ function bindEvents() {
   els.appendPlanBuildButton.addEventListener("click", () => setStrategyActionMode("plan_build"));
   els.appendOverrideBuildButton.addEventListener("click", () => setStrategyActionMode("override_build"));
   els.appendMoveButton.addEventListener("click", () => setStrategyActionMode("move"));
-  els.appendDestroyButton.addEventListener("click", () => setStrategyActionMode("destroy"));
   els.clearFutureButton.addEventListener("click", clearFutureActions);
   els.overrideBuildingSelect.addEventListener("change", () => {
     state.overrideDraft.building = els.overrideBuildingSelect.value;
@@ -208,7 +210,6 @@ async function loadState() {
   for (const item of payload.strategies) {
     state.strategies.set(item.builder, normalizeStrategy(item.strategy));
   }
-  for (const builder of builderNumbers()) ensureSpawnForBuilder(builder);
   if (!state.strategies.has(1)) state.strategies.set(1, normalizeStrategy({ turns: { 1: [] } }));
   state.currentBuilder = Math.min(...builderNumbers());
   state.selected = { x: state.map.cores[1].center.x, y: state.map.cores[1].center.y };
@@ -221,6 +222,7 @@ async function loadState() {
 function render() {
   renderGrid();
   renderPanels();
+  updateHoveredTileLabel();
 }
 
 function renderGrid() {
@@ -294,6 +296,9 @@ function renderGrid() {
       }
 
       tile.addEventListener("click", () => handleTileClick(x, y));
+      tile.addEventListener("pointerenter", () => setHoveredTile({ x, y }));
+      tile.addEventListener("focus", () => setHoveredTile({ x, y }));
+      tile.addEventListener("blur", () => clearHoveredTile({ x, y }));
       els.mapGrid.appendChild(tile);
     }
   }
@@ -387,10 +392,20 @@ function renderStrategyWarnings() {
 
 function renderSpawnControls() {
   const spawn = currentSpawnEntry();
+  if (!spawn) {
+    els.spawnTurnNumber.value = "";
+    els.spawnTileLabel.textContent = "not spawned";
+    els.firstActionTurnLabel.textContent = "none";
+    els.pickSpawnTileButton.textContent = "Add Spawn Tile";
+    els.removeBuilderSpawnButton.disabled = true;
+    return;
+  }
   const spawnPos = posFromAny(spawn.tile);
   els.spawnTurnNumber.value = String(spawn.turn);
   els.spawnTileLabel.textContent = formatPos(spawnPos);
   els.firstActionTurnLabel.textContent = String(spawn.turn + 1);
+  els.pickSpawnTileButton.textContent = "Pick Spawn Tile";
+  els.removeBuilderSpawnButton.disabled = false;
 }
 
 function renderSelectionDetails() {
@@ -415,6 +430,9 @@ function renderSelectionDetails() {
 }
 
 function updatePanelVisibility() {
+  if (state.strategyActionMode === "destroy") {
+    state.strategyActionMode = "move";
+  }
   els.layoutPanel.classList.toggle("is-hidden", state.mode !== "layout");
   els.strategyPanel.classList.toggle("is-hidden", state.mode !== "strategy");
   const layoutType = els.layoutBuildingSelect.value;
@@ -434,7 +452,6 @@ function updatePanelVisibility() {
   els.appendPlanBuildButton.classList.toggle("is-active", state.strategyActionMode === "plan_build");
   els.appendOverrideBuildButton.classList.toggle("is-active", state.strategyActionMode === "override_build");
   els.appendMoveButton.classList.toggle("is-active", state.strategyActionMode === "move");
-  els.appendDestroyButton.classList.toggle("is-active", state.strategyActionMode === "destroy");
   els.pickSpawnTileButton.classList.toggle("is-active", state.pickingSpawnTile);
 }
 
@@ -453,6 +470,24 @@ function handleTileClick(x, y) {
     return;
   }
   render();
+}
+
+function setHoveredTile(pos) {
+  state.hovered = { ...pos };
+  updateHoveredTileLabel();
+}
+
+function clearHoveredTile(pos = null) {
+  if (pos && state.hovered && (state.hovered.x !== pos.x || state.hovered.y !== pos.y)) {
+    return;
+  }
+  state.hovered = null;
+  updateHoveredTileLabel();
+}
+
+function updateHoveredTileLabel() {
+  if (!els.hoverTileLabel) return;
+  els.hoverTileLabel.textContent = formatPos(state.hovered);
 }
 
 function handleShortcut(event) {
@@ -530,7 +565,7 @@ function setTurn(turn) {
 }
 
 function setCurrentBuilderSpawnTurn(turn) {
-  const spawn = currentSpawnEntry();
+  const spawn = ensureSpawnForBuilder(state.currentBuilder);
   spawn.turn = Math.max(0, Number.isFinite(turn) ? Math.floor(turn) : 0);
   render();
   setStatus(`Builder ${state.currentBuilder} spawn turn set to ${spawn.turn}`);
@@ -550,7 +585,7 @@ function setCurrentBuilderSpawnTile(pos) {
     render();
     return;
   }
-  const spawn = currentSpawnEntry();
+  const spawn = ensureSpawnForBuilder(state.currentBuilder);
   spawn.tile = [pos.x, pos.y];
   state.pickingSpawnTile = false;
   render();
@@ -680,21 +715,16 @@ function addMoveAction() {
   addAction({ action: "move_to", to: [state.selected.x, state.selected.y] });
 }
 
-function addDestroyAction() {
-  if (!state.selected) return setStatus("Select a tile first", "error");
-  addAction({ action: "destroy", at: [state.selected.x, state.selected.y] });
-}
-
 function addBuildActionWithImplicitMove(buildAction) {
   const strategy = currentStrategy();
   const turn = insertionTurn(strategy);
   const buildPos = actionPosition(buildAction);
   const currentPos = simulatedPositionBeforeInsertion(turn, true);
-  const walkableKeys = walkableTilesBeforeInsertion(turn, true);
+  const tileState = simulatedTileStateBeforeInsertion(turn, true);
   const actions = [];
 
   if (currentPos && buildPos && distanceSq(currentPos, buildPos) > BUILDER_ACTION_RADIUS_SQ) {
-    const stagingPos = implicitBuildStagingTile(currentPos, buildPos, walkableKeys);
+    const stagingPos = implicitBuildStagingTile(currentPos, buildPos, tileState);
     if (stagingPos) {
       actions.push({
         action: "move_to",
@@ -722,16 +752,12 @@ function applySelectedStrategyAction() {
     addMoveAction();
     return;
   }
-  if (state.strategyActionMode === "destroy") {
-    addDestroyAction();
-  }
 }
 
 function strategyActionModeLabel(mode) {
   if (mode === "plan_build") return "Build from plan";
   if (mode === "override_build") return "Overwrite build";
   if (mode === "move") return "Move";
-  if (mode === "destroy") return "Destroy";
   return "Action";
 }
 
@@ -794,6 +820,20 @@ function addBuilder() {
   renderBuilderSelect();
   syncTurnBounds();
   render();
+}
+
+function removeCurrentBuilderSpawn() {
+  const before = state.spawnSchedule.length;
+  state.spawnSchedule = state.spawnSchedule.filter(
+    (item) => Number(item.builder) !== state.currentBuilder,
+  );
+  state.pickingSpawnTile = false;
+  render();
+  if (state.spawnSchedule.length === before) {
+    setStatus(`Builder ${state.currentBuilder} was not scheduled to spawn`);
+  } else {
+    setStatus(`Builder ${state.currentBuilder} removed from spawn schedule`);
+  }
 }
 
 async function savePlan() {
@@ -877,24 +917,25 @@ function normalizeSpawnSchedule(spawns) {
 }
 
 function compactSpawnSchedule() {
-  for (const builder of builderNumbers()) ensureSpawnForBuilder(builder);
   return normalizeSpawnSchedule(state.spawnSchedule);
 }
 
 function currentSpawnEntry() {
-  ensureSpawnForBuilder(state.currentBuilder);
   return state.spawnSchedule.find((item) => Number(item.builder) === state.currentBuilder);
 }
 
 function ensureSpawnForBuilder(builderNumber) {
-  if (state.spawnSchedule.some((item) => Number(item.builder) === builderNumber)) return;
+  const existing = state.spawnSchedule.find((item) => Number(item.builder) === builderNumber);
+  if (existing) return existing;
   const pos = defaultSpawnTile();
-  state.spawnSchedule.push({
+  const spawn = {
     builder: builderNumber,
     turn: 0,
     tile: [pos.x, pos.y],
-  });
+  };
+  state.spawnSchedule.push(spawn);
   state.spawnSchedule.sort((a, b) => a.builder - b.builder);
+  return spawn;
 }
 
 function defaultSpawnTile() {
@@ -1006,8 +1047,9 @@ function simulatedPositionBeforeInsertion(turn, replacingBuild) {
   return current;
 }
 
-function walkableTilesBeforeInsertion(turn, replacingBuild) {
+function simulatedTileStateBeforeInsertion(turn, replacingBuild) {
   const walkable = new Set(coreFootprintKeys());
+  const occupied = new Set();
   const strategy = currentStrategy();
   const turns = Object.keys(strategy.turns).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
   for (const existingTurn of turns) {
@@ -1023,21 +1065,31 @@ function walkableTilesBeforeInsertion(turn, replacingBuild) {
       const pos = actionPosition(action);
       if (!pos) continue;
       const key = tileKey(pos.x, pos.y);
-      if (name === "build" && isWalkableBuildAction(action, pos)) walkable.add(key);
-      if (name === "move_to" && isEmptyMoveTile(pos)) walkable.add(key);
-      if (name === "destroy") walkable.delete(key);
+      if (name === "build") {
+        occupied.add(key);
+        if (isWalkableBuildAction(action, pos)) walkable.add(key);
+        else walkable.delete(key);
+      }
+      if (name === "move_to" && isOpenMoveTile(pos, occupied)) {
+        occupied.add(key);
+        walkable.add(key);
+      }
+      if (name === "destroy") {
+        occupied.delete(key);
+        walkable.delete(key);
+      }
     }
   }
-  return walkable;
+  return { walkable, occupied };
 }
 
-function implicitBuildStagingTile(current, buildPos, walkableKeys) {
+function implicitBuildStagingTile(current, buildPos, tileState) {
   const candidates = [];
   for (let dx = -1; dx <= 1; dx += 1) {
     for (let dy = -1; dy <= 1; dy += 1) {
       if (dx === 0 && dy === 0) continue;
       const candidate = { x: current.x + dx, y: current.y + dy };
-      if (!isMovableStrategyTile(candidate, walkableKeys)) continue;
+      if (!isMovableStrategyTile(candidate, tileState.walkable, tileState.occupied)) continue;
       if (distanceSq(candidate, buildPos) > BUILDER_ACTION_RADIUS_SQ) continue;
       candidates.push(candidate);
     }
@@ -1067,6 +1119,7 @@ function impossibleActionWarnings() {
 
   let current = { ...start };
   let walkable = new Set(coreFootprintKeys());
+  let occupied = new Set();
   const strategy = currentStrategy();
   const turns = Object.keys(strategy.turns).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
   for (const turn of turns) {
@@ -1091,13 +1144,16 @@ function impossibleActionWarnings() {
           );
           return;
         }
-        if (!walkable.has(key) && !isEmptyMoveTile(pos)) {
+        if (!walkable.has(key) && !isOpenMoveTile(pos, occupied)) {
           warnings.push(
             `Turn ${turn}, action ${index + 1}: move target ${formatPos(pos)} is not walkable and cannot be prepared with a road`,
           );
           return;
         }
-        if (isEmptyMoveTile(pos)) walkable.add(key);
+        if (isOpenMoveTile(pos, occupied)) {
+          occupied.add(key);
+          walkable.add(key);
+        }
         current = { ...pos };
         return;
       }
@@ -1109,7 +1165,10 @@ function impossibleActionWarnings() {
           );
           return;
         }
-        if (isWalkableBuildAction(action, pos)) walkable.add(tileKey(pos.x, pos.y));
+        const key = tileKey(pos.x, pos.y);
+        occupied.add(key);
+        if (isWalkableBuildAction(action, pos)) walkable.add(key);
+        else walkable.delete(key);
         return;
       }
 
@@ -1119,7 +1178,11 @@ function impossibleActionWarnings() {
         );
         return;
       }
-      if (name === "destroy") walkable.delete(tileKey(pos.x, pos.y));
+      if (name === "destroy") {
+        const key = tileKey(pos.x, pos.y);
+        occupied.delete(key);
+        walkable.delete(key);
+      }
     });
   }
   return warnings;
@@ -1128,8 +1191,7 @@ function impossibleActionWarnings() {
 function builderSpawnPosition() {
   const schedule = currentSpawnEntry();
   if (schedule) return posFromAny(schedule.tile);
-  const core = state.map?.cores?.[1]?.center;
-  return core ? { x: core.x, y: core.y } : null;
+  return null;
 }
 
 function isSingleMoveStep(from, to) {
@@ -1150,10 +1212,10 @@ function isMapPosition(pos) {
   return pos.x >= RIGHT_MIN_X && pos.x < state.map.width && pos.y >= 0 && pos.y < state.map.height;
 }
 
-function isMovableStrategyTile(pos, walkableKeys) {
+function isMovableStrategyTile(pos, walkableKeys, occupiedKeys = new Set()) {
   return isMapPosition(pos)
     && state.map.rows[pos.y][pos.x] !== 1
-    && (walkableKeys.has(tileKey(pos.x, pos.y)) || isEmptyMoveTile(pos));
+    && (walkableKeys.has(tileKey(pos.x, pos.y)) || isOpenMoveTile(pos, occupiedKeys));
 }
 
 function isWalkableBuildAction(action, pos) {
@@ -1162,10 +1224,15 @@ function isWalkableBuildAction(action, pos) {
 }
 
 function isEmptyMoveTile(pos) {
+  return isOpenMoveTile(pos);
+}
+
+function isOpenMoveTile(pos, occupiedKeys = new Set()) {
+  const key = tileKey(pos.x, pos.y);
   return isMapPosition(pos)
     && state.map.rows[pos.y][pos.x] === 0
-    && !coreFootprintKeys().has(tileKey(pos.x, pos.y))
-    && !planSpecAt(pos.x, pos.y);
+    && !coreFootprintKeys().has(key)
+    && !occupiedKeys.has(key);
 }
 
 function isValidSpawnTile(pos) {

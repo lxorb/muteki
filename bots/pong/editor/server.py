@@ -75,6 +75,7 @@ def spawn_file_payload(data) -> dict:
     return {
         "builders": [
             {
+                "builder": item["builder"],
                 "turn": item["turn"],
                 "tile": item["tile"],
             }

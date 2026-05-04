@@ -15,6 +15,7 @@ RIGHT_CORE_CENTER = Position(41, 8)
 
 @dataclass(frozen=True)
 class SpawnOrder:
+    builder: int
     turn: int
     tile: Position
 
@@ -30,19 +31,34 @@ def _position(raw) -> Position:
 
 def _load_spawn_schedule() -> tuple[SpawnOrder, ...]:
     if not SPAWNS_PATH.exists():
-        return (SpawnOrder(turn=0, tile=RIGHT_CORE_CENTER),)
+        return (SpawnOrder(builder=1, turn=0, tile=RIGHT_CORE_CENTER),)
 
     data = json.loads(SPAWNS_PATH.read_text(encoding="utf-8"))
-    raw_builders = data.get("builders", data) if isinstance(data, dict) else data
+    raw_builders = (
+        data.get("spawn_schedule", data.get("builders", data))
+        if isinstance(data, dict)
+        else data
+    )
     orders = []
     for raw in raw_builders:
+        if isinstance(raw, dict) and raw.get("enabled") is False:
+            continue
+        builder_number = (
+            int(raw.get("builder", len(orders) + 1))
+            if isinstance(raw, dict)
+            else len(orders) + 1
+        )
+        turn = int(raw.get("turn", 0)) if isinstance(raw, dict) else 0
+        tile = raw.get("tile", RIGHT_CORE_CENTER) if isinstance(raw, dict) else raw
         orders.append(
             SpawnOrder(
-                turn=int(raw.get("turn", 0)),
-                tile=_position(raw.get("tile", RIGHT_CORE_CENTER)),
+                builder=builder_number,
+                turn=turn,
+                tile=_position(tile),
             )
         )
-    return tuple(orders) or (SpawnOrder(turn=0, tile=RIGHT_CORE_CENTER),)
+    orders.sort(key=lambda order: order.builder)
+    return tuple(orders)
 
 
 # Canonical coordinates are written for the right side of pong. The runtime
@@ -65,16 +81,17 @@ def actual_position(canonical_right_pos: Position, right_side: bool) -> Position
 
 
 def builder_number_for_spawn_turn(turn: int) -> int | None:
-    for index, order in enumerate(SPAWN_SCHEDULE, start=1):
+    for order in SPAWN_SCHEDULE:
         if order.turn == turn:
-            return index
+            return order.builder
     return None
 
 
 def spawn_turn_for_builder_number(builder_number: int) -> int | None:
-    if not (1 <= builder_number <= len(SPAWN_SCHEDULE)):
-        return None
-    return SPAWN_SCHEDULE[builder_number - 1].turn
+    for order in SPAWN_SCHEDULE:
+        if order.builder == builder_number:
+            return order.turn
+    return None
 
 
 class CoreAgent:
@@ -86,7 +103,8 @@ class CoreAgent:
         status = "idle: no spawn scheduled"
 
         try:
-            for builder_number, order in enumerate(SPAWN_SCHEDULE, start=1):
+            for order in SPAWN_SCHEDULE:
+                builder_number = order.builder
                 if order.turn != current_round:
                     continue
 

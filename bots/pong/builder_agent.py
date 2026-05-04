@@ -393,17 +393,16 @@ class BuilderAgent:
 
         if entity_type == EntityType.BRIDGE:
             target = self._actual_position(_position(build_spec["target"]))
-            if not ct.can_build_bridge(actual_pos, target):
-                if ct.get_action_cooldown() > 0:
-                    self.last_action_note = (
-                        f"deferred build bridge at {_format_position(actual_pos)}: "
-                        "action cooldown"
-                    )
-                    return False
-                self.last_action_note = (
-                    f"skipped build bridge at {_format_position(actual_pos)}: "
-                    "can_build false"
-                )
+            decision = self._build_decision(
+                ct,
+                actual_pos,
+                entity_type,
+                build_spec,
+                lambda: ct.can_build_bridge(actual_pos, target),
+            )
+            if decision == "defer":
+                return False
+            if decision == "done":
                 return True
             try:
                 ct.build_bridge(actual_pos, target)
@@ -425,17 +424,16 @@ class BuilderAgent:
                 self.right_side is not False,
             )
             can_build = getattr(ct, builder_name.replace("build_", "can_build_"))
-            if not can_build(actual_pos, direction):
-                if ct.get_action_cooldown() > 0:
-                    self.last_action_note = (
-                        f"deferred build {entity_type.value} at "
-                        f"{_format_position(actual_pos)}: action cooldown"
-                    )
-                    return False
-                self.last_action_note = (
-                    f"skipped build {entity_type.value} at "
-                    f"{_format_position(actual_pos)}: can_build false"
-                )
+            decision = self._build_decision(
+                ct,
+                actual_pos,
+                entity_type,
+                build_spec,
+                lambda: can_build(actual_pos, direction),
+            )
+            if decision == "defer":
+                return False
+            if decision == "done":
                 return True
             try:
                 getattr(ct, builder_name)(actual_pos, direction)
@@ -453,17 +451,16 @@ class BuilderAgent:
 
         builder_name = _POSITIONAL_BUILDERS[entity_type]
         can_build = getattr(ct, builder_name.replace("build_", "can_build_"))
-        if not can_build(actual_pos):
-            if ct.get_action_cooldown() > 0:
-                self.last_action_note = (
-                    f"deferred build {entity_type.value} at "
-                    f"{_format_position(actual_pos)}: action cooldown"
-                )
-                return False
-            self.last_action_note = (
-                f"skipped build {entity_type.value} at "
-                f"{_format_position(actual_pos)}: can_build false"
-            )
+        decision = self._build_decision(
+            ct,
+            actual_pos,
+            entity_type,
+            build_spec,
+            lambda: can_build(actual_pos),
+        )
+        if decision == "defer":
+            return False
+        if decision == "done":
             return True
         try:
             getattr(ct, builder_name)(actual_pos)
@@ -477,6 +474,132 @@ class BuilderAgent:
             f"built {entity_type.value} at {_format_position(actual_pos)}"
         )
         return True
+
+    def _build_decision(
+        self,
+        ct: Controller,
+        actual_pos: Position,
+        entity_type: EntityType,
+        build_spec: dict[str, Any],
+        can_build,
+    ) -> str:
+        if can_build():
+            return "build"
+
+        replacement = self._prepare_replacement_for_build(
+            ct,
+            actual_pos,
+            entity_type,
+            build_spec,
+        )
+        if replacement in {"done", "defer"}:
+            return replacement
+        if replacement == "prepared" and can_build():
+            return "build"
+
+        if ct.get_action_cooldown() > 0:
+            self.last_action_note = (
+                f"deferred build {entity_type.value} at "
+                f"{_format_position(actual_pos)}: action cooldown"
+            )
+            return "defer"
+
+        self.last_action_note = (
+            f"skipped build {entity_type.value} at "
+            f"{_format_position(actual_pos)}: can_build false"
+        )
+        return "done"
+
+    def _prepare_replacement_for_build(
+        self,
+        ct: Controller,
+        actual_pos: Position,
+        entity_type: EntityType,
+        build_spec: dict[str, Any],
+    ) -> str:
+        try:
+            existing_id = ct.get_tile_building_id(actual_pos)
+        except GameError as exc:
+            self.last_action_note = (
+                f"skipped build {entity_type.value} at "
+                f"{_format_position(actual_pos)}: {exc}"
+            )
+            return "done"
+
+        if existing_id is None:
+            return "none"
+
+        if self._existing_build_matches(ct, existing_id, entity_type, build_spec):
+            self.last_action_note = (
+                f"skipped build {entity_type.value} at "
+                f"{_format_position(actual_pos)}: already present"
+            )
+            return "done"
+
+        if ct.get_action_cooldown() > 0:
+            self.last_action_note = (
+                f"deferred build {entity_type.value} at "
+                f"{_format_position(actual_pos)}: action cooldown"
+            )
+            return "defer"
+
+        try:
+            if ct.get_team(existing_id) != ct.get_team():
+                existing_type = ct.get_entity_type(existing_id)
+                self.last_action_note = (
+                    f"skipped build {entity_type.value} at "
+                    f"{_format_position(actual_pos)}: blocked by enemy "
+                    f"{existing_type.value}"
+                )
+                return "done"
+        except GameError as exc:
+            self.last_action_note = (
+                f"skipped build {entity_type.value} at "
+                f"{_format_position(actual_pos)}: {exc}"
+            )
+            return "done"
+
+        if not ct.can_destroy(actual_pos):
+            existing_type = ct.get_entity_type(existing_id)
+            self.last_action_note = (
+                f"skipped build {entity_type.value} at "
+                f"{_format_position(actual_pos)}: cannot replace "
+                f"{existing_type.value}"
+            )
+            return "done"
+
+        try:
+            ct.destroy(actual_pos)
+        except GameError as exc:
+            self.last_action_note = (
+                f"skipped build {entity_type.value} at "
+                f"{_format_position(actual_pos)}: replace failed: {exc}"
+            )
+            return "done"
+        return "prepared"
+
+    def _existing_build_matches(
+        self,
+        ct: Controller,
+        existing_id: int,
+        entity_type: EntityType,
+        build_spec: dict[str, Any],
+    ) -> bool:
+        try:
+            if ct.get_entity_type(existing_id) != entity_type:
+                return False
+            if entity_type == EntityType.BRIDGE:
+                return ct.get_bridge_target(existing_id) == self._actual_position(
+                    _position(build_spec["target"])
+                )
+            if entity_type in _DIRECTIONAL_BUILDERS:
+                return ct.get_direction(existing_id) == _mirror_direction(
+                    _direction(build_spec["direction"]),
+                    self.right_side is not False,
+                )
+            return True
+        except (GameError, KeyError):
+            return False
 
     def _can_afford_build(self, ct: Controller, entity_type: EntityType) -> bool:
         titanium, axionite = ct.get_global_resources()
