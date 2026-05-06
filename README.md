@@ -1,10 +1,12 @@
 # muteki
 
-This is team mutekis bot for Cambridge Battlecode 2026.  
-We qualified as international finalists (top 8) with it and placed roughly top 6 on ladder.  
-Our motto is "上を見るだけ。" which is japanese and translates to "We only look upwards.".  
-If you want to see this bot in action, see [Setup](#setup).  
-Also, enjoy this list of... let's call 'em "interesting" commit messages.  
+This is Team Mutekis’ bot for Cambridge Battlecode 2026.  
+We qualified as international finalists and finished 5th/6th in the finals.  
+Our motto is **「上を見るだけ。」**, Japanese for **“We only look upward.”**
+
+To see the bot in action, check out [Setup](#setup).
+
+And finally, enjoy this collection of... let’s call them *interesting* commit messages.
 
 ## A few commits
 
