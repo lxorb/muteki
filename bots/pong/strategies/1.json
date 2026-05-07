@@ -354,6 +354,566 @@
           34,
           11
         ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          36,
+          11
+        ]
+      }
+    ],
+    "26": [
+      {
+        "action": "move_to",
+        "to": [
+          37,
+          11
+        ]
+      }
+    ],
+    "27": [
+      {
+        "action": "move_to",
+        "to": [
+          38,
+          10
+        ]
+      }
+    ],
+    "28": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          9
+        ]
+      }
+    ],
+    "29": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          8
+        ]
+      },
+      {
+        "action": "build",
+        "at": [
+          39,
+          7
+        ]
+      }
+    ],
+    "30": [
+      {
+        "action": "move_to",
+        "to": [
+          39,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          39,
+          6
+        ]
+      }
+    ],
+    "31": [
+      {
+        "action": "build",
+        "at": [
+          40,
+          6
+        ]
+      }
+    ],
+    "32": [
+      {
+        "action": "move_to",
+        "to": [
+          40,
+          6
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          41,
+          5
+        ]
+      }
+    ],
+    "33": [
+      {
+        "action": "move_to",
+        "to": [
+          41,
+          5
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          41,
+          4
+        ]
+      }
+    ],
+    "34": [
+      {
+        "action": "build",
+        "at": [
+          42,
+          5
+        ]
+      }
+    ],
+    "35": [
+      {
+        "action": "build",
+        "at": [
+          42,
+          4
+        ]
+      }
+    ],
+    "36": [
+      {
+        "action": "move_to",
+        "to": [
+          42,
+          4
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          43,
+          4
+        ]
+      }
+    ],
+    "37": [
+      {
+        "action": "build",
+        "at": [
+          43,
+          5
+        ]
+      }
+    ],
+    "38": [
+      {
+        "action": "move_to",
+        "to": [
+          43,
+          4
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          44,
+          4
+        ]
+      }
+    ],
+    "39": [
+      {
+        "action": "build",
+        "at": [
+          43,
+          3
+        ]
+      }
+    ],
+    "40": [
+      {
+        "action": "build",
+        "at": [
+          44,
+          3
+        ]
+      }
+    ],
+    "41": [
+      {
+        "action": "move_to",
+        "to": [
+          44,
+          3
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          45,
+          3
+        ]
+      }
+    ],
+    "42": [
+      {
+        "action": "build",
+        "at": [
+          44,
+          2
+        ]
+      }
+    ],
+    "43": [
+      {
+        "action": "build",
+        "at": [
+          45,
+          2
+        ]
+      }
+    ],
+    "44": [
+      {
+        "action": "move_to",
+        "to": [
+          45,
+          2
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          46,
+          3
+        ]
+      }
+    ],
+    "45": [
+      {
+        "action": "move_to",
+        "to": [
+          46,
+          2
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          47,
+          3
+        ]
+      }
+    ],
+    "46": [
+      {
+        "action": "move_to",
+        "to": [
+          47,
+          3
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          46,
+          4
+        ]
+      }
+    ],
+    "47": [
+      {
+        "action": "move_to",
+        "to": [
+          46,
+          4
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          45,
+          4
+        ]
+      }
+    ],
+    "48": [
+      {
+        "action": "build",
+        "at": [
+          47,
+          4
+        ]
+      }
+    ],
+    "49": [
+      {
+        "action": "build",
+        "at": [
+          46,
+          5
+        ]
+      }
+    ],
+    "50": [
+      {
+        "action": "build",
+        "at": [
+          47,
+          5
+        ]
+      }
+    ],
+    "51": [
+      {
+        "action": "build",
+        "at": [
+          45,
+          5
+        ]
+      }
+    ],
+    "52": [
+      {
+        "action": "move_to",
+        "to": [
+          45,
+          5
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          44,
+          5
+        ]
+      }
+    ],
+    "53": [
+      {
+        "action": "build",
+        "at": [
+          44,
+          6
+        ]
+      }
+    ],
+    "54": [
+      {
+        "action": "move_to",
+        "to": [
+          44,
+          6
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          43,
+          6
+        ]
+      }
+    ],
+    "55": [
+      {
+        "action": "build",
+        "at": [
+          43,
+          7
+        ],
+        "building": "road"
+      },
+      {
+        "action": "move_to",
+        "to": [
+          43,
+          7
+        ]
+      }
+    ],
+    "56": [
+      {
+        "action": "move_to",
+        "to": [
+          44,
+          8
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          45,
+          8
+        ]
+      }
+    ],
+    "57": [
+      {
+        "action": "build",
+        "at": [
+          44,
+          7
+        ]
+      }
+    ],
+    "58": [
+      {
+        "action": "move_to",
+        "to": [
+          45,
+          8
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          46,
+          8
+        ]
+      }
+    ],
+    "59": [
+      {
+        "action": "build",
+        "at": [
+          46,
+          7
+        ]
+      }
+    ],
+    "60": [
+      {
+        "action": "move_to",
+        "to": [
+          46,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          47,
+          7
+        ]
+      }
+    ],
+    "61": [
+      {
+        "action": "build",
+        "at": [
+          45,
+          7
+        ]
+      }
+    ],
+    "62": [
+      {
+        "action": "build",
+        "at": [
+          45,
+          6
+        ]
+      }
+    ],
+    "63": [
+      {
+        "action": "build",
+        "at": [
+          47,
+          6
+        ]
+      }
+    ],
+    "64": [
+      {
+        "action": "build",
+        "at": [
+          46,
+          6
+        ]
+      }
+    ],
+    "65": [
+      {
+        "action": "move_to",
+        "to": [
+          47,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          48,
+          7
+        ]
+      }
+    ],
+    "66": [
+      {
+        "action": "move_to",
+        "to": [
+          48,
+          7
+        ],
+        "implicit": true,
+        "reason": "build_range"
+      },
+      {
+        "action": "build",
+        "at": [
+          49,
+          7
+        ]
+      }
+    ],
+    "67": [
+      {
+        "action": "build",
+        "at": [
+          49,
+          6
+        ]
+      },
+      {
+        "action": "move_to",
+        "to": [
+          47,
+          7
+        ]
       }
     ]
   }
