@@ -72,6 +72,7 @@ select {
 .map-tools,
 .inline-controls,
 .strategy-actions,
+.step-actions,
 .turn-row,
 .segmented {
   align-items: center;
@@ -476,6 +477,12 @@ code {
   margin: 0;
   min-width: 0;
   width: 100%;
+}
+
+.step-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 0 12px;
 }
 
 .segmented {

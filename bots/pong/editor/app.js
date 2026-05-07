@@ -107,6 +107,8 @@ function cacheElements() {
     pickLayoutBridgeTargetButton: document.getElementById("pickLayoutBridgeTargetButton"),
     turnSlider: document.getElementById("turnSlider"),
     turnNumber: document.getElementById("turnNumber"),
+    insertStepButton: document.getElementById("insertStepButton"),
+    removeStepButton: document.getElementById("removeStepButton"),
     spawnTurnNumber: document.getElementById("spawnTurnNumber"),
     spawnTileLabel: document.getElementById("spawnTileLabel"),
     firstActionTurnLabel: document.getElementById("firstActionTurnLabel"),
@@ -168,6 +170,8 @@ function bindEvents() {
 
   els.turnSlider.addEventListener("input", () => setTurn(Number(els.turnSlider.value)));
   els.turnNumber.addEventListener("change", () => setTurn(Number(els.turnNumber.value)));
+  els.insertStepButton.addEventListener("click", insertStepAtCurrentTurn);
+  els.removeStepButton.addEventListener("click", removeStepAtCurrentTurn);
   els.spawnTurnNumber.addEventListener("change", () => setCurrentBuilderSpawnTurn(Number(els.spawnTurnNumber.value)));
   els.pickSpawnTileButton.addEventListener("click", startSpawnTilePick);
   els.saveSpawnButton.addEventListener("click", saveSpawnSchedule);
@@ -797,6 +801,45 @@ function removeActionAtCurrentTurn(index) {
   render();
 }
 
+function insertStepAtCurrentTurn() {
+  const strategy = currentStrategy();
+  const turn = state.currentTurn;
+  const shiftedTurns = shiftStrategyTurns(strategy, turn, 1);
+  strategy.turns[String(turn)] = [];
+  syncTurnBounds();
+  render();
+  setStatus(
+    `Inserted step ${turn} for Builder ${state.currentBuilder}; shifted ${shiftedTurns} later turn${shiftedTurns === 1 ? "" : "s"}`,
+  );
+}
+
+function removeStepAtCurrentTurn() {
+  const strategy = currentStrategy();
+  const turn = state.currentTurn;
+  const removedActions = (strategy.turns[String(turn)] || []).length;
+  delete strategy.turns[String(turn)];
+  const shiftedTurns = shiftStrategyTurns(strategy, turn + 1, -1);
+  if (Object.keys(strategy.turns).length === 0) strategy.turns["1"] = [];
+  syncTurnBounds();
+  render();
+  setStatus(
+    `Removed step ${turn} for Builder ${state.currentBuilder}; removed ${removedActions} action${removedActions === 1 ? "" : "s"} and shifted ${shiftedTurns} later turn${shiftedTurns === 1 ? "" : "s"}`,
+  );
+}
+
+function shiftStrategyTurns(strategy, startTurn, delta) {
+  const turns = strategyTurnNumbers(strategy)
+    .filter((turn) => turn >= startTurn)
+    .sort((a, b) => (delta > 0 ? b - a : a - b));
+  for (const turn of turns) {
+    const key = String(turn);
+    const targetKey = String(turn + delta);
+    strategy.turns[targetKey] = strategy.turns[key];
+    delete strategy.turns[key];
+  }
+  return turns.length;
+}
+
 function clearFutureActions() {
   const strategy = currentStrategy();
   let removedTurns = 0;
@@ -967,8 +1010,14 @@ function currentTurnActions() {
   return strategy.turns[String(state.currentTurn)] || [];
 }
 
+function strategyTurnNumbers(strategy) {
+  return Object.keys(strategy.turns || {})
+    .map(Number)
+    .filter((turn) => Number.isFinite(turn) && turn >= 1);
+}
+
 function maxStrategyTurn(strategy) {
-  const turns = Object.keys(strategy.turns || {}).map(Number).filter(Number.isFinite);
+  const turns = strategyTurnNumbers(strategy);
   return turns.length ? Math.max(...turns) : 0;
 }
 
